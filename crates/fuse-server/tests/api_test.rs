@@ -1990,7 +1990,6 @@ async fn test_analyze_profile_has_cost_and_detail() {
         true,
     ).await;
     assert_eq!(status, StatusCode::OK);
-    eprintln!("ANALYZE: {}", serde_json::to_string_pretty(&json).unwrap());
     let profile = &json["execution_profile"];
     assert!(profile["total_ms"].as_u64().is_some());
     let nodes = profile["nodes"].as_array().unwrap();
