@@ -1,50 +1,42 @@
-openapi: "3.1.0"
+openapi: 3.1.0
 info:
   title: Fuse — Federated Query Engine API
-  description: |
-    REST API for the Fuse cross-datasource federated query engine.
-    Fuse federates queries across multiple OpenSearch clusters (and future
-    datasource types) from a single endpoint, using Apache DataFusion for
-    SQL planning and push-down optimization.
-  version: "0.1.0"
+  description: REST API for the Fuse cross-datasource federated query engine.
+  version: 0.1.0
   license:
     name: Apache-2.0
     url: https://www.apache.org/licenses/LICENSE-2.0
 
 servers:
+  - url: https://fuse.huanji.profile.aws.dev
+    description: Playground (Amazon VPN only)
   - url: http://localhost:9400
     description: Local development
 
 paths:
   /api/fuse/health:
     get:
-      operationId: getHealth
-      summary: Engine and connector health
-      tags: [Health]
+      summary: Health check
+      description: Returns engine status and per-connector health.
+      operationId: health
+      tags: [System]
       responses:
         "200":
-          description: Health status of the engine and all registered connectors
+          description: Health status
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
-              example:
-                status: healthy
-                version: "0.1.0"
-                connectors:
-                  prod_cluster:
-                    status: healthy
-                    latency_ms: 12
-                    message: null
 
   /api/fuse/datasources:
     get:
+      summary: List datasources
+      description: Returns all registered datasource connectors with their capabilities.
       operationId: listDatasources
-      summary: List registered datasources
       tags: [Datasources]
       responses:
         "200":
-          description: Array of registered datasources with capabilities
+          description: List of datasources
           content:
             application/json:
               schema:
@@ -54,14 +46,15 @@ paths:
 
   /api/fuse/datasources/{id}/schemas:
     get:
+      summary: List schemas for a datasource
+      description: Discovers available schemas (indices, tables, buckets, metrics) in a datasource.
       operationId: getSchemas
-      summary: Discover schemas (indices/tables) for a datasource
       tags: [Datasources]
       parameters:
         - $ref: "#/components/parameters/DatasourceId"
       responses:
         "200":
-          description: List of schemas available in the datasource
+          description: List of schemas
           content:
             application/json:
               schema:
@@ -70,13 +63,12 @@ paths:
                   $ref: "#/components/schemas/SchemaInfo"
         "404":
           $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalError"
 
   /api/fuse/datasources/{id}/schemas/{table}/fields:
     get:
+      summary: Get fields for a table
+      description: Returns the Arrow schema (field names, types, nullability) for a specific table.
       operationId: getFields
-      summary: Get fields (Arrow schema) for a specific table
       tags: [Datasources]
       parameters:
         - $ref: "#/components/parameters/DatasourceId"
@@ -85,40 +77,28 @@ paths:
           required: true
           schema:
             type: string
-          description: Table or index name
+          description: Table/index/metric name
       responses:
         "200":
-          description: List of fields with types
+          description: List of fields
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: "#/components/schemas/FieldInfo"
-              example:
-                - name: trace_id
-                  data_type: Utf8
-                  nullable: false
-                - name: status
-                  data_type: Int64
-                  nullable: false
-                - name: message
-                  data_type: Utf8
-                  nullable: true
         "404":
           $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalError"
 
   /api/fuse/query:
     post:
-      operationId: executeQuery
       summary: Execute a federated query
       description: |
-        Parses the datasource and table from the query string, routes to the
-        appropriate connector, and returns results as JSON rows.
+        Parses a SQL or PPL query, routes sub-queries to the appropriate
+        connectors, and returns merged results.
 
-        Supports SQL (`format: sql`) and PPL (`format: ppl`).
+        The query must reference tables as `datasource.table` (e.g., `cluster_a.logs`).
+      operationId: query
       tags: [Query]
       requestBody:
         required: true
@@ -130,12 +110,12 @@ paths:
               sql:
                 summary: SQL query
                 value:
-                  query: "SELECT * FROM prod_cluster.logs WHERE status = 500"
+                  query: "SELECT * FROM cluster_a.logs WHERE status = 500"
                   format: sql
               ppl:
                 summary: PPL query
                 value:
-                  query: "source = prod_cluster.logs | where status >= 500 | stats count() by service"
+                  query: "source = cluster_a.logs | where status >= 500 | stats count() by service"
                   format: ppl
       responses:
         "200":
@@ -144,14 +124,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/QueryResponse"
-              example:
-                columns: [trace_id, status, message]
-                rows:
-                  - ["abc-001", "500", "internal server error"]
-                  - ["abc-003", "500", "gateway timeout"]
-                metadata:
-                  total_rows: 2
-                  format: sql
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -159,10 +131,31 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /api/fuse/query/validate:
+    post:
+      summary: Validate a query
+      description: Checks if a query is syntactically valid and references existing datasources.
+      operationId: validateQuery
+      tags: [Query]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryRequest"
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidateResponse"
+
   /api/fuse/query/explain:
     post:
+      summary: Explain a query plan
+      description: Returns the federated execution plan without running the query.
       operationId: explainQuery
-      summary: Show execution plan for a query
       tags: [Query]
       requestBody:
         required: true
@@ -180,33 +173,6 @@ paths:
         "400":
           $ref: "#/components/responses/BadRequest"
 
-  /api/fuse/query/validate:
-    post:
-      operationId: validateQuery
-      summary: Validate a query without executing it
-      tags: [Query]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/QueryRequest"
-      responses:
-        "200":
-          description: Validation result
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ValidateResponse"
-              examples:
-                valid:
-                  value:
-                    valid: true
-                invalid:
-                  value:
-                    valid: false
-                    error: "datasource 'unknown' not found in registry"
-
 components:
   parameters:
     DatasourceId:
@@ -215,7 +181,7 @@ components:
       required: true
       schema:
         type: string
-      description: Datasource connector ID (as defined in fuse.toml)
+      description: Datasource connector ID
 
   schemas:
     QueryRequest:
@@ -224,7 +190,7 @@ components:
       properties:
         query:
           type: string
-          description: SQL or PPL query string. Must reference tables as `datasource.table`.
+          description: SQL or PPL query string
         format:
           type: string
           enum: [sql, ppl]
@@ -238,22 +204,20 @@ components:
           type: array
           items:
             type: string
+          description: Column names
         rows:
           type: array
           items:
             type: array
             items: {}
+          description: Row data (array of arrays)
         metadata:
-          $ref: "#/components/schemas/QueryMetadata"
-
-    QueryMetadata:
-      type: object
-      properties:
-        total_rows:
-          type: integer
-          format: int64
-        format:
-          type: string
+          type: object
+          properties:
+            total_rows:
+              type: integer
+            format:
+              type: string
 
     DatasourceInfo:
       type: object
@@ -295,10 +259,9 @@ components:
           type: string
         schema_type:
           type: string
-          enum: [index, table, bucket, collection]
+          enum: [index, table, bucket, metricname]
         estimated_row_count:
           type: integer
-          format: int64
           nullable: true
 
     FieldInfo:
@@ -308,7 +271,6 @@ components:
           type: string
         data_type:
           type: string
-          description: Arrow data type (e.g. Utf8, Int64, Float64, Boolean)
         nullable:
           type: boolean
 
@@ -317,33 +279,21 @@ components:
       properties:
         status:
           type: string
-          enum: [healthy, degraded, unhealthy]
-        version:
-          type: string
+          enum: [ok, degraded, error]
         connectors:
           type: object
           additionalProperties:
-            $ref: "#/components/schemas/ConnectorHealthInfo"
-
-    ConnectorHealthInfo:
-      type: object
-      properties:
-        status:
-          type: string
-          enum: [healthy, degraded, unhealthy]
-        latency_ms:
-          type: integer
-          format: int64
-          nullable: true
-        message:
-          type: string
-          nullable: true
-
-    ExplainResponse:
-      type: object
-      properties:
-        plan:
-          type: string
+            type: object
+            properties:
+              status:
+                type: string
+                enum: [healthy, degraded, unhealthy]
+              latency_ms:
+                type: integer
+                nullable: true
+              message:
+                type: string
+                nullable: true
 
     ValidateResponse:
       type: object
@@ -354,6 +304,12 @@ components:
           type: string
           nullable: true
 
+    ExplainResponse:
+      type: object
+      properties:
+        plan:
+          type: string
+
     ErrorResponse:
       type: object
       properties:
@@ -362,28 +318,20 @@ components:
 
   responses:
     BadRequest:
-      description: Invalid request (parse error, missing fields)
+      description: Invalid request
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
     NotFound:
-      description: Datasource not found
+      description: Resource not found
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
     InternalError:
-      description: Internal server or connector error
+      description: Internal server error
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
-
-tags:
-  - name: Health
-    description: Server and connector health checks
-  - name: Datasources
-    description: Datasource discovery and schema introspection
-  - name: Query
-    description: Query execution, explain, and validation
