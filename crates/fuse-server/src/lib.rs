@@ -3,11 +3,13 @@
 pub mod api;
 pub mod health;
 pub mod history;
+pub mod rate_limit;
 pub mod streaming;
 
 use std::sync::Arc;
 
 use axum::http::header;
+use axum::middleware;
 use axum::response::{Html, IntoResponse};
 use axum::routing::{get, post};
 use axum::Router;

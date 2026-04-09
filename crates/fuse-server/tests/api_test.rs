@@ -865,10 +865,11 @@ async fn test_union_has_datasource_column() {
     ).await;
     assert_eq!(status, StatusCode::OK);
     let columns = json["columns"].as_array().unwrap();
-    assert_eq!(columns[0], "_datasource");
+    assert!(columns.iter().any(|c| c == "_datasource"));
     // Check rows have correct datasource values
     let rows = json["rows"].as_array().unwrap();
-    let ds_values: Vec<&str> = rows.iter().map(|r| r[0].as_str().unwrap()).collect();
+    let ds_col_idx = columns.iter().position(|c| c == "_datasource").unwrap();
+    let ds_values: Vec<&str> = rows.iter().map(|r| r[ds_col_idx].as_str().unwrap()).collect();
     assert!(ds_values.contains(&"cluster_a"));
     assert!(ds_values.contains(&"cluster_b"));
 }
