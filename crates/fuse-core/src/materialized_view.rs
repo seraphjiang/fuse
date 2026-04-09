@@ -266,8 +266,7 @@ mod tests {
         reg.mark_error("v1", "connection refused".into());
         let statuses = reg.status_all();
         assert!(statuses.contains_key("v1"));
-        let s = &statuses["v1"];
-        assert!(s.last_error.as_deref() == Some("connection refused"));
+        assert!(matches!(&statuses["v1"], ViewStatus::Error(msg) if msg == "connection refused"));
     }
 
     #[test]
@@ -277,7 +276,9 @@ mod tests {
         reg.put("a", vec![make_batch()]);
         let statuses = reg.status_all();
         assert_eq!(statuses.len(), 2);
-        assert!(statuses["a"].last_refreshed.is_some());
-        assert!(statuses["b"].last_refreshed.is_none());
+        // "a" was put → Fresh or Stale (not Uninitialized)
+        assert!(!matches!(statuses["a"], ViewStatus::Uninitialized));
+        // "b" never put → Uninitialized
+        assert!(matches!(statuses["b"], ViewStatus::Uninitialized));
     }
 }
