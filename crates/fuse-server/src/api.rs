@@ -60,6 +60,14 @@ struct FederatedResult {
     stats: Option<std::collections::HashMap<String, DatasourceStat>>,
     datasources: Vec<String>,
     profile_nodes: Vec<ProfileNode>,
+    /// Per-datasource errors for partial failure reporting.
+    partial_errors: Vec<PartialError>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct PartialError {
+    pub datasource: String,
+    pub error: String,
 }
 
 // ── Request / Response types ──
@@ -98,6 +106,8 @@ pub struct QueryResponse {
     pub metadata: QueryMetadata,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub execution_profile: Option<ExecutionProfile>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub partial_errors: Vec<PartialError>,
 }
 
 #[derive(Serialize)]
@@ -314,6 +324,7 @@ pub async fn query_handler(
                     } else {
                         None
                     },
+                    partial_errors: fed.partial_errors,
                 })
                 .into_response()
             }
@@ -359,6 +370,7 @@ async fn execute_single(
             pushdown: vec![],
             children: vec![],
         }],
+        partial_errors: vec![],
     })
 }
 
@@ -414,28 +426,41 @@ async fn execute_union(
     let mut ds_stats = std::collections::HashMap::new();
     let mut datasources = Vec::new();
     let mut scan_nodes = Vec::new();
+    let mut partial_errors = Vec::new();
 
     for handle in handles {
         let (ds_id, result, latency_ms) = handle.await.map_err(|e| format!("task join error: {e}"))?;
-        let batches = result.map_err(|e| e.to_string())?;
-        let row_count: u64 = batches.iter().map(|b| b.num_rows() as u64).sum();
-        let data_bytes: u64 = batches.iter().map(|b| b.get_array_memory_size() as u64).sum();
+        datasources.push(ds_id.clone());
 
-        let tagged = add_datasource_column(&batches, &ds_id);
+        match result {
+            Ok(batches) => {
+                let row_count: u64 = batches.iter().map(|b| b.num_rows() as u64).sum();
+                let data_bytes: u64 = batches.iter().map(|b| b.get_array_memory_size() as u64).sum();
+                let tagged = add_datasource_column(&batches, &ds_id);
 
-        scan_nodes.push(ProfileNode {
-            op: "RemoteScan".into(),
-            datasource: Some(ds_id.clone()),
-            actual_rows: row_count,
-            actual_ms: latency_ms,
-            data_bytes: Some(data_bytes),
-            pushdown: vec![],
-            children: vec![],
-        });
+                scan_nodes.push(ProfileNode {
+                    op: "RemoteScan".into(),
+                    datasource: Some(ds_id.clone()),
+                    actual_rows: row_count,
+                    actual_ms: latency_ms,
+                    data_bytes: Some(data_bytes),
+                    pushdown: vec![],
+                    children: vec![],
+                });
 
-        ds_stats.insert(ds_id.clone(), DatasourceStat { rows: row_count, latency_ms });
-        datasources.push(ds_id);
-        batch_sets.push(tagged);
+                ds_stats.insert(ds_id, DatasourceStat { rows: row_count, latency_ms });
+                batch_sets.push(tagged);
+            }
+            Err(e) => {
+                partial_errors.push(PartialError { datasource: ds_id.clone(), error: e.to_string() });
+                ds_stats.insert(ds_id, DatasourceStat { rows: 0, latency_ms });
+            }
+        }
+    }
+
+    // If ALL sources failed, return error
+    if batch_sets.is_empty() && !partial_errors.is_empty() {
+        return Err(partial_errors.iter().map(|e| format!("{}: {}", e.datasource, e.error)).collect::<Vec<_>>().join("; "));
     }
 
     let merged = fuse_engine::union_batches(batch_sets).map_err(|e| e.to_string())?;
@@ -449,11 +474,12 @@ async fn execute_union(
             op: "UnionAll".into(),
             datasource: None,
             actual_rows: total_rows,
-            actual_ms: 0, // filled by caller from t0
+            actual_ms: 0,
             data_bytes: None,
             pushdown: vec![],
             children: scan_nodes,
         }],
+        partial_errors,
     })
 }
 
@@ -507,6 +533,7 @@ async fn execute_join(
             stats: Some(ds_stats),
             datasources: vec![ds_a.clone(), ds_b.clone()],
             profile_nodes: vec![],
+            partial_errors: vec![],
         });
     }
 
@@ -565,6 +592,7 @@ async fn execute_join(
             pushdown: vec![],
             children: vec![scan_a, scan_b],
         }],
+        partial_errors: vec![],
     })
 }
 
@@ -1087,6 +1115,7 @@ pub async fn get_view(
                 rows: rows.clone(),
                 metadata: QueryMetadata { total_rows: rows.len() as u64, format: "view".into(), datasources_queried: None, datasource_stats: None },
                 execution_profile: None,
+                partial_errors: vec![],
             }).into_response()
         }
     }

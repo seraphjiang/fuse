@@ -1527,3 +1527,107 @@ async fn test_params_sql_injection_escaped() {
     let status = resp.status();
     assert!(status == StatusCode::OK || status == StatusCode::INTERNAL_SERVER_ERROR);
 }
+
+// ── Partial failure tests ──
+
+/// A connector that always fails on execute.
+#[derive(Debug)]
+struct FailingMockConnector {
+    id: String,
+}
+
+impl FailingMockConnector {
+    fn new(id: &str) -> Self { Self { id: id.to_string() } }
+}
+
+#[async_trait]
+impl FederatedConnector for FailingMockConnector {
+    fn id(&self) -> &str { &self.id }
+    fn connector_type(&self) -> &str { "failing-mock" }
+    fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+    async fn health_check(&self) -> ConnectorHealth {
+        ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some("down".into()) }
+    }
+    async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
+        Ok(vec![SchemaInfo { name: "logs".into(), schema_type: SchemaType::Index, estimated_row_count: Some(0) }])
+    }
+    async fn get_schema(&self, _: &str) -> Result<Schema, ConnectorError> {
+        Ok(Schema::new(vec![
+            Field::new("host", DataType::Utf8, false),
+            Field::new("status", DataType::Int64, false),
+        ]))
+    }
+    async fn execute(&self, _: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
+        Err(ConnectorError::query("connection refused"))
+    }
+    async fn execute_streaming(
+        &self, _: &SubQuery, _: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+    ) -> Result<(), ConnectorError> {
+        Err(ConnectorError::query("connection refused"))
+    }
+}
+
+#[tokio::test]
+async fn test_union_partial_failure_returns_partial_results() {
+    // cluster_a works, cluster_b fails → should get results from cluster_a + partial_errors
+    let registry = ConnectorRegistry::new();
+    registry.register(Arc::new(MockConnector::new("cluster_a"))).unwrap();
+    registry.register(Arc::new(FailingMockConnector::new("cluster_b"))).unwrap();
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
+    });
+    let app = fuse_server::build_router(state);
+
+    let (status, json) = post_query(
+        app,
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    // Got partial results from cluster_a
+    assert!(json["rows"].as_array().unwrap().len() > 0);
+    // partial_errors reports cluster_b failure
+    let errors = json["partial_errors"].as_array().unwrap();
+    assert_eq!(errors.len(), 1);
+    assert_eq!(errors[0]["datasource"], "cluster_b");
+    assert!(errors[0]["error"].as_str().unwrap().contains("connection refused"));
+}
+
+#[tokio::test]
+async fn test_union_all_fail_returns_error() {
+    // Both sources fail → should return 500
+    let registry = ConnectorRegistry::new();
+    registry.register(Arc::new(FailingMockConnector::new("cluster_a"))).unwrap();
+    registry.register(Arc::new(FailingMockConnector::new("cluster_b"))).unwrap();
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
+    });
+    let app = fuse_server::build_router(state);
+
+    let (status, _) = post_query(
+        app,
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
+async fn test_single_source_no_partial_errors() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    // No partial_errors field when empty (skip_serializing_if)
+    assert!(json.get("partial_errors").is_none());
+}
