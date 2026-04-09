@@ -155,7 +155,6 @@ fn translate_single_agg(agg: &AggregationExpr) -> serde_json::Value {
         AggFunction::Avg => serde_json::json!({"avg": {"field": agg.field.as_deref().unwrap_or("_id")}}),
         AggFunction::Min => serde_json::json!({"min": {"field": agg.field.as_deref().unwrap_or("_id")}}),
         AggFunction::Max => serde_json::json!({"max": {"field": agg.field.as_deref().unwrap_or("_id")}}),
-        AggFunction::CountDistinct => serde_json::json!({"cardinality": {"field": agg.field.as_deref().unwrap_or("_id")}}),
     }
 }
 

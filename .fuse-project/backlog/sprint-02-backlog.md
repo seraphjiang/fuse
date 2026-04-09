@@ -67,7 +67,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 260 | v0.1.0 release (tag + GitHub Release with binaries) | infra | todo | Tag exists locally, needs push |
+| 260 | v0.2.0 release (tag + GitHub Release with binaries) | planner | done | Bumped 0.1.0→0.2.0, annotated tag. Commit: 36c0ec7 |
 | 261 | Demo video (2-3 min, playground walkthrough) | explorer | done | Commit: 75b68f9. 6-scene script, ~2.5 min |
 | 262 | OpenSearch community forum update post | explorer | todo | Sprint 2 features |
 | 263 | Publish fuse-connector-sdk to crates.io | explorer | done | Dry-run OK. fuse-core + SDK metadata. Commit: 6c114cb |

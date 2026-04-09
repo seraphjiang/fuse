@@ -1971,7 +1971,7 @@ async fn test_subquery_in_from() {
 
 #[tokio::test]
 async fn test_subquery_with_outer_filter() {
-    let (status, json) = post_query(
+    let (status, _json) = post_query(
         build_test_app(),
         "SELECT * FROM (SELECT * FROM testds.logs) AS sub WHERE host = 'h1'",
         "sql",

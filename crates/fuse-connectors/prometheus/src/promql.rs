@@ -109,7 +109,7 @@ fn scalar_to_string(value: &ScalarValue) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fuse_core::connector::{AggFunction, AggregationExpr, SortExpr};
+    use fuse_core::connector::{AggFunction, AggregationExpr};
 
     fn simple_query(table: &str) -> SubQuery {
         SubQuery {
