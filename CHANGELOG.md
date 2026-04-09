@@ -6,6 +6,80 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Sprint 2
+
+### Added
+
+**Query Engine**
+- HAVING clause pushdown in UNION ALL queries
+- BETWEEN filter support in SQL→SubQuery translation
+- IN/NOT IN and ILIKE filter pushdown
+- COUNT(DISTINCT) pushdown end-to-end
+- PPL `lookup` command for cross-datasource enrichment
+- PPL `top` and `rare` commands
+- PPL `eval` and `rename` commands
+- Type coercion in cross-source UNION
+- Global ORDER BY for UNION ALL results
+- Query plan cache — skip re-parsing for repeated queries
+
+**Server**
+- Data provenance — `_datasource` column and `datasource_stats` in responses
+- EXPLAIN ANALYZE — execution profiling with per-stage timing
+- Query history + rate limiting (configurable per-IP)
+- Saved queries — CRUD for named query templates
+- Query cancellation — cancel running queries by ID
+- Per-query timeout with configurable `timeout_ms`
+- CSV result format via `result_format` field
+- Parameterized queries — named parameter binding
+- SELECT DISTINCT + OFFSET support
+- Partial failure resilience in UNION ALL queries
+- Enhanced query validation — table existence check
+- Query stats endpoint — aggregated metrics from history
+- Graceful shutdown — drain in-flight queries
+- Prometheus `/metrics` endpoint
+- Structured JSON logging (`FUSE_LOG_FORMAT=json`)
+
+**Connectors**
+- OpenSearch scroll pagination for large result sets
+- S3 Hive partition pruning for Parquet files
+- Prometheus range query — `start`/`end`/`step` in QueryRequest
+
+**Playground UI**
+- Visual execution plan tree viewer
+- Data provenance display
+- Query history tab
+- Download CSV button
+- GitHub and Docs links in header
+- Tabbed docs site
+
+**Infrastructure**
+- GitHub Pages docs site (mdBook → gh-pages)
+- GitHub Actions release workflow (v* tags → binary artifacts)
+- ECS auto-scaling (1-3 tasks, 70% CPU target)
+- `.dockerignore` for faster Docker builds
+- Deployment & operations runbook (`docs/DEPLOYMENT.md`)
+
+**OSD Plugin**
+- Query bar with syntax highlighting
+- Results table with sort, pagination, provenance
+
+### Fixed
+- AND/OR partial filter translation correctness
+- String literal safety for all SQL clause parsers
+- SQL source parsing and param binding correctness
+- Removed `unwrap()` from all handler execution paths
+- OpenSearch u64/usize type mismatch in scroll limit check
+
+### Tests
+- 582 tests (up from 347 in Sprint 1), 0 failures
+- COUNT DISTINCT, HAVING, ILIKE, IN/NOT IN verification
+- S3 partition pruning verification
+- Execution plan visualization tests
+- Load test + negative E2E suite (25 E2E, 50-query load)
+- SDK MockConnector + smoke_test coverage
+
+---
+
 ## [0.1.0] — 2026-04-09
 
 ### Added
