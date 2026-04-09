@@ -1,0 +1,13 @@
+target/
+.git/
+.github/
+.fuse-project/
+docs/
+osd-plugin/
+scripts/
+benches/
+tests/
+*.md
+LICENSE
+.gitignore
+docker-compose*.yml
