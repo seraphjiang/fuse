@@ -76,6 +76,9 @@ pub struct QueryRequest {
     /// Output format: "json" (default) or "csv".
     #[serde(default = "default_result_format")]
     pub result_format: String,
+    /// Named query parameters. Keys without $ prefix are matched against $key in query.
+    #[serde(default)]
+    pub params: std::collections::HashMap<String, serde_json::Value>,
 }
 
 fn default_format() -> String {
@@ -176,6 +179,24 @@ fn error_json(status: StatusCode, msg: impl ToString) -> impl IntoResponse {
     )
 }
 
+/// Substitute `$key` placeholders in query with parameter values.
+/// String values are single-quoted and escaped. Numbers/bools are inlined.
+fn bind_params(query: &str, params: &std::collections::HashMap<String, serde_json::Value>) -> String {
+    let mut result = query.to_string();
+    for (key, val) in params {
+        let placeholder = format!("${}", key);
+        let replacement = match val {
+            serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''")),
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::Bool(b) => b.to_string(),
+            serde_json::Value::Null => "NULL".to_string(),
+            other => format!("'{}'", other.to_string().replace('\'', "''")),
+        };
+        result = result.replace(&placeholder, &replacement);
+    }
+    result
+}
+
 // ── Handlers ──
 
 /// POST /api/fuse/query
@@ -186,10 +207,17 @@ pub async fn query_handler(
     let t0 = std::time::Instant::now();
     let format = req.format.to_lowercase();
 
+    // Bind parameters if provided
+    let query = if req.params.is_empty() {
+        req.query.clone()
+    } else {
+        bind_params(&req.query, &req.params)
+    };
+
     // Parse all datasource.table references from the query
     let refs = match format.as_str() {
-        "ppl" => parse_ppl_sources(&req.query),
-        _ => parse_sql_sources(&req.query),
+        "ppl" => parse_ppl_sources(&query),
+        _ => parse_sql_sources(&query),
     };
 
     let refs = match refs {
@@ -221,9 +249,9 @@ pub async fn query_handler(
 
     let exec_future = async {
         if refs.len() == 1 {
-            execute_single(&state, &req.query, &format, &refs[0]).await
-        } else if format == "ppl" || is_union_query(&req.query) {
-            execute_union(&state, &req.query, &format, &refs).await
+            execute_single(&state, &query, &format, &refs[0]).await
+        } else if format == "ppl" || is_union_query(&query) {
+            execute_union(&state, &query, &format, &refs).await
         } else {
             execute_join(&state, &refs).await
         }
@@ -241,7 +269,7 @@ pub async fn query_handler(
 
     match result {
         Ok(fed) => {
-            let limit = parse_limit(&req.query);
+            let limit = parse_limit(&query);
             let batches = if let Some(n) = limit {
                 fuse_engine::merge_batches(fed.batches, Some(n)).unwrap_or_default()
             } else {

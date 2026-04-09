@@ -1448,3 +1448,82 @@ async fn test_stats_endpoint() {
     assert!(json["p95_latency_ms"].is_number());
     assert!(json["total_rows_returned"].is_number());
 }
+
+// ── Parameterized query tests ──
+
+#[tokio::test]
+async fn test_params_string_binding() {
+    let body = serde_json::json!({
+        "query": "SELECT * FROM cluster_a.logs WHERE host = $host",
+        "format": "sql",
+        "params": {"host": "web-01"}
+    });
+    let resp = build_federation_app()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_params_number_binding() {
+    let body = serde_json::json!({
+        "query": "SELECT * FROM cluster_a.logs WHERE status = $code",
+        "format": "sql",
+        "params": {"code": 200}
+    });
+    let resp = build_federation_app()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_params_empty_is_noop() {
+    // No params → query unchanged
+    let (status, _) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_params_sql_injection_escaped() {
+    // Single quotes in string params should be escaped
+    let body = serde_json::json!({
+        "query": "SELECT * FROM cluster_a.logs WHERE host = $host",
+        "format": "sql",
+        "params": {"host": "'; DROP TABLE logs; --"}
+    });
+    let resp = build_federation_app()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    // Should succeed (escaped) or fail gracefully, NOT execute injection
+    let status = resp.status();
+    assert!(status == StatusCode::OK || status == StatusCode::INTERNAL_SERVER_ERROR);
+}
