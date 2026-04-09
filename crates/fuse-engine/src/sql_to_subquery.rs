@@ -41,6 +41,7 @@ pub fn sql_to_subquery(sql: &str) -> Result<SubQuery, ConnectorError> {
     let (projections, aggregations) = extract_projections_and_aggs(&select.projection);
     let filter = select.selection.as_ref().and_then(|e| translate_expr(e));
     let group_by = extract_group_by(&select.group_by);
+    let having = select.having.as_ref().and_then(|e| translate_expr(e));
     let sort = query
         .order_by
         .as_ref()
@@ -57,6 +58,7 @@ pub fn sql_to_subquery(sql: &str) -> Result<SubQuery, ConnectorError> {
         filter,
         aggregations,
         group_by,
+        having,
         sort,
         limit,
         passthrough: None,
@@ -155,6 +157,7 @@ fn expr_to_column_name(expr: &SqlExpr) -> Option<String> {
     match expr {
         SqlExpr::Identifier(id) => Some(ident_to_string(id)),
         SqlExpr::CompoundIdentifier(ids) => ids.last().map(ident_to_string),
+        SqlExpr::Function(f) => Some(f.to_string()),
         _ => None,
     }
 }
@@ -556,5 +559,30 @@ mod tests {
             "SELECT * FROM logs WHERE status = 200 OR CASE WHEN status > 0 THEN 1 ELSE 0 END = 1",
         ).unwrap();
         assert!(sq.filter.is_none());
+    }
+
+    #[test]
+    fn test_having_clause() {
+        let sq = sql_to_subquery(
+            "SELECT host, COUNT(*) FROM logs GROUP BY host HAVING COUNT(*) > 10",
+        ).unwrap();
+        assert!(sq.having.is_some());
+        assert_eq!(sq.group_by, vec!["host"]);
+    }
+
+    #[test]
+    fn test_having_with_comparison() {
+        let sq = sql_to_subquery(
+            "SELECT status, COUNT(*) AS cnt FROM logs GROUP BY status HAVING COUNT(*) >= 5",
+        ).unwrap();
+        let h = sq.having.unwrap();
+        // The HAVING filter should be a comparison
+        assert!(matches!(h, FilterExpr::Comparison { .. }));
+    }
+
+    #[test]
+    fn test_no_having() {
+        let sq = sql_to_subquery("SELECT host FROM logs GROUP BY host").unwrap();
+        assert!(sq.having.is_none());
     }
 }

@@ -159,6 +159,7 @@ pub struct SubQuery {
     pub filter: Option<FilterExpr>,
     pub aggregations: Vec<AggregationExpr>,
     pub group_by: Vec<String>,
+    pub having: Option<FilterExpr>,
     pub sort: Vec<SortExpr>,
     pub limit: Option<u64>,
     pub passthrough: Option<serde_json::Value>,

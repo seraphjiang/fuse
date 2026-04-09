@@ -150,6 +150,7 @@ async fn test_mock_connector_execute() {
         sort: vec![],
         limit: Some(100),
         passthrough: None,
+        having: None,
     };
 
     let batches = connector.execute(&query).await.unwrap();
@@ -202,6 +203,7 @@ async fn test_mock_connector_streaming() {
         sort: vec![],
         limit: None,
         passthrough: None,
+        having: None,
     };
 
     let (tx, mut rx) = mpsc::channel(10);
@@ -328,6 +330,7 @@ fn test_subquery() -> SubQuery {
         sort: vec![],
         limit: Some(100),
         passthrough: None,
+        having: None,
     }
 }
 

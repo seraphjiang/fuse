@@ -1,0 +1,73 @@
+# Sprint 2 Backlog
+
+**Sprint:** 2
+**Start:** 2026-04-09 (pending PM kickoff)
+**Focus:** Production hardening, community adoption, OpenSearch Dashboards integration
+
+## P0: Production Hardening
+
+| ID | Item | Owner | Status | Notes |
+|----|------|-------|--------|-------|
+| 200 | Deploy latest (484 tests, 21 endpoints) and verify live | infra | todo | Trigger pipeline, verify all new endpoints respond |
+| 201 | E2E test suite against live playground (all 21 endpoints) | tester | done | 25/25 green. Commit: 70abb13 |
+| 202 | Load test: 50 concurrent queries, measure p50/p95/p99 | tester | done | 50/50, p50=413ms p95=535ms p99=577ms. Commit: 70abb13 |
+| 203 | Negative test suite: SQL injection, empty body, unicode, oversized query, malformed JSON | tester | done | 7 negative tests in E2E suite. Commit: 70abb13 |
+| 204 | S3 O11y connector health fix (ECS task role needs s3:GetObject) | infra | done | Already working — permissions correct from Sprint 1 |
+| 205 | Fix fuse-server warning (cargo fix --lib -p fuse-server) | general | todo | Persistent warning |
+
+## P1: GitHub Pages Docs Site Live
+
+| ID | Item | Owner | Status | Notes |
+|----|------|-------|--------|-------|
+| 210 | Enable GitHub Pages in repo settings (gh-pages branch) | infra | done | Already enabled, verified live via gh API + curl |
+| 211 | Verify https://seraphjiang.github.io/fuse/ loads | explorer | todo | Depends: 210 |
+| 212 | Update docs-site content for Sprint 2 features (21 endpoints, saved queries, CSV, params, cancellation) | explorer | todo | Depends: 211 |
+
+## P1: OpenSearch Dashboards Plugin (OSD)
+
+| ID | Item | Owner | Status | Notes |
+|----|------|-------|--------|-------|
+| 220 | OSD plugin scaffold (TypeScript, Kibana platform plugin) | explorer | done | Verified existing structure. Commit: 102618e |
+| 221 | Query bar component (SQL/PPL toggle, syntax highlighting) | explorer | done | QueryEditor 155 lines, Ctrl+Enter, analyze checkbox. Commit: 102618e |
+| 222 | Results table component (sortable, paginated, provenance colors) | explorer | done | ResultsTable 160 lines, sort/pagination/provenance. Commit: 102618e |
+| 223 | Datasource picker (multi-select from /api/fuse/datasources) | general | todo | Depends: 220 |
+| 224 | Visual execution plan component (tree view from analyze:true) | planner | todo | Depends: 220 |
+
+## P2: Query Engine Depth
+
+| ID | Item | Owner | Status | Notes |
+|----|------|-------|--------|-------|
+| 230 | Subquery support: SELECT * FROM (SELECT ...) AS sub | planner | todo | Currently not handled |
+| 231 | HAVING clause in GROUP BY | planner | todo | Currently silently ignored |
+| 232 | IN/NOT IN filter pushdown | planner | todo | |
+| 233 | LIKE/ILIKE filter pushdown | planner | todo | |
+| 234 | COUNT DISTINCT aggregation pushdown | planner | todo | |
+| 235 | PPL: lookup command (cross-datasource enrichment) | planner | todo | OpenSearch PPL extension |
+| 236 | Query plan cache (same query → skip planning) | planner | todo | |
+
+## P2: Connector Improvements
+
+| ID | Item | Owner | Status | Notes |
+|----|------|-------|--------|-------|
+| 240 | OpenSearch scroll/PIT for large result sets | general | todo | Currently limited by single response |
+| 241 | S3 Parquet partition pruning | general | todo | Skip files based on WHERE clause |
+| 242 | Prometheus range query support (start/end/step) | general | todo | Currently only instant queries |
+| 243 | CloudWatch Logs connector | general | todo | New connector type |
+
+## P3: Observability & Operations
+
+| ID | Item | Owner | Status | Notes |
+|----|------|-------|--------|-------|
+| 250 | Structured logging (tracing-subscriber JSON) | infra | todo | Currently text logs |
+| 251 | Metrics endpoint (Prometheus /metrics) | infra | todo | For monitoring integration |
+| 252 | Distributed tracing (OpenTelemetry) | infra | todo | Trace across connectors |
+| 253 | Graceful shutdown (drain in-flight queries) | planner | todo | Currently hard-stops |
+
+## P3: Community
+
+| ID | Item | Owner | Status | Notes |
+|----|------|-------|--------|-------|
+| 260 | v0.1.0 release (tag + GitHub Release with binaries) | infra | todo | Tag exists locally, needs push |
+| 261 | Demo video (2-3 min, playground walkthrough) | explorer | todo | |
+| 262 | OpenSearch community forum update post | explorer | todo | Sprint 2 features |
+| 263 | Publish fuse-connector-sdk to crates.io | general | todo | Was dry-run only |

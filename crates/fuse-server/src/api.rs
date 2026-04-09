@@ -458,7 +458,7 @@ async fn execute_union(
             group_by: vec![],
             sort: vec![],
             limit: None,
-            passthrough: None,
+            having: None, passthrough: None,
         });
 
     let mut per_source: Vec<fuse_core::connector::SubQuery> = refs
@@ -471,7 +471,7 @@ async fn execute_union(
             group_by: vec![],
             sort: vec![],
             limit: None,
-            passthrough: None,
+            having: None, passthrough: None,
         })
         .collect();
     fuse_engine::rewrite::push_down_to_sources(&base_sq, &mut per_source);
@@ -579,7 +579,7 @@ async fn execute_join(
         group_by: vec![],
         sort: vec![],
         limit: None,
-        passthrough: None,
+        having: None, passthrough: None,
     };
     let mut sq_b = sq_a.clone();
     sq_b.table = table_b.clone();
@@ -1081,7 +1081,7 @@ pub fn build_sub_query(
                 group_by: vec![],
                 sort: vec![],
                 limit: None,
-                passthrough: None,
+                having: None, passthrough: None,
             })
         }
     }

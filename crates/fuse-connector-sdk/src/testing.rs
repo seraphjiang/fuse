@@ -297,7 +297,7 @@ pub async fn smoke_test(connector: &dyn FederatedConnector) -> Result<(), Connec
         group_by: vec![],
         sort: vec![],
         limit: Some(10),
-        passthrough: None,
+        having: None, passthrough: None,
     };
     let _batches = connector.execute(&query).await?;
 
@@ -352,7 +352,7 @@ mod tests {
             group_by: vec![],
             sort: vec![],
             limit: None,
-            passthrough: None,
+            having: None, passthrough: None,
         };
         let batches = m.execute(&q).await.unwrap();
         let total: usize = batches.iter().map(|b| b.num_rows()).sum();
@@ -371,7 +371,7 @@ mod tests {
             group_by: vec![],
             sort: vec![],
             limit: None,
-            passthrough: None,
+            having: None, passthrough: None,
         };
         assert!(m.execute(&q).await.is_err());
     }

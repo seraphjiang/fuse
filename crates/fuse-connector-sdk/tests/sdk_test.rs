@@ -47,6 +47,7 @@ async fn test_mock_connector_execute() {
         sort: vec![],
         limit: None,
         passthrough: None,
+        having: None,
     };
     let batches = mock.execute(&query).await.unwrap();
     assert_batches_non_empty(&batches);
@@ -68,6 +69,7 @@ async fn test_mock_connector_execute_count() {
         sort: vec![],
         limit: None,
         passthrough: None,
+        having: None,
     };
     assert_eq!(mock.execute_count(), 0);
     mock.execute(&query).await.unwrap();
