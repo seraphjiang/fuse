@@ -540,6 +540,18 @@ async fn test_ppl_multi_source() {
 }
 
 #[tokio::test]
+async fn test_ppl_multi_source_application_logs() {
+    // Verify PPL parser handles underscored table names and fans out to both connectors
+    let (status, json) = post_query(
+        build_federation_app(),
+        "source = cluster_a.application_logs, cluster_b.application_logs | head 10",
+        "ppl",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(json["metadata"]["total_rows"].as_u64().unwrap_or(0) >= 2);
+}
+
+#[tokio::test]
 async fn test_unknown_datasource_in_union() {
     let (status, json) = post_query(
         build_federation_app(),
