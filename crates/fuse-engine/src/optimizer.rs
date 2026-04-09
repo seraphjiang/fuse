@@ -44,3 +44,51 @@ impl PushdownDecision {
             || self.push_limit
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fuse_core::connector::{ConnectorCapabilities, LatencyClass};
+
+    fn caps(filtering: bool, projection: bool, aggregation: bool, sorting: bool, limit: bool) -> ConnectorCapabilities {
+        ConnectorCapabilities {
+            supports_filtering: filtering,
+            supports_projection: projection,
+            supports_aggregation: aggregation,
+            supports_sorting: sorting,
+            supports_limit: limit,
+            supports_join: false,
+            max_concurrent_queries: 4,
+            supports_streaming: false,
+            latency_class: LatencyClass::Low,
+        }
+    }
+
+    #[test]
+    fn test_full_pushdown() {
+        let d = apply_connector_pushdown(&ConnectorCapabilities::full());
+        assert!(d.push_filters);
+        assert!(d.push_projections);
+        assert!(d.push_aggregations);
+        assert!(d.push_sort);
+        assert!(d.push_limit);
+        assert!(d.any_pushdown());
+    }
+
+    #[test]
+    fn test_no_pushdown() {
+        let d = apply_connector_pushdown(&caps(false, false, false, false, false));
+        assert!(!d.push_filters);
+        assert!(!d.push_projections);
+        assert!(!d.any_pushdown());
+    }
+
+    #[test]
+    fn test_partial_pushdown() {
+        let d = apply_connector_pushdown(&caps(true, false, false, false, true));
+        assert!(d.push_filters);
+        assert!(!d.push_projections);
+        assert!(d.push_limit);
+        assert!(d.any_pushdown());
+    }
+}

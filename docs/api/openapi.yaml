@@ -173,6 +173,136 @@ paths:
         "400":
           $ref: "#/components/responses/BadRequest"
 
+  /api/fuse/query/stream:
+    post:
+      summary: Stream query results (SSE)
+      description: |
+        Executes a query and streams results as Server-Sent Events.
+        Events: `metadata` (column names), `batch` (rows), `progress`, `done`, `error`.
+      operationId: streamQuery
+      tags: [Query]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryRequest"
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  Newline-delimited SSE events. Each `data:` line is a JSON object with a `type` field:
+                  - `{"type":"metadata","columns":["col1","col2"]}`
+                  - `{"type":"batch","rows":[["v1","v2"]]}`
+                  - `{"type":"progress","batches_sent":5}`
+                  - `{"type":"done","total_rows":42}`
+                  - `{"type":"error","message":"..."}`
+
+  /api/fuse/alerts:
+    get:
+      summary: List alert rules
+      description: Returns all configured alert rules.
+      operationId: listAlerts
+      tags: [Alerts]
+      responses:
+        "200":
+          description: Alert rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AlertInfo"
+
+  /api/fuse/alerts/evaluate:
+    post:
+      summary: Evaluate all alert rules
+      description: Runs all configured alert rules immediately and returns firing alerts.
+      operationId: evaluateAlerts
+      tags: [Alerts]
+      responses:
+        "200":
+          description: Firing alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AlertResult"
+
+  /api/fuse/views:
+    get:
+      summary: List materialized views
+      description: Returns all registered materialized views with their staleness status.
+      operationId: listViews
+      tags: [Views]
+      responses:
+        "200":
+          description: Materialized views
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ViewInfo"
+
+  /api/fuse/views/{name}:
+    get:
+      summary: Query a materialized view
+      description: Returns cached results for a materialized view.
+      operationId: getView
+      tags: [Views]
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cached query results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueryResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          description: View exists but has not been refreshed yet
+
+  /api/fuse/views/{name}/refresh:
+    post:
+      summary: Refresh a materialized view
+      description: Re-executes the view's query and updates the cached results.
+      operationId: refreshView
+      tags: [Views]
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Refresh result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  refreshed:
+                    type: boolean
+                  view:
+                    type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
 components:
   parameters:
     DatasourceId:
@@ -315,6 +445,42 @@ components:
       properties:
         error:
           type: string
+
+    AlertInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        query:
+          type: string
+        format:
+          type: string
+          enum: [sql, ppl]
+        interval_secs:
+          type: integer
+
+    AlertResult:
+      type: object
+      properties:
+        rule_name:
+          type: string
+        state:
+          type: string
+          enum: [Ok, Firing]
+        value:
+          type: number
+        threshold:
+          type: number
+        message:
+          type: string
+
+    ViewInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        stale:
+          type: boolean
 
   responses:
     BadRequest:
