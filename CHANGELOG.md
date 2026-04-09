@@ -6,7 +6,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased] — Sprint 2
+## [Unreleased]
+
+## [0.2.0] — 2026-04-09
 
 ### Added
 
@@ -71,7 +73,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - OpenSearch u64/usize type mismatch in scroll limit check
 
 ### Tests
-- 582 tests (up from 347 in Sprint 1), 0 failures
+- 586 tests (up from 347 in Sprint 1), 0 failures
 - COUNT DISTINCT, HAVING, ILIKE, IN/NOT IN verification
 - S3 partition pruning verification
 - Execution plan visualization tests
@@ -158,4 +160,5 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Federated demo data seeding (#073)
 - Cache test coverage (#090)
 
+[0.2.0]: https://github.com/seraphjiang/fuse/releases/tag/v0.2.0
 [0.1.0]: https://github.com/seraphjiang/fuse/releases/tag/v0.1.0

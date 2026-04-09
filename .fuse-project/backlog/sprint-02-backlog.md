@@ -60,7 +60,7 @@
 |----|------|-------|--------|-------|
 | 250 | Structured logging (tracing-subscriber JSON) | infra | done | FUSE_LOG_FORMAT=json, already in 7448bde |
 | 251 | Metrics endpoint (Prometheus /metrics) | explorer | done | 4 metrics: queries_total, duration_ms, active_queries, connector_healthy. Commit: 7448bde. 3 tests |
-| 252 | Distributed tracing (OpenTelemetry) | infra | todo | Trace across connectors |
+| 252 | Distributed tracing (OpenTelemetry) | planner | done | trace_id in QueryMetadata, q-/v- prefixes. Commit: e962010. Tests: 582→586 |
 | 253 | Graceful shutdown (drain in-flight queries) | explorer | done | SIGTERM/SIGINT → drain 10s → cancel_all. Commit: 7ae3d5d. 2 tests |
 
 ## P3: Community
@@ -70,4 +70,4 @@
 | 260 | v0.1.0 release (tag + GitHub Release with binaries) | infra | todo | Tag exists locally, needs push |
 | 261 | Demo video (2-3 min, playground walkthrough) | explorer | done | Commit: 75b68f9. 6-scene script, ~2.5 min |
 | 262 | OpenSearch community forum update post | explorer | todo | Sprint 2 features |
-| 263 | Publish fuse-connector-sdk to crates.io | general | todo | Was dry-run only |
+| 263 | Publish fuse-connector-sdk to crates.io | explorer | done | Dry-run OK. fuse-core + SDK metadata. Commit: 6c114cb |
