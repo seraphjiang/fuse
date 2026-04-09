@@ -148,7 +148,11 @@ region = "us-west-1"
 
 ### Build Your Own
 
-Implement the `FederatedConnector` trait (~8 methods) and register a factory. See the [connector authoring guide](docs/guides/writing-a-connector.md).
+Implement the `FederatedConnector` trait (~8 methods) and register a factory. The fastest path:
+
+1. Copy `crates/fuse-connectors/example/` — a minimal working connector with inline comments
+2. Follow the [connector authoring guide](docs/guides/writing-a-connector.md)
+3. Use `fuse-connector-sdk` for mock testing utilities
 
 ## Project Structure
 
@@ -163,6 +167,7 @@ fuse/
 │   │   ├── s3-o11y/            # S3 O11y connector (gzipped NDJSON)
 │   │   └── prometheus/         # Prometheus connector
 │   ├── fuse-connector-sdk/     # Connector SDK for third-party development
+│   ├── fuse-connectors/example/ # Minimal working connector template
 │   └── fuse-server/            # REST API (axum) + embedded playground
 ├── playground/                 # Query playground UI (vanilla HTML/JS/CSS)
 ├── docs/

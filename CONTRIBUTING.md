@@ -67,6 +67,9 @@ We welcome connectors for any datasource. Follow the step-by-step guide:
 
 📖 **[Writing a Fuse Connector](docs/guides/writing-a-connector.md)**
 
+The fastest way to start: copy `crates/fuse-connectors/example/` — a minimal
+working connector with inline comments explaining every method.
+
 The guide covers the `FederatedConnector` trait, factory registration, config,
 and testing patterns. The OpenSearch connector is the reference implementation.
 
