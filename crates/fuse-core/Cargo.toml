@@ -3,7 +3,11 @@ name = "fuse-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Core types, traits, and config for the Fuse federated query engine"
+readme = "README.md"
+keywords = ["fuse", "federated-query", "opensearch", "connector"]
+categories = ["database"]
 
 [dependencies]
 arrow = { workspace = true }
