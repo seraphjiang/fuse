@@ -2256,6 +2256,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuse-connector-sdk"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "async-trait",
+ "fuse-core",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "fuse-core"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,14 @@
+[package]
+name = "fuse-connector-sdk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "SDK for building Fuse federated query engine connectors"
+
+[dependencies]
+fuse-core = { path = "../fuse-core" }
+arrow = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
