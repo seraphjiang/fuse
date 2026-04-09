@@ -1420,3 +1420,31 @@ async fn test_result_format_csv_union() {
     assert!(lines.len() >= 3);
     assert!(lines[0].contains("_datasource"));
 }
+
+// ── Stats endpoint test ──
+
+#[tokio::test]
+async fn test_stats_endpoint() {
+    let app = build_federation_app();
+
+    // Run a query first to populate history
+    let _ = post_query(app.clone(), "SELECT * FROM cluster_a.logs", "sql").await;
+
+    // Now check stats
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/stats")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(json["total_queries"].as_u64().unwrap() >= 1);
+    assert!(json["avg_latency_ms"].is_number());
+    assert!(json["p95_latency_ms"].is_number());
+    assert!(json["total_rows_returned"].is_number());
+}
