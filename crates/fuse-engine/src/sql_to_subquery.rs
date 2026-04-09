@@ -348,3 +348,122 @@ fn expr_to_u64(expr: &SqlExpr) -> Option<u64> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_simple_select() {
+        let sq = sql_to_subquery("SELECT * FROM logs").unwrap();
+        assert_eq!(sq.table, "logs");
+        assert!(sq.projections.is_empty());
+        assert!(sq.filter.is_none());
+        assert!(sq.limit.is_none());
+    }
+
+    #[test]
+    fn test_select_columns() {
+        let sq = sql_to_subquery("SELECT service, status FROM logs").unwrap();
+        assert_eq!(sq.projections, vec!["service", "status"]);
+    }
+
+    #[test]
+    fn test_where_string_eq() {
+        let sq = sql_to_subquery("SELECT * FROM logs WHERE service = 'api'").unwrap();
+        let f = sq.filter.unwrap();
+        match f {
+            FilterExpr::Comparison { field, op, value } => {
+                assert_eq!(field, "service");
+                assert!(matches!(op, ComparisonOp::Eq));
+                assert!(matches!(value, ScalarValue::Utf8(s) if s == "api"));
+            }
+            _ => panic!("expected Comparison"),
+        }
+    }
+
+    #[test]
+    fn test_where_int_gte() {
+        let sq = sql_to_subquery("SELECT * FROM logs WHERE status >= 500").unwrap();
+        let f = sq.filter.unwrap();
+        match f {
+            FilterExpr::Comparison { op, value, .. } => {
+                assert!(matches!(op, ComparisonOp::Gte));
+                assert!(matches!(value, ScalarValue::Int64(500)));
+            }
+            _ => panic!("expected Comparison"),
+        }
+    }
+
+    #[test]
+    fn test_and_filter() {
+        let sq = sql_to_subquery("SELECT * FROM logs WHERE status >= 500 AND service = 'x'").unwrap();
+        assert!(matches!(sq.filter.unwrap(), FilterExpr::And(_, _)));
+    }
+
+    #[test]
+    fn test_or_filter() {
+        let sq = sql_to_subquery("SELECT * FROM logs WHERE status = 500 OR status = 503").unwrap();
+        assert!(matches!(sq.filter.unwrap(), FilterExpr::Or(_, _)));
+    }
+
+    #[test]
+    fn test_order_by() {
+        let sq = sql_to_subquery("SELECT * FROM logs ORDER BY status DESC, service ASC").unwrap();
+        assert_eq!(sq.sort.len(), 2);
+        assert_eq!(sq.sort[0].field, "status");
+        assert!(sq.sort[0].descending);
+        assert_eq!(sq.sort[1].field, "service");
+        assert!(!sq.sort[1].descending);
+    }
+
+    #[test]
+    fn test_limit() {
+        let sq = sql_to_subquery("SELECT * FROM logs LIMIT 42").unwrap();
+        assert_eq!(sq.limit, Some(42));
+    }
+
+    #[test]
+    fn test_group_by() {
+        let sq = sql_to_subquery("SELECT service, COUNT(*) FROM logs GROUP BY service").unwrap();
+        assert_eq!(sq.group_by, vec!["service"]);
+        assert!(!sq.aggregations.is_empty());
+    }
+
+    #[test]
+    fn test_count_star_agg() {
+        let sq = sql_to_subquery("SELECT COUNT(*) AS cnt FROM logs").unwrap();
+        assert_eq!(sq.aggregations.len(), 1);
+        assert!(matches!(sq.aggregations[0].function, AggFunction::Count));
+        assert_eq!(sq.aggregations[0].alias, "cnt");
+    }
+
+    #[test]
+    fn test_avg_agg() {
+        let sq = sql_to_subquery("SELECT AVG(duration_ms) AS avg_dur FROM logs").unwrap();
+        assert!(matches!(sq.aggregations[0].function, AggFunction::Avg));
+        assert_eq!(sq.aggregations[0].field.as_deref(), Some("duration_ms"));
+    }
+
+    #[test]
+    fn test_dotted_table_name() {
+        // SQL parser treats "cluster_a" as schema, "logs" as table
+        let sq = sql_to_subquery("SELECT * FROM cluster_a.logs").unwrap();
+        assert_eq!(sq.table, "logs");
+    }
+
+    #[test]
+    fn test_not_a_select_fails() {
+        assert!(sql_to_subquery("INSERT INTO logs VALUES (1)").is_err());
+    }
+
+    #[test]
+    fn test_empty_sql_fails() {
+        assert!(sql_to_subquery("").is_err());
+    }
+
+    #[test]
+    fn test_invalid_sql_fails() {
+        assert!(sql_to_subquery("NOT VALID SQL AT ALL").is_err());
+    }
+}
