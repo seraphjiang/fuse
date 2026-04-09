@@ -26,3 +26,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Cross-team comms (local only)
+.fuse-project/comms/
