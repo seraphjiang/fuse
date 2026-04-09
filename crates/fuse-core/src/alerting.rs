@@ -306,4 +306,70 @@ mod tests {
         assert_eq!(result.state, AlertState::Firing);
         assert_eq!(result.value, 20.0);
     }
+
+    #[test]
+    fn test_sum_condition() {
+        let batch = make_batch(vec![10.0, 20.0]);
+        let r = rule(ConditionOp::Gt, 25.0, "sum");
+        let result = AlertEvaluator::evaluate(&r, &[batch]);
+        assert_eq!(result.state, AlertState::Firing);
+        assert_eq!(result.value, 30.0);
+    }
+
+    #[test]
+    fn test_min_max_conditions() {
+        let batch = make_batch(vec![5.0, 10.0, 15.0]);
+        assert_eq!(AlertEvaluator::evaluate(&rule(ConditionOp::Lt, 6.0, "min"), &[batch.clone()]).state, AlertState::Firing);
+        assert_eq!(AlertEvaluator::evaluate(&rule(ConditionOp::Gt, 14.0, "max"), &[batch]).state, AlertState::Firing);
+    }
+
+    #[test]
+    fn test_eq_neq_operators() {
+        let batch = make_batch(vec![1.0, 2.0, 3.0]);
+        // count=3, eq 3 → firing
+        assert_eq!(AlertEvaluator::evaluate(&rule(ConditionOp::Eq, 3.0, "count"), &[batch.clone()]).state, AlertState::Firing);
+        // count=3, neq 3 → ok
+        assert_eq!(AlertEvaluator::evaluate(&rule(ConditionOp::Neq, 3.0, "count"), &[batch]).state, AlertState::Ok);
+    }
+
+    #[test]
+    fn test_lte_operator() {
+        let batch = make_batch(vec![1.0]);
+        assert_eq!(AlertEvaluator::evaluate(&rule(ConditionOp::Lte, 1.0, "count"), &[batch]).state, AlertState::Firing);
+    }
+
+    #[test]
+    fn test_empty_batches_returns_ok() {
+        let r = rule(ConditionOp::Gt, 0.0, "count");
+        // empty batches → value=0, 0 > 0 is false → Ok
+        let result = AlertEvaluator::evaluate(&r, &[]);
+        assert_eq!(result.state, AlertState::Ok);
+        assert_eq!(result.value, 0.0);
+    }
+
+    #[test]
+    fn test_evaluate_all_returns_only_firing() {
+        let batch = make_batch(vec![10.0, 20.0, 30.0]);
+        let firing_rule = rule(ConditionOp::Gt, 2.0, "count");
+        let ok_rule = AlertRule { name: "ok_rule".into(), ..rule(ConditionOp::Gt, 100.0, "count") };
+        let mut results = HashMap::new();
+        results.insert("test_alert".into(), vec![batch.clone()]);
+        results.insert("ok_rule".into(), vec![batch]);
+        let firing = AlertEvaluator::evaluate_all(&[firing_rule, ok_rule], &results);
+        assert_eq!(firing.len(), 1);
+        assert_eq!(firing[0].rule_name, "test_alert");
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_log_channel_no_panic() {
+        let result = AlertResult {
+            rule_name: "test".into(),
+            state: AlertState::Firing,
+            value: 5.0,
+            threshold: 3.0,
+            message: "test firing".into(),
+        };
+        // Should not panic
+        NotificationDispatcher::dispatch(&result, &[NotificationChannel::Log]).await;
+    }
 }

@@ -241,4 +241,43 @@ mod tests {
         reg.put("v1", vec![make_batch()]);
         assert!(reg.views_needing_refresh().is_empty());
     }
+
+    #[test]
+    fn test_has_view() {
+        let reg = MaterializedViewRegistry::new();
+        assert!(!reg.has_view("v1"));
+        reg.register_from_config(&ViewConfig { views: vec![def("v1", 60)] });
+        assert!(reg.has_view("v1"));
+    }
+
+    #[test]
+    fn test_get_stale_ok_returns_data_even_when_stale() {
+        let reg = MaterializedViewRegistry::new();
+        reg.register_from_config(&ViewConfig { views: vec![def("v1", 3600)] });
+        reg.put("v1", vec![make_batch()]);
+        // get_stale_ok should return data regardless of staleness
+        assert!(reg.get_stale_ok("v1").is_some());
+    }
+
+    #[test]
+    fn test_mark_error_and_status_all() {
+        let reg = MaterializedViewRegistry::new();
+        reg.register_from_config(&ViewConfig { views: vec![def("v1", 60)] });
+        reg.mark_error("v1", "connection refused".into());
+        let statuses = reg.status_all();
+        assert!(statuses.contains_key("v1"));
+        let s = &statuses["v1"];
+        assert!(s.last_error.as_deref() == Some("connection refused"));
+    }
+
+    #[test]
+    fn test_status_all_multiple_views() {
+        let reg = MaterializedViewRegistry::new();
+        reg.register_from_config(&ViewConfig { views: vec![def("a", 60), def("b", 120)] });
+        reg.put("a", vec![make_batch()]);
+        let statuses = reg.status_all();
+        assert_eq!(statuses.len(), 2);
+        assert!(statuses["a"].last_refreshed.is_some());
+        assert!(statuses["b"].last_refreshed.is_none());
+    }
 }
