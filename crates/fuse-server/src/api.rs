@@ -12,6 +12,7 @@ use fuse_core::registry::ConnectorRegistry;
 use fuse_core::alerting::{AlertEvaluator, AlertRule};
 use fuse_engine::materialized::MaterializedViewRegistry;
 use crate::history::QueryHistory;
+use crate::saved_queries::SavedQueryRegistry;
 
 use crate::health;
 
@@ -52,6 +53,7 @@ pub struct AppState {
     pub view_registry: Arc<MaterializedViewRegistry>,
     pub history: Arc<QueryHistory>,
     pub running_queries: Arc<RunningQueries>,
+    pub saved_queries: Arc<SavedQueryRegistry>,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.
@@ -1091,6 +1093,45 @@ pub async fn history_handler(State(state): State<Arc<AppState>>) -> impl IntoRes
 /// GET /api/fuse/stats — aggregated query statistics.
 pub async fn stats_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     Json(state.history.stats())
+}
+
+// ── Saved query handlers ──
+
+/// GET /api/fuse/saved — list saved queries.
+pub async fn list_saved_queries(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    Json(state.saved_queries.list())
+}
+
+/// POST /api/fuse/saved — save a named query.
+pub async fn save_query(
+    State(state): State<Arc<AppState>>,
+    Json(sq): Json<crate::saved_queries::SavedQuery>,
+) -> impl IntoResponse {
+    state.saved_queries.save(sq);
+    StatusCode::CREATED
+}
+
+/// GET /api/fuse/saved/:name — get a saved query by name.
+pub async fn get_saved_query(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    match state.saved_queries.get(&name) {
+        Some(sq) => Json(serde_json::to_value(sq).unwrap()).into_response(),
+        None => error_json(StatusCode::NOT_FOUND, format!("saved query '{}' not found", name)).into_response(),
+    }
+}
+
+/// DELETE /api/fuse/saved/:name — delete a saved query.
+pub async fn delete_saved_query(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    if state.saved_queries.delete(&name) {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        error_json(StatusCode::NOT_FOUND, format!("saved query '{}' not found", name)).into_response()
+    }
 }
 
 // ── Query cancellation handlers ──

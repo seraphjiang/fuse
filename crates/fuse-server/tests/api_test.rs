@@ -144,6 +144,7 @@ fn build_test_app() -> axum::Router {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
     });
     fuse_server::build_router(state)
 }
@@ -450,7 +451,7 @@ fn build_capturing_app() -> (axum::Router, Arc<CapturingConnector>) {
     let connector = Arc::new(CapturingConnector::new("capds"));
     let registry = ConnectorRegistry::new();
     registry.register(connector.clone()).unwrap();
-    let state = Arc::new(AppState { registry: Arc::new(registry), alert_rules: vec![], view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()), history: Arc::new(QueryHistory::new()), running_queries: Arc::new(RunningQueries::new()) });
+    let state = Arc::new(AppState { registry: Arc::new(registry), alert_rules: vec![], view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()), history: Arc::new(QueryHistory::new()), running_queries: Arc::new(RunningQueries::new()), saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()) });
     (fuse_server::build_router(state), connector)
 }
 
@@ -510,6 +511,7 @@ fn build_federation_app() -> axum::Router {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
     });
     fuse_server::build_router(state)
 }
@@ -720,6 +722,7 @@ async fn test_view_lifecycle() {
         view_registry: view_registry.clone(),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
     });
     let app = fuse_server::build_router(state);
 
@@ -1006,6 +1009,7 @@ async fn test_history_records_query() {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: history.clone(),
         running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
     });
     let app = fuse_server::build_router(state);
 
@@ -1057,6 +1061,7 @@ fn build_rate_limited_app(global_rpm: u32, per_ip_rpm: u32) -> axum::Router {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
     });
     fuse_server::build_router_with_limits(
         state,
@@ -1243,6 +1248,7 @@ async fn test_timeout_zero_ms_times_out() {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
     });
     let app = fuse_server::build_router(state);
 
@@ -1311,6 +1317,7 @@ async fn test_cancel_slow_query() {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
     });
     let running = state.running_queries.clone();
     let app = fuse_server::build_router(state);
@@ -1579,6 +1586,7 @@ async fn test_union_partial_failure_returns_partial_results() {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
     });
     let app = fuse_server::build_router(state);
 
@@ -1609,6 +1617,7 @@ async fn test_union_all_fail_returns_error() {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
     });
     let app = fuse_server::build_router(state);
 
@@ -1794,4 +1803,52 @@ async fn test_offset_beyond_results() {
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 0);
+}
+
+// ── Saved query tests ──
+
+#[tokio::test]
+async fn test_saved_queries_crud() {
+    let app = build_federation_app();
+
+    // List — empty
+    let resp = app.clone()
+        .oneshot(Request::builder().uri("/api/fuse/saved").body(Body::empty()).unwrap())
+        .await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(json.as_array().unwrap().is_empty());
+
+    // Save
+    let body = serde_json::json!({"name": "errors", "query": "SELECT * FROM cluster_a.logs WHERE status >= 400", "format": "sql", "description": "Error logs"});
+    let resp = app.clone()
+        .oneshot(
+            Request::builder().method("POST").uri("/api/fuse/saved")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap())).unwrap(),
+        ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    // Get
+    let resp = app.clone()
+        .oneshot(Request::builder().uri("/api/fuse/saved/errors").body(Body::empty()).unwrap())
+        .await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(json["name"], "errors");
+    assert!(json["query"].as_str().unwrap().contains("status >= 400"));
+
+    // Delete
+    let resp = app.clone()
+        .oneshot(Request::builder().method("DELETE").uri("/api/fuse/saved/errors").body(Body::empty()).unwrap())
+        .await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    // Get after delete — 404
+    let resp = app.clone()
+        .oneshot(Request::builder().uri("/api/fuse/saved/errors").body(Body::empty()).unwrap())
+        .await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
