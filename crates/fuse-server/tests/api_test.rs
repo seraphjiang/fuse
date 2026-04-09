@@ -94,6 +94,7 @@ fn build_test_app() -> axum::Router {
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
         alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
     });
     fuse_server::build_router(state)
 }
@@ -400,7 +401,7 @@ fn build_capturing_app() -> (axum::Router, Arc<CapturingConnector>) {
     let connector = Arc::new(CapturingConnector::new("capds"));
     let registry = ConnectorRegistry::new();
     registry.register(connector.clone()).unwrap();
-    let state = Arc::new(AppState { registry: Arc::new(registry), alert_rules: vec![] });
+    let state = Arc::new(AppState { registry: Arc::new(registry), alert_rules: vec![], view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()) });
     (fuse_server::build_router(state), connector)
 }
 
@@ -457,6 +458,7 @@ fn build_federation_app() -> axum::Router {
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
         alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
     });
     fuse_server::build_router(state)
 }
@@ -607,4 +609,96 @@ async fn test_validate_multi_source_all_exist() {
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(json["valid"], true);
+}
+
+// ── Materialized view endpoint tests ──
+
+#[tokio::test]
+async fn test_list_views_empty() {
+    let app = build_test_app();
+    let resp = app
+        .oneshot(Request::builder().uri("/api/fuse/views").body(Body::empty()).unwrap())
+        .await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(json.as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_get_unknown_view_returns_404() {
+    let app = build_test_app();
+    let resp = app
+        .oneshot(Request::builder().uri("/api/fuse/views/nonexistent").body(Body::empty()).unwrap())
+        .await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_refresh_unknown_view_returns_404() {
+    let app = build_test_app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/views/nonexistent/refresh")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_view_lifecycle() {
+    use fuse_engine::materialized::{MaterializedViewDef, MaterializedViewRegistry};
+    use std::time::Duration;
+
+    // Build app with a pre-registered view
+    let registry = ConnectorRegistry::new();
+    registry.register(Arc::new(MockConnector::new("testds"))).unwrap();
+    let view_registry = Arc::new(MaterializedViewRegistry::new());
+    view_registry.register(MaterializedViewDef {
+        name: "error_summary".into(),
+        query: "SELECT * FROM testds.logs".into(),
+        refresh_interval: Duration::from_secs(60),
+    });
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+        view_registry: view_registry.clone(),
+    });
+    let app = fuse_server::build_router(state);
+
+    // List shows the view
+    let resp = app.clone()
+        .oneshot(Request::builder().uri("/api/fuse/views").body(Body::empty()).unwrap())
+        .await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json.as_array().unwrap().len(), 1);
+    assert_eq!(json[0]["name"], "error_summary");
+    assert_eq!(json[0]["stale"], true); // never refreshed
+
+    // Refresh succeeds
+    let resp = app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/views/error_summary/refresh")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Get returns results
+    let resp = app
+        .oneshot(Request::builder().uri("/api/fuse/views/error_summary").body(Body::empty()).unwrap())
+        .await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["metadata"]["total_rows"], 2);
 }

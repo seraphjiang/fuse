@@ -69,6 +69,7 @@ async fn main() -> anyhow::Result<()> {
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
         alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
     });
 
     // Build router

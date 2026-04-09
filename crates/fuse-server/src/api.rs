@@ -57,6 +57,8 @@ pub struct DatasourceInfo {
 #[derive(Serialize)]
 pub struct ExplainResponse {
     pub plan: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_tree: Option<fuse_engine::plan::PlanNode>,
 }
 
 #[derive(Serialize)]
@@ -360,20 +362,38 @@ pub async fn explain_handler(
 
     match parse_result {
         Ok(refs) => {
-            let strategy = if refs.len() == 1 {
-                "SingleSource"
+            let workload = build_workload(&req.query);
+            let limit = parse_limit(&req.query);
+
+            // Collect capabilities for each datasource
+            let caps: Vec<_> = refs
+                .iter()
+                .filter_map(|(ds, _)| state.registry.get(ds).map(|c| c.capabilities()))
+                .collect();
+
+            let plan_tree = if refs.len() == 1 {
+                let c = caps.first().cloned().unwrap_or_else(fuse_core::connector::ConnectorCapabilities::full);
+                fuse_engine::plan::plan_single(&refs[0].0, &refs[0].1, &c, &workload)
             } else if is_union_query(&req.query) {
-                "UnionAll"
+                fuse_engine::plan::plan_union(&refs, &caps, &workload, limit)
+            } else if refs.len() == 2 {
+                let c0 = caps.first().cloned().unwrap_or_else(fuse_core::connector::ConnectorCapabilities::full);
+                let c1 = caps.get(1).cloned().unwrap_or_else(fuse_core::connector::ConnectorCapabilities::full);
+                fuse_engine::plan::plan_join(
+                    (&refs[0].0, &refs[0].1),
+                    (&refs[1].0, &refs[1].1),
+                    &c0, &c1, "auto",
+                )
             } else {
-                "CrossSourceJoin"
+                fuse_engine::plan::PlanNode::leaf("Unknown", format!("{} datasources", refs.len()))
             };
-            let ds_list: Vec<String> = refs.iter().map(|(ds, t)| format!("{ds}.{t}")).collect();
-            let all_found = refs.iter().all(|(ds, _)| state.registry.get(ds).is_some());
-            let plan = format!(
-                "FederatedPlan {{\n  datasources: {:?},\n  format: \"{}\",\n  all_connectors_found: {},\n  strategy: {}\n}}",
-                ds_list, format, all_found, strategy
-            );
-            Json(ExplainResponse { plan }).into_response()
+
+            let plan_text = plan_tree.to_text(0);
+            Json(ExplainResponse {
+                plan: plan_text,
+                plan_tree: Some(plan_tree),
+            })
+            .into_response()
         }
         Err(e) => error_json(StatusCode::BAD_REQUEST, e).into_response(),
     }
@@ -485,6 +505,23 @@ fn parse_limit(query: &str) -> Option<usize> {
         .split(|c: char| !c.is_ascii_digit())
         .next()?;
     num_str.parse().ok()
+}
+
+/// Build a QueryWorkload from query text for cost estimation.
+fn build_workload(query: &str) -> fuse_engine::QueryWorkload {
+    let lower = query.to_lowercase();
+    fuse_engine::QueryWorkload {
+        has_filter: lower.contains("where "),
+        has_aggregation: lower.contains("group by")
+            || lower.contains("count(")
+            || lower.contains("sum(")
+            || lower.contains("avg("),
+        has_sort: lower.contains("order by") || lower.contains("sort "),
+        has_limit: lower.contains("limit ") || lower.contains("head "),
+        limit_value: parse_limit(query).map(|n| n as u64),
+        projection_count: 0,
+        total_columns: 0,
+    }
 }
 
 fn parse_qualified_name(name: &str) -> Result<(String, String), String> {
@@ -645,4 +682,95 @@ pub async fn evaluate_alerts(State(state): State<Arc<AppState>>) -> impl IntoRes
         }
     }
     Json(firing)
+}
+
+// ── Materialized view handlers ──
+
+/// GET /api/fuse/views — list registered materialized views.
+pub async fn list_views(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    #[derive(Serialize)]
+    struct ViewInfo { name: String, stale: bool }
+    let names = state.view_registry.list();
+    let infos: Vec<ViewInfo> = names.into_iter().map(|name| {
+        let stale = state.view_registry.get(&name)
+            .map(|v| v.read().unwrap().needs_refresh())
+            .unwrap_or(true);
+        ViewInfo { name, stale }
+    }).collect();
+    Json(infos)
+}
+
+/// GET /api/fuse/views/:name — query a materialized view (returns cached results).
+pub async fn get_view(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    match state.view_registry.get_results(&name) {
+        None => {
+            if state.view_registry.get(&name).is_none() {
+                error_json(StatusCode::NOT_FOUND, format!("view '{}' not found", name)).into_response()
+            } else {
+                error_json(StatusCode::SERVICE_UNAVAILABLE, format!("view '{}' not yet refreshed", name)).into_response()
+            }
+        }
+        Some(batches) => {
+            let (columns, rows) = batches_to_json(&batches);
+            Json(QueryResponse {
+                columns,
+                rows: rows.clone(),
+                metadata: QueryMetadata { total_rows: rows.len() as u64, format: "view".into() },
+            }).into_response()
+        }
+    }
+}
+
+/// POST /api/fuse/views/:name/refresh — trigger a synchronous refresh of a view.
+pub async fn refresh_view(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    let view_arc = match state.view_registry.get(&name) {
+        Some(v) => v,
+        None => return error_json(StatusCode::NOT_FOUND, format!("view '{}' not found", name)).into_response(),
+    };
+
+    let query = view_arc.read().unwrap().def.query.clone();
+    let format = "sql";
+
+    let refs = match parse_sql_sources(&query) {
+        Ok(r) if !r.is_empty() => r,
+        _ => {
+            view_arc.write().unwrap().set_error("failed to parse view query".into());
+            return error_json(StatusCode::BAD_REQUEST, "failed to parse view query").into_response();
+        }
+    };
+
+    let (ds_id, table) = &refs[0];
+    let connector = match state.registry.get(ds_id) {
+        Some(c) => c,
+        None => {
+            let msg = format!("datasource '{}' not found", ds_id);
+            view_arc.write().unwrap().set_error(msg.clone());
+            return error_json(StatusCode::NOT_FOUND, msg).into_response();
+        }
+    };
+
+    let sub_query = match build_sub_query(&query, format, table) {
+        Ok(sq) => sq,
+        Err(e) => {
+            view_arc.write().unwrap().set_error(e.clone());
+            return error_json(StatusCode::BAD_REQUEST, e).into_response();
+        }
+    };
+
+    match connector.execute(&sub_query).await {
+        Ok(batches) => {
+            view_arc.write().unwrap().set_results(batches);
+            Json(serde_json::json!({ "refreshed": true, "view": name })).into_response()
+        }
+        Err(e) => {
+            view_arc.write().unwrap().set_error(e.to_string());
+            error_json(StatusCode::INTERNAL_SERVER_ERROR, e).into_response()
+        }
+    }
 }
