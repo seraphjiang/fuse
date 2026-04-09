@@ -7,6 +7,7 @@
 //! via the [`SQLExecutor`] trait.
 
 pub mod cost;
+pub mod join;
 mod merger;
 mod optimizer;
 pub mod ppl;
@@ -16,6 +17,10 @@ mod sql_to_subquery;
 pub use cost::{
     estimate_local_cost, estimate_remote_cost, pick_cheapest_connector, should_push_down,
     CostEstimate, QueryWorkload, TableStats,
+};
+pub use join::{
+    execute_semi_join, extract_join_keys, hash_join, keys_to_in_filter, plan_join, JoinPlan,
+    JoinSide, JoinStrategy, JoinType,
 };
 pub use merger::{
     align_batch, dedup_batches, merge_batches, sort_batches, union_batches, union_schema,
