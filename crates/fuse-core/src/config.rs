@@ -50,3 +50,67 @@ impl FuseConfig {
         toml::from_str(&content).map_err(|e| crate::error::FuseError::Config(e.to_string()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_minimal_config() {
+        let toml = r#"
+[engine]
+"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.engine.bind, "0.0.0.0:9400");
+        assert_eq!(cfg.engine.max_concurrent_queries, 64);
+        assert_eq!(cfg.engine.default_timeout, "30s");
+        assert!(cfg.connector.is_empty());
+    }
+
+    #[test]
+    fn test_parse_full_config() {
+        let toml = r#"
+[engine]
+bind = "127.0.0.1:8080"
+max_concurrent_queries = 16
+default_timeout = "10s"
+
+[[connector]]
+id = "test_cluster"
+type = "opensearch"
+url = "https://localhost:9200"
+"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.engine.bind, "127.0.0.1:8080");
+        assert_eq!(cfg.engine.max_concurrent_queries, 16);
+        assert_eq!(cfg.connector.len(), 1);
+        assert_eq!(cfg.connector[0].id, "test_cluster");
+        assert_eq!(cfg.connector[0].connector_type, "opensearch");
+        assert_eq!(cfg.connector[0].properties["url"].as_str(), Some("https://localhost:9200"));
+    }
+
+    #[test]
+    fn test_parse_multiple_connectors() {
+        let toml = r#"
+[engine]
+
+[[connector]]
+id = "a"
+type = "opensearch"
+
+[[connector]]
+id = "b"
+type = "s3"
+bucket = "my-bucket"
+"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.connector.len(), 2);
+        assert_eq!(cfg.connector[1].properties["bucket"].as_str(), Some("my-bucket"));
+    }
+
+    #[test]
+    fn test_from_file_missing() {
+        let result = FuseConfig::from_file("/nonexistent/path.toml");
+        assert!(result.is_err());
+    }
+}
