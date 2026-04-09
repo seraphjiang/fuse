@@ -197,15 +197,20 @@ Execute a SQL or PPL query against registered datasources. Tables are referenced
 |-------|------|----------|-------------|
 | `query` | string | yes | SQL or PPL query string |
 | `format` | string | no | `sql` (default) or `ppl` |
+| `analyze` | boolean | no | If `true`, include per-node execution profile in response |
 
 **Response fields:**
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `columns` | string[] | Column names |
+| `columns` | string[] | Column names (includes `_datasource` for multi-source queries) |
 | `rows` | array[] | Array of row arrays (values as strings or null) |
 | `metadata.total_rows` | number | Total rows returned |
 | `metadata.format` | string | Query format used |
+| `metadata.datasources_queried` | string[]? | Connectors queried (multi-source only) |
+| `execution_profile` | object? | Per-node timing stats (only when `analyze: true`) |
+
+**`_datasource` column:** Multi-source queries (UNION ALL, JOIN) automatically include a `_datasource` column showing which connector each row came from.
 
 **Example — SQL:**
 

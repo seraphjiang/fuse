@@ -193,6 +193,22 @@ curl -X POST https://fuse.huanji.profile.aws.dev/api/fuse/query/explain \
   -d '{"query": "SELECT * FROM cluster_a.services WHERE status = 500", "format": "sql"}'
 ```
 
+### EXPLAIN ANALYZE (execution profiling)
+
+Add `"analyze": true` to any query request to get per-node execution stats alongside results:
+
+```bash
+curl -X POST https://fuse.huanji.profile.aws.dev/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "SELECT service, COUNT(*) FROM cluster_a.services GROUP BY service",
+    "format": "sql",
+    "analyze": true
+  }'
+```
+
+The response includes an `execution_profile` field with timing and row counts per plan node. The playground UI shows this as a visual plan tree when the **Analyze** checkbox is checked.
+
 ### Query history
 
 Returns the last 50 queries with latency and row count:
@@ -245,14 +261,15 @@ Query responses have this structure:
 
 ```json
 {
-  "columns": ["trace_id", "service", "status"],
+  "columns": ["trace_id", "service", "status", "_datasource"],
   "rows": [
-    ["abc-001", "api-gateway", "500"],
-    ["abc-002", "auth", "200"]
+    ["abc-001", "api-gateway", "500", "cluster_a"],
+    ["abc-002", "auth", "200", "cluster_b"]
   ],
   "metadata": {
     "total_rows": 2,
-    "format": "sql"
+    "format": "sql",
+    "datasources_queried": ["cluster_a", "cluster_b"]
   }
 }
 ```
@@ -263,6 +280,9 @@ Query responses have this structure:
 | `rows` | Array of arrays — each inner array is one row, values in column order |
 | `metadata.total_rows` | Number of rows returned |
 | `metadata.format` | Query format used (`sql` or `ppl`) |
+| `metadata.datasources_queried` | Which connectors were queried (multi-source only) |
+
+**`_datasource` column:** For federated queries across multiple datasources, Fuse automatically adds a `_datasource` column showing which connector each row came from. This is useful for debugging and for understanding data provenance in UNION ALL results.
 
 All values are returned as strings. Parse numeric fields client-side as needed.
 
