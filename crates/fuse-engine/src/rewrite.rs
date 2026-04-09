@@ -34,10 +34,13 @@ pub fn push_down_to_sources(base: &SubQuery, per_source: &mut [SubQuery]) {
         if sq.limit.is_none() && base.limit.is_some() {
             sq.limit = base.limit;
         }
-        // Push aggregations + group_by
+        // Push aggregations + group_by + having
         if sq.aggregations.is_empty() && !base.aggregations.is_empty() {
             sq.aggregations = base.aggregations.clone();
             sq.group_by = base.group_by.clone();
+            if sq.having.is_none() {
+                sq.having = base.having.clone();
+            }
         }
     }
 }
@@ -159,5 +162,71 @@ mod tests {
         let available = vec!["a".into(), "b".into()];
         let pruned = prune_projections(&[], &available);
         assert!(pruned.is_empty()); // empty = all columns
+    }
+
+    #[test]
+    fn test_push_down_having() {
+        use fuse_core::connector::{AggFunction, AggregationExpr};
+        let base = SubQuery {
+            aggregations: vec![AggregationExpr {
+                function: AggFunction::Count,
+                field: None,
+                alias: "cnt".into(),
+            }],
+            group_by: vec!["service".into()],
+            having: Some(FilterExpr::Comparison {
+                field: "cnt".into(),
+                op: ComparisonOp::Gt,
+                value: ScalarValue::Int64(5),
+            }),
+            ..empty_sq("x")
+        };
+        let mut sources = vec![empty_sq("a"), empty_sq("b")];
+        push_down_to_sources(&base, &mut sources);
+        for sq in &sources {
+            assert_eq!(sq.aggregations.len(), 1);
+            assert_eq!(sq.group_by, vec!["service"]);
+            assert!(sq.having.is_some());
+        }
+    }
+
+    #[test]
+    fn test_push_down_having_not_overwritten() {
+        use fuse_core::connector::{AggFunction, AggregationExpr};
+        let base = SubQuery {
+            aggregations: vec![AggregationExpr {
+                function: AggFunction::Count,
+                field: None,
+                alias: "cnt".into(),
+            }],
+            group_by: vec!["service".into()],
+            having: Some(FilterExpr::Comparison {
+                field: "cnt".into(),
+                op: ComparisonOp::Gt,
+                value: ScalarValue::Int64(5),
+            }),
+            ..empty_sq("x")
+        };
+        let existing_having = FilterExpr::Comparison {
+            field: "cnt".into(),
+            op: ComparisonOp::Gt,
+            value: ScalarValue::Int64(10),
+        };
+        let mut sources = vec![SubQuery {
+            aggregations: vec![AggregationExpr {
+                function: AggFunction::Count,
+                field: None,
+                alias: "cnt".into(),
+            }],
+            group_by: vec!["service".into()],
+            having: Some(existing_having),
+            ..empty_sq("a")
+        }];
+        push_down_to_sources(&base, &mut sources);
+        // Existing having not overwritten (aggregations already present, so no push)
+        match &sources[0].having {
+            Some(FilterExpr::Comparison { value: ScalarValue::Int64(10), .. }) => {}
+            _ => panic!("expected existing having with value 10"),
+        }
     }
 }
