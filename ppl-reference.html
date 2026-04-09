@@ -234,6 +234,23 @@
 | where is_error = true
 | head 10
 </code></pre>
+<h2 id="rename"><a class="header" href="#rename">rename</a></h2>
+<p>Rename fields:</p>
+<pre><code>source = cluster_a.application_logs
+| rename response_time_ms as latency
+| fields service, latency
+| head 10
+</code></pre>
+<h2 id="top"><a class="header" href="#top">top</a></h2>
+<p>Most frequent values:</p>
+<pre><code>source = cluster_a.application_logs
+| top 5 service
+</code></pre>
+<h2 id="rare"><a class="header" href="#rare">rare</a></h2>
+<p>Least frequent values:</p>
+<pre><code>source = cluster_a.application_logs
+| rare 5 service
+</code></pre>
 <h2 id="multi-source-queries"><a class="header" href="#multi-source-queries">Multi-Source Queries</a></h2>
 <p>Query across clusters in a single PPL statement:</p>
 <pre><code>source = cluster_a.application_logs, cluster_b.application_logs

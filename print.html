@@ -214,6 +214,12 @@
 <li><strong>Caching</strong> — TTL-based query result cache per connector type</li>
 <li><strong>Alerting</strong> — Rule-based alerting on federated queries</li>
 <li><strong>Materialized views</strong> — Pre-computed cross-datasource views</li>
+<li><strong>Saved queries</strong> — Named query templates with parameter binding</li>
+<li><strong>CSV export</strong> — Download results as CSV</li>
+<li><strong>Query cancellation</strong> — Cancel long-running queries by ID</li>
+<li><strong>Per-query timeout</strong> — Configurable timeout_ms per request</li>
+<li><strong>Partial failure resilience</strong> — UNION ALL continues if one datasource fails</li>
+<li><strong>OSD plugin</strong> — Native OpenSearch Dashboards integration</li>
 </ul>
 <h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
 <pre><code class="language-bash"># Clone and build
@@ -369,6 +375,39 @@ FROM (
 WHERE cnt &gt; 10
 ORDER BY cnt DESC
 </code></pre>
+<h2 id="distinct"><a class="header" href="#distinct">DISTINCT</a></h2>
+<pre><code class="language-sql">SELECT DISTINCT service
+FROM cluster_a.application_logs
+</code></pre>
+<h2 id="offset-pagination"><a class="header" href="#offset-pagination">OFFSET (Pagination)</a></h2>
+<pre><code class="language-sql">SELECT service, status
+FROM cluster_a.application_logs
+ORDER BY timestamp DESC
+LIMIT 10 OFFSET 20
+</code></pre>
+<h2 id="between"><a class="header" href="#between">BETWEEN</a></h2>
+<pre><code class="language-sql">SELECT service, status, response_time_ms
+FROM cluster_a.application_logs
+WHERE response_time_ms BETWEEN 100 AND 500
+</code></pre>
+<h2 id="having"><a class="header" href="#having">HAVING</a></h2>
+<pre><code class="language-sql">SELECT service, count(*) as errors
+FROM cluster_a.application_logs
+WHERE status &gt;= 500
+GROUP BY service
+HAVING count(*) &gt; 5
+ORDER BY errors DESC
+</code></pre>
+<h2 id="parameterized-queries"><a class="header" href="#parameterized-queries">Parameterized Queries</a></h2>
+<p>Use named parameters with <code>$name</code> syntax:</p>
+<pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "SELECT * FROM cluster_a.application_logs WHERE service = $svc AND status &gt;= $code LIMIT $n",
+    "format": "sql",
+    "params": {"svc": "api-gateway", "code": 500, "n": 10}
+  }'
+</code></pre>
 <h2 id="tips"><a class="header" href="#tips">Tips</a></h2>
 <ul>
 <li>Always use <code>LIMIT</code> to avoid fetching entire indices</li>
@@ -431,6 +470,23 @@ ORDER BY cnt DESC
 | where is_error = true
 | head 10
 </code></pre>
+<h2 id="rename"><a class="header" href="#rename">rename</a></h2>
+<p>Rename fields:</p>
+<pre><code>source = cluster_a.application_logs
+| rename response_time_ms as latency
+| fields service, latency
+| head 10
+</code></pre>
+<h2 id="top"><a class="header" href="#top">top</a></h2>
+<p>Most frequent values:</p>
+<pre><code>source = cluster_a.application_logs
+| top 5 service
+</code></pre>
+<h2 id="rare"><a class="header" href="#rare">rare</a></h2>
+<p>Least frequent values:</p>
+<pre><code>source = cluster_a.application_logs
+| rare 5 service
+</code></pre>
 <h2 id="multi-source-queries"><a class="header" href="#multi-source-queries">Multi-Source Queries</a></h2>
 <p>Query across clusters in a single PPL statement:</p>
 <pre><code>source = cluster_a.application_logs, cluster_b.application_logs
@@ -456,13 +512,19 @@ ORDER BY cnt DESC
 <pre><code class="language-json">{
   "query": "SELECT * FROM cluster_a.application_logs LIMIT 5",
   "format": "sql",
-  "analyze": false
+  "analyze": false,
+  "timeout_ms": 30000,
+  "result_format": "json",
+  "params": {}
 }
 </code></pre>
 <div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
 <tr><td><code>query</code></td><td>string</td><td>required</td><td>SQL or PPL query</td></tr>
 <tr><td><code>format</code></td><td>string</td><td><code>"sql"</code></td><td><code>"sql"</code> or <code>"ppl"</code></td></tr>
 <tr><td><code>analyze</code></td><td>bool</td><td><code>false</code></td><td>Include execution profile with timing</td></tr>
+<tr><td><code>timeout_ms</code></td><td>int</td><td><code>30000</code></td><td>Per-query timeout in milliseconds</td></tr>
+<tr><td><code>result_format</code></td><td>string</td><td><code>"json"</code></td><td><code>"json"</code> or <code>"csv"</code></td></tr>
+<tr><td><code>params</code></td><td>object</td><td><code>{}</code></td><td>Named parameters for <code>$name</code> placeholders</td></tr>
 </tbody></table>
 </div>
 <p><strong>Response:</strong></p>
@@ -584,6 +646,38 @@ data: {"type":"error","message":"..."}
   }
 ]
 </code></pre>
+<h3 id="get-apifusestats"><a class="header" href="#get-apifusestats">GET /api/fuse/stats</a></h3>
+<p>Aggregated query statistics.</p>
+<pre><code class="language-bash">curl http://localhost:9400/api/fuse/stats
+</code></pre>
+<h2 id="saved-query-endpoints"><a class="header" href="#saved-query-endpoints">Saved Query Endpoints</a></h2>
+<h3 id="get-apifusesaved"><a class="header" href="#get-apifusesaved">GET /api/fuse/saved</a></h3>
+<p>List all saved query templates.</p>
+<pre><code class="language-bash">curl http://localhost:9400/api/fuse/saved
+</code></pre>
+<h3 id="post-apifusesaved"><a class="header" href="#post-apifusesaved">POST /api/fuse/saved</a></h3>
+<p>Save a named query template.</p>
+<pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/saved \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "error_search", "query": "SELECT * FROM cluster_a.application_logs WHERE status &gt;= $code", "format": "sql"}'
+</code></pre>
+<h3 name="">GET /api/fuse/saved/</h3>
+<p>Get a specific saved query.</p>
+<pre><code class="language-bash">curl http://localhost:9400/api/fuse/saved/error_search
+</code></pre>
+<h3 name="">DELETE /api/fuse/saved/</h3>
+<p>Delete a saved query.</p>
+<pre><code class="language-bash">curl -X DELETE http://localhost:9400/api/fuse/saved/error_search
+</code></pre>
+<h2 id="query-lifecycle-endpoints"><a class="header" href="#query-lifecycle-endpoints">Query Lifecycle Endpoints</a></h2>
+<h3 id="get-apifusequeriesrunning"><a class="header" href="#get-apifusequeriesrunning">GET /api/fuse/queries/running</a></h3>
+<p>List currently running queries.</p>
+<pre><code class="language-bash">curl http://localhost:9400/api/fuse/queries/running
+</code></pre>
+<h3 id="delete-apifusequeryidcancel"><a class="header" href="#delete-apifusequeryidcancel">DELETE /api/fuse/query/{id}/cancel</a></h3>
+<p>Cancel a running query by ID.</p>
+<pre><code class="language-bash">curl -X DELETE http://localhost:9400/api/fuse/query/abc123/cancel
+</code></pre>
 <h2 id="alert-endpoints"><a class="header" href="#alert-endpoints">Alert Endpoints</a></h2>
 <h3 id="get-apifusealerts"><a class="header" href="#get-apifusealerts">GET /api/fuse/alerts</a></h3>
 <p>List configured alert rules.</p>
@@ -612,8 +706,9 @@ data: {"type":"error","message":"..."}
 </code></pre>
 <div class="table-wrapper"><table><thead><tr><th>Status</th><th>Meaning</th></tr></thead><tbody>
 <tr><td>400</td><td>Parse error, missing FROM, bad syntax</td></tr>
-<tr><td>404</td><td>Datasource or view not found</td></tr>
-<tr><td>429</td><td>Rate limited</td></tr>
+<tr><td>404</td><td>Datasource, view, or saved query not found</td></tr>
+<tr><td>408</td><td>Query timeout (exceeded timeout_ms)</td></tr>
+<tr><td>429</td><td>Rate limited — too many requests</td></tr>
 <tr><td>500</td><td>Connector error, timeout, internal failure</td></tr>
 </tbody></table>
 </div><div style="break-before: page; page-break-before: always;"></div><h1 id="connectors-1"><a class="header" href="#connectors-1">Connectors</a></h1>

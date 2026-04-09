@@ -236,6 +236,39 @@ FROM (
 WHERE cnt &gt; 10
 ORDER BY cnt DESC
 </code></pre>
+<h2 id="distinct"><a class="header" href="#distinct">DISTINCT</a></h2>
+<pre><code class="language-sql">SELECT DISTINCT service
+FROM cluster_a.application_logs
+</code></pre>
+<h2 id="offset-pagination"><a class="header" href="#offset-pagination">OFFSET (Pagination)</a></h2>
+<pre><code class="language-sql">SELECT service, status
+FROM cluster_a.application_logs
+ORDER BY timestamp DESC
+LIMIT 10 OFFSET 20
+</code></pre>
+<h2 id="between"><a class="header" href="#between">BETWEEN</a></h2>
+<pre><code class="language-sql">SELECT service, status, response_time_ms
+FROM cluster_a.application_logs
+WHERE response_time_ms BETWEEN 100 AND 500
+</code></pre>
+<h2 id="having"><a class="header" href="#having">HAVING</a></h2>
+<pre><code class="language-sql">SELECT service, count(*) as errors
+FROM cluster_a.application_logs
+WHERE status &gt;= 500
+GROUP BY service
+HAVING count(*) &gt; 5
+ORDER BY errors DESC
+</code></pre>
+<h2 id="parameterized-queries"><a class="header" href="#parameterized-queries">Parameterized Queries</a></h2>
+<p>Use named parameters with <code>$name</code> syntax:</p>
+<pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "SELECT * FROM cluster_a.application_logs WHERE service = $svc AND status &gt;= $code LIMIT $n",
+    "format": "sql",
+    "params": {"svc": "api-gateway", "code": 500, "n": 10}
+  }'
+</code></pre>
 <h2 id="tips"><a class="header" href="#tips">Tips</a></h2>
 <ul>
 <li>Always use <code>LIMIT</code> to avoid fetching entire indices</li>
