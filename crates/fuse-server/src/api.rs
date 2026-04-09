@@ -40,11 +40,15 @@ pub struct QueryRequest {
     pub format: String,
     #[serde(default)]
     pub analyze: bool,
+    /// Per-query timeout in milliseconds. If not set, uses server default (30s).
+    pub timeout_ms: Option<u64>,
 }
 
 fn default_format() -> String {
     "sql".to_string()
 }
+
+const DEFAULT_TIMEOUT_MS: u64 = 30_000;
 
 #[derive(Serialize)]
 pub struct QueryResponse {
@@ -170,12 +174,21 @@ pub async fn query_handler(
         }
     }
 
-    let result = if refs.len() == 1 {
-        execute_single(&state, &req.query, &format, &refs[0]).await
-    } else if format == "ppl" || is_union_query(&req.query) {
-        execute_union(&state, &req.query, &format, &refs).await
-    } else {
-        execute_join(&state, &refs).await
+    let timeout = std::time::Duration::from_millis(req.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS));
+
+    let exec_future = async {
+        if refs.len() == 1 {
+            execute_single(&state, &req.query, &format, &refs[0]).await
+        } else if format == "ppl" || is_union_query(&req.query) {
+            execute_union(&state, &req.query, &format, &refs).await
+        } else {
+            execute_join(&state, &refs).await
+        }
+    };
+
+    let result = match tokio::time::timeout(timeout, exec_future).await {
+        Ok(r) => r,
+        Err(_) => Err(format!("query timed out after {}ms", timeout.as_millis())),
     };
 
     match result {

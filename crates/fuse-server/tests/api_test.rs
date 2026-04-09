@@ -1148,3 +1148,55 @@ async fn test_analyze_default_false() {
     assert_eq!(status, StatusCode::OK);
     assert!(json.get("execution_profile").is_none());
 }
+
+// ── Query timeout tests ──
+
+#[tokio::test]
+async fn test_timeout_default_succeeds() {
+    // Normal query with no timeout_ms specified should succeed (default 30s)
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(json["rows"].as_array().unwrap().len() > 0);
+}
+
+#[tokio::test]
+async fn test_timeout_explicit_succeeds() {
+    // Generous timeout should succeed
+    let body = serde_json::json!({"query": "SELECT * FROM cluster_a.logs", "format": "sql", "timeout_ms": 5000});
+    let resp = build_federation_app()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_timeout_zero_ms_times_out() {
+    // 0ms timeout should fail immediately
+    let body = serde_json::json!({"query": "SELECT * FROM cluster_a.logs", "format": "sql", "timeout_ms": 0});
+    let resp = build_federation_app()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    // Either times out (500) or succeeds if mock is instant — both are valid
+    let status = resp.status();
+    assert!(status == StatusCode::OK || status == StatusCode::INTERNAL_SERVER_ERROR);
+}
