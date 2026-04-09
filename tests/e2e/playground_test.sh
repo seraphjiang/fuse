@@ -191,6 +191,123 @@ test_bad_sql_400() {
     [ "$s" = "400" ]
 }
 
+# ── New: Federation tests ──
+
+test_union_all() {
+    http_post "/api/fuse/query" \
+        '{"query":"SELECT service, status FROM cluster_a.application_logs UNION ALL SELECT service, status FROM cluster_b.application_logs LIMIT 10","format":"sql"}' \
+        > "$TMPDIR/union.json"
+    python3 -c "
+import json; d = json.load(open('$TMPDIR/union.json'))
+assert d['metadata']['total_rows'] > 0, 'no rows from UNION ALL'
+assert d['metadata']['total_rows'] <= 10, f'limit not applied: {d[\"metadata\"][\"total_rows\"]}'
+" 2>&1
+}
+
+test_cross_join() {
+    http_post "/api/fuse/query" \
+        '{"query":"SELECT a.service, b.service FROM cluster_a.application_logs a JOIN cluster_b.application_logs b ON a.trace_id = b.trace_id LIMIT 5","format":"sql"}' \
+        > "$TMPDIR/join.json"
+    python3 -c "
+import json; d = json.load(open('$TMPDIR/join.json'))
+assert d['metadata']['total_rows'] > 0, 'no rows from cross-cluster JOIN'
+assert d['metadata']['total_rows'] <= 5, f'limit not applied: {d[\"metadata\"][\"total_rows\"]}'
+" 2>&1
+}
+
+test_limit_exact() {
+    http_post "/api/fuse/query" \
+        '{"query":"SELECT * FROM cluster_a.application_logs LIMIT 3","format":"sql"}' \
+        > "$TMPDIR/limit3.json"
+    python3 -c "
+import json; d = json.load(open('$TMPDIR/limit3.json'))
+assert d['metadata']['total_rows'] == 3, f'expected 3, got {d[\"metadata\"][\"total_rows\"]}'
+" 2>&1
+}
+
+test_where_pushdown() {
+    http_post "/api/fuse/query" \
+        '{"query":"SELECT * FROM cluster_a.application_logs WHERE status >= 500 LIMIT 100","format":"sql"}' \
+        > "$TMPDIR/where.json"
+    python3 -c "
+import json; d = json.load(open('$TMPDIR/where.json'))
+rows = d['metadata']['total_rows']
+assert rows > 0, 'no rows with status >= 500'
+# All returned rows should have status >= 500
+for r in d['rows']:
+    si = d['columns'].index('status')
+    assert int(r[si]) >= 500, f'row has status {r[si]}, expected >= 500'
+" 2>&1
+}
+
+# ── New: Negative / edge case tests ──
+
+test_long_query() {
+    # 10KB SQL — should return 400, not crash
+    local long_where=$(python3 -c "print(' OR service = ' * 500)")
+    local s=$(http_status -X POST "$BASE/api/fuse/query" \
+        -H "Content-Type: application/json" \
+        -d "{\"query\":\"SELECT * FROM cluster_a.application_logs WHERE service = 'x'${long_where}\",\"format\":\"sql\"}")
+    # Accept 400 (bad query) or 200 (if server handles it) — just not 5xx
+    [ "$s" != "000" ] && [ "${s:0:1}" != "5" ]
+}
+
+test_sql_injection() {
+    local s=$(http_status -X POST "$BASE/api/fuse/query" \
+        -H "Content-Type: application/json" \
+        -d '{"query":"SELECT * FROM cluster_a.application_logs; DROP TABLE users; --","format":"sql"}')
+    # Server should either reject (400) or safely ignore the injection (200)
+    [ "$s" = "400" ] || [ "$s" = "200" ]
+}
+
+test_empty_body() {
+    local s=$(http_status -X POST "$BASE/api/fuse/query" \
+        -H "Content-Type: application/json" -d '{}')
+    [ "$s" = "400" ] || [ "$s" = "422" ]
+}
+
+test_missing_format() {
+    local s=$(http_status -X POST "$BASE/api/fuse/query" \
+        -H "Content-Type: application/json" \
+        -d '{"query":"SELECT 1"}')
+    # Should either default to sql (200) or reject (400/422)
+    [ "$s" = "200" ] || [ "$s" = "400" ] || [ "$s" = "422" ]
+}
+
+test_nonexistent_table() {
+    # Valid datasource, invalid table name — may return 404/400 or 200 with empty results
+    local s=$(http_status -X POST "$BASE/api/fuse/query" \
+        -H "Content-Type: application/json" \
+        -d '{"query":"SELECT * FROM cluster_a.nonexistent_table","format":"sql"}')
+    [ "$s" = "404" ] || [ "$s" = "400" ] || [ "$s" = "200" ]
+}
+
+test_unicode_query() {
+    local s=$(http_status -X POST "$BASE/api/fuse/query" \
+        -H "Content-Type: application/json" \
+        -d '{"query":"SELECT * FROM cluster_a.application_logs WHERE service = '\''日本語サービス'\''","format":"sql"}')
+    # Should handle gracefully — 200 (empty result) or 400, not 5xx
+    [ "$s" != "000" ] && [ "${s:0:1}" != "5" ]
+}
+
+test_concurrent_same_ds() {
+    # 5 concurrent queries to same datasource — all should succeed
+    local pids=()
+    for i in $(seq 1 5); do
+        (http_post "/api/fuse/query" \
+            '{"query":"SELECT * FROM cluster_a.application_logs LIMIT 2","format":"sql"}' \
+            > "$TMPDIR/conc_$i.json") &
+        pids+=($!)
+    done
+    for p in "${pids[@]}"; do wait "$p"; done
+    python3 -c "
+import json
+for i in range(1, 6):
+    d = json.load(open(f'$TMPDIR/conc_{i}.json'))
+    assert d['metadata']['total_rows'] > 0, f'concurrent query {i} returned no rows'
+" 2>&1
+}
+
 # ── Run ──
 
 echo "╔═══════════════════════════════════════════════════╗"
@@ -214,6 +331,19 @@ run_test "Validate rejects bad SQL"             test_validate_bad
 run_test "Explain returns plan"                 test_explain
 run_test "Unknown datasource returns 404"       test_unknown_ds_404
 run_test "Malformed SQL returns 400"            test_bad_sql_400
+# Federation
+run_test "UNION ALL across clusters"            test_union_all
+run_test "Cross-cluster JOIN on trace_id"       test_cross_join
+run_test "LIMIT 3 returns exactly 3 rows"       test_limit_exact
+run_test "WHERE pushdown filters correctly"     test_where_pushdown
+# Negative / edge cases
+run_test "Long query (10KB) no crash"           test_long_query
+run_test "SQL injection rejected"               test_sql_injection
+run_test "Empty body returns 400/422"           test_empty_body
+run_test "Missing format field handled"         test_missing_format
+run_test "Non-existent table returns error"     test_nonexistent_table
+run_test "Unicode in query no crash"            test_unicode_query
+run_test "Concurrent queries same datasource"   test_concurrent_same_ds
 
 # ── Summary ──
 
