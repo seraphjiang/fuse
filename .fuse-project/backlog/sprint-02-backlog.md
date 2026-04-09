@@ -49,7 +49,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 240 | OpenSearch scroll/PIT for large result sets | general | todo | Currently limited by single response |
+| 240 | OpenSearch scroll/PIT for large result sets | general | done | Scroll for limit>10k, aggs single-shot. Tests: 487→502. Commit: 1786a61 |
 | 241 | S3 Parquet partition pruning | general | todo | Skip files based on WHERE clause |
 | 242 | Prometheus range query support (start/end/step) | general | todo | Currently only instant queries |
 | 243 | CloudWatch Logs connector | general | todo | New connector type |
