@@ -449,12 +449,13 @@ fn parse_matrix_results(
 
 pub struct PrometheusConnectorFactory;
 
+#[async_trait]
 impl ConnectorFactory for PrometheusConnectorFactory {
     fn connector_type(&self) -> &str {
         "prometheus"
     }
 
-    fn create(
+    async fn create(
         &self,
         config: &ConnectorConfig,
     ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {

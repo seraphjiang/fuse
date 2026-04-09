@@ -300,21 +300,18 @@ impl FederatedConnector for S3ParquetConnector {
 
 pub struct S3ConnectorFactory;
 
+#[async_trait::async_trait]
 impl ConnectorFactory for S3ConnectorFactory {
     fn connector_type(&self) -> &str {
         "s3"
     }
 
-    fn create(
+    async fn create(
         &self,
         config: &ConnectorConfig,
     ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
-        // Factory::create is sync but S3 client init needs async.
-        // Use a blocking runtime handle to bridge.
-        let rt = tokio::runtime::Handle::try_current()
-            .map_err(|e| ConnectorError::Connection(e.to_string()))?;
-        let connector = rt
-            .block_on(S3ParquetConnector::from_config(config))
+        let connector = S3ParquetConnector::from_config(config)
+            .await
             .map_err(|e| ConnectorError::Connection(e.to_string()))?;
         Ok(Arc::new(connector))
     }

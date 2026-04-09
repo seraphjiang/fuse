@@ -69,9 +69,10 @@ impl Default for ConnectorRegistry {
 }
 
 /// Factory trait for creating connector instances from config.
+#[async_trait::async_trait]
 pub trait ConnectorFactory: Send + Sync {
     fn connector_type(&self) -> &str;
-    fn create(
+    async fn create(
         &self,
         config: &ConnectorConfig,
     ) -> Result<Arc<dyn FederatedConnector>, ConnectorError>;

@@ -16,3 +16,5 @@ serde_json = { workspace = true }
 toml = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-types = "1"

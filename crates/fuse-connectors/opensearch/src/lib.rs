@@ -37,8 +37,8 @@ impl OpenSearchConnector {
         }
     }
 
-    pub fn from_config(config: &ConnectorConfig) -> Result<Self, ConnectorError> {
-        let client = OpenSearchClient::from_config(config)?;
+    pub async fn from_config(config: &ConnectorConfig) -> Result<Self, ConnectorError> {
+        let client = OpenSearchClient::from_config(config).await?;
         let max_concurrent = config
             .properties
             .get("max_concurrent_queries")
@@ -489,15 +489,16 @@ fn parse_agg_response(
 
 pub struct OpenSearchConnectorFactory;
 
+#[async_trait]
 impl ConnectorFactory for OpenSearchConnectorFactory {
     fn connector_type(&self) -> &str {
         "opensearch"
     }
 
-    fn create(
+    async fn create(
         &self,
         config: &ConnectorConfig,
     ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
-        Ok(Arc::new(OpenSearchConnector::from_config(config)?))
+        Ok(Arc::new(OpenSearchConnector::from_config(config).await?))
     }
 }

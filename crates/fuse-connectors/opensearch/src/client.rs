@@ -10,7 +10,6 @@ use fuse_core::config::ConnectorConfig;
 use fuse_core::ConnectorError;
 
 /// Wrapper around the opensearch-rs client with auth configuration.
-/// Wrapper around the opensearch-rs client with auth configuration.
 pub struct OpenSearchClient {
     inner: OpenSearch,
     pub url: String,
@@ -29,7 +28,7 @@ impl std::fmt::Debug for OpenSearchClient {
 }
 
 impl OpenSearchClient {
-    pub fn from_config(config: &ConnectorConfig) -> Result<Self, ConnectorError> {
+    pub async fn from_config(config: &ConnectorConfig) -> Result<Self, ConnectorError> {
         let url = config
             .properties
             .get("url")
@@ -77,7 +76,24 @@ impl OpenSearchClient {
                         password,
                     ));
                 }
-                _ => {} // none, sigv4, bearer — sigv4/bearer need additional SDK support
+                "sigv4" => {
+                    let region = auth_table
+                        .get("region")
+                        .and_then(|v: &toml::Value| v.as_str())
+                        .unwrap_or("us-west-2");
+                    let service = auth_table
+                        .get("service")
+                        .and_then(|v: &toml::Value| v.as_str())
+                        .unwrap_or("aoss");
+                    let sdk_config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+                    let creds = Credentials::try_from(&sdk_config)
+                        .map_err(|e| ConnectorError::Connection(format!("SigV4 credentials: {e}")))?;
+                    builder = builder
+                        .auth(creds)
+                        .service_name(service);
+                    tracing::info!(region, service, "SigV4 auth configured for OpenSearch connector");
+                }
+                _ => {} // none, bearer — bearer needs additional support
             }
         }
 

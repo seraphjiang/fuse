@@ -213,15 +213,14 @@ impl FederatedConnector for S3O11yConnector {
 
 pub struct S3O11yConnectorFactory;
 
+#[async_trait::async_trait]
 impl ConnectorFactory for S3O11yConnectorFactory {
     fn connector_type(&self) -> &str { "s3-o11y" }
 
-    fn create(
+    async fn create(
         &self, config: &ConnectorConfig,
     ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
-        let rt = tokio::runtime::Handle::try_current()
-            .map_err(|e| ConnectorError::Connection(e.to_string()))?;
-        Ok(Arc::new(rt.block_on(S3O11yConnector::from_config(config))?))
+        Ok(Arc::new(S3O11yConnector::from_config(config).await?))
     }
 }
 

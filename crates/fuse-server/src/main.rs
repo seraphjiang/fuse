@@ -47,7 +47,7 @@ async fn main() -> anyhow::Result<()> {
             .find(|f| f.connector_type() == cc.connector_type);
 
         match factory {
-            Some(f) => match f.create(cc) {
+            Some(f) => match f.create(cc).await {
                 Ok(connector) => {
                     registry.register(connector)?;
                     info!(id = %cc.id, r#type = %cc.connector_type, "Registered connector");
