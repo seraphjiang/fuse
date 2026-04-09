@@ -112,11 +112,24 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
       <span class="example-query">SELECT service, status, message FROM cluster_a.application_logs UNION ALL SELECT service, status, message FROM cluster_b.application_logs LIMIT 20</span>
     </div>
 
+    <h3>Cross-Datasource (OS + S3 O11y)</h3>
+    <div class="example" onclick="loadExample('sql',`SELECT * FROM s3_o11y.fuse_logs LIMIT 20`)">
+      <span class="example-badge badge-sql">SQL</span>
+      <span class="example-label">Browse S3 O11y logs</span>
+      <span class="example-query">SELECT * FROM s3_o11y.fuse_logs LIMIT 20</span>
+    </div>
+    <div class="example" onclick="loadExample('sql',`SELECT l.trace_id, l.service, l.status, s.level, s.message FROM cluster_a.application_logs l JOIN s3_o11y.fuse_logs s ON l.trace_id = s.trace_id WHERE l.status >= 500`)">
+      <span class="example-badge badge-sql">SQL</span>
+      <span class="example-label">Trace correlation (OS + S3)</span>
+      <span class="example-query">SELECT l.trace_id, l.service, l.status, s.level, s.message FROM cluster_a.application_logs l JOIN s3_o11y.fuse_logs s ON l.trace_id = s.trace_id WHERE l.status >= 500</span>
+    </div>
+
     <h3>Available Datasources</h3>
     <div class="help-grid">
       <div class="help-item"><strong>cluster_a</strong> — api-gateway, auth-service, user-service</div>
       <div class="help-item"><strong>cluster_b</strong> — order-service, payment-service, notification-service</div>
     </div>
+    <div class="help-item" style="margin-top:4px"><strong>s3_o11y</strong> — S3 O11y gzipped NDJSON logs (s3://s3-query-logs-544277935543-us-west-1/fuse/)</div>
     <div class="help-item" style="margin-top:4px">Index: <code>application_logs</code> — Fields: timestamp, service, status, message, trace_id, user_id, response_time_ms, method, path</div>
 
     <h3>API Endpoints</h3>
