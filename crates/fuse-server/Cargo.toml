@@ -9,9 +9,13 @@ description = "HTTP API server for the Fuse federated query engine"
 fuse-core = { path = "../fuse-core" }
 fuse-engine = { path = "../fuse-engine" }
 fuse-connector-opensearch = { path = "../fuse-connectors/opensearch" }
+fuse-connector-s3-o11y = { path = "../fuse-connectors/s3-o11y" }
 arrow = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }
+tokio-stream = "0.1"
+futures-util = "0.3"
+async-stream = "0.3"
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }

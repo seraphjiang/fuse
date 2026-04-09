@@ -1,0 +1,19 @@
+# Fuse — Local Development Configuration (docker-compose)
+# Used by: docker-compose.yml
+# OpenSearch: single-node at http://opensearch:9200 (no auth)
+
+[engine]
+bind = "0.0.0.0:9400"
+max_concurrent_queries = 16
+default_timeout = "30s"
+
+[[connector]]
+id = "local_cluster"
+type = "opensearch"
+url = "http://opensearch:9200"
+max_concurrent_queries = 8
+scroll_size = 1000
+request_timeout = "30s"
+
+[connector.auth]
+type = "none"

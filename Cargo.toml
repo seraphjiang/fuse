@@ -4,6 +4,7 @@ members = [
     "crates/fuse-engine",
     "crates/fuse-connectors/opensearch",
     "crates/fuse-connectors/s3",
+    "crates/fuse-connectors/s3-o11y",
     "crates/fuse-connectors/prometheus",
     "crates/fuse-connector-sdk",
     "crates/fuse-server",
@@ -46,6 +47,7 @@ aws-sdk-s3 = "1"
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 parquet = { version = "58", features = ["arrow", "async"] }
 bytes = "1"
+flate2 = "1"
 object_store = { version = "0.12", features = ["aws"] }
 
 # Logging

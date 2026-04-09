@@ -7,6 +7,7 @@ use tracing::info;
 use fuse_core::config::FuseConfig;
 use fuse_core::registry::{ConnectorFactory, ConnectorRegistry};
 use fuse_connector_opensearch::OpenSearchConnectorFactory;
+use fuse_connector_s3_o11y::S3O11yConnectorFactory;
 
 use fuse_server::api::AppState;
 
@@ -35,8 +36,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Build connector registry from config
     let registry = ConnectorRegistry::new();
-    let factories: Vec<Box<dyn ConnectorFactory>> =
-        vec![Box::new(OpenSearchConnectorFactory)];
+    let factories: Vec<Box<dyn ConnectorFactory>> = vec![
+        Box::new(OpenSearchConnectorFactory),
+        Box::new(S3O11yConnectorFactory),
+    ];
 
     for cc in &config.connector {
         let factory = factories

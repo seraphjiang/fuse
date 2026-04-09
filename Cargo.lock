@@ -2381,6 +2381,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuse-connector-s3-o11y"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "async-trait",
+ "aws-config",
+ "aws-sdk-s3",
+ "bytes",
+ "flate2",
+ "fuse-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "fuse-connector-sdk"
 version = "0.1.0"
 dependencies = [
@@ -2432,14 +2449,18 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arrow",
+ "async-stream",
  "async-trait",
  "axum",
  "fuse-connector-opensearch",
+ "fuse-connector-s3-o11y",
  "fuse-core",
  "fuse-engine",
+ "futures-util",
  "serde",
  "serde_json",
  "tokio",
+ "tokio-stream",
  "tower",
  "tracing",
  "tracing-subscriber",

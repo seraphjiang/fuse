@@ -1,0 +1,37 @@
+# Build the fuse-query OSD plugin
+FROM node:18-slim AS plugin-builder
+
+WORKDIR /plugin-src
+
+# Copy OSD plugin source
+COPY osd-plugin/fuse-query/ ./fuse-query/
+
+# Install dependencies and build
+WORKDIR /plugin-src/fuse-query
+RUN npm install --legacy-peer-deps 2>/dev/null || true
+
+# The plugin is TypeScript — OSD will transpile it at runtime via its own build system.
+# We package the source as a plugin directory that OSD can load directly.
+RUN mkdir -p /plugin-dist/fuse-query && \
+    cp -r . /plugin-dist/fuse-query/
+
+# ── Runtime image ──
+FROM opensearchproject/opensearch-dashboards:2.17.0
+
+# Install the plugin by copying into OSD's plugins directory
+COPY --from=plugin-builder /plugin-dist/fuse-query \
+     /usr/share/opensearch-dashboards/plugins/fuse-query
+
+# OSD config — disable security, point at OpenSearch, set plugin env
+ENV FUSE_ENGINE_URL=http://fuse-server:9400
+
+USER root
+RUN echo '\
+server.host: "0.0.0.0"\n\
+opensearch.hosts: ["http://opensearch:9200"]\n\
+opensearch_security.disabled: true\n\
+' > /usr/share/opensearch-dashboards/config/opensearch_dashboards.yml
+
+USER opensearch-dashboards
+
+EXPOSE 5601

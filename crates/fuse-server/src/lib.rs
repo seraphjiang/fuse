@@ -2,6 +2,7 @@
 
 pub mod api;
 pub mod health;
+pub mod streaming;
 
 use std::sync::Arc;
 
@@ -24,6 +25,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/", get(playground))
         .route("/playground", get(playground))
         .route("/api/fuse/query", post(api::query_handler))
+        .route("/api/fuse/query/stream", post(streaming::stream_handler))
         .route("/api/fuse/datasources", get(api::list_datasources))
         .route(
             "/api/fuse/datasources/{id}/schemas",

@@ -1,67 +1,62 @@
 version: "3.8"
 
 services:
-  opensearch-node1:
+  opensearch:
     image: opensearchproject/opensearch:2.17.0
-    container_name: fuse-os-node1
+    container_name: fuse-opensearch
     environment:
-      - cluster.name=fuse-dev
-      - node.name=fuse-os-node1
-      - discovery.seed_hosts=fuse-os-node2
-      - cluster.initial_cluster_manager_nodes=fuse-os-node1
-      - bootstrap.memory_lock=true
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=FuseDev123!
       - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
-      - plugins.security.disabled=true
     ulimits:
       memlock: { soft: -1, hard: -1 }
       nofile: { soft: 65536, hard: 65536 }
     ports:
       - "9200:9200"
-      - "9600:9600"
     volumes:
-      - os-data1:/usr/share/opensearch/data
+      - os-data:/usr/share/opensearch/data
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
 
-  opensearch-node2:
-    image: opensearchproject/opensearch:2.17.0
-    container_name: fuse-os-node2
-    environment:
-      - cluster.name=fuse-dev
-      - node.name=fuse-os-node2
-      - discovery.seed_hosts=fuse-os-node1
-      - cluster.initial_cluster_manager_nodes=fuse-os-node1
-      - bootstrap.memory_lock=true
-      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=FuseDev123!
-      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
-      - plugins.security.disabled=true
-    ulimits:
-      memlock: { soft: -1, hard: -1 }
-      nofile: { soft: 65536, hard: 65536 }
+  fuse-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fuse-server
+    ports:
+      - "9400:9400"
     volumes:
-      - os-data2:/usr/share/opensearch/data
+      - ./fuse.local.toml:/etc/fuse/fuse.toml:ro
+    environment:
+      - FUSE_CONFIG=/etc/fuse/fuse.toml
+      - RUST_LOG=info
+    depends_on:
+      opensearch:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:9400/api/fuse/health || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 12
+      retries: 10
 
   dashboards:
-    image: opensearchproject/opensearch-dashboards:2.17.0
+    build:
+      context: .
+      dockerfile: Dockerfile.osd
     container_name: fuse-dashboards
-    environment:
-      - OPENSEARCH_HOSTS=["http://fuse-os-node1:9200"]
-      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
     ports:
       - "5601:5601"
+    environment:
+      - FUSE_ENGINE_URL=http://fuse-server:9400
     depends_on:
-      opensearch-node1:
+      opensearch:
+        condition: service_healthy
+      fuse-server:
         condition: service_healthy
 
 volumes:
-  os-data1:
-  os-data2:
+  os-data:
