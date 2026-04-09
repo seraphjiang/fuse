@@ -35,6 +35,10 @@ tr:hover td{background:#161b22}
 .plan{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:"SF Mono",Consolas,monospace;font-size:13px;white-space:pre-wrap;color:#79c0ff;max-height:200px;overflow:auto}
 .empty{padding:40px;text-align:center;color:#484f58;font-size:14px}
 .error{color:#f85149;padding:12px;background:#1c0d0d;border:1px solid #f8514933;border-radius:6px;font-size:13px}
+.provenance{display:none;font-size:12px;color:#8b949e;padding:6px 0;display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.provenance.visible{display:flex}
+.prov-chip{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500}
+.ds-tag{padding:1px 6px;border-radius:3px;font-size:11px;font-weight:600;display:inline-block}
 /* Help panel */
 .help-toggle{background:none;border:1px solid #30363d;color:#8b949e;font-size:12px;padding:4px 10px;border-radius:4px;cursor:pointer;margin-left:auto}
 .help-toggle:hover{color:#e1e4e8;border-color:#58a6ff}
@@ -155,6 +159,7 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
     <span id="meta-cols"></span>
     <span id="meta-time"></span>
   </div>
+  <div class="provenance" id="provenance"></div>
   <div class="results" id="results"><div class="empty">Run a query to see results — or open <strong>Examples &amp; Help</strong> above</div></div>
 </main>
 
@@ -171,6 +176,8 @@ const LUCKY_POOL = [
   {f:'sql', q:"SELECT * FROM cluster_a.application_logs WHERE trace_id = 'trace-001'"},
   {f:'sql', q:'SELECT status, count(*) as cnt FROM cluster_a.application_logs GROUP BY status ORDER BY cnt DESC'},
   {f:'sql', q:'SELECT service, status, message FROM cluster_a.application_logs UNION ALL SELECT service, status, message FROM cluster_b.application_logs LIMIT 20'},
+  {f:'sql', q:'SELECT _datasource, service, count(*) as errors FROM cluster_a.application_logs WHERE status >= 500 GROUP BY _datasource, service ORDER BY errors DESC'},
+  {f:'sql', q:'SELECT _datasource, trace_id, service, status FROM cluster_a.application_logs UNION ALL SELECT _datasource, trace_id, service, status FROM cluster_b.application_logs LIMIT 30'},
   {f:'sql', q:'SELECT service, count(*) as total FROM cluster_b.application_logs WHERE status >= 400 GROUP BY service ORDER BY total DESC LIMIT 10'},
   {f:'sql', q:'SELECT DISTINCT trace_id FROM cluster_a.application_logs WHERE status >= 500 LIMIT 10'},
   {f:'ppl', q:'source = cluster_a.application_logs | where status >= 500 | head 20'},
@@ -236,6 +243,7 @@ function clearOutput() {
   $('error-box').style.display = 'none';
   $('plan-box').style.display = 'none';
   $('meta').style.display = 'none';
+  $('provenance').classList.remove('visible');
 }
 
 function showError(msg) {
@@ -244,21 +252,69 @@ function showError(msg) {
   $('error-box').style.display = 'block';
 }
 
+const DS_COLORS = [
+  {bg:'#1f3a5f',fg:'#58a6ff'}, {bg:'#2d1f3a',fg:'#bc8cff'}, {bg:'#1a3a2a',fg:'#3fb950'},
+  {bg:'#3a2a1a',fg:'#d29922'}, {bg:'#3a1a1a',fg:'#f85149'}, {bg:'#1a2a3a',fg:'#79c0ff'},
+];
+const dsColorMap = {};
+let dsColorIdx = 0;
+function dsColor(name) {
+  if (!dsColorMap[name]) dsColorMap[name] = DS_COLORS[dsColorIdx++ % DS_COLORS.length];
+  return dsColorMap[name];
+}
+
 function renderTable(columns, rows) {
   if (!columns.length) {
     $('results').innerHTML = '<div class="empty">No results</div>';
     return;
   }
+  const dsIdx = columns.indexOf('_datasource');
   let html = '<table><thead><tr>';
   columns.forEach(c => html += '<th>' + esc(c) + '</th>');
   html += '</tr></thead><tbody>';
   rows.forEach(row => {
     html += '<tr>';
-    row.forEach(v => html += '<td title="' + esc(String(v)) + '">' + esc(String(v)) + '</td>');
+    row.forEach((v, i) => {
+      const s = String(v);
+      if (i === dsIdx && dsIdx >= 0) {
+        const c = dsColor(s);
+        html += '<td><span class="ds-tag" style="background:'+c.bg+';color:'+c.fg+'">'+esc(s)+'</span></td>';
+      } else {
+        html += '<td title="'+esc(s)+'">'+esc(s)+'</td>';
+      }
+    });
     html += '</tr>';
   });
   html += '</tbody></table>';
   $('results').innerHTML = html;
+
+  // Provenance summary
+  if (dsIdx >= 0) {
+    const stats = {};
+    rows.forEach(r => { const d = String(r[dsIdx]); stats[d] = (stats[d]||0) + 1; });
+    let phtml = '<span>Results from:</span> ';
+    Object.entries(stats).forEach(([name, count]) => {
+      const c = dsColor(name);
+      phtml += '<span class="prov-chip" style="background:'+c.bg+';color:'+c.fg+'">'+esc(name)+' ('+count+' rows)</span> ';
+    });
+    $('provenance').innerHTML = phtml;
+    $('provenance').classList.add('visible');
+  } else {
+    $('provenance').classList.remove('visible');
+  }
+}
+
+function renderProvenance(res) {
+  const m = res.metadata;
+  if (m.datasource_stats && Object.keys(m.datasource_stats).length > 0) {
+    let html = '<span>Results from:</span> ';
+    Object.entries(m.datasource_stats).forEach(([name, s]) => {
+      const c = dsColor(name);
+      html += '<span class="prov-chip" style="background:'+c.bg+';color:'+c.fg+'">'+esc(name)+' ('+s.rows+' rows, '+s.latency_ms+'ms)</span> ';
+    });
+    $('provenance').innerHTML = html;
+    $('provenance').classList.add('visible');
+  }
 }
 
 function esc(s) {
@@ -278,6 +334,7 @@ async function runQuery() {
     });
     const ms = Math.round(performance.now() - t0);
     renderTable(res.columns, res.rows);
+    renderProvenance(res);
     $('meta-rows').textContent = res.metadata.total_rows + ' rows';
     $('meta-cols').textContent = res.columns.length + ' columns';
     $('meta-time').textContent = ms + ' ms';

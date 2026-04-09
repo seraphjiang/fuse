@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use fuse_core::registry::ConnectorRegistry;
 use fuse_core::alerting::{AlertEvaluator, AlertRule};
 use fuse_engine::materialized::MaterializedViewRegistry;
+use crate::history::QueryHistory;
 
 use crate::health;
 
@@ -19,6 +20,14 @@ pub struct AppState {
     #[allow(dead_code)]
     pub alert_rules: Vec<AlertRule>,
     pub view_registry: Arc<MaterializedViewRegistry>,
+    pub history: Arc<QueryHistory>,
+}
+
+/// Result from multi-datasource execution, carrying batches + per-source stats.
+struct FederatedResult {
+    batches: Vec<arrow::record_batch::RecordBatch>,
+    stats: Option<std::collections::HashMap<String, DatasourceStat>>,
+    datasources: Vec<String>,
 }
 
 // ── Request / Response types ──
@@ -45,6 +54,16 @@ pub struct QueryResponse {
 pub struct QueryMetadata {
     pub total_rows: u64,
     pub format: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub datasources_queried: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub datasource_stats: Option<std::collections::HashMap<String, DatasourceStat>>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct DatasourceStat {
+    pub rows: u64,
+    pub latency_ms: u64,
 }
 
 #[derive(Serialize)]
@@ -96,6 +115,7 @@ pub async fn query_handler(
     State(state): State<Arc<AppState>>,
     Json(req): Json<QueryRequest>,
 ) -> impl IntoResponse {
+    let t0 = std::time::Instant::now();
     let format = req.format.to_lowercase();
 
     // Parse all datasource.table references from the query
@@ -125,38 +145,58 @@ pub async fn query_handler(
     }
 
     let result = if refs.len() == 1 {
-        // Single datasource — direct execution
         execute_single(&state, &req.query, &format, &refs[0]).await
     } else if format == "ppl" || is_union_query(&req.query) {
-        // PPL multi-source or SQL UNION ALL — fan out and merge
         execute_union(&state, &req.query, &format, &refs).await
     } else {
-        // SQL JOIN — use join executor
         execute_join(&state, &refs).await
     };
 
     match result {
-        Ok(batches) => {
-            // Apply global limit if present in query
+        Ok(fed) => {
             let limit = parse_limit(&req.query);
             let batches = if let Some(n) = limit {
-                fuse_engine::merge_batches(batches, Some(n)).unwrap_or_default()
+                fuse_engine::merge_batches(fed.batches, Some(n)).unwrap_or_default()
             } else {
-                batches
+                fed.batches
             };
             let (columns, rows) = batches_to_json(&batches);
             let total_rows = rows.len() as u64;
+            state.history.push(crate::history::HistoryEntry {
+                query: req.query.clone(),
+                format: req.format.clone(),
+                timestamp: crate::history::now_secs(),
+                latency_ms: t0.elapsed().as_millis() as u64,
+                row_count: total_rows,
+                error: None,
+            });
             Json(QueryResponse {
                 columns,
                 rows,
                 metadata: QueryMetadata {
                     total_rows,
                     format: req.format,
+                    datasources_queried: if fed.datasources.len() > 1 {
+                        Some(fed.datasources)
+                    } else {
+                        None
+                    },
+                    datasource_stats: fed.stats,
                 },
             })
             .into_response()
         }
-        Err(e) => error_json(StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+        Err(e) => {
+            state.history.push(crate::history::HistoryEntry {
+                query: req.query.clone(),
+                format: req.format.clone(),
+                timestamp: crate::history::now_secs(),
+                latency_ms: t0.elapsed().as_millis() as u64,
+                row_count: 0,
+                error: Some(e.clone()),
+            });
+            error_json(StatusCode::INTERNAL_SERVER_ERROR, e).into_response()
+        }
     }
 }
 
@@ -166,10 +206,15 @@ async fn execute_single(
     query: &str,
     format: &str,
     (ds_id, table): &(String, String),
-) -> Result<Vec<arrow::record_batch::RecordBatch>, String> {
+) -> Result<FederatedResult, String> {
     let connector = state.registry.get(ds_id).unwrap();
     let sub_query = build_sub_query(query, format, table)?;
-    connector.execute(&sub_query).await.map_err(|e| e.to_string())
+    let batches = connector.execute(&sub_query).await.map_err(|e| e.to_string())?;
+    Ok(FederatedResult {
+        batches,
+        stats: None,
+        datasources: vec![ds_id.clone()],
+    })
 }
 
 /// Execute a UNION ALL query — fan out to each connector in parallel, merge.
@@ -178,8 +223,7 @@ async fn execute_union(
     query: &str,
     format: &str,
     refs: &[(String, String)],
-) -> Result<Vec<arrow::record_batch::RecordBatch>, String> {
-    // Build base sub-query from the user's query (has filters, projections, limit)
+) -> Result<FederatedResult, String> {
     let base_sq = build_sub_query(query, format, &refs[0].1)
         .unwrap_or_else(|_| fuse_core::connector::SubQuery {
             table: String::new(),
@@ -192,7 +236,6 @@ async fn execute_union(
             passthrough: None,
         });
 
-    // Build per-source sub-queries and push down predicates/projections/limits
     let mut per_source: Vec<fuse_core::connector::SubQuery> = refs
         .iter()
         .map(|(_, table)| fuse_core::connector::SubQuery {
@@ -213,26 +256,45 @@ async fn execute_union(
         let connector = state.registry.get(ds_id).unwrap();
         let sub_query = per_source[i].clone();
         let conn = connector.clone();
-        handles.push(tokio::spawn(async move { conn.execute(&sub_query).await }));
+        let ds = ds_id.clone();
+        handles.push(tokio::spawn(async move {
+            let start = std::time::Instant::now();
+            let result = conn.execute(&sub_query).await;
+            let latency_ms = start.elapsed().as_millis() as u64;
+            (ds, result, latency_ms)
+        }));
     }
 
     let mut batch_sets = Vec::new();
+    let mut ds_stats = std::collections::HashMap::new();
+    let mut datasources = Vec::new();
+
     for handle in handles {
-        match handle.await {
-            Ok(Ok(batches)) => batch_sets.push(batches),
-            Ok(Err(e)) => return Err(e.to_string()),
-            Err(e) => return Err(format!("task join error: {e}")),
-        }
+        let (ds_id, result, latency_ms) = handle.await.map_err(|e| format!("task join error: {e}"))?;
+        let batches = result.map_err(|e| e.to_string())?;
+        let row_count: u64 = batches.iter().map(|b| b.num_rows() as u64).sum();
+
+        // Add _datasource column to each batch
+        let tagged = add_datasource_column(&batches, &ds_id);
+
+        ds_stats.insert(ds_id.clone(), DatasourceStat { rows: row_count, latency_ms });
+        datasources.push(ds_id);
+        batch_sets.push(tagged);
     }
 
-    fuse_engine::union_batches(batch_sets).map_err(|e| e.to_string())
+    let merged = fuse_engine::union_batches(batch_sets).map_err(|e| e.to_string())?;
+    Ok(FederatedResult {
+        batches: merged,
+        stats: Some(ds_stats),
+        datasources,
+    })
 }
 
 /// Execute a cross-datasource JOIN using the join executor.
 async fn execute_join(
     state: &AppState,
     refs: &[(String, String)],
-) -> Result<Vec<arrow::record_batch::RecordBatch>, String> {
+) -> Result<FederatedResult, String> {
     if refs.len() != 2 {
         return Err(format!("JOIN requires exactly 2 datasources, got {}", refs.len()));
     }
@@ -243,7 +305,6 @@ async fn execute_join(
     let conn_a = state.registry.get(ds_a).unwrap();
     let conn_b = state.registry.get(ds_b).unwrap();
 
-    // Fetch both sides in parallel with no filters (join executor handles the rest)
     let sq_a = fuse_core::connector::SubQuery {
         table: table_a.clone(),
         projections: vec![],
@@ -257,28 +318,53 @@ async fn execute_join(
     let mut sq_b = sq_a.clone();
     sq_b.table = table_b.clone();
 
+    let start_a = std::time::Instant::now();
+    let start_b = start_a;
     let (res_a, res_b) = tokio::join!(conn_a.execute(&sq_a), conn_b.execute(&sq_b));
+    let latency_a = start_a.elapsed().as_millis() as u64;
+    let latency_b = start_b.elapsed().as_millis() as u64;
+
     let batches_a = res_a.map_err(|e| e.to_string())?;
     let batches_b = res_b.map_err(|e| e.to_string())?;
 
+    let rows_a: u64 = batches_a.iter().map(|b| b.num_rows() as u64).sum();
+    let rows_b: u64 = batches_b.iter().map(|b| b.num_rows() as u64).sum();
+
+    let mut ds_stats = std::collections::HashMap::new();
+    ds_stats.insert(ds_a.clone(), DatasourceStat { rows: rows_a, latency_ms: latency_a });
+    ds_stats.insert(ds_b.clone(), DatasourceStat { rows: rows_b, latency_ms: latency_b });
+
     if batches_a.is_empty() || batches_b.is_empty() {
-        return Ok(vec![]);
+        return Ok(FederatedResult {
+            batches: vec![],
+            stats: Some(ds_stats),
+            datasources: vec![ds_a.clone(), ds_b.clone()],
+        });
     }
 
-    // Find common columns to use as join key
     let schema_a = batches_a[0].schema();
     let schema_b = batches_b[0].schema();
     let join_key = find_join_key(&schema_a, &schema_b)
         .ok_or_else(|| "no common column found for JOIN key".to_string())?;
 
-    fuse_engine::hash_join(
-        &batches_a,
+    // Add _datasource column to each side before join
+    let tagged_a = add_datasource_column(&batches_a, ds_a);
+    let tagged_b = add_datasource_column(&batches_b, ds_b);
+
+    let joined = fuse_engine::hash_join(
+        &tagged_a,
         &join_key,
-        &batches_b,
+        &tagged_b,
         &join_key,
         fuse_engine::JoinType::Inner,
     )
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+
+    Ok(FederatedResult {
+        batches: joined,
+        stats: Some(ds_stats),
+        datasources: vec![ds_a.clone(), ds_b.clone()],
+    })
 }
 
 /// Find the first column name that exists in both schemas.
@@ -499,6 +585,30 @@ fn parse_sql_sources(query: &str) -> Result<Vec<(String, String)>, String> {
     }
 }
 
+/// Add a `_datasource` column to each RecordBatch.
+fn add_datasource_column(
+    batches: &[arrow::record_batch::RecordBatch],
+    datasource: &str,
+) -> Vec<arrow::record_batch::RecordBatch> {
+    use arrow::array::StringArray;
+    use arrow::datatypes::{DataType, Field};
+
+    batches
+        .iter()
+        .filter_map(|batch| {
+            let n = batch.num_rows();
+            let ds_array = Arc::new(StringArray::from(vec![datasource; n]));
+            let mut fields: Vec<Arc<Field>> = batch.schema().fields().iter().cloned().collect();
+            fields.push(Arc::new(Field::new("_datasource", DataType::Utf8, false)));
+            let schema = Arc::new(arrow::datatypes::Schema::new(fields));
+            let mut columns: Vec<Arc<dyn arrow::array::Array>> =
+                batch.columns().to_vec();
+            columns.push(ds_array);
+            arrow::record_batch::RecordBatch::try_new(schema, columns).ok()
+        })
+        .collect()
+}
+
 /// Check if a SQL query contains UNION ALL.
 fn is_union_query(query: &str) -> bool {
     query.to_lowercase().contains("union all")
@@ -625,6 +735,11 @@ fn batches_to_json(
     (columns, rows)
 }
 
+/// GET /api/fuse/history — last 50 queries with stats.
+pub async fn history_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    Json(state.history.list())
+}
+
 // ── Alert handlers ──
 
 /// GET /api/fuse/alerts — list configured alert rules.
@@ -726,7 +841,7 @@ pub async fn get_view(
             Json(QueryResponse {
                 columns,
                 rows: rows.clone(),
-                metadata: QueryMetadata { total_rows: rows.len() as u64, format: "view".into() },
+                metadata: QueryMetadata { total_rows: rows.len() as u64, format: "view".into(), datasources_queried: None, datasource_stats: None },
             }).into_response()
         }
     }

@@ -21,8 +21,9 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tower-http = { version = "0.6", features = ["trace"] }
+tower = { version = "0.5", features = ["util", "limit"] }
+governor = { version = "0.6", features = ["std", "dashmap"] }
 anyhow = { workspace = true }
 
 [dev-dependencies]
-tower = { version = "0.5", features = ["util"] }
 async-trait = { workspace = true }

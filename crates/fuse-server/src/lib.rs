@@ -2,6 +2,7 @@
 
 pub mod api;
 pub mod health;
+pub mod history;
 pub mod streaming;
 
 use std::sync::Arc;
@@ -40,6 +41,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/fuse/query/explain", post(api::explain_handler))
         .route("/api/fuse/query/validate", post(api::validate_handler))
         .route("/api/fuse/health", get(api::health_handler))
+        .route("/api/fuse/history", get(api::history_handler))
         .route("/api/fuse/alerts", get(api::list_alerts))
         .route("/api/fuse/alerts/evaluate", post(api::evaluate_alerts))
         .route("/api/fuse/views", get(api::list_views))

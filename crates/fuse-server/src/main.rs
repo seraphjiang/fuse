@@ -70,6 +70,7 @@ async fn main() -> anyhow::Result<()> {
         registry: Arc::new(registry),
         alert_rules: vec![],
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(fuse_server::history::QueryHistory::new()),
     });
 
     // Build router

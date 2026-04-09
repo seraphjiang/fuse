@@ -50,6 +50,7 @@ parquet = { version = "58", features = ["arrow", "async"] }
 bytes = "1"
 flate2 = "1"
 base64 = "0.22"
+governor = "0.6"
 object_store = { version = "0.12", features = ["aws"] }
 
 # Logging

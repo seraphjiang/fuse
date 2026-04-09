@@ -17,6 +17,7 @@ use fuse_core::connector::*;
 use fuse_core::error::ConnectorError;
 use fuse_core::registry::ConnectorRegistry;
 use fuse_server::api::AppState;
+use fuse_server::history::QueryHistory;
 
 // ── Mock connector ──
 
@@ -95,6 +96,7 @@ fn build_test_app() -> axum::Router {
         registry: Arc::new(registry),
         alert_rules: vec![],
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(fuse_server::history::QueryHistory::new()),
     });
     fuse_server::build_router(state)
 }
@@ -401,7 +403,7 @@ fn build_capturing_app() -> (axum::Router, Arc<CapturingConnector>) {
     let connector = Arc::new(CapturingConnector::new("capds"));
     let registry = ConnectorRegistry::new();
     registry.register(connector.clone()).unwrap();
-    let state = Arc::new(AppState { registry: Arc::new(registry), alert_rules: vec![], view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()) });
+    let state = Arc::new(AppState { registry: Arc::new(registry), alert_rules: vec![], view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()), history: Arc::new(fuse_server::history::QueryHistory::new()) });
     (fuse_server::build_router(state), connector)
 }
 
@@ -459,6 +461,7 @@ fn build_federation_app() -> axum::Router {
         registry: Arc::new(registry),
         alert_rules: vec![],
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(fuse_server::history::QueryHistory::new()),
     });
     fuse_server::build_router(state)
 }
@@ -667,6 +670,7 @@ async fn test_view_lifecycle() {
         registry: Arc::new(registry),
         alert_rules: vec![],
         view_registry: view_registry.clone(),
+        history: Arc::new(QueryHistory::new()),
     });
     let app = fuse_server::build_router(state);
 
@@ -848,4 +852,145 @@ async fn test_fields_endpoint() {
     let fields = json.as_array().unwrap();
     assert!(!fields.is_empty());
     assert!(fields.iter().any(|f| f["name"] == "host"));
+}
+
+// ── Data provenance tests ──
+
+#[tokio::test]
+async fn test_union_has_datasource_column() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let columns = json["columns"].as_array().unwrap();
+    assert_eq!(columns[0], "_datasource");
+    // Check rows have correct datasource values
+    let rows = json["rows"].as_array().unwrap();
+    let ds_values: Vec<&str> = rows.iter().map(|r| r[0].as_str().unwrap()).collect();
+    assert!(ds_values.contains(&"cluster_a"));
+    assert!(ds_values.contains(&"cluster_b"));
+}
+
+#[tokio::test]
+async fn test_join_has_datasource_column() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT a.*, b.* FROM cluster_a.logs a JOIN cluster_b.logs b ON a.host = b.host",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let columns = json["columns"].as_array().unwrap();
+    // Build side gets _datasource prepended
+    assert!(columns.iter().any(|c| c == "_datasource"));
+}
+
+#[tokio::test]
+async fn test_single_source_no_datasource_column() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let columns = json["columns"].as_array().unwrap();
+    assert!(!columns.iter().any(|c| c == "_datasource"));
+}
+
+#[tokio::test]
+async fn test_union_metadata_has_datasource_stats() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let meta = &json["metadata"];
+    // datasources_queried
+    let ds = meta["datasources_queried"].as_array().unwrap();
+    assert_eq!(ds.len(), 2);
+    // datasource_stats
+    let stats = &meta["datasource_stats"];
+    assert!(stats["cluster_a"]["rows"].is_number());
+    assert!(stats["cluster_a"]["latency_ms"].is_number());
+    assert!(stats["cluster_b"]["rows"].is_number());
+}
+
+#[tokio::test]
+async fn test_single_source_no_datasource_stats() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let meta = &json["metadata"];
+    assert!(meta["datasources_queried"].is_null());
+    assert!(meta["datasource_stats"].is_null());
+}
+
+// ── Query history tests ──
+
+#[tokio::test]
+async fn test_history_empty_initially() {
+    let app = build_test_app();
+    let resp = app
+        .oneshot(Request::builder().uri("/api/fuse/history").body(Body::empty()).unwrap())
+        .await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(json.as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_history_records_query() {
+    // Build app with shared state so we can check history after query
+    let registry = ConnectorRegistry::new();
+    registry.register(Arc::new(MockConnector::new("testds"))).unwrap();
+    let history = Arc::new(fuse_server::history::QueryHistory::new());
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: history.clone(),
+    });
+    let app = fuse_server::build_router(state);
+
+    // Execute a query
+    app.oneshot(
+        Request::builder()
+            .method("POST")
+            .uri("/api/fuse/query")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"query": "SELECT * FROM testds.logs"}"#))
+            .unwrap(),
+    ).await.unwrap();
+
+    // History should have 1 entry
+    let entries = history.list();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].query, "SELECT * FROM testds.logs");
+    assert_eq!(entries[0].row_count, 2);
+    assert!(entries[0].error.is_none());
+    assert!(entries[0].latency_ms < 5000);
+}
+
+#[tokio::test]
+async fn test_history_max_50_entries() {
+    let h = fuse_server::history::QueryHistory::new();
+    for i in 0..60u64 {
+        h.push(fuse_server::history::HistoryEntry {
+            query: format!("SELECT {i}"),
+            format: "sql".into(),
+            timestamp: i,
+            latency_ms: 1,
+            row_count: i,
+            error: None,
+        });
+    }
+    assert_eq!(h.len(), 50);
+    // newest first
+    assert_eq!(h.list()[0].query, "SELECT 59");
 }
