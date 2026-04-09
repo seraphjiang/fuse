@@ -180,6 +180,98 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="explain--analyze"><a class="header" href="#explain--analyze">EXPLAIN / ANALYZE</a></h1>
+<p>Fuse provides two ways to inspect query execution: EXPLAIN (plan only) and ANALYZE (plan + actual timing).</p>
+<h2 id="explain"><a class="header" href="#explain">EXPLAIN</a></h2>
+<p>Shows the execution plan without running the query:</p>
+<pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/query/explain \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT * FROM cluster_a.application_logs UNION ALL SELECT * FROM cluster_b.application_logs LIMIT 20"}'
+</code></pre>
+<p>Response includes a text plan and structured tree:</p>
+<pre><code class="language-json">{
+  "plan": "Merge\n  RemoteScan [cluster_a] application_logs (est. 1000 rows, cost: 1.0)\n  RemoteScan [cluster_b] application_logs (est. 1000 rows, cost: 1.0)",
+  "plan_tree": {
+    "op": "Merge",
+    "children": [
+      { "op": "RemoteScan", "detail": "cluster_a.application_logs", "estimated_rows": 1000, "estimated_cost": 1.0 },
+      { "op": "RemoteScan", "detail": "cluster_b.application_logs", "estimated_rows": 1000, "estimated_cost": 1.0 }
+    ]
+  }
+}
+</code></pre>
+<h2 id="analyze"><a class="header" href="#analyze">ANALYZE</a></h2>
+<p>Run the query and get actual execution metrics. In the playground, check the <strong>Analyze</strong> checkbox. Via API, set <code>analyze: true</code>:</p>
+<pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT * FROM cluster_a.application_logs LIMIT 10", "analyze": true}'
+</code></pre>
+<p>The response includes <code>execution_profile</code> in metadata:</p>
+<pre><code class="language-json">{
+  "execution_profile": {
+    "total_ms": 112,
+    "nodes": [
+      {
+        "op": "Merge",
+        "actual_rows": 20,
+        "actual_ms": 112,
+        "children": [
+          {
+            "op": "RemoteScan",
+            "datasource": "cluster_a",
+            "actual_rows": 12,
+            "actual_ms": 45,
+            "data_bytes": 4096,
+            "pushdown": ["filter", "projection", "limit"]
+          },
+          {
+            "op": "RemoteScan",
+            "datasource": "cluster_b",
+            "actual_rows": 8,
+            "actual_ms": 67,
+            "data_bytes": 3200,
+            "pushdown": ["filter", "limit"]
+          }
+        ]
+      }
+    ]
+  }
+}
+</code></pre>
+<h2 id="reading-the-plan-tree"><a class="header" href="#reading-the-plan-tree">Reading the Plan Tree</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Node</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><strong>Merge</strong></td><td>Combines results from multiple sources</td></tr>
+<tr><td><strong>RemoteScan</strong></td><td>Fetches data from a connector</td></tr>
+<tr><td><strong>HashJoin</strong></td><td>Local hash-join of two datasources</td></tr>
+<tr><td><strong>Filter</strong></td><td>Local filter (not pushed down)</td></tr>
+<tr><td><strong>Projection</strong></td><td>Local column selection</td></tr>
+<tr><td><strong>Sort</strong></td><td>Local sorting</td></tr>
+<tr><td><strong>Limit</strong></td><td>Local row limit</td></tr>
+</tbody></table>
+</div>
+<h2 id="pushdown-badges"><a class="header" href="#pushdown-badges">Pushdown Badges</a></h2>
+<p>RemoteScan nodes show which operations were pushed to the connector:</p>
+<ul>
+<li><strong>filter</strong> — WHERE clause sent to connector</li>
+<li><strong>projection</strong> — Only selected columns fetched</li>
+<li><strong>limit</strong> — Row limit applied at source</li>
+<li><strong>aggregation</strong> — GROUP BY executed at source</li>
+</ul>
+<p>More pushdown = less data transferred = faster queries.</p>
+<h2 id="optimizing-slow-queries"><a class="header" href="#optimizing-slow-queries">Optimizing Slow Queries</a></h2>
+<ol>
+<li><strong>Check pushdown</strong> — If RemoteScan has no pushdown badges, the connector doesn't support it. Add explicit WHERE/LIMIT.</li>
+<li><strong>Compare latencies</strong> — If one RemoteScan is much slower, that connector may be overloaded or distant.</li>
+<li><strong>Reduce data</strong> — Use projection (explicit column list) to avoid transferring unused fields.</li>
+<li><strong>Add LIMIT</strong> — Especially for exploratory queries.</li>
+<li><strong>Check data size</strong> — <code>data_bytes</code> shows how much data each connector returned. Large values suggest missing filters.</li>
+</ol>
+<h2 id="playground"><a class="header" href="#playground">Playground</a></h2>
+<p>In the playground UI, the plan tree renders as an indented text tree with:</p>
+<ul>
+<li>Color-coded timing: <strong>green</strong> (&lt;50ms), <strong>yellow</strong> (&lt;200ms), <strong>red</strong> (&gt;200ms)</li>
+<li>Pushdown badges on RemoteScan nodes</li>
+<li>Data size per node</li>
+</ul>
 
                     </main>
 

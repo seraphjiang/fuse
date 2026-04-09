@@ -180,6 +180,151 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+<p>We welcome contributions! Fuse is Apache-2.0 licensed.</p>
+<h2 id="quick-links"><a class="header" href="#quick-links">Quick Links</a></h2>
+<ul>
+<li><a href="https://github.com/seraphjiang/fuse/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a> — Full contributing guide</li>
+<li><a href="https://github.com/seraphjiang/fuse/issues/new/choose">Issue Templates</a> — Bug reports, feature requests, connector requests</li>
+<li><a href="https://github.com/seraphjiang/fuse/blob/main/docs/rfcs/RFC-001-fuse-integration.md">RFC-001</a> — Architecture RFC</li>
+</ul>
+<h2 id="development-setup"><a class="header" href="#development-setup">Development Setup</a></h2>
+<pre><code class="language-bash">git clone https://github.com/seraphjiang/fuse.git
+cd fuse
+cargo build
+cargo test --all-targets
+</code></pre>
+<h2 id="code-style"><a class="header" href="#code-style">Code Style</a></h2>
+<ul>
+<li><code>cargo fmt</code> before committing</li>
+<li><code>cargo clippy</code> must pass with no warnings</li>
+<li>Every public function needs at least one test</li>
+<li>Conventional commit messages (<code>feat:</code>, <code>fix:</code>, <code>docs:</code>, <code>test:</code>)</li>
+</ul>
+<h2 id="dco-sign-off"><a class="header" href="#dco-sign-off">DCO Sign-Off</a></h2>
+<p>All commits must include a DCO sign-off:</p>
+<pre><code class="language-bash">git commit -s -m "feat: add new feature"
+</code></pre>
+<h2 id="writing-a-custom-connector"><a class="header" href="#writing-a-custom-connector">Writing a Custom Connector</a></h2>
+<p>The fastest way to contribute is adding a new connector. Here's the template:</p>
+<h3 id="1-create-the-crate"><a class="header" href="#1-create-the-crate">1. Create the crate</a></h3>
+<pre><code>crates/fuse-connectors/my-connector/
+├── Cargo.toml
+└── src/
+    └── lib.rs
+</code></pre>
+<h3 id="2-implement-federatedconnector"><a class="header" href="#2-implement-federatedconnector">2. Implement <code>FederatedConnector</code></a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use async_trait::async_trait;
+use fuse_core::connector::*;
+use fuse_core::error::Result;
+use arrow::datatypes::Schema;
+use arrow::record_batch::RecordBatch;
+
+pub struct MyConnector {
+    id: String,
+    // your config fields
+}
+
+#[async_trait]
+impl FederatedConnector for MyConnector {
+    fn id(&amp;self) -&gt; &amp;str { &amp;self.id }
+    fn connector_type(&amp;self) -&gt; &amp;str { "my-connector" }
+
+    fn capabilities(&amp;self) -&gt; ConnectorCapabilities {
+        ConnectorCapabilities {
+            supports_filtering: true,
+            supports_projection: true,
+            supports_limit: true,
+            ..Default::default()
+        }
+    }
+
+    async fn health_check(&amp;self) -&gt; Result&lt;HealthStatus&gt; {
+        Ok(HealthStatus::Healthy)
+    }
+
+    async fn discover_schemas(&amp;self) -&gt; Result&lt;Vec&lt;SchemaInfo&gt;&gt; {
+        // Return available tables/indices
+        todo!()
+    }
+
+    async fn get_schema(&amp;self, table: &amp;str) -&gt; Result&lt;Schema&gt; {
+        // Return Arrow schema for a table
+        todo!()
+    }
+
+    fn table_names(&amp;self) -&gt; Vec&lt;String&gt; {
+        // Return list of table names
+        todo!()
+    }
+
+    async fn get_table_schema(&amp;self, table: &amp;str) -&gt; Result&lt;Schema&gt; {
+        self.get_schema(table).await
+    }
+
+    async fn execute(&amp;self, query: &amp;SubQuery) -&gt; Result&lt;Vec&lt;RecordBatch&gt;&gt; {
+        // Execute query and return Arrow RecordBatches
+        todo!()
+    }
+
+    async fn execute_streaming(&amp;self, query: &amp;SubQuery)
+        -&gt; Result&lt;std::pin::Pin&lt;Box&lt;dyn futures::Stream&lt;Item = Result&lt;RecordBatch&gt;&gt; + Send&gt;&gt;&gt;
+    {
+        // Streaming variant (can wrap execute() if not natively supported)
+        let batches = self.execute(query).await?;
+        Ok(Box::pin(futures::stream::iter(batches.into_iter().map(Ok))))
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="3-implement-connectorfactory"><a class="header" href="#3-implement-connectorfactory">3. Implement <code>ConnectorFactory</code></a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct MyConnectorFactory;
+
+impl ConnectorFactory for MyConnectorFactory {
+    fn connector_type(&amp;self) -&gt; &amp;str { "my-connector" }
+
+    fn create(&amp;self, config: &amp;ConnectorConfig) -&gt; Result&lt;Arc&lt;dyn FederatedConnector&gt;&gt; {
+        Ok(Arc::new(MyConnector {
+            id: config.id.clone(),
+            // parse config.settings for your fields
+        }))
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="4-register-in-mainrs"><a class="header" href="#4-register-in-mainrs">4. Register in main.rs</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>registry.register_factory(Arc::new(MyConnectorFactory));
+<span class="boring">}</span></code></pre></pre>
+<h3 id="5-add-to-fusetoml"><a class="header" href="#5-add-to-fusetoml">5. Add to fuse.toml</a></h3>
+<pre><code class="language-toml">[[connector]]
+id = "my_source"
+connector_type = "my-connector"
+# your config fields in [connector.settings]
+</code></pre>
+<h3 id="6-write-tests"><a class="header" href="#6-write-tests">6. Write tests</a></h3>
+<p>At minimum: health check, schema discovery, basic query execution, error handling.</p>
+<h3 id="checklist"><a class="header" href="#checklist">Checklist</a></h3>
+<ul>
+<li><input disabled="" type="checkbox"/>
+Implements all <code>FederatedConnector</code> methods</li>
+<li><input disabled="" type="checkbox"/>
+Has a <code>ConnectorFactory</code></li>
+<li><input disabled="" type="checkbox"/>
+<code>capabilities()</code> accurately reflects what's supported</li>
+<li><input disabled="" type="checkbox"/>
+Health check verifies connectivity</li>
+<li><input disabled="" type="checkbox"/>
+Schema discovery returns correct Arrow types</li>
+<li><input disabled="" type="checkbox"/>
+At least 4 tests (health, schema, query, error)</li>
+<li><input disabled="" type="checkbox"/>
+<code>cargo fmt</code> + <code>cargo clippy</code> clean</li>
+<li><input disabled="" type="checkbox"/>
+DCO sign-off on all commits</li>
+</ul>
 
                     </main>
 

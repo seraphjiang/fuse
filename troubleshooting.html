@@ -180,6 +180,74 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h1>
+<h2 id="common-errors"><a class="header" href="#common-errors">Common Errors</a></h2>
+<h3 id="datasource-not-found"><a class="header" href="#datasource-not-found">"datasource not found"</a></h3>
+<p>The datasource ID in your query doesn't match any registered connector.</p>
+<p><strong>Fix:</strong> Check your <code>fuse.toml</code> for the correct <code>id</code> values. List available datasources:</p>
+<pre><code class="language-bash">curl http://localhost:9400/api/fuse/datasources
+</code></pre>
+<h3 id="empty-results"><a class="header" href="#empty-results">"empty results"</a></h3>
+<p>The query executed successfully but returned no rows.</p>
+<p><strong>Fix:</strong></p>
+<ol>
+<li>Verify the index/table has data: <code>SELECT * FROM datasource.table LIMIT 1</code></li>
+<li>Check your WHERE clause isn't too restrictive</li>
+<li>Verify the table name is correct via schema discovery:
+<pre><code class="language-bash">curl http://localhost:9400/api/fuse/datasources/{id}/schemas
+</code></pre>
+</li>
+</ol>
+<h3 id="timeout-or-slow-queries"><a class="header" href="#timeout-or-slow-queries">"timeout" or slow queries</a></h3>
+<p>The connector took too long to respond.</p>
+<p><strong>Fix:</strong></p>
+<ol>
+<li>Add or reduce <code>LIMIT</code></li>
+<li>Add <code>WHERE</code> clauses to filter at the source</li>
+<li>Check connector health: <code>curl http://localhost:9400/api/fuse/health</code></li>
+<li>Use <code>EXPLAIN</code> to verify pushdown is working</li>
+<li>Check network connectivity to the datasource</li>
+</ol>
+<h3 id="degraded-health"><a class="header" href="#degraded-health">"degraded health"</a></h3>
+<p>One or more connectors are reporting unhealthy status.</p>
+<p><strong>Fix:</strong></p>
+<ol>
+<li>Check health endpoint for details: <code>curl http://localhost:9400/api/fuse/health</code></li>
+<li>Verify connector config in <code>fuse.toml</code> (endpoint, auth, region)</li>
+<li>Check that the target service (OpenSearch, S3, Prometheus) is accessible</li>
+<li>For SigV4 auth: verify IAM credentials are valid</li>
+</ol>
+<h3 id="parse-error"><a class="header" href="#parse-error">"parse error"</a></h3>
+<p>SQL or PPL syntax is invalid.</p>
+<p><strong>Fix:</strong></p>
+<ol>
+<li>Validate first: <code>POST /api/fuse/query/validate</code></li>
+<li>Check table format: <code>datasource_id.table_name</code></li>
+<li>For PPL: ensure pipe syntax <code>source = ds.table | command</code></li>
+<li>For SQL: check standard SQL syntax</li>
+</ol>
+<h3 id="rate-limited-429"><a class="header" href="#rate-limited-429">Rate limited (429)</a></h3>
+<p>Too many requests in a short period.</p>
+<p><strong>Fix:</strong> Reduce request frequency. The rate limiter resets automatically.</p>
+<h2 id="diagnostic-commands"><a class="header" href="#diagnostic-commands">Diagnostic Commands</a></h2>
+<pre><code class="language-bash"># Full health check
+curl -s http://localhost:9400/api/fuse/health | python3 -m json.tool
+
+# List all datasources and their types
+curl -s http://localhost:9400/api/fuse/datasources | python3 -m json.tool
+
+# Check recent query history for errors
+curl -s http://localhost:9400/api/fuse/history | python3 -m json.tool
+
+# Validate a query without executing
+curl -s -X POST http://localhost:9400/api/fuse/query/validate \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "YOUR QUERY HERE"}' | python3 -m json.tool
+
+# Explain a query plan
+curl -s -X POST http://localhost:9400/api/fuse/query/explain \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "YOUR QUERY HERE"}' | python3 -m json.tool
+</code></pre>
 
                     </main>
 

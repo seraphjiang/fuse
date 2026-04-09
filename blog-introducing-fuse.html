@@ -179,7 +179,135 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="blog-introducing-fuse"><a class="header" href="#blog-introducing-fuse">Blog: Introducing Fuse</a></h1>
+                        <h1 id="introducing-fuse-federated-queries-across-opensearch-s3-and-beyond"><a class="header" href="#introducing-fuse-federated-queries-across-opensearch-s3-and-beyond">Introducing Fuse: Federated Queries Across OpenSearch, S3, and Beyond</a></h1>
+<p>If you run OpenSearch, you probably run more than one cluster. Maybe a
+production cluster for logs, a staging cluster for testing, an S3 data lake
+for long-term analytics, and Prometheus for infrastructure metrics. Each has
+its own query interface, its own schema, its own way of doing things.</p>
+<p>When a question spans two of these systems — "show me the 500 errors from
+both prod and staging clusters, sorted by timestamp" — you're stuck writing
+glue code. Export from one, import to another, merge in a script, hope the
+schemas align. It works, but it doesn't scale.</p>
+<p><strong>Fuse is a federated query engine that lets you query all of them from one
+place.</strong></p>
+<h2 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h2>
+<p>Fuse sits between OpenSearch Dashboards and your datasources. You write one
+query — SQL or PPL — and Fuse figures out which parts go where, pushes
+filters and aggregations down to each source, and merges the results.</p>
+<pre><code>┌──────────────────────────────┐
+│  OpenSearch Dashboards       │
+│  (Query Bar / Panels)        │
+└──────────┬───────────────────┘
+           │ REST API
+┌──────────▼───────────────────┐
+│  Fuse Server                 │
+│                              │
+│  SQL / PPL Parser            │
+│        ↓                     │
+│  DataFusion Query Planner    │
+│  + Federation Optimizer      │
+│     ┌──┼──────┐              │
+│     ▼  ▼      ▼              │
+│    OS  S3  Prometheus        │
+│        ↓                     │
+│  Result Merger               │
+└──────────────────────────────┘
+</code></pre>
+<p>Under the hood, Fuse uses <a href="https://datafusion.apache.org/">Apache DataFusion</a>
+for SQL planning and <a href="https://github.com/datafusion-contrib/datafusion-federation">datafusion-federation</a>
+to route table scans to the right connector. Each connector translates the
+query plan into native operations — OpenSearch Query DSL, S3 object reads,
+PromQL — so the heavy lifting happens at the source.</p>
+<p>Authentication is handled per-connector. OpenSearch connectors support SigV4
+(including Amazon OpenSearch Serverless) and basic auth. S3 connectors use
+IAM roles. No credentials are stored in config files — only environment
+variable references.</p>
+<h2 id="what-you-can-do-today"><a class="header" href="#what-you-can-do-today">What You Can Do Today</a></h2>
+<h3 id="multi-cluster-search"><a class="header" href="#multi-cluster-search">Multi-Cluster Search</a></h3>
+<p>Query across two OpenSearch clusters in one statement:</p>
+<pre><code class="language-sql">SELECT service, count(*) as errors
+FROM cluster_a.application_logs
+WHERE status &gt;= 500
+GROUP BY service
+ORDER BY errors DESC
+</code></pre>
+<p>Or with PPL:</p>
+<pre><code>source = cluster_a.application_logs, cluster_b.application_logs
+| where status &gt;= 500
+| stats count() by service
+| sort - count()
+| head 20
+</code></pre>
+<p>Fuse fans the query out to both clusters in parallel, pushes the filter and
+aggregation down, and merges the results with a global sort and limit.</p>
+<h3 id="cross-source-federation"><a class="header" href="#cross-source-federation">Cross-Source Federation</a></h3>
+<p>Join OpenSearch logs with S3 data — the first real cross-type federation:</p>
+<pre><code class="language-sql">SELECT l.trace_id, l.service, l.status, s.level, s.message
+FROM cluster_a.application_logs l
+JOIN s3_o11y.fuse_logs s ON l.trace_id = s.trace_id
+WHERE l.status &gt;= 500
+</code></pre>
+<p>DataFusion's optimizer uses semi-join pushdown: it extracts matching keys
+from the smaller side and pushes an IN-filter to the larger side, avoiding
+full table scans.</p>
+<h3 id="query-result-caching"><a class="header" href="#query-result-caching">Query Result Caching</a></h3>
+<p>Fuse caches results per-connector with configurable TTLs — OpenSearch at 30s,
+S3 at 5 minutes. Repeated queries hit the cache instead of the datasource.
+Materialized views take this further: define a query that refreshes on a
+schedule, and read pre-computed results instantly.</p>
+<h2 id="try-it"><a class="header" href="#try-it">Try It</a></h2>
+<p>A live playground is running at <strong>https://fuse.huanji.profile.aws.dev</strong>
+(Amazon VPN required). Click "🎲 Feeling Lucky" to run a random query
+against real OpenSearch Serverless clusters.</p>
+<p>Or run locally:</p>
+<pre><code class="language-bash">git clone https://github.com/seraphjiang/fuse
+cd fuse
+docker compose up -d
+cargo run -p fuse-server
+# Open http://localhost:9400/
+</code></pre>
+<p>Hit the API directly:</p>
+<pre><code class="language-bash"># Health check
+curl http://localhost:9400/api/fuse/health
+
+# Federated query
+curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT service, status, message FROM cluster_a.application_logs WHERE status &gt;= 500 LIMIT 20"}'
+
+# Explore schemas
+curl http://localhost:9400/api/fuse/datasources/cluster_a/schemas
+</code></pre>
+<h2 id="build-a-connector"><a class="header" href="#build-a-connector">Build a Connector</a></h2>
+<p>Fuse is designed to be extended. Every datasource is a Rust crate that
+implements the <code>FederatedConnector</code> trait — about 8 methods covering health
+checks, schema discovery, and query execution. The engine handles planning,
+optimization, and result merging.</p>
+<p>We ship four connectors today: OpenSearch (with SigV4/AOSS support),
+S3/Parquet, S3 O11y (gzipped NDJSON), and Prometheus. The
+<a href="https://github.com/seraphjiang/fuse/blob/main/docs/guides/writing-a-connector.md">connector authoring guide</a>
+walks through building a new one from scratch.</p>
+<p>We'd love community connectors for PostgreSQL, MySQL, ClickHouse, MongoDB,
+DynamoDB, Kafka — anything with a query interface.</p>
+<h2 id="whats-next"><a class="header" href="#whats-next">What's Next</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Phase</th><th>Focus</th><th>Status</th></tr></thead><tbody>
+<tr><td>1</td><td>Same-type federation (OS ↔ OS)</td><td>✅ Shipped</td></tr>
+<tr><td>2</td><td>Cross-type federation (OS ↔ S3) + JOINs</td><td>✅ Shipped</td></tr>
+<tr><td>3</td><td>Prometheus connector + Connector SDK</td><td>✅ Shipped</td></tr>
+<tr><td>4</td><td>Caching, materialized views, RBAC</td><td>✅ Shipped</td></tr>
+<tr><td>Next</td><td>OSD plugin integration, visual join builder</td><td>In progress</td></tr>
+</tbody></table>
+</div>
+<h2 id="get-involved"><a class="header" href="#get-involved">Get Involved</a></h2>
+<ul>
+<li>🔗 <a href="https://github.com/seraphjiang/fuse">GitHub</a> — star, fork, contribute</li>
+<li>🎮 <a href="https://fuse.huanji.profile.aws.dev">Live Playground</a> — try it now (Amazon VPN)</li>
+<li>📖 <a href="https://github.com/opensearch-project/OpenSearch-Dashboards/issues/11705">Proposal</a> — the original design discussion</li>
+<li>📐 <a href="https://github.com/seraphjiang/fuse/blob/main/docs/guides/writing-a-connector.md">Connector Guide</a> — build your own</li>
+<li>🐛 <a href="https://github.com/seraphjiang/fuse/issues">Issues</a> — report bugs, request features, propose connectors</li>
+</ul>
+<p>Fuse is Apache 2.0 licensed. We welcome contributions of all kinds — code,
+docs, connector ideas, feedback. Open an issue or submit a PR to get started.</p>
 
                     </main>
 

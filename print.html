@@ -746,9 +746,442 @@ LIMIT 10
 <li><strong>Use EXPLAIN</strong> — Check the execution plan to verify pushdown is working.</li>
 </ol>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="explain--analyze"><a class="header" href="#explain--analyze">EXPLAIN / ANALYZE</a></h1>
+<p>Fuse provides two ways to inspect query execution: EXPLAIN (plan only) and ANALYZE (plan + actual timing).</p>
+<h2 id="explain"><a class="header" href="#explain">EXPLAIN</a></h2>
+<p>Shows the execution plan without running the query:</p>
+<pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/query/explain \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT * FROM cluster_a.application_logs UNION ALL SELECT * FROM cluster_b.application_logs LIMIT 20"}'
+</code></pre>
+<p>Response includes a text plan and structured tree:</p>
+<pre><code class="language-json">{
+  "plan": "Merge\n  RemoteScan [cluster_a] application_logs (est. 1000 rows, cost: 1.0)\n  RemoteScan [cluster_b] application_logs (est. 1000 rows, cost: 1.0)",
+  "plan_tree": {
+    "op": "Merge",
+    "children": [
+      { "op": "RemoteScan", "detail": "cluster_a.application_logs", "estimated_rows": 1000, "estimated_cost": 1.0 },
+      { "op": "RemoteScan", "detail": "cluster_b.application_logs", "estimated_rows": 1000, "estimated_cost": 1.0 }
+    ]
+  }
+}
+</code></pre>
+<h2 id="analyze"><a class="header" href="#analyze">ANALYZE</a></h2>
+<p>Run the query and get actual execution metrics. In the playground, check the <strong>Analyze</strong> checkbox. Via API, set <code>analyze: true</code>:</p>
+<pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT * FROM cluster_a.application_logs LIMIT 10", "analyze": true}'
+</code></pre>
+<p>The response includes <code>execution_profile</code> in metadata:</p>
+<pre><code class="language-json">{
+  "execution_profile": {
+    "total_ms": 112,
+    "nodes": [
+      {
+        "op": "Merge",
+        "actual_rows": 20,
+        "actual_ms": 112,
+        "children": [
+          {
+            "op": "RemoteScan",
+            "datasource": "cluster_a",
+            "actual_rows": 12,
+            "actual_ms": 45,
+            "data_bytes": 4096,
+            "pushdown": ["filter", "projection", "limit"]
+          },
+          {
+            "op": "RemoteScan",
+            "datasource": "cluster_b",
+            "actual_rows": 8,
+            "actual_ms": 67,
+            "data_bytes": 3200,
+            "pushdown": ["filter", "limit"]
+          }
+        ]
+      }
+    ]
+  }
+}
+</code></pre>
+<h2 id="reading-the-plan-tree"><a class="header" href="#reading-the-plan-tree">Reading the Plan Tree</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Node</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><strong>Merge</strong></td><td>Combines results from multiple sources</td></tr>
+<tr><td><strong>RemoteScan</strong></td><td>Fetches data from a connector</td></tr>
+<tr><td><strong>HashJoin</strong></td><td>Local hash-join of two datasources</td></tr>
+<tr><td><strong>Filter</strong></td><td>Local filter (not pushed down)</td></tr>
+<tr><td><strong>Projection</strong></td><td>Local column selection</td></tr>
+<tr><td><strong>Sort</strong></td><td>Local sorting</td></tr>
+<tr><td><strong>Limit</strong></td><td>Local row limit</td></tr>
+</tbody></table>
+</div>
+<h2 id="pushdown-badges"><a class="header" href="#pushdown-badges">Pushdown Badges</a></h2>
+<p>RemoteScan nodes show which operations were pushed to the connector:</p>
+<ul>
+<li><strong>filter</strong> — WHERE clause sent to connector</li>
+<li><strong>projection</strong> — Only selected columns fetched</li>
+<li><strong>limit</strong> — Row limit applied at source</li>
+<li><strong>aggregation</strong> — GROUP BY executed at source</li>
+</ul>
+<p>More pushdown = less data transferred = faster queries.</p>
+<h2 id="optimizing-slow-queries"><a class="header" href="#optimizing-slow-queries">Optimizing Slow Queries</a></h2>
+<ol>
+<li><strong>Check pushdown</strong> — If RemoteScan has no pushdown badges, the connector doesn't support it. Add explicit WHERE/LIMIT.</li>
+<li><strong>Compare latencies</strong> — If one RemoteScan is much slower, that connector may be overloaded or distant.</li>
+<li><strong>Reduce data</strong> — Use projection (explicit column list) to avoid transferring unused fields.</li>
+<li><strong>Add LIMIT</strong> — Especially for exploratory queries.</li>
+<li><strong>Check data size</strong> — <code>data_bytes</code> shows how much data each connector returned. Large values suggest missing filters.</li>
+</ol>
+<h2 id="playground"><a class="header" href="#playground">Playground</a></h2>
+<p>In the playground UI, the plan tree renders as an indented text tree with:</p>
+<ul>
+<li>Color-coded timing: <strong>green</strong> (&lt;50ms), <strong>yellow</strong> (&lt;200ms), <strong>red</strong> (&gt;200ms)</li>
+<li>Pushdown badges on RemoteScan nodes</li>
+<li>Data size per node</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h1>
+<h2 id="common-errors"><a class="header" href="#common-errors">Common Errors</a></h2>
+<h3 id="datasource-not-found"><a class="header" href="#datasource-not-found">"datasource not found"</a></h3>
+<p>The datasource ID in your query doesn't match any registered connector.</p>
+<p><strong>Fix:</strong> Check your <code>fuse.toml</code> for the correct <code>id</code> values. List available datasources:</p>
+<pre><code class="language-bash">curl http://localhost:9400/api/fuse/datasources
+</code></pre>
+<h3 id="empty-results"><a class="header" href="#empty-results">"empty results"</a></h3>
+<p>The query executed successfully but returned no rows.</p>
+<p><strong>Fix:</strong></p>
+<ol>
+<li>Verify the index/table has data: <code>SELECT * FROM datasource.table LIMIT 1</code></li>
+<li>Check your WHERE clause isn't too restrictive</li>
+<li>Verify the table name is correct via schema discovery:
+<pre><code class="language-bash">curl http://localhost:9400/api/fuse/datasources/{id}/schemas
+</code></pre>
+</li>
+</ol>
+<h3 id="timeout-or-slow-queries"><a class="header" href="#timeout-or-slow-queries">"timeout" or slow queries</a></h3>
+<p>The connector took too long to respond.</p>
+<p><strong>Fix:</strong></p>
+<ol>
+<li>Add or reduce <code>LIMIT</code></li>
+<li>Add <code>WHERE</code> clauses to filter at the source</li>
+<li>Check connector health: <code>curl http://localhost:9400/api/fuse/health</code></li>
+<li>Use <code>EXPLAIN</code> to verify pushdown is working</li>
+<li>Check network connectivity to the datasource</li>
+</ol>
+<h3 id="degraded-health"><a class="header" href="#degraded-health">"degraded health"</a></h3>
+<p>One or more connectors are reporting unhealthy status.</p>
+<p><strong>Fix:</strong></p>
+<ol>
+<li>Check health endpoint for details: <code>curl http://localhost:9400/api/fuse/health</code></li>
+<li>Verify connector config in <code>fuse.toml</code> (endpoint, auth, region)</li>
+<li>Check that the target service (OpenSearch, S3, Prometheus) is accessible</li>
+<li>For SigV4 auth: verify IAM credentials are valid</li>
+</ol>
+<h3 id="parse-error"><a class="header" href="#parse-error">"parse error"</a></h3>
+<p>SQL or PPL syntax is invalid.</p>
+<p><strong>Fix:</strong></p>
+<ol>
+<li>Validate first: <code>POST /api/fuse/query/validate</code></li>
+<li>Check table format: <code>datasource_id.table_name</code></li>
+<li>For PPL: ensure pipe syntax <code>source = ds.table | command</code></li>
+<li>For SQL: check standard SQL syntax</li>
+</ol>
+<h3 id="rate-limited-429"><a class="header" href="#rate-limited-429">Rate limited (429)</a></h3>
+<p>Too many requests in a short period.</p>
+<p><strong>Fix:</strong> Reduce request frequency. The rate limiter resets automatically.</p>
+<h2 id="diagnostic-commands"><a class="header" href="#diagnostic-commands">Diagnostic Commands</a></h2>
+<pre><code class="language-bash"># Full health check
+curl -s http://localhost:9400/api/fuse/health | python3 -m json.tool
+
+# List all datasources and their types
+curl -s http://localhost:9400/api/fuse/datasources | python3 -m json.tool
+
+# Check recent query history for errors
+curl -s http://localhost:9400/api/fuse/history | python3 -m json.tool
+
+# Validate a query without executing
+curl -s -X POST http://localhost:9400/api/fuse/query/validate \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "YOUR QUERY HERE"}' | python3 -m json.tool
+
+# Explain a query plan
+curl -s -X POST http://localhost:9400/api/fuse/query/explain \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "YOUR QUERY HERE"}' | python3 -m json.tool
+</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="blog-introducing-fuse"><a class="header" href="#blog-introducing-fuse">Blog: Introducing Fuse</a></h1>
+<p>We welcome contributions! Fuse is Apache-2.0 licensed.</p>
+<h2 id="quick-links"><a class="header" href="#quick-links">Quick Links</a></h2>
+<ul>
+<li><a href="https://github.com/seraphjiang/fuse/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a> — Full contributing guide</li>
+<li><a href="https://github.com/seraphjiang/fuse/issues/new/choose">Issue Templates</a> — Bug reports, feature requests, connector requests</li>
+<li><a href="https://github.com/seraphjiang/fuse/blob/main/docs/rfcs/RFC-001-fuse-integration.md">RFC-001</a> — Architecture RFC</li>
+</ul>
+<h2 id="development-setup"><a class="header" href="#development-setup">Development Setup</a></h2>
+<pre><code class="language-bash">git clone https://github.com/seraphjiang/fuse.git
+cd fuse
+cargo build
+cargo test --all-targets
+</code></pre>
+<h2 id="code-style"><a class="header" href="#code-style">Code Style</a></h2>
+<ul>
+<li><code>cargo fmt</code> before committing</li>
+<li><code>cargo clippy</code> must pass with no warnings</li>
+<li>Every public function needs at least one test</li>
+<li>Conventional commit messages (<code>feat:</code>, <code>fix:</code>, <code>docs:</code>, <code>test:</code>)</li>
+</ul>
+<h2 id="dco-sign-off"><a class="header" href="#dco-sign-off">DCO Sign-Off</a></h2>
+<p>All commits must include a DCO sign-off:</p>
+<pre><code class="language-bash">git commit -s -m "feat: add new feature"
+</code></pre>
+<h2 id="writing-a-custom-connector"><a class="header" href="#writing-a-custom-connector">Writing a Custom Connector</a></h2>
+<p>The fastest way to contribute is adding a new connector. Here's the template:</p>
+<h3 id="1-create-the-crate"><a class="header" href="#1-create-the-crate">1. Create the crate</a></h3>
+<pre><code>crates/fuse-connectors/my-connector/
+├── Cargo.toml
+└── src/
+    └── lib.rs
+</code></pre>
+<h3 id="2-implement-federatedconnector"><a class="header" href="#2-implement-federatedconnector">2. Implement <code>FederatedConnector</code></a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use async_trait::async_trait;
+use fuse_core::connector::*;
+use fuse_core::error::Result;
+use arrow::datatypes::Schema;
+use arrow::record_batch::RecordBatch;
+
+pub struct MyConnector {
+    id: String,
+    // your config fields
+}
+
+#[async_trait]
+impl FederatedConnector for MyConnector {
+    fn id(&amp;self) -&gt; &amp;str { &amp;self.id }
+    fn connector_type(&amp;self) -&gt; &amp;str { "my-connector" }
+
+    fn capabilities(&amp;self) -&gt; ConnectorCapabilities {
+        ConnectorCapabilities {
+            supports_filtering: true,
+            supports_projection: true,
+            supports_limit: true,
+            ..Default::default()
+        }
+    }
+
+    async fn health_check(&amp;self) -&gt; Result&lt;HealthStatus&gt; {
+        Ok(HealthStatus::Healthy)
+    }
+
+    async fn discover_schemas(&amp;self) -&gt; Result&lt;Vec&lt;SchemaInfo&gt;&gt; {
+        // Return available tables/indices
+        todo!()
+    }
+
+    async fn get_schema(&amp;self, table: &amp;str) -&gt; Result&lt;Schema&gt; {
+        // Return Arrow schema for a table
+        todo!()
+    }
+
+    fn table_names(&amp;self) -&gt; Vec&lt;String&gt; {
+        // Return list of table names
+        todo!()
+    }
+
+    async fn get_table_schema(&amp;self, table: &amp;str) -&gt; Result&lt;Schema&gt; {
+        self.get_schema(table).await
+    }
+
+    async fn execute(&amp;self, query: &amp;SubQuery) -&gt; Result&lt;Vec&lt;RecordBatch&gt;&gt; {
+        // Execute query and return Arrow RecordBatches
+        todo!()
+    }
+
+    async fn execute_streaming(&amp;self, query: &amp;SubQuery)
+        -&gt; Result&lt;std::pin::Pin&lt;Box&lt;dyn futures::Stream&lt;Item = Result&lt;RecordBatch&gt;&gt; + Send&gt;&gt;&gt;
+    {
+        // Streaming variant (can wrap execute() if not natively supported)
+        let batches = self.execute(query).await?;
+        Ok(Box::pin(futures::stream::iter(batches.into_iter().map(Ok))))
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="3-implement-connectorfactory"><a class="header" href="#3-implement-connectorfactory">3. Implement <code>ConnectorFactory</code></a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct MyConnectorFactory;
+
+impl ConnectorFactory for MyConnectorFactory {
+    fn connector_type(&amp;self) -&gt; &amp;str { "my-connector" }
+
+    fn create(&amp;self, config: &amp;ConnectorConfig) -&gt; Result&lt;Arc&lt;dyn FederatedConnector&gt;&gt; {
+        Ok(Arc::new(MyConnector {
+            id: config.id.clone(),
+            // parse config.settings for your fields
+        }))
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="4-register-in-mainrs"><a class="header" href="#4-register-in-mainrs">4. Register in main.rs</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>registry.register_factory(Arc::new(MyConnectorFactory));
+<span class="boring">}</span></code></pre></pre>
+<h3 id="5-add-to-fusetoml"><a class="header" href="#5-add-to-fusetoml">5. Add to fuse.toml</a></h3>
+<pre><code class="language-toml">[[connector]]
+id = "my_source"
+connector_type = "my-connector"
+# your config fields in [connector.settings]
+</code></pre>
+<h3 id="6-write-tests"><a class="header" href="#6-write-tests">6. Write tests</a></h3>
+<p>At minimum: health check, schema discovery, basic query execution, error handling.</p>
+<h3 id="checklist"><a class="header" href="#checklist">Checklist</a></h3>
+<ul>
+<li><input disabled="" type="checkbox"/>
+Implements all <code>FederatedConnector</code> methods</li>
+<li><input disabled="" type="checkbox"/>
+Has a <code>ConnectorFactory</code></li>
+<li><input disabled="" type="checkbox"/>
+<code>capabilities()</code> accurately reflects what's supported</li>
+<li><input disabled="" type="checkbox"/>
+Health check verifies connectivity</li>
+<li><input disabled="" type="checkbox"/>
+Schema discovery returns correct Arrow types</li>
+<li><input disabled="" type="checkbox"/>
+At least 4 tests (health, schema, query, error)</li>
+<li><input disabled="" type="checkbox"/>
+<code>cargo fmt</code> + <code>cargo clippy</code> clean</li>
+<li><input disabled="" type="checkbox"/>
+DCO sign-off on all commits</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="introducing-fuse-federated-queries-across-opensearch-s3-and-beyond"><a class="header" href="#introducing-fuse-federated-queries-across-opensearch-s3-and-beyond">Introducing Fuse: Federated Queries Across OpenSearch, S3, and Beyond</a></h1>
+<p>If you run OpenSearch, you probably run more than one cluster. Maybe a
+production cluster for logs, a staging cluster for testing, an S3 data lake
+for long-term analytics, and Prometheus for infrastructure metrics. Each has
+its own query interface, its own schema, its own way of doing things.</p>
+<p>When a question spans two of these systems — "show me the 500 errors from
+both prod and staging clusters, sorted by timestamp" — you're stuck writing
+glue code. Export from one, import to another, merge in a script, hope the
+schemas align. It works, but it doesn't scale.</p>
+<p><strong>Fuse is a federated query engine that lets you query all of them from one
+place.</strong></p>
+<h2 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h2>
+<p>Fuse sits between OpenSearch Dashboards and your datasources. You write one
+query — SQL or PPL — and Fuse figures out which parts go where, pushes
+filters and aggregations down to each source, and merges the results.</p>
+<pre><code>┌──────────────────────────────┐
+│  OpenSearch Dashboards       │
+│  (Query Bar / Panels)        │
+└──────────┬───────────────────┘
+           │ REST API
+┌──────────▼───────────────────┐
+│  Fuse Server                 │
+│                              │
+│  SQL / PPL Parser            │
+│        ↓                     │
+│  DataFusion Query Planner    │
+│  + Federation Optimizer      │
+│     ┌──┼──────┐              │
+│     ▼  ▼      ▼              │
+│    OS  S3  Prometheus        │
+│        ↓                     │
+│  Result Merger               │
+└──────────────────────────────┘
+</code></pre>
+<p>Under the hood, Fuse uses <a href="https://datafusion.apache.org/">Apache DataFusion</a>
+for SQL planning and <a href="https://github.com/datafusion-contrib/datafusion-federation">datafusion-federation</a>
+to route table scans to the right connector. Each connector translates the
+query plan into native operations — OpenSearch Query DSL, S3 object reads,
+PromQL — so the heavy lifting happens at the source.</p>
+<p>Authentication is handled per-connector. OpenSearch connectors support SigV4
+(including Amazon OpenSearch Serverless) and basic auth. S3 connectors use
+IAM roles. No credentials are stored in config files — only environment
+variable references.</p>
+<h2 id="what-you-can-do-today"><a class="header" href="#what-you-can-do-today">What You Can Do Today</a></h2>
+<h3 id="multi-cluster-search"><a class="header" href="#multi-cluster-search">Multi-Cluster Search</a></h3>
+<p>Query across two OpenSearch clusters in one statement:</p>
+<pre><code class="language-sql">SELECT service, count(*) as errors
+FROM cluster_a.application_logs
+WHERE status &gt;= 500
+GROUP BY service
+ORDER BY errors DESC
+</code></pre>
+<p>Or with PPL:</p>
+<pre><code>source = cluster_a.application_logs, cluster_b.application_logs
+| where status &gt;= 500
+| stats count() by service
+| sort - count()
+| head 20
+</code></pre>
+<p>Fuse fans the query out to both clusters in parallel, pushes the filter and
+aggregation down, and merges the results with a global sort and limit.</p>
+<h3 id="cross-source-federation"><a class="header" href="#cross-source-federation">Cross-Source Federation</a></h3>
+<p>Join OpenSearch logs with S3 data — the first real cross-type federation:</p>
+<pre><code class="language-sql">SELECT l.trace_id, l.service, l.status, s.level, s.message
+FROM cluster_a.application_logs l
+JOIN s3_o11y.fuse_logs s ON l.trace_id = s.trace_id
+WHERE l.status &gt;= 500
+</code></pre>
+<p>DataFusion's optimizer uses semi-join pushdown: it extracts matching keys
+from the smaller side and pushes an IN-filter to the larger side, avoiding
+full table scans.</p>
+<h3 id="query-result-caching"><a class="header" href="#query-result-caching">Query Result Caching</a></h3>
+<p>Fuse caches results per-connector with configurable TTLs — OpenSearch at 30s,
+S3 at 5 minutes. Repeated queries hit the cache instead of the datasource.
+Materialized views take this further: define a query that refreshes on a
+schedule, and read pre-computed results instantly.</p>
+<h2 id="try-it"><a class="header" href="#try-it">Try It</a></h2>
+<p>A live playground is running at <strong>https://fuse.huanji.profile.aws.dev</strong>
+(Amazon VPN required). Click "🎲 Feeling Lucky" to run a random query
+against real OpenSearch Serverless clusters.</p>
+<p>Or run locally:</p>
+<pre><code class="language-bash">git clone https://github.com/seraphjiang/fuse
+cd fuse
+docker compose up -d
+cargo run -p fuse-server
+# Open http://localhost:9400/
+</code></pre>
+<p>Hit the API directly:</p>
+<pre><code class="language-bash"># Health check
+curl http://localhost:9400/api/fuse/health
+
+# Federated query
+curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT service, status, message FROM cluster_a.application_logs WHERE status &gt;= 500 LIMIT 20"}'
+
+# Explore schemas
+curl http://localhost:9400/api/fuse/datasources/cluster_a/schemas
+</code></pre>
+<h2 id="build-a-connector"><a class="header" href="#build-a-connector">Build a Connector</a></h2>
+<p>Fuse is designed to be extended. Every datasource is a Rust crate that
+implements the <code>FederatedConnector</code> trait — about 8 methods covering health
+checks, schema discovery, and query execution. The engine handles planning,
+optimization, and result merging.</p>
+<p>We ship four connectors today: OpenSearch (with SigV4/AOSS support),
+S3/Parquet, S3 O11y (gzipped NDJSON), and Prometheus. The
+<a href="https://github.com/seraphjiang/fuse/blob/main/docs/guides/writing-a-connector.md">connector authoring guide</a>
+walks through building a new one from scratch.</p>
+<p>We'd love community connectors for PostgreSQL, MySQL, ClickHouse, MongoDB,
+DynamoDB, Kafka — anything with a query interface.</p>
+<h2 id="whats-next"><a class="header" href="#whats-next">What's Next</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Phase</th><th>Focus</th><th>Status</th></tr></thead><tbody>
+<tr><td>1</td><td>Same-type federation (OS ↔ OS)</td><td>✅ Shipped</td></tr>
+<tr><td>2</td><td>Cross-type federation (OS ↔ S3) + JOINs</td><td>✅ Shipped</td></tr>
+<tr><td>3</td><td>Prometheus connector + Connector SDK</td><td>✅ Shipped</td></tr>
+<tr><td>4</td><td>Caching, materialized views, RBAC</td><td>✅ Shipped</td></tr>
+<tr><td>Next</td><td>OSD plugin integration, visual join builder</td><td>In progress</td></tr>
+</tbody></table>
+</div>
+<h2 id="get-involved"><a class="header" href="#get-involved">Get Involved</a></h2>
+<ul>
+<li>🔗 <a href="https://github.com/seraphjiang/fuse">GitHub</a> — star, fork, contribute</li>
+<li>🎮 <a href="https://fuse.huanji.profile.aws.dev">Live Playground</a> — try it now (Amazon VPN)</li>
+<li>📖 <a href="https://github.com/opensearch-project/OpenSearch-Dashboards/issues/11705">Proposal</a> — the original design discussion</li>
+<li>📐 <a href="https://github.com/seraphjiang/fuse/blob/main/docs/guides/writing-a-connector.md">Connector Guide</a> — build your own</li>
+<li>🐛 <a href="https://github.com/seraphjiang/fuse/issues">Issues</a> — report bugs, request features, propose connectors</li>
+</ul>
+<p>Fuse is Apache 2.0 licensed. We welcome contributions of all kinds — code,
+docs, connector ideas, feedback. Open an issue or submit a PR to get started.</p>
 
                     </main>
 
