@@ -84,7 +84,7 @@ Items are ordered by priority. Status: `todo` | `in-progress` | `blocked` | `don
 
 | ID | Item | Owner | Status | Depends On |
 |----|------|-------|--------|------------|
-| 090 | Tests for cache.rs + cache_middleware.rs | explorer | in-progress | 040 |
+| 090 | Tests for cache.rs + cache_middleware.rs | explorer | done | 040 |
 | 091 | Tests for S3 connector (select, reader) | planner | in-progress | 020 |
 | 092 | Tests for Prometheus connector (promql, parsing) | planner | in-progress | 030 |
 | 093 | Coverage audit across all modules | tester | in-progress | — |
