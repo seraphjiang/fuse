@@ -130,6 +130,19 @@ pub fn ppl_to_sql(query: &PplQuery) -> Result<String, PplParseError> {
     let order_by = find_sort(&query.commands);
     let limit = find_head(&query.commands);
 
+    // Check for top/rare — these override stats/sort/limit
+    let (stats_select, group_by, order_by, limit) = if let Some(top) = find_top(&query.commands) {
+        let fields_str = top.fields.join(", ");
+        let sel = format!("{}, COUNT(*) AS count", fields_str);
+        (Some(sel), Some(fields_str), Some("count DESC".to_string()), Some(top.n))
+    } else if let Some(rare) = find_rare(&query.commands) {
+        let fields_str = rare.fields.join(", ");
+        let sel = format!("{}, COUNT(*) AS count", fields_str);
+        (Some(sel), Some(fields_str), Some("count ASC".to_string()), Some(10))
+    } else {
+        (stats_select, group_by, order_by, limit)
+    };
+
     let final_select = if let Some(ref ss) = stats_select {
         ss.clone()
     } else {
@@ -441,6 +454,21 @@ fn find_renames(commands: &[PplCommand]) -> Vec<RenameExpr> {
     }).flatten().collect()
 }
 
+struct TopInfo { n: u64, fields: Vec<String> }
+struct RareInfo { fields: Vec<String> }
+
+fn find_top(commands: &[PplCommand]) -> Option<TopInfo> {
+    commands.iter().find_map(|cmd| {
+        if let PplCommand::Top { n, fields } = cmd { Some(TopInfo { n: *n, fields: fields.clone() }) } else { None }
+    })
+}
+
+fn find_rare(commands: &[PplCommand]) -> Option<RareInfo> {
+    commands.iter().find_map(|cmd| {
+        if let PplCommand::Rare { fields } = cmd { Some(RareInfo { fields: fields.clone() }) } else { None }
+    })
+}
+
 fn find_where(commands: &[PplCommand]) -> Option<String> {
     for cmd in commands {
         if let PplCommand::Where(expr) = cmd {
@@ -749,5 +777,69 @@ mod tests {
     fn test_rename_error_missing_as() {
         let q = parse_ppl("source = logs | rename host hostname");
         assert!(q.is_err());
+    }
+
+    #[test]
+    fn test_top_command() {
+        let q = parse_ppl("source = logs | top 5 host").unwrap();
+        if let PplCommand::Top { n, fields } = &q.commands[0] {
+            assert_eq!(*n, 5);
+            assert_eq!(fields, &["host"]);
+        } else {
+            panic!("expected Top");
+        }
+    }
+
+    #[test]
+    fn test_top_default_n() {
+        let q = parse_ppl("source = logs | top host, status").unwrap();
+        if let PplCommand::Top { n, fields } = &q.commands[0] {
+            assert_eq!(*n, 10);
+            assert_eq!(fields.len(), 2);
+        } else {
+            panic!("expected Top");
+        }
+    }
+
+    #[test]
+    fn test_top_to_sql() {
+        let q = parse_ppl("source = logs | top 3 host").unwrap();
+        let sql = ppl_to_sql(&q).unwrap();
+        let lower = sql.to_lowercase();
+        assert!(lower.contains("count(*)"));
+        assert!(lower.contains("group by host"));
+        assert!(lower.contains("order by count desc"));
+        assert!(lower.contains("limit 3"));
+    }
+
+    #[test]
+    fn test_rare_command() {
+        let q = parse_ppl("source = logs | rare status").unwrap();
+        if let PplCommand::Rare { fields } = &q.commands[0] {
+            assert_eq!(fields, &["status"]);
+        } else {
+            panic!("expected Rare");
+        }
+    }
+
+    #[test]
+    fn test_rare_to_sql() {
+        let q = parse_ppl("source = logs | rare host").unwrap();
+        let sql = ppl_to_sql(&q).unwrap();
+        let lower = sql.to_lowercase();
+        assert!(lower.contains("count(*)"));
+        assert!(lower.contains("group by host"));
+        assert!(lower.contains("order by count asc"));
+        assert!(lower.contains("limit 10"));
+    }
+
+    #[test]
+    fn test_top_with_where() {
+        let q = parse_ppl("source = logs | where status > 400 | top 5 host").unwrap();
+        let sql = ppl_to_sql(&q).unwrap();
+        let lower = sql.to_lowercase();
+        assert!(lower.contains("where status > 400"));
+        assert!(lower.contains("group by host"));
+        assert!(lower.contains("limit 5"));
     }
 }
