@@ -84,3 +84,88 @@ fn os_type_to_arrow(os_type: &str) -> DataType {
         _ => DataType::Utf8, // fallback
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_simple_mapping() {
+        let mapping = json!({
+            "properties": {
+                "status": {"type": "integer"},
+                "message": {"type": "text"},
+                "timestamp": {"type": "date"}
+            }
+        });
+        let schema = mapping_to_arrow_schema(&mapping).unwrap();
+        assert_eq!(schema.fields().len(), 3);
+        assert_eq!(schema.field_with_name("status").unwrap().data_type(), &DataType::Int32);
+        assert_eq!(schema.field_with_name("message").unwrap().data_type(), &DataType::Utf8);
+    }
+
+    #[test]
+    fn test_wrapped_mapping() {
+        let mapping = json!({
+            "my_index": {
+                "mappings": {
+                    "properties": {
+                        "host": {"type": "keyword"}
+                    }
+                }
+            }
+        });
+        let schema = mapping_to_arrow_schema(&mapping).unwrap();
+        assert_eq!(schema.fields().len(), 1);
+        assert_eq!(schema.field_with_name("host").unwrap().data_type(), &DataType::Utf8);
+    }
+
+    #[test]
+    fn test_nested_object() {
+        let mapping = json!({
+            "properties": {
+                "user": {
+                    "properties": {
+                        "name": {"type": "keyword"},
+                        "age": {"type": "integer"}
+                    }
+                }
+            }
+        });
+        let schema = mapping_to_arrow_schema(&mapping).unwrap();
+        let user_field = schema.field_with_name("user").unwrap();
+        assert!(matches!(user_field.data_type(), DataType::Struct(_)));
+    }
+
+    #[test]
+    fn test_no_properties_error() {
+        let mapping = json!({"something": "else"});
+        assert!(mapping_to_arrow_schema(&mapping).is_err());
+    }
+
+    #[test]
+    fn test_type_mappings() {
+        assert_eq!(os_type_to_arrow("long"), DataType::Int64);
+        assert_eq!(os_type_to_arrow("double"), DataType::Float64);
+        assert_eq!(os_type_to_arrow("boolean"), DataType::Boolean);
+        assert_eq!(os_type_to_arrow("keyword"), DataType::Utf8);
+        assert_eq!(os_type_to_arrow("binary"), DataType::Binary);
+        assert_eq!(os_type_to_arrow("ip"), DataType::Utf8);
+        assert_eq!(os_type_to_arrow("unknown_type"), DataType::Utf8);
+    }
+
+    #[test]
+    fn test_fields_sorted_alphabetically() {
+        let mapping = json!({
+            "properties": {
+                "zebra": {"type": "keyword"},
+                "alpha": {"type": "keyword"},
+                "middle": {"type": "keyword"}
+            }
+        });
+        let schema = mapping_to_arrow_schema(&mapping).unwrap();
+        let names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
+        assert_eq!(names, vec!["alpha", "middle", "zebra"]);
+    }
+}
