@@ -298,4 +298,70 @@ mod tests {
         let result = merge_batches(vec![b], Some(2)).unwrap();
         assert_eq!(result[0].num_rows(), 2);
     }
+
+    #[test]
+    fn test_union_schema_merges_fields() {
+        let s1 = Arc::new(Schema::new(vec![
+            Field::new("x", DataType::Int64, false),
+        ]));
+        let s2 = Arc::new(Schema::new(vec![
+            Field::new("y", DataType::Utf8, false),
+        ]));
+        let merged = union_schema(&[s1, s2]);
+        assert_eq!(merged.fields().len(), 2);
+        assert_eq!(merged.field(0).name(), "x");
+        assert_eq!(merged.field(1).name(), "y");
+    }
+
+    #[test]
+    fn test_union_schema_deduplicates() {
+        let s1 = Arc::new(Schema::new(vec![
+            Field::new("a", DataType::Int64, false),
+            Field::new("b", DataType::Utf8, false),
+        ]));
+        let s2 = Arc::new(Schema::new(vec![
+            Field::new("a", DataType::Int64, false),
+            Field::new("c", DataType::Utf8, false),
+        ]));
+        let merged = union_schema(&[s1, s2]);
+        assert_eq!(merged.fields().len(), 3); // a, b, c
+    }
+
+    #[test]
+    fn test_sort_batches() {
+        let s = schema_ab();
+        let b = make_batch(&s, &["c", "a", "b"], &[3, 1, 2]);
+        let sorted = sort_batches(vec![b], &[0], &[false], None).unwrap();
+        let names = sorted[0]
+            .column(0)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        assert_eq!(names.value(0), "a");
+        assert_eq!(names.value(1), "b");
+        assert_eq!(names.value(2), "c");
+    }
+
+    #[test]
+    fn test_sort_batches_desc() {
+        let s = schema_ab();
+        let b = make_batch(&s, &["a", "c", "b"], &[1, 3, 2]);
+        let sorted = sort_batches(vec![b], &[0], &[true], None).unwrap();
+        let names = sorted[0]
+            .column(0)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        assert_eq!(names.value(0), "c");
+        assert_eq!(names.value(1), "b");
+        assert_eq!(names.value(2), "a");
+    }
+
+    #[test]
+    fn test_merge_no_limit() {
+        let s = schema_ab();
+        let b = make_batch(&s, &["a", "b", "c"], &[1, 2, 3]);
+        let result = merge_batches(vec![b], None).unwrap();
+        assert_eq!(result[0].num_rows(), 3);
+    }
 }
