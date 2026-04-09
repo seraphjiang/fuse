@@ -207,6 +207,11 @@ pub async fn query_handler(
 
     let timeout = std::time::Duration::from_millis(req.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS));
 
+    // Register cancellable query
+    let query_id = format!("q-{:016x}", t0.elapsed().as_nanos() ^ (std::process::id() as u128));
+    let cancel_token = CancellationToken::new();
+    state.running_queries.insert(query_id.clone(), cancel_token.clone());
+
     let exec_future = async {
         if refs.len() == 1 {
             execute_single(&state, &req.query, &format, &refs[0]).await
@@ -217,10 +222,15 @@ pub async fn query_handler(
         }
     };
 
-    let result = match tokio::time::timeout(timeout, exec_future).await {
-        Ok(r) => r,
-        Err(_) => Err(format!("query timed out after {}ms", timeout.as_millis())),
+    let result = tokio::select! {
+        r = tokio::time::timeout(timeout, exec_future) => match r {
+            Ok(r) => r,
+            Err(_) => Err(format!("query timed out after {}ms", timeout.as_millis())),
+        },
+        _ = cancel_token.cancelled() => Err("query cancelled".into()),
     };
+
+    state.running_queries.remove(&query_id);
 
     match result {
         Ok(fed) => {
@@ -885,6 +895,27 @@ fn batches_to_json(
 /// GET /api/fuse/history — last 50 queries with stats.
 pub async fn history_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     Json(state.history.list())
+}
+
+// ── Query cancellation handlers ──
+
+/// DELETE /api/fuse/query/:id — cancel a running query.
+pub async fn cancel_query(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    if state.running_queries.cancel(&id) {
+        (StatusCode::OK, Json(serde_json::json!({"cancelled": true, "query_id": id}))).into_response()
+    } else {
+        error_json(StatusCode::NOT_FOUND, format!("query '{}' not found or already completed", id)).into_response()
+    }
+}
+
+/// GET /api/fuse/queries/running — list currently running query IDs.
+pub async fn list_running_queries(
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    Json(serde_json::json!({"running": state.running_queries.list()}))
 }
 
 // ── Alert handlers ──

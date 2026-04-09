@@ -13,6 +13,7 @@ fuse-connector-s3-o11y = { path = "../fuse-connectors/s3-o11y" }
 arrow = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }
+tokio-util = "0.7"
 tokio-stream = "0.1"
 futures-util = "0.3"
 async-stream = "0.3"
