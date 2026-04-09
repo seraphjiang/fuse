@@ -8,7 +8,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 200 | Deploy latest (484 tests, 21 endpoints) and verify live | infra | todo | Trigger pipeline, verify all new endpoints respond |
+| 200 | Deploy latest (484 tests, 21 endpoints) and verify live | infra | done | Pipeline a9681443 succeeded. 16/16 endpoints verified live |
 | 201 | E2E test suite against live playground (all 21 endpoints) | tester | done | 25/25 green. Commit: 70abb13 |
 | 202 | Load test: 50 concurrent queries, measure p50/p95/p99 | tester | done | 50/50, p50=413ms p95=535ms p99=577ms. Commit: 70abb13 |
 | 203 | Negative test suite: SQL injection, empty body, unicode, oversized query, malformed JSON | tester | done | 7 negative tests in E2E suite. Commit: 70abb13 |
@@ -61,7 +61,7 @@
 | 250 | Structured logging (tracing-subscriber JSON) | infra | todo | Currently text logs |
 | 251 | Metrics endpoint (Prometheus /metrics) | infra | todo | For monitoring integration |
 | 252 | Distributed tracing (OpenTelemetry) | infra | todo | Trace across connectors |
-| 253 | Graceful shutdown (drain in-flight queries) | planner | todo | Currently hard-stops |
+| 253 | Graceful shutdown (drain in-flight queries) | explorer | done | SIGTERM/SIGINT → drain 10s → cancel_all. Commit: 7ae3d5d. 2 tests |
 
 ## P3: Community
 

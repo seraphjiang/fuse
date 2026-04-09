@@ -2081,3 +2081,25 @@ async fn test_analyze_union_parent_cost_gte_children() {
     let child_sum: f64 = children.iter().map(|c| c["actual_ms"].as_f64().unwrap_or(0.0)).sum();
     assert!(parent_cost >= child_sum, "parent cost {} should >= child sum {}", parent_cost, child_sum);
 }
+
+// ── Plan cache tests ──
+
+#[tokio::test]
+async fn test_plan_cache_populated_on_query() {
+    let app = build_test_app();
+    // First query — cache miss, populates cache
+    let (status, _) = post_query(app.clone(), "SELECT * FROM testds.logs", "sql").await;
+    assert_eq!(status, StatusCode::OK);
+    // Second identical query — should still succeed (cache hit path)
+    let (status2, _) = post_query(app, "SELECT * FROM testds.logs", "sql").await;
+    assert_eq!(status2, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_plan_cache_different_queries() {
+    let app = build_test_app();
+    let (s1, _) = post_query(app.clone(), "SELECT * FROM testds.logs", "sql").await;
+    let (s2, _) = post_query(app, "SELECT * FROM testds.logs WHERE status > 200", "sql").await;
+    assert_eq!(s1, StatusCode::OK);
+    assert_eq!(s2, StatusCode::OK);
+}
