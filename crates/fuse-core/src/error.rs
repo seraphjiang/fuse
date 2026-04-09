@@ -80,3 +80,46 @@ impl ConnectorError {
 }
 
 pub type FuseResult<T> = Result<T, FuseError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_connector_error_display() {
+        let e = ConnectorError::query("timeout after 30s");
+        assert_eq!(e.to_string(), "query execution failed: timeout after 30s");
+    }
+
+    #[test]
+    fn test_connector_error_schema_helper() {
+        let e = ConnectorError::schema("no properties found");
+        assert_eq!(e.to_string(), "schema discovery failed: no properties found");
+    }
+
+    #[test]
+    fn test_registry_error_duplicate() {
+        let e = RegistryError::DuplicateId("cluster_a".into());
+        assert!(e.to_string().contains("cluster_a"));
+    }
+
+    #[test]
+    fn test_fuse_error_from_registry() {
+        let re = RegistryError::NotFound("missing".into());
+        let fe: FuseError = re.into();
+        assert!(fe.to_string().contains("missing"));
+    }
+
+    #[test]
+    fn test_fuse_error_from_io() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file gone");
+        let fe: FuseError = io_err.into();
+        assert!(fe.to_string().contains("file gone"));
+    }
+
+    #[test]
+    fn test_connector_error_channel_closed() {
+        let e = ConnectorError::ChannelClosed;
+        assert_eq!(e.to_string(), "streaming channel closed");
+    }
+}
