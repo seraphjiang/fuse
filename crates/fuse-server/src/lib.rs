@@ -10,6 +10,8 @@ use axum::http::header;
 use axum::response::{Html, IntoResponse};
 use axum::routing::{get, post};
 use axum::Router;
+use tower_http::trace::TraceLayer;
+use tracing::Level;
 
 use api::AppState;
 
@@ -38,5 +40,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/fuse/query/explain", post(api::explain_handler))
         .route("/api/fuse/query/validate", post(api::validate_handler))
         .route("/api/fuse/health", get(api::health_handler))
+        .layer(TraceLayer::new_for_http()
+            .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(Level::INFO))
+            .on_response(tower_http::trace::DefaultOnResponse::new().level(Level::INFO)))
         .with_state(state)
 }
