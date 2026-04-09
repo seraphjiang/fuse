@@ -1448,4 +1448,22 @@ mod tests {
         // After cancel, entry is removed — second cancel returns false
         assert!(!rq.cancel("q-001"));
     }
+
+    #[test]
+    fn test_query_request_range_fields_deserialize() {
+        let json = r#"{"query":"SELECT * FROM prom.http_requests","format":"sql","start":"2024-01-01T00:00:00Z","end":"2024-01-02T00:00:00Z","step":"1m"}"#;
+        let req: QueryRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.start.as_deref(), Some("2024-01-01T00:00:00Z"));
+        assert_eq!(req.end.as_deref(), Some("2024-01-02T00:00:00Z"));
+        assert_eq!(req.step.as_deref(), Some("1m"));
+    }
+
+    #[test]
+    fn test_query_request_range_fields_optional() {
+        let json = r#"{"query":"SELECT * FROM prom.http_requests","format":"sql"}"#;
+        let req: QueryRequest = serde_json::from_str(json).unwrap();
+        assert!(req.start.is_none());
+        assert!(req.end.is_none());
+        assert!(req.step.is_none());
+    }
 }
