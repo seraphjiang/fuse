@@ -122,4 +122,17 @@ mod tests {
         let e = ConnectorError::ChannelClosed;
         assert_eq!(e.to_string(), "streaming channel closed");
     }
+
+    #[test]
+    fn test_connector_error_variants_display() {
+        assert!(ConnectorError::Auth("bad token".into()).to_string().contains("bad token"));
+        assert!(ConnectorError::Connection("refused".into()).to_string().contains("refused"));
+        assert!(ConnectorError::Unsupported("no scroll".into()).to_string().contains("no scroll"));
+    }
+
+    #[test]
+    fn test_registry_error_not_found_display() {
+        let e = RegistryError::NotFound("ds_x".into());
+        assert!(e.to_string().contains("ds_x"));
+    }
 }
