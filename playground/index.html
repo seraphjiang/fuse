@@ -78,6 +78,11 @@ tr:hover td{background:#161b22}
 .help-panel h3{color:#58a6ff;font-size:13px;font-weight:600;margin:16px 0 8px;text-transform:uppercase;letter-spacing:.5px}
 .help-panel h3:first-child{margin-top:0}
 .example{display:flex;gap:8px;align-items:flex-start;padding:6px 8px;border-radius:4px;cursor:pointer;margin:2px 0}
+.hist-item{display:flex;flex-direction:column;gap:2px;padding:6px 8px;border-radius:4px;cursor:pointer;margin:2px 0;border:1px solid #21262d}
+.hist-item:hover{border-color:#58a6ff;background:#161b22}
+.hist-query{font-family:monospace;font-size:12px;color:#e1e4e8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hist-meta{font-size:11px;color:#8b949e;display:flex;gap:10px}
+.hist-err{color:#f85149}
 .example:hover{background:#21262d}
 .example-label{color:#e1e4e8;font-weight:500;min-width:180px;flex-shrink:0}
 .example-query{color:#8b949e;font-family:"SF Mono",Consolas,monospace;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -124,6 +129,7 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
       <button class="tab active" onclick="switchTab('examples')">Examples</button>
       <button class="tab" onclick="switchTab('docs')">📖 Docs</button>
       <button class="tab" onclick="switchTab('api')">API</button>
+      <button class="tab" onclick="switchTab('history');loadHistory()">🕐 History</button>
     </div>
 
     <!-- EXAMPLES TAB -->
@@ -242,6 +248,11 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
         </tbody></table>
       </div>
     </div>
+
+    <!-- HISTORY TAB -->
+    <div class="tab-content" id="tab-history">
+      <div id="history-list"><div style="color:#8b949e;padding:8px 0">Loading…</div></div>
+    </div>
   </div>
 
   <div id="plan-tree" class="plan-tree"></div>
@@ -308,6 +319,31 @@ function switchTab(name) {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   event.target.classList.add('active');
   $('tab-' + name).classList.add('active');
+}
+
+async function loadHistory() {
+  const el = $('history-list');
+  try {
+    const entries = await api('/api/fuse/history');
+    if (!entries.length) { el.innerHTML = '<div style="color:#8b949e;padding:8px 0">No queries yet — run something first.</div>'; return; }
+    el.innerHTML = entries.map((e, i) => {
+      const t = new Date(e.timestamp * 1000).toLocaleTimeString();
+      const meta = e.error
+        ? `<span class="hist-err">✗ ${esc(e.error)}</span>`
+        : `<span>${e.row_count} rows</span><span>${e.latency_ms}ms</span>`;
+      return `<div class="hist-item" onclick="loadHistoryEntry(${i})">
+        <div class="hist-query">${esc(e.query)}</div>
+        <div class="hist-meta"><span>${t}</span><span class="example-badge badge-${e.format}">${e.format.toUpperCase()}</span>${meta}</div>
+      </div>`;
+    }).join('');
+    window._historyEntries = entries;
+  } catch(err) { el.innerHTML = '<div style="color:#f85149">Failed to load history</div>'; }
+}
+function loadHistoryEntry(i) {
+  const e = window._historyEntries[i];
+  $('editor').value = e.query;
+  $('format').value = e.format;
+  toggleHelp();
 }
 
 function loadExample(fmt, query) {
