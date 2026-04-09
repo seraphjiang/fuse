@@ -21,6 +21,8 @@ select,button{background:#21262d;color:#e1e4e8;border:1px solid #30363d;border-r
 select:hover,button:hover{border-color:#58a6ff}
 button.primary{background:#238636;border-color:#238636;font-weight:600}
 button.primary:hover{background:#2ea043}
+button.lucky{background:#6e40c9;border-color:#6e40c9;font-weight:600}
+button.lucky:hover{background:#8957e5}
 button:disabled{opacity:.5;cursor:not-allowed}
 textarea{width:100%;min-height:120px;background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:"SF Mono",Consolas,monospace;font-size:14px;resize:vertical;line-height:1.5}
 textarea:focus{outline:none;border-color:#58a6ff}
@@ -73,6 +75,7 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
     </select>
     <select id="datasource"><option value="">Loading…</option></select>
     <button class="primary" id="run-btn" onclick="runQuery()">▶ Run</button>
+    <button class="lucky" id="lucky-btn" onclick="feelingLucky()">🎲 Feeling Lucky</button>
     <button id="explain-btn" onclick="explainQuery()">Explain</button>
     <button id="validate-btn" onclick="validateQuery()">Validate</button>
     <button class="help-toggle" onclick="toggleHelp()">Examples &amp; Help ▾</button>
@@ -145,6 +148,34 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
 <script>
 const API = window.location.origin;
 const $ = id => document.getElementById(id);
+
+const LUCKY_POOL = [
+  {f:'sql', q:'SELECT service, status, message, trace_id FROM cluster_a.application_logs WHERE status >= 500 ORDER BY timestamp DESC LIMIT 20'},
+  {f:'sql', q:'SELECT service, count(*) as errors FROM cluster_a.application_logs WHERE status >= 500 GROUP BY service ORDER BY errors DESC'},
+  {f:'sql', q:'SELECT method, path, count(*) as hits FROM cluster_a.application_logs GROUP BY method, path ORDER BY hits DESC LIMIT 15'},
+  {f:'sql', q:'SELECT service, avg(response_time_ms) as avg_ms, max(response_time_ms) as max_ms FROM cluster_a.application_logs GROUP BY service ORDER BY avg_ms DESC'},
+  {f:'sql', q:'SELECT * FROM cluster_a.application_logs WHERE response_time_ms > 1000 ORDER BY response_time_ms DESC LIMIT 20'},
+  {f:'sql', q:"SELECT * FROM cluster_a.application_logs WHERE trace_id = 'trace-001'"},
+  {f:'sql', q:'SELECT status, count(*) as cnt FROM cluster_a.application_logs GROUP BY status ORDER BY cnt DESC'},
+  {f:'sql', q:'SELECT service, status, message FROM cluster_a.application_logs UNION ALL SELECT service, status, message FROM cluster_b.application_logs LIMIT 20'},
+  {f:'sql', q:'SELECT service, count(*) as total FROM cluster_b.application_logs WHERE status >= 400 GROUP BY service ORDER BY total DESC LIMIT 10'},
+  {f:'sql', q:'SELECT DISTINCT trace_id FROM cluster_a.application_logs WHERE status >= 500 LIMIT 10'},
+  {f:'ppl', q:'source = cluster_a.application_logs | where status >= 500 | head 20'},
+  {f:'ppl', q:'source = cluster_a.application_logs | stats count() by service | sort - count()'},
+  {f:'ppl', q:'source = cluster_a.application_logs | where response_time_ms > 1000 | sort - response_time_ms | head 10'},
+  {f:'ppl', q:'source = cluster_a.application_logs | stats count() by status | sort - count()'},
+  {f:'ppl', q:'source = cluster_a.application_logs, cluster_b.application_logs | where status >= 500 | stats count() by service | sort - count()'},
+  {f:'ppl', q:'source = cluster_b.application_logs | where method = "POST" | stats count() by path | sort - count() | head 10'},
+  {f:'ppl', q:'source = cluster_a.application_logs | stats avg(response_time_ms) as avg_ms by service | sort - avg_ms'},
+  {f:'ppl', q:'source = cluster_a.application_logs | where status >= 500 | stats count() by service, status | sort - count()'},
+];
+
+function feelingLucky() {
+  const pick = LUCKY_POOL[Math.floor(Math.random() * LUCKY_POOL.length)];
+  $('format').value = pick.f;
+  $('editor').value = pick.q;
+  runQuery();
+}
 
 async function api(path, opts) {
   const r = await fetch(API + path, opts);

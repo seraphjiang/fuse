@@ -73,3 +73,8 @@ Format: `[DONE] #NNN — <description>. Commit: <hash>. Tests: N → M.`
 - If working on a task for 30+ minutes, send a [HEARTBEAT] to sisyphus
 - Include: what's done, what's in progress, any blockers
 - This prevents duplicate work and lets sisyphus re-route if needed
+
+## Priority Rule (added Sprint 1)
+1. Check inbox FIRST — directed tasks from lead override everything
+2. Then self-assign from backlog
+3. P0 from lead > backlog self-assign > think-big picks
