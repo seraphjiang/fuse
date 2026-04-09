@@ -1769,3 +1769,29 @@ async fn test_non_distinct_union_keeps_all() {
     // Without DISTINCT, all 4 rows kept (2 per source + _datasource column makes them unique)
     assert!(rows.len() >= 4);
 }
+
+// ── OFFSET tests ──
+
+#[tokio::test]
+async fn test_limit_offset() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs LIMIT 2 OFFSET 1",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+}
+
+#[tokio::test]
+async fn test_offset_beyond_results() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs LIMIT 10 OFFSET 1000",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 0);
+}

@@ -311,9 +311,35 @@ pub async fn query_handler(
                 batches
             };
 
-            // Apply global LIMIT
-            let batches = if let Some(n) = limit {
-                fuse_engine::merge_batches(batches, Some(n)).unwrap_or_default()
+            // Apply global OFFSET + LIMIT
+            let offset = parse_offset(&query).unwrap_or(0);
+            let batches = if offset > 0 || limit.is_some() {
+                // Flatten, skip offset, take limit
+                let all_rows: Vec<_> = batches.iter()
+                    .flat_map(|b| (0..b.num_rows()).map(move |i| (b, i)))
+                    .skip(offset)
+                    .collect();
+                let take_n = limit.unwrap_or(all_rows.len());
+                let rows_to_take: Vec<_> = all_rows.into_iter().take(take_n).collect();
+                if rows_to_take.is_empty() || batches.is_empty() {
+                    vec![]
+                } else {
+                    // Rebuild batches from selected rows
+                    let schema = batches[0].schema();
+                    let mut result_cols: Vec<Vec<arrow::array::ArrayRef>> = (0..schema.fields().len()).map(|_| Vec::new()).collect();
+                    for (batch, row_idx) in &rows_to_take {
+                        for col_idx in 0..schema.fields().len() {
+                            result_cols[col_idx].push(batch.column(col_idx).slice(*row_idx, 1));
+                        }
+                    }
+                    let arrays: Vec<arrow::array::ArrayRef> = result_cols.into_iter()
+                        .map(|slices| {
+                            let refs: Vec<&dyn arrow::array::Array> = slices.iter().map(|a| a.as_ref()).collect();
+                            arrow::compute::concat(&refs).unwrap()
+                        })
+                        .collect();
+                    vec![arrow::record_batch::RecordBatch::try_new(schema, arrays).unwrap()]
+                }
             } else {
                 batches
             };
@@ -896,6 +922,17 @@ fn parse_limit(query: &str) -> Option<usize> {
     let lower = query.to_lowercase();
     let pos = lower.rfind("limit ")?;
     let after = query[pos + 6..].trim();
+    let num_str = after
+        .split(|c: char| !c.is_ascii_digit())
+        .next()?;
+    num_str.parse().ok()
+}
+
+/// Extract OFFSET value from query.
+fn parse_offset(query: &str) -> Option<usize> {
+    let lower = query.to_lowercase();
+    let pos = lower.rfind("offset ")?;
+    let after = query[pos + 7..].trim();
     let num_str = after
         .split(|c: char| !c.is_ascii_digit())
         .next()?;
