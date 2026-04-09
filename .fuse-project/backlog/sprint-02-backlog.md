@@ -59,7 +59,7 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 250 | Structured logging (tracing-subscriber JSON) | infra | todo | Currently text logs |
-| 251 | Metrics endpoint (Prometheus /metrics) | infra | todo | For monitoring integration |
+| 251 | Metrics endpoint (Prometheus /metrics) | explorer | done | 4 metrics: queries_total, duration_ms, active_queries, connector_healthy. Commit: 7448bde. 3 tests |
 | 252 | Distributed tracing (OpenTelemetry) | infra | todo | Trace across connectors |
 | 253 | Graceful shutdown (drain in-flight queries) | explorer | done | SIGTERM/SIGINT → drain 10s → cancel_all. Commit: 7ae3d5d. 2 tests |
 

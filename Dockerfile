@@ -12,6 +12,7 @@ COPY --from=builder /usr/src/fuse/target/release/fuse-server /usr/local/bin/fuse
 COPY --from=builder /usr/src/fuse/fuse.toml /etc/fuse/fuse.toml
 
 ENV FUSE_CONFIG=/etc/fuse/fuse.toml
+ENV FUSE_LOG_FORMAT=json
 EXPOSE 9400
 
 ENTRYPOINT ["/usr/local/bin/fuse-server"]
