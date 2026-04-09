@@ -7,15 +7,19 @@ use async_trait::async_trait;
 use datafusion::error::{DataFusionError, Result};
 use datafusion::execution::context::SessionContext;
 use datafusion::physical_plan::{PhysicalExpr, SendableRecordBatchStream};
+use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
 use datafusion::sql::unparser::dialect::{DefaultDialect, Dialect};
 use datafusion_federation::sql::{
     RemoteTable, RemoteTableRef, SQLExecutor, SQLFederationProvider, SQLTableSource,
 };
 use datafusion_federation::FederatedTableProviderAdaptor;
+use futures::StreamExt;
 use tracing::info;
 
 use fuse_core::connector::FederatedConnector;
 use fuse_core::ConnectorRegistry;
+
+use crate::sql_to_subquery;
 
 /// The main Fuse engine. Holds a DataFusion `SessionContext` configured with
 /// federation optimizer rules and a registry of connectors.
@@ -79,19 +83,36 @@ impl FuseEngine {
         Ok(Self { ctx, registry })
     }
 
-    /// Execute a SQL query, returning collected RecordBatches.
+    /// Execute a query (SQL or PPL), returning collected RecordBatches.
+    ///
+    /// Detects PPL by checking if the input starts with `source` or `search`.
+    /// PPL queries are translated to SQL before execution.
     pub async fn execute(
         &self,
-        sql: &str,
+        query: &str,
     ) -> Result<Vec<arrow::record_batch::RecordBatch>> {
-        let df = self.ctx.sql(sql).await?;
+        let sql = self.resolve_query(query)?;
+        let df = self.ctx.sql(&sql).await?;
         df.collect().await
     }
 
-    /// Execute a SQL query, returning a stream of RecordBatches.
-    pub async fn execute_stream(&self, sql: &str) -> Result<SendableRecordBatchStream> {
-        let df = self.ctx.sql(sql).await?;
+    /// Execute a query (SQL or PPL), returning a stream of RecordBatches.
+    pub async fn execute_stream(&self, query: &str) -> Result<SendableRecordBatchStream> {
+        let sql = self.resolve_query(query)?;
+        let df = self.ctx.sql(&sql).await?;
         df.execute_stream().await
+    }
+
+    /// If the input is PPL, translate to SQL. Otherwise pass through as-is.
+    fn resolve_query(&self, query: &str) -> Result<String> {
+        if crate::ppl::is_ppl(query) {
+            let parsed = crate::ppl::parse_ppl(query)?;
+            let sql = crate::ppl::ppl_to_sql(&parsed)?;
+            tracing::debug!(ppl = query, sql = sql.as_str(), "PPL translated to SQL");
+            Ok(sql)
+        } else {
+            Ok(query.to_string())
+        }
     }
 
     /// Get a reference to the underlying SessionContext.
@@ -144,16 +165,32 @@ impl SQLExecutor for FuseExecutor {
 
     fn execute(
         &self,
-        _query: &str,
-        _schema: SchemaRef,
+        query: &str,
+        schema: SchemaRef,
         _filters: &[Arc<dyn PhysicalExpr>],
     ) -> Result<SendableRecordBatchStream> {
-        // TODO(phase1): Wire to connector.execute() by translating the SQL
-        // string into a SubQuery and streaming results back via a channel.
-        Err(DataFusionError::NotImplemented(format!(
-            "FuseExecutor::execute not yet wired for connector '{}'",
-            self.datasource_name
-        )))
+        let connector = self.connector.clone();
+        let query_str = query.to_string();
+
+        let stream = futures::stream::once(async move {
+            let sub_query = sql_to_subquery::sql_to_subquery(&query_str)
+                .map_err(|e| DataFusionError::External(Box::new(e)))?;
+
+            let batches = connector
+                .execute(&sub_query)
+                .await
+                .map_err(|e| DataFusionError::External(Box::new(e)))?;
+
+            Ok(batches)
+        })
+        .flat_map(|result| match result {
+            Ok(batches) => {
+                futures::stream::iter(batches.into_iter().map(Ok).collect::<Vec<_>>())
+            }
+            Err(e) => futures::stream::iter(vec![Err(e)]),
+        });
+
+        Ok(Box::pin(RecordBatchStreamAdapter::new(schema, stream)))
     }
 
     async fn table_names(&self) -> Result<Vec<String>> {

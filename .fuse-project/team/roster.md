@@ -8,6 +8,7 @@
 | planner | Engine Architect | fuse-engine | Rust, DataFusion, query planning, optimization |
 | explorer | Researcher / API Dev | fuse-server | Ecosystem research, REST API design, axum |
 | general | Core / Connector Dev | fuse-core, fuse-connector-opensearch | Rust traits, OpenSearch, type systems |
+| infra | Infrastructure / DevOps | Dockerfile, CI/CD, AWS | AWS, Docker, CodePipeline, ECS, ALB |
 
 ## Communication Protocol
 
