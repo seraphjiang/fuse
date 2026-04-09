@@ -251,6 +251,7 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
     <span id="meta-rows"></span>
     <span id="meta-cols"></span>
     <span id="meta-time"></span>
+    <button id="csv-btn" onclick="downloadCSV()" style="display:none;margin-left:auto;padding:3px 10px;font-size:12px">⬇ CSV</button>
   </div>
   <div class="provenance" id="provenance"></div>
   <div class="results" id="results"><div class="empty">Run a query to see results — or open <strong>Examples &amp; Help</strong> above</div></div>
@@ -259,6 +260,7 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
 <script>
 const API = window.location.origin;
 const $ = id => document.getElementById(id);
+let lastColumns = [], lastRows = [];
 
 const LUCKY_POOL = [
   {f:'sql', q:'SELECT service, status, message, trace_id FROM cluster_a.application_logs WHERE status >= 500 ORDER BY timestamp DESC LIMIT 20'},
@@ -343,6 +345,7 @@ function clearOutput() {
   $('error-box').style.display = 'none';
   $('plan-box').style.display = 'none';
   $('meta').style.display = 'none';
+  $('csv-btn').style.display = 'none';
   $('provenance').classList.remove('visible');
   $('plan-tree').classList.remove('visible');
 }
@@ -365,6 +368,9 @@ function dsColor(name) {
 }
 
 function renderTable(columns, rows) {
+  lastColumns = columns;
+  lastRows = rows;
+  $('csv-btn').style.display = columns.length ? 'inline-block' : 'none';
   if (!columns.length) {
     $('results').innerHTML = '<div class="empty">No results</div>';
     return;
@@ -403,6 +409,18 @@ function renderTable(columns, rows) {
   } else {
     $('provenance').classList.remove('visible');
   }
+}
+
+function downloadCSV() {
+  const escape = v => { const s = String(v ?? ''); return s.includes(',') || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const lines = [lastColumns.map(escape).join(',')];
+  lastRows.forEach(row => lines.push(row.map(escape).join(',')));
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'fuse-results.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 function renderProvenance(res) {
