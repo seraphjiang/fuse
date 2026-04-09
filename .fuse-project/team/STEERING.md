@@ -78,3 +78,44 @@ Format: `[DONE] #NNN — <description>. Commit: <hash>. Tests: N → M.`
 1. Check inbox FIRST — directed tasks from lead override everything
 2. Then self-assign from backlog
 3. P0 from lead > backlog self-assign > think-big picks
+
+---
+
+## Sprint 1 Retro Additions (Rules 10-14)
+
+## Rule 10: Check Inbox Before EVERY Self-Assign
+Before picking up new work:
+1. Check inbox for PM directives or P0/P1 overrides
+2. If an override exists, drop current self-assignment immediately
+3. Acknowledge receipt: `[ACK] Dropping X, starting Y per PM directive`
+4. Failure to check inbox = performance downgrade
+
+## Rule 11: File Ownership During Active Work
+- Announce when editing shared files: `[WORKING] api.rs`
+- Other agents MUST NOT edit that file until `[DONE]` or `[RELEASED]`
+- Shared files (Cargo.toml, main.rs, api.rs) require coordination via sisyphus
+- If you need to edit a file another agent owns, ask sisyphus first
+
+## Rule 12: Single Owner Per Artifact
+| Artifact | Owner |
+|----------|-------|
+| OpenAPI spec | explorer |
+| fuse.toml | infra |
+| playground/index.html | explorer (UI), general (features — coordinate) |
+| STEERING.md | PM |
+| backlog.md | PM |
+| docs-site/ | explorer |
+| DEPLOYMENT.md | infra |
+
+Don't update artifacts you don't own. If you see a gap, tell the owner.
+
+## Rule 13: Coverage Target, Not Coverage Sweep
+- Test all public functions with non-trivial logic
+- SKIP: Display impls, trivial getters, derive-generated code, simple constructors
+- When PM says "coverage complete, shift to features" — obey immediately
+- Max 30 min on coverage sweeps before checking in with PM
+
+## Rule 14: Sprint Backlog Required
+- Agents self-assign FROM the backlog only
+- Ad-hoc features (not in backlog) require PM approval
+- If backlog is empty, ask PM for Sprint N+1 items — don't freelance
