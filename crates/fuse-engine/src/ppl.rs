@@ -50,6 +50,10 @@ pub enum PplCommand {
         names: Vec<String>,
     },
     Dedup(Vec<String>),
+    /// eval field1 = expr1, field2 = expr2
+    Eval(Vec<EvalExpr>),
+    /// rename old_name AS new_name, ...
+    Rename(Vec<RenameExpr>),
 }
 
 #[derive(Debug, Clone)]
@@ -63,6 +67,18 @@ pub struct StatsAgg {
 pub struct SortField {
     pub field: String,
     pub descending: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct EvalExpr {
+    pub alias: String,
+    pub expr: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct RenameExpr {
+    pub old_name: String,
+    pub new_name: String,
 }
 
 /// Returns true if the input looks like a PPL query (starts with `source` or `search`).
@@ -113,7 +129,24 @@ pub fn ppl_to_sql(query: &PplQuery) -> Result<String, PplParseError> {
     let final_select = if let Some(ref ss) = stats_select {
         ss.clone()
     } else {
-        select_clause
+        let mut sel = select_clause;
+        // Append eval expressions as computed columns
+        for cmd in &query.commands {
+            if let PplCommand::Eval(exprs) = cmd {
+                for e in exprs {
+                    sel.push_str(&format!(", {} AS {}", e.expr, e.alias));
+                }
+            }
+        }
+        // Apply rename: wrap in outer SELECT with aliases
+        let renames = find_renames(&query.commands);
+        if !renames.is_empty() {
+            // Rewrite column references: old_name → old_name AS new_name
+            for r in &renames {
+                sel = sel.replace(&r.old_name, &format!("{} AS {}", r.old_name, r.new_name));
+            }
+        }
+        sel
     };
 
     // Build per-source SELECT statements
@@ -205,6 +238,8 @@ fn parse_command(input: &str) -> Result<PplCommand, PplParseError> {
         "head" => parse_head(rest),
         "fields" => parse_fields(rest),
         "dedup" => parse_dedup(rest),
+        "eval" => parse_eval(rest),
+        "rename" => parse_rename(rest),
         other => Err(PplParseError(format!("Unknown command: '{}'", other))),
     }
 }
@@ -320,6 +355,41 @@ fn parse_dedup(input: &str) -> Result<PplCommand, PplParseError> {
     Ok(PplCommand::Dedup(fields))
 }
 
+/// Parse `eval field1 = expr1, field2 = expr2`
+fn parse_eval(input: &str) -> Result<PplCommand, PplParseError> {
+    let mut exprs = Vec::new();
+    for part in input.split(',') {
+        let part = part.trim();
+        let eq_pos = part.find('=')
+            .ok_or_else(|| PplParseError(format!("eval expression missing '=': '{}'", part)))?;
+        let alias = part[..eq_pos].trim().to_string();
+        let expr = part[eq_pos + 1..].trim().to_string();
+        if alias.is_empty() || expr.is_empty() {
+            return Err(PplParseError(format!("eval expression incomplete: '{}'", part)));
+        }
+        exprs.push(EvalExpr { alias, expr });
+    }
+    Ok(PplCommand::Eval(exprs))
+}
+
+/// Parse `rename old_name AS new_name, ...`
+fn parse_rename(input: &str) -> Result<PplCommand, PplParseError> {
+    let mut renames = Vec::new();
+    for part in input.split(',') {
+        let part = part.trim();
+        let lower = part.to_lowercase();
+        let as_pos = lower.find(" as ")
+            .ok_or_else(|| PplParseError(format!("rename missing 'AS': '{}'", part)))?;
+        let old_name = part[..as_pos].trim().to_string();
+        let new_name = part[as_pos + 4..].trim().to_string();
+        if old_name.is_empty() || new_name.is_empty() {
+            return Err(PplParseError(format!("rename incomplete: '{}'", part)));
+        }
+        renames.push(RenameExpr { old_name, new_name });
+    }
+    Ok(PplCommand::Rename(renames))
+}
+
 // ── SQL generation helpers ──
 
 fn find_projection(commands: &[PplCommand]) -> Option<String> {
@@ -333,6 +403,12 @@ fn find_projection(commands: &[PplCommand]) -> Option<String> {
         }
     }
     None
+}
+
+fn find_renames(commands: &[PplCommand]) -> Vec<RenameExpr> {
+    commands.iter().filter_map(|cmd| {
+        if let PplCommand::Rename(renames) = cmd { Some(renames.clone()) } else { None }
+    }).flatten().collect()
 }
 
 fn find_where(commands: &[PplCommand]) -> Option<String> {
@@ -571,5 +647,77 @@ mod tests {
     fn test_parse_error_empty_source() {
         let err = parse_ppl("source = ");
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn test_eval_command() {
+        let q = parse_ppl("source = logs | eval duration_sec = duration / 1000").unwrap();
+        assert_eq!(q.commands.len(), 1);
+        if let PplCommand::Eval(exprs) = &q.commands[0] {
+            assert_eq!(exprs[0].alias, "duration_sec");
+            assert_eq!(exprs[0].expr, "duration / 1000");
+        } else {
+            panic!("expected Eval");
+        }
+    }
+
+    #[test]
+    fn test_eval_to_sql() {
+        let q = parse_ppl("source = logs | eval rate = count / total").unwrap();
+        let sql = ppl_to_sql(&q).unwrap();
+        assert!(sql.contains("count / total AS rate"));
+    }
+
+    #[test]
+    fn test_eval_multiple() {
+        let q = parse_ppl("source = logs | eval a = x + 1, b = y * 2").unwrap();
+        if let PplCommand::Eval(exprs) = &q.commands[0] {
+            assert_eq!(exprs.len(), 2);
+            assert_eq!(exprs[0].alias, "a");
+            assert_eq!(exprs[1].alias, "b");
+        } else {
+            panic!("expected Eval");
+        }
+    }
+
+    #[test]
+    fn test_rename_command() {
+        let q = parse_ppl("source = logs | rename host AS hostname").unwrap();
+        assert_eq!(q.commands.len(), 1);
+        if let PplCommand::Rename(renames) = &q.commands[0] {
+            assert_eq!(renames[0].old_name, "host");
+            assert_eq!(renames[0].new_name, "hostname");
+        } else {
+            panic!("expected Rename");
+        }
+    }
+
+    #[test]
+    fn test_rename_to_sql() {
+        let q = parse_ppl("source = logs | fields host, status | rename host AS hostname").unwrap();
+        let sql = ppl_to_sql(&q).unwrap();
+        assert!(sql.contains("AS hostname"));
+    }
+
+    #[test]
+    fn test_rename_multiple() {
+        let q = parse_ppl("source = logs | rename host AS hostname, status AS code").unwrap();
+        if let PplCommand::Rename(renames) = &q.commands[0] {
+            assert_eq!(renames.len(), 2);
+        } else {
+            panic!("expected Rename");
+        }
+    }
+
+    #[test]
+    fn test_eval_error_missing_eq() {
+        let q = parse_ppl("source = logs | eval bad_expr");
+        assert!(q.is_err());
+    }
+
+    #[test]
+    fn test_rename_error_missing_as() {
+        let q = parse_ppl("source = logs | rename host hostname");
+        assert!(q.is_err());
     }
 }
