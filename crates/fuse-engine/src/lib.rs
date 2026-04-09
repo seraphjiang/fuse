@@ -13,6 +13,7 @@ pub mod join;
 pub mod materialized;
 mod merger;
 mod optimizer;
+pub mod plan;
 pub mod ppl;
 mod planner;
 pub mod spark;
