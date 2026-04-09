@@ -37,30 +37,54 @@ Dashboards → Fuse Server (REST API)
 
 ## What's Working Today
 
-- **Same-type federation**: Query across 2+ OpenSearch clusters in one statement
-- **Cross-type federation**: Query OpenSearch + S3 (gzipped NDJSON) together
+- **Same-type federation**: Query across 2+ OpenSearch clusters (including AOSS with SigV4)
+- **Cross-type federation**: Query OpenSearch + S3 (gzipped NDJSON) with JOINs
 - **SQL and PPL support**: Both query languages, translated through DataFusion
 - **7 REST API endpoints**: query, explain, validate, health, datasources, schemas, fields
 - **Query result caching**: Per-connector TTL (OS: 30s, S3: 5min)
-- **Live playground**: Web UI with clickable examples, served from the binary
+- **Materialized views**: Pre-computed query results with scheduled refresh
+- **RBAC**: Role-based access control and field-level security
+- **Live playground**: Web UI with clickable examples and "🎲 Feeling Lucky" button
+- **4 connectors**: OpenSearch (SigV4/AOSS), S3/Parquet, S3 O11y (NDJSON), Prometheus
 
-### Example: Multi-cluster search (PPL)
+### Example: Multi-cluster error analysis (SQL)
+
+```sql
+SELECT service, count(*) as errors
+FROM cluster_a.application_logs
+WHERE status >= 500
+GROUP BY service
+ORDER BY errors DESC
+```
+
+### Example: Cross-cluster search (PPL)
 
 ```
-source = prod_cluster.logs, staging_cluster.logs
+source = cluster_a.application_logs, cluster_b.application_logs
 | where status >= 500
 | stats count() by service
-| sort - count
+| sort - count()
 | head 20
 ```
 
-### Example: Cross-source query (SQL)
+### Example: Cross-source JOIN (OpenSearch + S3)
 
 ```sql
-SELECT l.trace_id, l.message, s.level
-FROM opensearch_prod.application_logs l
-JOIN s3_archive.fuse_logs s ON l.trace_id = s.trace_id
+SELECT l.trace_id, l.service, l.status, s.level, s.message
+FROM cluster_a.application_logs l
+JOIN s3_o11y.fuse_logs s ON l.trace_id = s.trace_id
 WHERE l.status >= 500
+```
+
+### Example: Federated UNION ALL
+
+```sql
+SELECT service, status, message
+FROM cluster_a.application_logs
+UNION ALL
+SELECT service, status, message
+FROM cluster_b.application_logs
+LIMIT 20
 ```
 
 ## Architecture
