@@ -211,6 +211,33 @@ fn translate_expr(expr: &SqlExpr) -> Option<FilterExpr> {
             }
         }
         SqlExpr::Nested(inner) => translate_expr(inner),
+        SqlExpr::Between {
+            expr,
+            low,
+            high,
+            negated,
+        } => {
+            let field = expr_to_column_name(expr)?;
+            let low_val = sql_expr_to_scalar(low)?;
+            let high_val = sql_expr_to_scalar(high)?;
+            let between = FilterExpr::And(
+                Box::new(FilterExpr::Comparison {
+                    field: field.clone(),
+                    op: ComparisonOp::Gte,
+                    value: low_val,
+                }),
+                Box::new(FilterExpr::Comparison {
+                    field,
+                    op: ComparisonOp::Lte,
+                    value: high_val,
+                }),
+            );
+            if *negated {
+                Some(FilterExpr::Not(Box::new(between)))
+            } else {
+                Some(between)
+            }
+        }
         _ => None,
     }
 }
@@ -465,5 +492,35 @@ mod tests {
     #[test]
     fn test_invalid_sql_fails() {
         assert!(sql_to_subquery("NOT VALID SQL AT ALL").is_err());
+    }
+
+    #[test]
+    fn test_between() {
+        let sq = sql_to_subquery("SELECT * FROM logs WHERE ts BETWEEN '2024-01-01' AND '2024-12-31'").unwrap();
+        let f = sq.filter.unwrap();
+        // BETWEEN translates to AND(>=, <=)
+        if let FilterExpr::And(left, right) = f {
+            if let FilterExpr::Comparison { field, op, .. } = *left {
+                assert_eq!(field, "ts");
+                assert!(matches!(op, ComparisonOp::Gte));
+            } else {
+                panic!("expected Comparison");
+            }
+            if let FilterExpr::Comparison { field, op, .. } = *right {
+                assert_eq!(field, "ts");
+                assert!(matches!(op, ComparisonOp::Lte));
+            } else {
+                panic!("expected Comparison");
+            }
+        } else {
+            panic!("expected And");
+        }
+    }
+
+    #[test]
+    fn test_not_between() {
+        let sq = sql_to_subquery("SELECT * FROM logs WHERE status NOT BETWEEN 400 AND 499").unwrap();
+        let f = sq.filter.unwrap();
+        assert!(matches!(f, FilterExpr::Not(_)));
     }
 }
