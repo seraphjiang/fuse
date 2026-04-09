@@ -207,3 +207,137 @@ impl SQLExecutor for FuseExecutor {
             .map_err(|e| DataFusionError::External(Box::new(e)))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrow::array::{Int64Array, StringArray};
+    use arrow::datatypes::{DataType, Field, Schema};
+    use arrow::record_batch::RecordBatch;
+    use fuse_core::connector::*;
+    use fuse_core::error::ConnectorError;
+    use tokio::sync::mpsc;
+
+    #[derive(Debug)]
+    struct MockConn {
+        name: String,
+    }
+
+    impl MockConn {
+        fn new(name: &str) -> Self {
+            Self { name: name.into() }
+        }
+        fn schema() -> Schema {
+            Schema::new(vec![
+                Field::new("host", DataType::Utf8, false),
+                Field::new("status", DataType::Int64, false),
+            ])
+        }
+    }
+
+    #[async_trait]
+    impl FederatedConnector for MockConn {
+        fn id(&self) -> &str { &self.name }
+        fn connector_type(&self) -> &str { "mock" }
+        fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+        async fn health_check(&self) -> ConnectorHealth {
+            ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(1), message: None }
+        }
+        async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
+            Ok(vec![SchemaInfo { name: "logs".into(), schema_type: SchemaType::Index, estimated_row_count: Some(10) }])
+        }
+        async fn get_schema(&self, _: &str) -> Result<Schema, ConnectorError> {
+            Ok(Self::schema())
+        }
+        async fn execute(&self, _: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
+            let schema = Arc::new(Self::schema());
+            Ok(vec![RecordBatch::try_new(schema, vec![
+                Arc::new(StringArray::from(vec!["h1", "h2"])),
+                Arc::new(Int64Array::from(vec![200, 500])),
+            ]).map_err(ConnectorError::query)?])
+        }
+        async fn execute_streaming(
+            &self, q: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+        ) -> Result<(), ConnectorError> {
+            for b in self.execute(q).await? { tx.send(Ok(b)).await.map_err(|_| ConnectorError::ChannelClosed)?; }
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_engine_resolve_ppl() {
+        let reg = ConnectorRegistry::new();
+        // Use FuseEngine just for resolve_query — bypass table registration
+        // by testing the method directly
+        let engine = FuseEngine {
+            ctx: SessionContext::new_with_state(datafusion_federation::default_session_state()),
+            registry: Arc::new(reg),
+        };
+        let sql = engine.resolve_query("source logs | where status = 200").unwrap();
+        assert!(sql.to_lowercase().contains("select"));
+        assert!(sql.to_lowercase().contains("where"));
+    }
+
+    #[tokio::test]
+    async fn test_engine_resolve_sql_passthrough() {
+        let reg = ConnectorRegistry::new();
+        let engine = FuseEngine {
+            ctx: SessionContext::new_with_state(datafusion_federation::default_session_state()),
+            registry: Arc::new(reg),
+        };
+        let sql = engine.resolve_query("SELECT * FROM logs").unwrap();
+        assert_eq!(sql, "SELECT * FROM logs");
+    }
+
+    #[tokio::test]
+    async fn test_engine_resolve_ppl_with_stats() {
+        let reg = ConnectorRegistry::new();
+        let engine = FuseEngine {
+            ctx: SessionContext::new_with_state(datafusion_federation::default_session_state()),
+            registry: Arc::new(reg),
+        };
+        let sql = engine.resolve_query("source logs | stats count() by host").unwrap();
+        assert!(sql.to_lowercase().contains("count"));
+        assert!(sql.to_lowercase().contains("group by"));
+    }
+
+    #[tokio::test]
+    async fn test_engine_accessors() {
+        let reg = ConnectorRegistry::new();
+        reg.register(Arc::new(MockConn::new("ds1"))).unwrap();
+        let engine = FuseEngine {
+            ctx: SessionContext::new_with_state(datafusion_federation::default_session_state()),
+            registry: Arc::new(reg),
+        };
+        assert!(engine.registry().get("ds1").is_some());
+        assert!(engine.registry().get("nope").is_none());
+        let _ = engine.session_context();
+    }
+
+    #[test]
+    fn test_executor_metadata() {
+        let conn: Arc<dyn FederatedConnector> = Arc::new(MockConn::new("myds"));
+        let exec = FuseExecutor::new("myds".into(), conn);
+        assert_eq!(exec.name(), "mock");
+        assert_eq!(exec.compute_context(), Some("myds".to_string()));
+        // dialect is DefaultDialect
+        let _ = exec.dialect();
+    }
+
+    #[tokio::test]
+    async fn test_executor_table_names() {
+        let conn: Arc<dyn FederatedConnector> = Arc::new(MockConn::new("myds"));
+        let exec = FuseExecutor::new("myds".into(), conn);
+        let names = exec.table_names().await.unwrap();
+        assert_eq!(names, vec!["logs"]);
+    }
+
+    #[tokio::test]
+    async fn test_executor_get_table_schema() {
+        let conn: Arc<dyn FederatedConnector> = Arc::new(MockConn::new("myds"));
+        let exec = FuseExecutor::new("myds".into(), conn);
+        let schema = exec.get_table_schema("logs").await.unwrap();
+        assert_eq!(schema.fields().len(), 2);
+        assert_eq!(schema.field(0).name(), "host");
+    }
+}

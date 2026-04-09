@@ -20,6 +20,10 @@ pub struct EngineConfig {
     pub max_concurrent_queries: usize,
     #[serde(default = "default_timeout")]
     pub default_timeout: String,
+    #[serde(default = "default_rate_limit_global")]
+    pub rate_limit_global: u32,
+    #[serde(default = "default_rate_limit_per_ip")]
+    pub rate_limit_per_ip: u32,
 }
 
 fn default_bind() -> String {
@@ -30,6 +34,12 @@ fn default_max_concurrent() -> usize {
 }
 fn default_timeout() -> String {
     "30s".to_string()
+}
+fn default_rate_limit_global() -> u32 {
+    1000
+}
+fn default_rate_limit_per_ip() -> u32 {
+    100
 }
 
 /// Configuration for a single connector instance, loaded from [[connector]] in fuse.toml.
@@ -112,5 +122,25 @@ bucket = "my-bucket"
     fn test_from_file_missing() {
         let result = FuseConfig::from_file("/nonexistent/path.toml");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_rate_limit_defaults() {
+        let toml = r#"[engine]"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.engine.rate_limit_global, 1000);
+        assert_eq!(cfg.engine.rate_limit_per_ip, 100);
+    }
+
+    #[test]
+    fn test_rate_limit_configurable() {
+        let toml = r#"
+[engine]
+rate_limit_global = 500
+rate_limit_per_ip = 50
+"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.engine.rate_limit_global, 500);
+        assert_eq!(cfg.engine.rate_limit_per_ip, 50);
     }
 }

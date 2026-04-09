@@ -132,4 +132,27 @@ mod tests {
         assert!(!result.is_usable());
         assert!(matches!(result, Compatibility::Incompatible { .. }));
     }
+
+    #[test]
+    fn test_compatible_is_usable() {
+        assert!(Compatibility::Compatible.is_usable());
+    }
+
+    #[test]
+    fn test_incompatible_not_usable() {
+        assert!(!Compatibility::Incompatible { reason: "test".into() }.is_usable());
+    }
+
+    #[test]
+    fn test_display() {
+        assert_eq!(ConnectorVersion::new(1, 2, 3).to_string(), "1.2.3");
+    }
+
+    #[test]
+    fn test_below_minimum_incompatible() {
+        // Engine at 1.0.0, minimum 1.0.0 — connector at 0.9.0 is incompatible
+        let n = VersionNegotiator::new();
+        let result = n.check(&ConnectorVersion::new(0, 9, 0));
+        assert!(!result.is_usable());
+    }
 }

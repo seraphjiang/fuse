@@ -29,6 +29,8 @@ async fn main() -> anyhow::Result<()> {
                 bind: "0.0.0.0:9400".to_string(),
                 max_concurrent_queries: 64,
                 default_timeout: "30s".to_string(),
+                rate_limit_global: 1000,
+                rate_limit_per_ip: 100,
             },
             connector: vec![],
         }
@@ -73,8 +75,12 @@ async fn main() -> anyhow::Result<()> {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
     });
 
-    // Build router
-    let app = fuse_server::build_router(state);
+    // Build router with rate limits from config
+    let rl = fuse_server::rate_limit::RateLimitState::new(
+        config.engine.rate_limit_global,
+        config.engine.rate_limit_per_ip,
+    );
+    let app = fuse_server::build_router_with_limits(state, rl);
 
     let bind = &config.engine.bind;
     let listener = tokio::net::TcpListener::bind(bind).await?;
