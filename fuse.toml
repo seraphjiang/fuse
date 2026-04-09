@@ -5,6 +5,9 @@
 bind = "0.0.0.0:9400"
 max_concurrent_queries = 64
 default_timeout = "30s"
+# Rate limiting (requests per minute). Set to 0 to disable.
+rate_limit_global = 1000
+rate_limit_per_ip = 100
 
 # ── OpenSearch Serverless Connectors (us-west-2) ──
 

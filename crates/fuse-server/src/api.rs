@@ -28,6 +28,7 @@ struct FederatedResult {
     batches: Vec<arrow::record_batch::RecordBatch>,
     stats: Option<std::collections::HashMap<String, DatasourceStat>>,
     datasources: Vec<String>,
+    profile_nodes: Vec<ProfileNode>,
 }
 
 // ── Request / Response types ──
@@ -37,6 +38,8 @@ pub struct QueryRequest {
     pub query: String,
     #[serde(default = "default_format")]
     pub format: String,
+    #[serde(default)]
+    pub analyze: bool,
 }
 
 fn default_format() -> String {
@@ -48,6 +51,8 @@ pub struct QueryResponse {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<serde_json::Value>>,
     pub metadata: QueryMetadata,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_profile: Option<ExecutionProfile>,
 }
 
 #[derive(Serialize)]
@@ -64,6 +69,27 @@ pub struct QueryMetadata {
 pub struct DatasourceStat {
     pub rows: u64,
     pub latency_ms: u64,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ExecutionProfile {
+    pub total_ms: u64,
+    pub nodes: Vec<ProfileNode>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ProfileNode {
+    pub op: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub datasource: Option<String>,
+    pub actual_rows: u64,
+    pub actual_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub pushdown: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub children: Vec<ProfileNode>,
 }
 
 #[derive(Serialize)]

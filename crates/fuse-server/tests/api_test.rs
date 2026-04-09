@@ -995,3 +995,72 @@ async fn test_history_max_50_entries() {
     // newest first
     assert_eq!(h.list()[0].query, "SELECT 59");
 }
+
+// ── Rate limit integration tests ──
+
+fn build_rate_limited_app(global_rpm: u32, per_ip_rpm: u32) -> axum::Router {
+    let registry = ConnectorRegistry::new();
+    registry.register(Arc::new(MockConnector::new("testds"))).unwrap();
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(fuse_server::history::QueryHistory::new()),
+    });
+    fuse_server::build_router_with_limits(
+        state,
+        fuse_server::rate_limit::RateLimitState::new(global_rpm, per_ip_rpm),
+    )
+}
+
+#[tokio::test]
+async fn test_rate_limit_allows_first_request() {
+    let app = build_rate_limited_app(100, 10);
+    let resp = app
+        .oneshot(Request::builder().uri("/api/fuse/health").body(Body::empty()).unwrap())
+        .await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_global_rate_limit_returns_429() {
+    let app = build_rate_limited_app(1, 100); // 1 global req/min
+    // First request OK
+    let r1 = app.clone()
+        .oneshot(Request::builder().uri("/api/fuse/health").body(Body::empty()).unwrap())
+        .await.unwrap();
+    assert_eq!(r1.status(), StatusCode::OK);
+    // Second request → 429
+    let r2 = app
+        .oneshot(Request::builder().uri("/api/fuse/health").body(Body::empty()).unwrap())
+        .await.unwrap();
+    assert_eq!(r2.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(r2.headers().get("Retry-After").unwrap(), "60");
+}
+
+#[tokio::test]
+async fn test_per_ip_rate_limit_returns_429() {
+    let app = build_rate_limited_app(1000, 1); // 1 per-IP req/min
+    let make_req = || {
+        Request::builder()
+            .uri("/api/fuse/health")
+            .header("x-forwarded-for", "1.2.3.4")
+            .body(Body::empty())
+            .unwrap()
+    };
+    let r1 = app.clone().oneshot(make_req()).await.unwrap();
+    assert_eq!(r1.status(), StatusCode::OK);
+    let r2 = app.oneshot(make_req()).await.unwrap();
+    assert_eq!(r2.status(), StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn test_rate_limit_response_body() {
+    let app = build_rate_limited_app(1, 100);
+    app.clone().oneshot(Request::builder().uri("/api/fuse/health").body(Body::empty()).unwrap()).await.unwrap();
+    let r = app.oneshot(Request::builder().uri("/api/fuse/health").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(r.status(), StatusCode::TOO_MANY_REQUESTS);
+    let body = axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(json["error"].as_str().unwrap().contains("rate limit"));
+}
