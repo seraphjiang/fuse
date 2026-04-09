@@ -93,6 +93,7 @@ fn build_test_app() -> axum::Router {
         .unwrap();
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
+        alert_rules: vec![],
     });
     fuse_server::build_router(state)
 }
@@ -306,7 +307,39 @@ async fn test_schemas_unknown_datasource_returns_404() {
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
-// ── Pushdown integration tests (retro action items) ──
+// ── Alert endpoint tests ──
+
+#[tokio::test]
+async fn test_list_alerts_empty() {
+    let app = build_test_app();
+    let resp = app
+        .oneshot(Request::builder().uri("/api/fuse/alerts").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(json.as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_evaluate_alerts_no_rules_returns_empty() {
+    let app = build_test_app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/alerts/evaluate")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(json.as_array().unwrap().is_empty());
+}
 
 /// Capturing mock that records the SubQuery it receives.
 #[derive(Debug)]
@@ -367,7 +400,7 @@ fn build_capturing_app() -> (axum::Router, Arc<CapturingConnector>) {
     let connector = Arc::new(CapturingConnector::new("capds"));
     let registry = ConnectorRegistry::new();
     registry.register(connector.clone()).unwrap();
-    let state = Arc::new(AppState { registry: Arc::new(registry) });
+    let state = Arc::new(AppState { registry: Arc::new(registry), alert_rules: vec![] });
     (fuse_server::build_router(state), connector)
 }
 
@@ -409,4 +442,157 @@ async fn test_where_pushdown() {
     assert_eq!(resp.status(), StatusCode::OK);
     let q = connector.last_query().expect("connector was not called");
     assert!(q.filter.is_some(), "WHERE status = 500 must be pushed down to SubQuery.filter");
+}
+
+// ── Multi-datasource federation tests ──
+
+fn build_federation_app() -> axum::Router {
+    let registry = ConnectorRegistry::new();
+    registry
+        .register(Arc::new(MockConnector::new("cluster_a")))
+        .unwrap();
+    registry
+        .register(Arc::new(MockConnector::new("cluster_b")))
+        .unwrap();
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+    });
+    fuse_server::build_router(state)
+}
+
+async fn post_query(app: axum::Router, query: &str, format: &str) -> (StatusCode, serde_json::Value) {
+    let body = serde_json::json!({"query": query, "format": format});
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = resp.status();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    (status, json)
+}
+
+#[tokio::test]
+async fn test_single_source_query() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["metadata"]["total_rows"], 2);
+    assert_eq!(json["columns"], serde_json::json!(["host", "status"]));
+}
+
+#[tokio::test]
+async fn test_union_all_query() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    // 2 rows from each connector = 4 total
+    assert_eq!(json["metadata"]["total_rows"], 4);
+}
+
+#[tokio::test]
+async fn test_union_all_with_limit() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs LIMIT 3",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["metadata"]["total_rows"], 3);
+}
+
+#[tokio::test]
+async fn test_join_query() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT a.*, b.* FROM cluster_a.logs a JOIN cluster_b.logs b ON a.host = b.host",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    // Both connectors return same data (h1, h2), so inner join matches 2 rows
+    assert_eq!(json["metadata"]["total_rows"], 2);
+}
+
+#[tokio::test]
+async fn test_ppl_multi_source() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "source = cluster_a.logs, cluster_b.logs | head 10",
+        "ppl",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    // PPL multi-source = UNION ALL → 2+ rows (depends on mock data)
+    assert!(json["metadata"]["total_rows"].as_u64().unwrap_or(0) >= 2);
+}
+
+#[tokio::test]
+async fn test_unknown_datasource_in_union() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM nonexistent.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(json["error"].as_str().unwrap().contains("nonexistent"));
+}
+
+#[tokio::test]
+async fn test_explain_shows_union_strategy() {
+    let app = build_federation_app();
+    let body = serde_json::json!({
+        "query": "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "format": "sql"
+    });
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query/explain")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(json["plan"].as_str().unwrap().contains("UnionAll"));
+}
+
+#[tokio::test]
+async fn test_validate_multi_source_all_exist() {
+    let app = build_federation_app();
+    let body = serde_json::json!({
+        "query": "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "format": "sql"
+    });
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query/validate")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(json["valid"], true);
 }

@@ -55,15 +55,15 @@ Items are ordered by priority. Status: `todo` | `in-progress` | `blocked` | `don
 |----|------|-------|--------|------------|
 | 030 | Prometheus connector | general | done | 001 |
 | 031 | Connector SDK + docs | general | done | 001, 020, 030 |
-| 032 | Connector protocol versioning | — | todo | 031 |
+| 032 | Connector protocol versioning | general | done | 031 |
 
 ## Phase 4: Advanced
 
 | ID | Item | Owner | Status | Depends On |
 |----|------|-------|--------|------------|
 | 040 | Query result caching (TTL per connector) | explorer | done (needs tests) | 003 |
-| 041 | Materialized views | explorer | in-progress | 040 |
-| 042 | Alerting integration | — | todo | 003 |
+| 041 | Materialized views | general | done | 040 |
+| 042 | Alerting integration | general | done | 003 |
 | 043 | RBAC / field-level security | general | done | 004 |
 
 ## Community Adoption

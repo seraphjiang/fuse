@@ -1,8 +1,9 @@
 # RFC-001: Integrate Fuse Federated Query Engine with OpenSearch Dashboards
 
-- **Status**: Draft
+- **Status**: Published
 - **Authors**: Fuse Contributors
 - **Created**: 2026-04-09
+- **Updated**: 2026-04-09
 - **Related**: [Proposal #11705](https://github.com/opensearch-project/OpenSearch-Dashboards/issues/11705)
 - **Live Playground**: https://fuse.huanji.profile.aws.dev
 
@@ -173,3 +174,32 @@ Access requires Amazon VPN.
 - [Connector Interface Design](../design/connector-interface-and-query-parser.md)
 - [OpenAPI Spec](../api/openapi.yaml)
 - [Architecture Decision Records](../../.fuse-project/decisions/)
+
+## Implementation Status
+
+As of Sprint 1 completion, the following is shipped and deployed:
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Fuse Server (axum REST API) | ✅ Deployed | 7 endpoints, embedded playground UI |
+| OpenSearch Connector | ✅ Deployed | SigV4 auth, AOSS compatibility, Query DSL pushdown |
+| S3 O11y Connector | ✅ Deployed | Gzipped NDJSON, schema auto-discovery |
+| S3/Parquet Connector | ✅ Built | Column pruning, S3 Select support |
+| Prometheus Connector | ✅ Built | PromQL translation, range/instant queries |
+| Cross-datasource JOINs | ✅ Built | Semi-join pushdown, hash join, cost-based planning |
+| PPL Parser | ✅ Built | Multi-source, stats, sort, head, fields, dedup |
+| Query Result Caching | ✅ Built | Per-connector TTL, CachingConnectorWrapper |
+| Materialized Views | ✅ Built | Scheduled refresh, stale-data preservation |
+| RBAC / Field-level Security | ✅ Built | Role-based access control |
+| Alerting Integration | ✅ Built | Threshold-based alerts on query results |
+| Connector SDK | ✅ Published | Trait + factory + authoring guide |
+| OSD Plugin | ✅ Built | Query bar, results table, datasource selector |
+| CI/CD Pipeline | ✅ Deployed | CodeCommit → CodeBuild → ECR → ECS Fargate |
+| Live Playground | ✅ Live | https://fuse.huanji.profile.aws.dev |
+
+### Key Technical Decisions
+
+- **SigV4 for AOSS**: OpenSearch Serverless requires SigV4 on every request. The connector uses `aws-sigv4` crate with per-request signing.
+- **Sidecar architecture**: Fuse runs as a separate Rust binary, not embedded in OSD's Node.js process. This isolates query processing and allows independent scaling.
+- **DataFusion federation**: Rather than building a custom query planner, we use `datafusion-federation` which provides table-level routing with full SQL optimization.
+- **Gzipped NDJSON for S3 O11y**: The S3 O11y integration reads compressed NDJSON directly, with client-side decompression and schema auto-discovery from the first file.

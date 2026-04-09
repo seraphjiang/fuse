@@ -68,6 +68,7 @@ async fn main() -> anyhow::Result<()> {
 
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
+        alert_rules: vec![],
     });
 
     // Build router

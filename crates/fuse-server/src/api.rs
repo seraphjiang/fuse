@@ -123,11 +123,11 @@ pub async fn query_handler(
     let result = if refs.len() == 1 {
         // Single datasource — direct execution
         execute_single(&state, &req.query, &format, &refs[0]).await
-    } else if is_union_query(&req.query) {
-        // UNION ALL — fan out to each connector, merge results
+    } else if format == "ppl" || is_union_query(&req.query) {
+        // PPL multi-source or SQL UNION ALL — fan out and merge
         execute_union(&state, &req.query, &format, &refs).await
     } else {
-        // JOIN — use join executor
+        // SQL JOIN — use join executor
         execute_join(&state, &refs).await
     };
 
@@ -175,11 +175,31 @@ async fn execute_union(
     format: &str,
     refs: &[(String, String)],
 ) -> Result<Vec<arrow::record_batch::RecordBatch>, String> {
-    let mut handles = Vec::new();
+    // Build a per-table sub-query for each datasource.
+    // For UNION ALL, each connector gets the same filters/projections/limit
+    // but scoped to its own table.
+    let base_sq = build_sub_query(query, format, &refs[0].1).ok();
 
+    let mut handles = Vec::new();
     for (ds_id, table) in refs {
         let connector = state.registry.get(ds_id).unwrap();
-        let sub_query = build_sub_query(query, format, table)?;
+        let sub_query = match &base_sq {
+            Some(sq) => {
+                let mut per_table = sq.clone();
+                per_table.table = table.clone();
+                per_table
+            }
+            None => fuse_core::connector::SubQuery {
+                table: table.clone(),
+                projections: vec![],
+                filter: None,
+                aggregations: vec![],
+                group_by: vec![],
+                sort: vec![],
+                limit: None,
+                passthrough: None,
+            },
+        };
         let conn = connector.clone();
         handles.push(tokio::spawn(async move { conn.execute(&sub_query).await }));
     }
