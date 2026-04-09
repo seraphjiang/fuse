@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use std::collections::HashMap;
+use std::fmt;
 use std::sync::Arc;
 
-use arrow::datatypes::Schema;
+use arrow::datatypes::{Schema, SchemaRef};
 use arrow::record_batch::RecordBatch;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -13,14 +13,41 @@ use crate::error::ConnectorError;
 
 /// Every datasource connector implements this trait.
 #[async_trait]
-pub trait FederatedConnector: Send + Sync {
+pub trait FederatedConnector: Send + Sync + fmt::Debug {
+    /// Unique identifier for this connector instance.
     fn id(&self) -> &str;
-    fn connector_type(&self) -> ConnectorType;
+
+    /// Connector type string (e.g., "opensearch", "s3", "prometheus").
+    fn connector_type(&self) -> &str;
+
+    /// Declare what this connector can do.
     fn capabilities(&self) -> ConnectorCapabilities;
+
+    /// Health check.
     async fn health_check(&self) -> ConnectorHealth;
+
+    /// List available schemas (indices, tables, buckets, etc.).
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError>;
+
+    /// Get Arrow schema for a specific table.
     async fn get_schema(&self, table: &str) -> Result<Schema, ConnectorError>;
+
+    /// List table names (convenience wrapper over discover_schemas).
+    async fn table_names(&self) -> Result<Vec<String>, ConnectorError> {
+        let schemas = self.discover_schemas().await?;
+        Ok(schemas.into_iter().map(|s| s.name).collect())
+    }
+
+    /// Get Arrow schema ref for a specific table (for DataFusion integration).
+    async fn get_table_schema(&self, table: &str) -> Result<SchemaRef, ConnectorError> {
+        let schema = self.get_schema(table).await?;
+        Ok(Arc::new(schema))
+    }
+
+    /// Execute a sub-query. Returns RecordBatches.
     async fn execute(&self, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError>;
+
+    /// Execute a sub-query with streaming results.
     async fn execute_streaming(
         &self,
         query: &SubQuery,
@@ -48,25 +75,35 @@ impl std::fmt::Display for ConnectorType {
     }
 }
 
+/// Capabilities declaration used by the planner for push-down decisions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectorCapabilities {
-    pub filter: PushDownSupport,
-    pub projection: PushDownSupport,
-    pub aggregation: PushDownSupport,
-    pub sorting: PushDownSupport,
-    pub limit: PushDownSupport,
-    pub join: PushDownSupport,
+    pub supports_filtering: bool,
+    pub supports_projection: bool,
+    pub supports_aggregation: bool,
+    pub supports_sorting: bool,
+    pub supports_limit: bool,
+    pub supports_join: bool,
     pub max_concurrent_queries: usize,
     pub supports_streaming: bool,
     pub latency_class: LatencyClass,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum PushDownSupport {
-    Full,
-    Partial,
-    None,
+impl ConnectorCapabilities {
+    /// Full push-down support (typical for OpenSearch).
+    pub fn full() -> Self {
+        Self {
+            supports_filtering: true,
+            supports_projection: true,
+            supports_aggregation: true,
+            supports_sorting: true,
+            supports_limit: true,
+            supports_join: false,
+            max_concurrent_queries: 16,
+            supports_streaming: true,
+            latency_class: LatencyClass::Low,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -180,4 +217,13 @@ pub enum AggFunction {
 pub struct SortExpr {
     pub field: String,
     pub descending: bool,
+}
+
+/// Serializable result set for the REST API layer.
+#[derive(Debug, Clone, Serialize)]
+pub struct ResultSet {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<serde_json::Value>>,
+    pub total_rows: u64,
+    pub truncated: bool,
 }

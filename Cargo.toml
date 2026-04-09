@@ -15,7 +15,7 @@ repository = "https://github.com/seraphjiang/fuse"
 
 [workspace.dependencies]
 # Arrow & DataFusion
-arrow = { version = "54", features = ["json"] }
+arrow = { version = "58", features = ["json"] }
 datafusion = "53"
 datafusion-federation = { version = "0.5", features = ["sql"] }
 

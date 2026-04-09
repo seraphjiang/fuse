@@ -1,0 +1,56 @@
+# Fuse — Federated Query Engine Configuration
+# See docs/design/connector-interface-and-query-parser.md for details.
+
+[engine]
+bind = "0.0.0.0:9400"
+max_concurrent_queries = 64
+default_timeout = "30s"
+
+# ── OpenSearch Connectors ──
+
+[[connector]]
+id = "prod_cluster"
+type = "opensearch"
+url = "https://opensearch-prod.example.com:9200"
+max_concurrent_queries = 16
+scroll_size = 1000
+request_timeout = "30s"
+
+[connector.auth]
+type = "basic"
+username = "admin"
+password_env = "FUSE_PROD_PASSWORD"
+
+[[connector]]
+id = "staging_cluster"
+type = "opensearch"
+url = "https://opensearch-staging.example.com:9200"
+
+[connector.auth]
+type = "sigv4"
+region = "us-west-2"
+
+# ── S3 Connector (Phase 2) ──
+
+# [[connector]]
+# id = "s3_archive"
+# type = "s3"
+# bucket = "my-data-lake"
+# prefix = "logs/"
+# format = "parquet"
+# glue_database = "my_catalog"
+#
+# [connector.auth]
+# type = "sigv4"
+# region = "us-east-1"
+
+# ── Prometheus Connector (Phase 3) ──
+
+# [[connector]]
+# id = "prometheus_prod"
+# type = "prometheus"
+# url = "http://prometheus.internal:9090"
+#
+# [connector.auth]
+# type = "bearer"
+# token_env = "FUSE_PROM_TOKEN"

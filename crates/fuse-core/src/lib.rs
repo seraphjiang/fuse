@@ -1,9 +1,18 @@
-mod config;
-mod connector;
-mod error;
+// SPDX-License-Identifier: Apache-2.0
+// Fuse Core — connector traits, config, error types
 
-pub use config::{ConnectorConfig, FuseConfig};
+pub mod config;
+pub mod connector;
+pub mod error;
+pub mod registry;
+
+// Re-export commonly used types at crate root for convenience
 pub use connector::{
-    ConnectorCapabilities, ConnectorFactory, ConnectorRegistry, FuseConnector,
+    ConnectorCapabilities, ConnectorHealth, ConnectorType, FederatedConnector, HealthStatus,
+    SchemaInfo, SubQuery,
 };
-pub use error::FuseError;
+pub use error::ConnectorError;
+pub use registry::ConnectorRegistry;
+
+/// Alias used by the DataFusion-based planner.
+pub use FederatedConnector as FuseConnector;

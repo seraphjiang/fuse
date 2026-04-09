@@ -10,11 +10,22 @@ use fuse_core::config::ConnectorConfig;
 use fuse_core::ConnectorError;
 
 /// Wrapper around the opensearch-rs client with auth configuration.
+/// Wrapper around the opensearch-rs client with auth configuration.
 pub struct OpenSearchClient {
     inner: OpenSearch,
     pub url: String,
     pub request_timeout: Duration,
     pub scroll_size: usize,
+}
+
+impl std::fmt::Debug for OpenSearchClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OpenSearchClient")
+            .field("url", &self.url)
+            .field("request_timeout", &self.request_timeout)
+            .field("scroll_size", &self.scroll_size)
+            .finish()
+    }
 }
 
 impl OpenSearchClient {

@@ -21,6 +21,7 @@ use fuse_core::registry::ConnectorFactory;
 use crate::client::OpenSearchClient;
 
 /// OpenSearch connector implementing the FederatedConnector trait.
+#[derive(Debug)]
 pub struct OpenSearchConnector {
     id: String,
     client: OpenSearchClient,
@@ -53,18 +54,18 @@ impl FederatedConnector for OpenSearchConnector {
         &self.id
     }
 
-    fn connector_type(&self) -> ConnectorType {
-        ConnectorType::OpenSearch
+    fn connector_type(&self) -> &str {
+        "opensearch"
     }
 
     fn capabilities(&self) -> ConnectorCapabilities {
         ConnectorCapabilities {
-            filter: PushDownSupport::Full,
-            projection: PushDownSupport::Full,
-            aggregation: PushDownSupport::Full,
-            sorting: PushDownSupport::Full,
-            limit: PushDownSupport::Full,
-            join: PushDownSupport::None,
+            supports_filtering: true,
+            supports_projection: true,
+            supports_aggregation: true,
+            supports_sorting: true,
+            supports_limit: true,
+            supports_join: false,
             max_concurrent_queries: self.max_concurrent_queries,
             supports_streaming: true,
             latency_class: LatencyClass::Low,

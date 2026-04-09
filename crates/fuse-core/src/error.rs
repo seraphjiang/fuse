@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+use std::fmt;
 use thiserror::Error;
 
 /// Top-level error type for the Fuse engine.
@@ -55,6 +56,9 @@ pub enum ConnectorError {
     #[error("connection failed: {0}")]
     Connection(String),
 
+    #[error("streaming channel closed")]
+    ChannelClosed,
+
     #[error("unsupported operation: {0}")]
     Unsupported(String),
 
@@ -63,6 +67,16 @@ pub enum ConnectorError {
 
     #[error("{0}")]
     Other(#[from] Box<dyn std::error::Error + Send + Sync>),
+}
+
+impl ConnectorError {
+    pub fn query<S: fmt::Display>(msg: S) -> Self {
+        Self::QueryFailed(msg.to_string())
+    }
+
+    pub fn schema<S: fmt::Display>(msg: S) -> Self {
+        Self::SchemaDiscovery(msg.to_string())
+    }
 }
 
 pub type FuseResult<T> = Result<T, FuseError>;
