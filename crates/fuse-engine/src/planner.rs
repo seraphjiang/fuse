@@ -273,7 +273,7 @@ mod tests {
             ctx: SessionContext::new_with_state(datafusion_federation::default_session_state()),
             registry: Arc::new(reg),
         };
-        let sql = engine.resolve_query("source logs | where status = 200").unwrap();
+        let sql = engine.resolve_query("source = logs | where status = 200").unwrap();
         assert!(sql.to_lowercase().contains("select"));
         assert!(sql.to_lowercase().contains("where"));
     }
@@ -296,7 +296,7 @@ mod tests {
             ctx: SessionContext::new_with_state(datafusion_federation::default_session_state()),
             registry: Arc::new(reg),
         };
-        let sql = engine.resolve_query("source logs | stats count() by host").unwrap();
+        let sql = engine.resolve_query("source = logs | stats count() by host").unwrap();
         assert!(sql.to_lowercase().contains("count"));
         assert!(sql.to_lowercase().contains("group by"));
     }
