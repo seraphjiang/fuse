@@ -47,7 +47,7 @@ Items are ordered by priority. Status: `todo` | `in-progress` | `blocked` | `don
 | 021 | Cross-type JOIN execution (hash-join, semi-join) | planner | done | 003, 020 |
 | 022 | Query optimizer: cost-based planning | planner | done | 003 |
 | 023 | Spark delegation interface | planner | done | 003 |
-| 024 | Visual join builder (OSD plugin) | — | todo | 021 |
+| 024 | Visual join builder (OSD plugin) | general | done | 021 |
 
 ## Phase 3: Extensibility
 
