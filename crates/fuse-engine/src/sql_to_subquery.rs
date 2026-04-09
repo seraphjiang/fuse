@@ -544,6 +544,21 @@ mod tests {
     }
 
     #[test]
+    fn test_count_distinct_agg() {
+        let sq = sql_to_subquery("SELECT COUNT(DISTINCT service) AS unique_svc FROM logs").unwrap();
+        assert!(matches!(sq.aggregations[0].function, AggFunction::CountDistinct));
+        assert_eq!(sq.aggregations[0].field.as_deref(), Some("service"));
+        assert_eq!(sq.aggregations[0].alias, "unique_svc");
+    }
+
+    #[test]
+    fn test_count_distinct_without_alias() {
+        let sq = sql_to_subquery("SELECT COUNT(DISTINCT user_id) FROM logs").unwrap();
+        assert!(matches!(sq.aggregations[0].function, AggFunction::CountDistinct));
+        assert_eq!(sq.aggregations[0].field.as_deref(), Some("user_id"));
+    }
+
+    #[test]
     fn test_dotted_table_name() {
         // SQL parser treats "cluster_a" as schema, "logs" as table
         let sq = sql_to_subquery("SELECT * FROM cluster_a.logs").unwrap();
@@ -823,5 +838,42 @@ mod tests {
         ).unwrap();
         assert_eq!(sq.table, "logs");
         assert!(sq.filter.is_none());
+    }
+
+    #[test]
+    fn test_like_filter() {
+        let sq = sql_to_subquery(
+            "SELECT * FROM logs WHERE host LIKE 'web-%'",
+        ).unwrap();
+        let f = sq.filter.unwrap();
+        if let FilterExpr::Comparison { field, op, .. } = f {
+            assert_eq!(field, "host");
+            assert!(matches!(op, ComparisonOp::Like));
+        } else {
+            panic!("expected Comparison, got {:?}", f);
+        }
+    }
+
+    #[test]
+    fn test_ilike_filter() {
+        let sq = sql_to_subquery(
+            "SELECT * FROM logs WHERE host ILIKE '%WEB%'",
+        ).unwrap();
+        let f = sq.filter.unwrap();
+        if let FilterExpr::Comparison { field, op, .. } = f {
+            assert_eq!(field, "host");
+            assert!(matches!(op, ComparisonOp::ILike));
+        } else {
+            panic!("expected Comparison, got {:?}", f);
+        }
+    }
+
+    #[test]
+    fn test_not_like_filter() {
+        let sq = sql_to_subquery(
+            "SELECT * FROM logs WHERE host NOT LIKE 'test-%'",
+        ).unwrap();
+        let f = sq.filter.unwrap();
+        assert!(matches!(f, FilterExpr::Not(_)));
     }
 }
