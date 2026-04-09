@@ -1109,3 +1109,51 @@ pub async fn refresh_view(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_running_queries_cancel_returns_true_when_found() {
+        let rq = RunningQueries::new();
+        let token = CancellationToken::new();
+        rq.insert("q-001".into(), token.clone());
+        assert!(rq.cancel("q-001"));
+        assert!(token.is_cancelled());
+    }
+
+    #[test]
+    fn test_running_queries_cancel_returns_false_when_not_found() {
+        let rq = RunningQueries::new();
+        assert!(!rq.cancel("q-nonexistent"));
+    }
+
+    #[test]
+    fn test_running_queries_list() {
+        let rq = RunningQueries::new();
+        assert!(rq.list().is_empty());
+        rq.insert("q-001".into(), CancellationToken::new());
+        rq.insert("q-002".into(), CancellationToken::new());
+        let mut ids = rq.list();
+        ids.sort();
+        assert_eq!(ids, vec!["q-001", "q-002"]);
+    }
+
+    #[test]
+    fn test_running_queries_remove_cleans_up() {
+        let rq = RunningQueries::new();
+        rq.insert("q-001".into(), CancellationToken::new());
+        rq.remove("q-001");
+        assert!(rq.list().is_empty());
+    }
+
+    #[test]
+    fn test_running_queries_cancel_removes_entry() {
+        let rq = RunningQueries::new();
+        rq.insert("q-001".into(), CancellationToken::new());
+        rq.cancel("q-001");
+        // After cancel, entry is removed — second cancel returns false
+        assert!(!rq.cancel("q-001"));
+    }
+}
