@@ -287,7 +287,7 @@ pub async fn query_handler(
         Ok(fed) => {
             let order_by = parse_order_by(&query);
             let limit = parse_limit(&query);
-            let is_distinct = query.to_lowercase().contains("select distinct");
+            let is_distinct = strip_string_literals(&query).to_lowercase().contains("select distinct");
 
             // Apply global ORDER BY if present
             let batches = if let Some((col, desc)) = &order_by {
@@ -932,15 +932,44 @@ fn add_datasource_column(
 }
 
 /// Check if a SQL query contains UNION ALL.
+/// Strip single-quoted string literals from SQL to avoid false keyword matches.
+/// Replaces 'content' with '' (empty string literal placeholder).
+fn strip_string_literals(query: &str) -> String {
+    let mut result = String::with_capacity(query.len());
+    let mut in_quote = false;
+    let mut chars = query.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\'' {
+            if in_quote {
+                // Check for escaped quote ''
+                if chars.peek() == Some(&'\'') {
+                    chars.next();
+                    continue;
+                }
+                in_quote = false;
+                result.push('\'');
+            } else {
+                in_quote = true;
+                result.push('\'');
+            }
+        } else if in_quote {
+            // Skip content inside quotes
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
 fn is_union_query(query: &str) -> bool {
-    query.to_lowercase().contains("union all")
+    strip_string_literals(query).to_lowercase().contains("union all")
 }
 
 /// Extract LIMIT value from end of query.
 fn parse_limit(query: &str) -> Option<usize> {
-    let lower = query.to_lowercase();
-    let pos = lower.rfind("limit ")?;
-    let after = query[pos + 6..].trim();
+    let stripped = strip_string_literals(query).to_lowercase();
+    let pos = stripped.rfind("limit ")?;
+    let after = stripped[pos + 6..].trim();
     let num_str = after
         .split(|c: char| !c.is_ascii_digit())
         .next()?;
@@ -949,9 +978,9 @@ fn parse_limit(query: &str) -> Option<usize> {
 
 /// Extract OFFSET value from query.
 fn parse_offset(query: &str) -> Option<usize> {
-    let lower = query.to_lowercase();
-    let pos = lower.rfind("offset ")?;
-    let after = query[pos + 7..].trim();
+    let stripped = strip_string_literals(query).to_lowercase();
+    let pos = stripped.rfind("offset ")?;
+    let after = stripped[pos + 7..].trim();
     let num_str = after
         .split(|c: char| !c.is_ascii_digit())
         .next()?;
@@ -959,12 +988,11 @@ fn parse_offset(query: &str) -> Option<usize> {
 }
 
 /// Extract ORDER BY column name and direction from query.
-/// Returns (column_name, descending).
 fn parse_order_by(query: &str) -> Option<(String, bool)> {
-    let lower = query.to_lowercase();
+    let stripped = strip_string_literals(query);
+    let lower = stripped.to_lowercase();
     let pos = lower.rfind("order by ")?;
-    let after = query[pos + 9..].trim();
-    // Stop at LIMIT or end
+    let after = stripped[pos + 9..].trim();
     let clause = after.split_once("limit").map(|(c, _)| c.trim()).unwrap_or(after.trim());
     let parts: Vec<&str> = clause.split_whitespace().collect();
     if parts.is_empty() {

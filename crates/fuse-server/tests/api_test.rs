@@ -1912,3 +1912,45 @@ async fn test_params_prefix_collision() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
+
+// ── String literal safety tests ──
+
+#[tokio::test]
+async fn test_limit_in_string_not_matched() {
+    // "limit" inside a string literal should not be treated as SQL LIMIT
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs WHERE msg = 'rate limit exceeded'",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    // Should return all rows, not limited
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+}
+
+#[tokio::test]
+async fn test_union_all_in_string_not_matched() {
+    // "union all" inside a string should not trigger UNION path
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs WHERE msg = 'union all workers'",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    // Single source — no _datasource column
+    let columns = json["columns"].as_array().unwrap();
+    assert!(!columns.iter().any(|c| c == "_datasource"));
+}
+
+#[tokio::test]
+async fn test_order_by_in_string_not_matched() {
+    // "order by" inside a string should not trigger sorting
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs WHERE msg = 'order by priority'",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["rows"].as_array().unwrap().len(), 2);
+}
