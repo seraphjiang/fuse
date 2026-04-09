@@ -65,3 +65,17 @@ Items are ordered by priority. Status: `todo` | `in-progress` | `blocked` | `don
 | 041 | Materialized views | — | todo | 040 |
 | 042 | Alerting integration | — | todo | 003 |
 | 043 | RBAC / field-level security | — | todo | 004 |
+
+## Community Adoption (P1)
+
+| ID | Item | Owner | Status | Depends On |
+|----|------|-------|--------|------------|
+| 070 | OSD plugin (query bar + results table) | — | todo | 004 |
+| 071 | Publish fuse-connector-sdk to crates.io | — | todo | 031 |
+| 072 | Blog post + demo video | — | todo | 073 |
+| 073 | Federated demo data (logs across 2 clusters) | infra | todo | 058 |
+| 074 | CONTRIBUTING.md with DCO | — | todo | — |
+| 075 | GitHub Issues templates (bug, feature, connector) | — | todo | — |
+| 077 | Performance benchmarks (benches/) | — | todo | 003 |
+| 080 | OpenSearch community forum post | — | todo | 072 |
+| 081 | RFC on opensearch-project/OpenSearch-Dashboards | — | todo | 070 |

@@ -52,6 +52,13 @@ git push → CodeCommit → CodePipeline (fuse-pipeline)
 | ACM Cert | arn:aws:acm:us-west-2:544277935543:certificate/fe32fac4-5e0e-40f4-bcf4-954c06541962 |
 | OS Serverless | fuse-cluster-a (epk7ap540halh4ufyff6), fuse-cluster-b (wg2fj60hpfsc9ziwv0u0) |
 
+## OpenSearch Serverless Collections
+
+| Collection | Endpoint | Index | Data |
+|-----------|----------|-------|------|
+| fuse-cluster-a | https://epk7ap540halh4ufyff6.us-west-2.aoss.amazonaws.com | products | 5 docs (electronics, furniture) |
+| fuse-cluster-b | https://wg2fj60hpfsc9ziwv0u0.us-west-2.aoss.amazonaws.com | orders | 5 docs (sample orders) |
+
 ## API Endpoints (Playground)
 
 ```bash
