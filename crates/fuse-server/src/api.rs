@@ -474,6 +474,15 @@ fn parse_qualified_name(name: &str) -> Result<(String, String), String> {
         .ok_or_else(|| format!("expected 'datasource.table', got '{}'", clean))
 }
 
+/// Single-source wrappers used by evaluate_alerts handler.
+fn parse_ppl_source(query: &str) -> Result<(String, String), String> {
+    parse_ppl_sources(query).and_then(|v| v.into_iter().next().ok_or_else(|| "no source found".to_string()))
+}
+
+fn parse_sql_source(query: &str) -> Result<(String, String), String> {
+    parse_sql_sources(query).and_then(|v| v.into_iter().next().ok_or_else(|| "no source found".to_string()))
+}
+
 /// Build a SubQuery from a user query string using the full translation pipeline.
 ///
 /// For PPL: parse PPL → translate to SQL → parse SQL into SubQuery.
@@ -547,4 +556,71 @@ fn batches_to_json(
     }
 
     (columns, rows)
+}
+
+// ── Alert handlers ──
+
+/// GET /api/fuse/alerts — list configured alert rules.
+pub async fn list_alerts(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    #[derive(Serialize)]
+    struct AlertInfo {
+        name: String,
+        query: String,
+        format: String,
+        interval_secs: u64,
+    }
+    let infos: Vec<AlertInfo> = state
+        .alert_rules
+        .iter()
+        .map(|r| AlertInfo {
+            name: r.name.clone(),
+            query: r.query.clone(),
+            format: r.format.clone(),
+            interval_secs: r.interval_secs,
+        })
+        .collect();
+    Json(infos)
+}
+
+/// POST /api/fuse/alerts/evaluate — run all alert rules now and return firing alerts.
+pub async fn evaluate_alerts(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let mut firing = Vec::new();
+    for rule in &state.alert_rules {
+        // Parse the rule's query to find the datasource
+        let parse_result = match rule.format.as_str() {
+            "ppl" => parse_ppl_source(&rule.query),
+            _ => parse_sql_source(&rule.query),
+        };
+        let (ds_id, table) = match parse_result {
+            Ok(pair) => pair,
+            Err(e) => {
+                tracing::warn!(rule = rule.name.as_str(), "alert rule parse error: {e}");
+                continue;
+            }
+        };
+        let connector = match state.registry.get(&ds_id) {
+            Some(c) => c,
+            None => {
+                tracing::warn!(rule = rule.name.as_str(), "datasource '{}' not found", ds_id);
+                continue;
+            }
+        };
+        let sub_query = match build_sub_query(&rule.query, &rule.format, &table) {
+            Ok(sq) => sq,
+            Err(e) => {
+                tracing::warn!(rule = rule.name.as_str(), "sub_query build error: {e}");
+                continue;
+            }
+        };
+        match connector.execute(&sub_query).await {
+            Ok(batches) => {
+                let result = AlertEvaluator::evaluate(rule, &batches);
+                if result.state == fuse_core::alerting::AlertState::Firing {
+                    firing.push(result);
+                }
+            }
+            Err(e) => tracing::warn!(rule = rule.name.as_str(), "alert query error: {e}"),
+        }
+    }
+    Json(firing)
 }
