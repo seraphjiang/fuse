@@ -194,8 +194,12 @@ fn error_json(status: StatusCode, msg: impl ToString) -> impl IntoResponse {
 /// Substitute `$key` placeholders in query with parameter values.
 /// String values are single-quoted and escaped. Numbers/bools are inlined.
 fn bind_params(query: &str, params: &std::collections::HashMap<String, serde_json::Value>) -> String {
+    // Sort by key length descending to avoid $host matching inside $hostname
+    let mut sorted: Vec<_> = params.iter().collect();
+    sorted.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+
     let mut result = query.to_string();
-    for (key, val) in params {
+    for (key, val) in sorted {
         let placeholder = format!("${}", key);
         let replacement = match val {
             serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''")),
@@ -863,23 +867,36 @@ fn parse_sql_sources(query: &str) -> Result<Vec<(String, String)>, String> {
     let mut refs = Vec::new();
     let lower = query.to_lowercase();
 
-    // Find references after FROM and JOIN keywords
+    // Find references after FROM and JOIN keywords (word-boundary aware)
     for keyword in &["from ", "join "] {
         let mut search_from = 0;
         while let Some(pos) = lower[search_from..].find(keyword) {
-            let abs_pos = search_from + pos + keyword.len();
-            let after = query[abs_pos..].trim_start();
-            // Take the first token (might be `ds.table` or `ds.table` with alias)
-            let token = after
-                .split(|c: char| c.is_whitespace() || c == ',' || c == ')')
-                .next()
-                .unwrap_or("");
-            if let Ok(r) = parse_qualified_name(token) {
-                if !refs.contains(&r) {
-                    refs.push(r);
+            let abs_pos = search_from + pos;
+            // Ensure word boundary: keyword must be preceded by whitespace, '(' or start of string
+            let is_word_start = abs_pos == 0
+                || lower.as_bytes()[abs_pos - 1].is_ascii_whitespace()
+                || lower.as_bytes()[abs_pos - 1] == b'('
+                || lower.as_bytes()[abs_pos - 1] == b',';
+            let token_start = abs_pos + keyword.len();
+            if is_word_start {
+                let after = query[token_start..].trim_start();
+                // Skip if inside a string literal (count unescaped quotes before this position)
+                let quotes_before = query[..abs_pos].chars().filter(|&c| c == '\'').count();
+                if quotes_before % 2 == 0 {
+                    // Take the first token
+                    let token = after
+                        .split(|c: char| c.is_whitespace() || c == ',' || c == ')')
+                        .next()
+                        .unwrap_or("");
+                    // Strip alias: "ds.table AS a" or "ds.table a" → "ds.table"
+                    if let Ok(r) = parse_qualified_name(token) {
+                        if !refs.contains(&r) {
+                            refs.push(r);
+                        }
+                    }
                 }
             }
-            search_from = abs_pos;
+            search_from = token_start;
         }
     }
 

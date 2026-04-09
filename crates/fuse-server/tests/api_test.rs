@@ -1852,3 +1852,63 @@ async fn test_saved_queries_crud() {
         .await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
+
+// ── SQL source parsing robustness tests ──
+
+#[tokio::test]
+async fn test_from_inside_string_literal_ignored() {
+    // "from" inside a string literal should NOT be treated as a table reference
+    let (status, _) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs WHERE msg = 'data from server'",
+        "sql",
+    ).await;
+    // Should succeed — only cluster_a.logs is a source, not "server"
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_from_as_substring_ignored() {
+    // "from" as part of another word should not match
+    // "transform" contains "from" — this should not cause issues
+    let (status, _) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs WHERE host = 'transform'",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_subquery_from_parsed() {
+    // FROM in subquery should still be found
+    let (status, _) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs WHERE status IN (SELECT status FROM cluster_b.logs)",
+        "sql",
+    ).await;
+    // Both sources should be found — this is a multi-source query
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_params_prefix_collision() {
+    // $host should not match inside $hostname when both are params
+    let body = serde_json::json!({
+        "query": "SELECT * FROM cluster_a.logs WHERE host = $host AND hostname = $hostname",
+        "format": "sql",
+        "params": {"host": "web-01", "hostname": "web-01.prod.example.com"}
+    });
+    let resp = build_federation_app()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
