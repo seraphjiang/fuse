@@ -1,5 +1,7 @@
 # Fuse 🔗
 
+[![CI](https://github.com/seraphjiang/fuse/actions/workflows/ci.yml/badge.svg)](https://github.com/seraphjiang/fuse/actions/workflows/ci.yml)
+
 **Cross-Datasource Federated Query Engine for OpenSearch Dashboards**
 
 Fuse federates queries across multiple OpenSearch clusters, S3 data lakes, and Prometheus from a single SQL or PPL query. Built on [Apache DataFusion](https://datafusion.apache.org/) and [datafusion-federation](https://github.com/datafusion-contrib/datafusion-federation).
