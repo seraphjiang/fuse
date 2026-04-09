@@ -71,7 +71,7 @@ impl FederatedConnector for MockConnector {
                 Arc::new(Int64Array::from(vec![200, 500])),
             ],
         )
-        .map_err(|e| ConnectorError::query(e))?;
+        .map_err(ConnectorError::query)?;
         Ok(vec![batch])
     }
     async fn execute_streaming(
