@@ -8,12 +8,15 @@ use axum::response::IntoResponse;
 use serde::{Deserialize, Serialize};
 
 use fuse_core::registry::ConnectorRegistry;
+use fuse_core::alerting::{AlertEvaluator, AlertRule};
 
 use crate::health;
 
 /// Shared application state passed to all handlers.
 pub struct AppState {
     pub registry: Arc<ConnectorRegistry>,
+    #[allow(dead_code)]
+    pub alert_rules: Vec<AlertRule>,
 }
 
 // ── Request / Response types ──
