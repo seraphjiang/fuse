@@ -74,36 +74,59 @@ impl FederatedConnector for OpenSearchConnector {
 
     async fn health_check(&self) -> ConnectorHealth {
         let start = Instant::now();
-        match self
+        // Try _cluster/health first (managed OpenSearch), fall back to
+        // a simple request (AOSS doesn't support _cluster/health)
+        let resp = self
             .client
             .client()
             .cluster()
             .health(opensearch::cluster::ClusterHealthParts::None)
             .send()
-            .await
-        {
-            Ok(resp) => {
-                let latency = start.elapsed().as_millis() as u64;
-                let status = if resp.status_code().is_success() {
-                    HealthStatus::Healthy
-                } else {
-                    HealthStatus::Degraded
-                };
+            .await;
+
+        match resp {
+            Ok(r) if r.status_code().is_success() => {
                 ConnectorHealth {
-                    status,
-                    latency_ms: Some(latency),
+                    status: HealthStatus::Healthy,
+                    latency_ms: Some(start.elapsed().as_millis() as u64),
                     message: None,
                 }
             }
-            Err(e) => ConnectorHealth {
-                status: HealthStatus::Unhealthy,
-                latency_ms: None,
-                message: Some(e.to_string()),
-            },
+            _ => {
+                // Fallback: try a simple GET / (works on AOSS)
+                match self.client.client()
+                    .send::<(), ()>(
+                        opensearch::http::Method::Get,
+                        "/",
+                        opensearch::http::headers::HeaderMap::new(),
+                        None,
+                        None,
+                        None,
+                    )
+                    .await
+                {
+                    Ok(r) if r.status_code().is_success() => ConnectorHealth {
+                        status: HealthStatus::Healthy,
+                        latency_ms: Some(start.elapsed().as_millis() as u64),
+                        message: None,
+                    },
+                    Ok(_) => ConnectorHealth {
+                        status: HealthStatus::Degraded,
+                        latency_ms: Some(start.elapsed().as_millis() as u64),
+                        message: Some("non-200 from root endpoint".into()),
+                    },
+                    Err(e) => ConnectorHealth {
+                        status: HealthStatus::Unhealthy,
+                        latency_ms: None,
+                        message: Some(e.to_string()),
+                    },
+                }
+            }
         }
     }
 
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
+        // Try _cat/indices first (managed OpenSearch)
         let resp = self
             .client
             .client()
@@ -111,6 +134,47 @@ impl FederatedConnector for OpenSearchConnector {
             .indices(opensearch::cat::CatIndicesParts::None)
             .format("json")
             .send()
+            .await;
+
+        if let Ok(r) = resp {
+            if r.status_code().is_success() {
+                if let Ok(body) = r.json::<serde_json::Value>().await {
+                    if let Some(indices) = body.as_array() {
+                        return Ok(indices
+                            .iter()
+                            .filter_map(|idx| {
+                                let name = idx.get("index")?.as_str()?.to_string();
+                                if name.starts_with('.') {
+                                    return None;
+                                }
+                                let row_count = idx
+                                    .get("docs.count")
+                                    .and_then(|v| v.as_str())
+                                    .and_then(|s| s.parse::<u64>().ok());
+                                Some(SchemaInfo {
+                                    name,
+                                    schema_type: SchemaType::Index,
+                                    estimated_row_count: row_count,
+                                })
+                            })
+                            .collect());
+                    }
+                }
+            }
+        }
+
+        // Fallback: use _aliases API (works on AOSS)
+        let resp = self
+            .client
+            .client()
+            .send::<(), ()>(
+                opensearch::http::Method::Get,
+                "/_aliases",
+                opensearch::http::headers::HeaderMap::new(),
+                None,
+                None,
+                None,
+            )
             .await
             .map_err(|e| ConnectorError::schema(e))?;
 
@@ -119,27 +183,17 @@ impl FederatedConnector for OpenSearchConnector {
             .await
             .map_err(|e| ConnectorError::schema(e))?;
 
-        let indices = body
-            .as_array()
-            .ok_or_else(|| ConnectorError::schema("expected array from _cat/indices"))?;
+        let obj = body
+            .as_object()
+            .ok_or_else(|| ConnectorError::schema("expected object from _aliases"))?;
 
-        Ok(indices
-            .iter()
-            .filter_map(|idx| {
-                let name = idx.get("index")?.as_str()?.to_string();
-                // Skip hidden indices
-                if name.starts_with('.') {
-                    return None;
-                }
-                let row_count = idx
-                    .get("docs.count")
-                    .and_then(|v| v.as_str())
-                    .and_then(|s| s.parse::<u64>().ok());
-                Some(SchemaInfo {
-                    name,
-                    schema_type: SchemaType::Index,
-                    estimated_row_count: row_count,
-                })
+        Ok(obj
+            .keys()
+            .filter(|name| !name.starts_with('.'))
+            .map(|name| SchemaInfo {
+                name: name.clone(),
+                schema_type: SchemaType::Index,
+                estimated_row_count: None,
             })
             .collect())
     }

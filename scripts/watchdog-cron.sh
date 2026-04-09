@@ -24,7 +24,7 @@ for agent in $(echo "$STATUS" | grep -oP '\] \K\S+(?= - active)'); do
         echo "[watchdog] $agent is active, skipping" >> "$LOG"
     else
         echo "[watchdog] $agent is idle, poking" >> "$LOG"
-        kiro-hive tell "$agent" "[PROGRESS] Watchdog check-in. If idle, review .fuse-project/backlog/backlog.md for unassigned todo items and pick one up. Report to sisyphus what you chose." >> "$LOG" 2>&1
+        kiro-hive tell "$agent" --session "$SESSION" "[PROGRESS] Watchdog check-in. If idle, review .fuse-project/backlog/backlog.md for unassigned todo items and pick one up. Report to sisyphus what you chose." >> "$LOG" 2>&1
     fi
 done
 
