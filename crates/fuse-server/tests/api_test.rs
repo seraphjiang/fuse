@@ -1954,3 +1954,27 @@ async fn test_order_by_in_string_not_matched() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["rows"].as_array().unwrap().len(), 2);
 }
+
+// ── Subquery tests ──
+
+#[tokio::test]
+async fn test_subquery_in_from() {
+    let (status, json) = post_query(
+        build_test_app(),
+        "SELECT * FROM (SELECT host, status FROM testds.logs WHERE status > 100) AS sub",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert!(!rows.is_empty());
+}
+
+#[tokio::test]
+async fn test_subquery_with_outer_filter() {
+    let (status, json) = post_query(
+        build_test_app(),
+        "SELECT * FROM (SELECT * FROM testds.logs) AS sub WHERE host = 'h1'",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+}

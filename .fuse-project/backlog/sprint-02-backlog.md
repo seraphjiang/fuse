@@ -13,15 +13,15 @@
 | 202 | Load test: 50 concurrent queries, measure p50/p95/p99 | tester | done | 50/50, p50=413ms p95=535ms p99=577ms. Commit: 70abb13 |
 | 203 | Negative test suite: SQL injection, empty body, unicode, oversized query, malformed JSON | tester | done | 7 negative tests in E2E suite. Commit: 70abb13 |
 | 204 | S3 O11y connector health fix (ECS task role needs s3:GetObject) | infra | done | Already working — permissions correct from Sprint 1 |
-| 205 | Fix fuse-server warning (cargo fix --lib -p fuse-server) | general | todo | Persistent warning |
+| 205 | Fix fuse-server warning (cargo fix --lib -p fuse-server) | general | done | Already clean + SubQuery::having sites fixed. Commit: 1786a61 |
 
 ## P1: GitHub Pages Docs Site Live
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 210 | Enable GitHub Pages in repo settings (gh-pages branch) | infra | done | Already enabled, verified live via gh API + curl |
-| 211 | Verify https://seraphjiang.github.io/fuse/ loads | explorer | todo | Depends: 210 |
-| 212 | Update docs-site content for Sprint 2 features (21 endpoints, saved queries, CSV, params, cancellation) | explorer | todo | Depends: 211 |
+| 211 | Verify https://seraphjiang.github.io/fuse/ loads | explorer | done | All 11 pages return 200, content verified |
+| 212 | Update docs-site content for Sprint 2 features (21 endpoints, saved queries, CSV, params, cancellation) | explorer | done | Commit: 8ab14cf. 4 pages updated, mdBook clean |
 
 ## P1: OpenSearch Dashboards Plugin (OSD)
 
@@ -38,7 +38,7 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 230 | Subquery support: SELECT * FROM (SELECT ...) AS sub | planner | todo | Currently not handled |
-| 231 | HAVING clause in GROUP BY | planner | todo | Currently silently ignored |
+| 231 | HAVING clause in GROUP BY | planner | done | Commit: 12847cb. Tests: 484→487 |
 | 232 | IN/NOT IN filter pushdown | planner | todo | |
 | 233 | LIKE/ILIKE filter pushdown | planner | todo | |
 | 234 | COUNT DISTINCT aggregation pushdown | planner | todo | |
@@ -68,6 +68,6 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 260 | v0.1.0 release (tag + GitHub Release with binaries) | infra | todo | Tag exists locally, needs push |
-| 261 | Demo video (2-3 min, playground walkthrough) | explorer | todo | |
+| 261 | Demo video (2-3 min, playground walkthrough) | explorer | done | Commit: 75b68f9. 6-scene script, ~2.5 min |
 | 262 | OpenSearch community forum update post | explorer | todo | Sprint 2 features |
 | 263 | Publish fuse-connector-sdk to crates.io | general | todo | Was dry-run only |

@@ -37,9 +37,20 @@ pub fn sql_to_subquery(sql: &str) -> Result<SubQuery, ConnectorError> {
         _ => return Err(ConnectorError::QueryFailed("expected simple SELECT".into())),
     };
 
+    // Check for subquery in FROM clause and merge inner filters
+    let inner_filter = extract_inner_filter(&select.from);
+
     let table = extract_table_name(&select.from)?;
     let (projections, aggregations) = extract_projections_and_aggs(&select.projection);
-    let filter = select.selection.as_ref().and_then(|e| translate_expr(e));
+    let outer_filter = select.selection.as_ref().and_then(|e| translate_expr(e));
+
+    // Merge inner and outer filters with AND
+    let filter = match (outer_filter, inner_filter) {
+        (Some(o), Some(i)) => Some(FilterExpr::And(Box::new(o), Box::new(i))),
+        (Some(f), None) | (None, Some(f)) => Some(f),
+        (None, None) => None,
+    };
+
     let group_by = extract_group_by(&select.group_by);
     let having = select.having.as_ref().and_then(|e| translate_expr(e));
     let sort = query
@@ -65,6 +76,21 @@ pub fn sql_to_subquery(sql: &str) -> Result<SubQuery, ConnectorError> {
     })
 }
 
+/// Extract filter from inner subquery in FROM clause (if Derived).
+fn extract_inner_filter(from: &[ast::TableWithJoins]) -> Option<FilterExpr> {
+    let twj = from.first()?;
+    match &twj.relation {
+        TableFactor::Derived { subquery, .. } => {
+            let inner = match *subquery.body.clone() {
+                SetExpr::Select(s) => *s,
+                _ => return None,
+            };
+            inner.selection.as_ref().and_then(|e| translate_expr(e))
+        }
+        _ => None,
+    }
+}
+
 fn extract_table_name(from: &[ast::TableWithJoins]) -> Result<String, ConnectorError> {
     let twj = from
         .first()
@@ -72,6 +98,14 @@ fn extract_table_name(from: &[ast::TableWithJoins]) -> Result<String, ConnectorE
 
     match &twj.relation {
         TableFactor::Table { name, .. } => Ok(object_name_to_string(name)),
+        TableFactor::Derived { subquery, .. } => {
+            // Extract table name from inner subquery
+            let inner = match *subquery.body.clone() {
+                SetExpr::Select(s) => *s,
+                _ => return Err(ConnectorError::QueryFailed("unsupported subquery body".into())),
+            };
+            extract_table_name(&inner.from)
+        }
         _ => Err(ConnectorError::QueryFailed("unsupported FROM clause".into())),
     }
 }
@@ -584,5 +618,98 @@ mod tests {
     fn test_no_having() {
         let sq = sql_to_subquery("SELECT host FROM logs GROUP BY host").unwrap();
         assert!(sq.having.is_none());
+    }
+
+    // ── HAVING verification tests (tester) ──
+
+    #[test]
+    fn test_having_and_compound() {
+        // HAVING with AND — both conditions should be preserved
+        let sq = sql_to_subquery(
+            "SELECT host, COUNT(*) AS c, AVG(duration) AS d FROM logs GROUP BY host HAVING COUNT(*) > 5 AND AVG(duration) > 100",
+        ).unwrap();
+        let h = sq.having.unwrap();
+        assert!(matches!(h, FilterExpr::And(_, _)));
+    }
+
+    #[test]
+    fn test_having_or() {
+        let sq = sql_to_subquery(
+            "SELECT status, COUNT(*) FROM logs GROUP BY status HAVING COUNT(*) > 10 OR status = 500",
+        ).unwrap();
+        let h = sq.having.unwrap();
+        assert!(matches!(h, FilterExpr::Or(_, _)));
+    }
+
+    #[test]
+    fn test_having_without_group_by_still_parses() {
+        // SQL allows HAVING without GROUP BY (implicit single group)
+        let sq = sql_to_subquery(
+            "SELECT COUNT(*) FROM logs HAVING COUNT(*) > 0",
+        ).unwrap();
+        assert!(sq.having.is_some());
+        assert!(sq.group_by.is_empty());
+    }
+
+    #[test]
+    fn test_having_preserves_where_separately() {
+        // WHERE and HAVING should be independent
+        let sq = sql_to_subquery(
+            "SELECT host, COUNT(*) FROM logs WHERE status >= 400 GROUP BY host HAVING COUNT(*) > 3",
+        ).unwrap();
+        assert!(sq.filter.is_some(), "WHERE should be in filter");
+        assert!(sq.having.is_some(), "HAVING should be separate");
+        // Verify they're different expressions
+        if let FilterExpr::Comparison { field, .. } = sq.filter.unwrap() {
+            assert_eq!(field, "status");
+        } else {
+            panic!("WHERE filter should be on status");
+        }
+    }
+
+    #[test]
+    fn test_having_with_limit_and_sort() {
+        let sq = sql_to_subquery(
+            "SELECT host, COUNT(*) AS cnt FROM logs GROUP BY host HAVING COUNT(*) > 1 ORDER BY cnt DESC LIMIT 10",
+        ).unwrap();
+        assert!(sq.having.is_some());
+        assert_eq!(sq.limit, Some(10));
+        assert!(!sq.sort.is_empty());
+    }
+
+    #[test]
+    fn test_subquery_extracts_table() {
+        let sq = sql_to_subquery(
+            "SELECT * FROM (SELECT host, status FROM logs) AS sub",
+        ).unwrap();
+        assert_eq!(sq.table, "logs");
+    }
+
+    #[test]
+    fn test_subquery_merges_inner_filter() {
+        let sq = sql_to_subquery(
+            "SELECT * FROM (SELECT * FROM logs WHERE status > 400) AS sub WHERE host = 'h1'",
+        ).unwrap();
+        // Both inner (status > 400) and outer (host = 'h1') should be merged with AND
+        let f = sq.filter.unwrap();
+        assert!(matches!(f, FilterExpr::And(_, _)));
+    }
+
+    #[test]
+    fn test_subquery_inner_filter_only() {
+        let sq = sql_to_subquery(
+            "SELECT * FROM (SELECT * FROM logs WHERE status = 200) AS sub",
+        ).unwrap();
+        let f = sq.filter.unwrap();
+        assert!(matches!(f, FilterExpr::Comparison { .. }));
+    }
+
+    #[test]
+    fn test_subquery_outer_filter_only() {
+        let sq = sql_to_subquery(
+            "SELECT * FROM (SELECT * FROM logs) AS sub WHERE host = 'h1'",
+        ).unwrap();
+        let f = sq.filter.unwrap();
+        assert!(matches!(f, FilterExpr::Comparison { .. }));
     }
 }
