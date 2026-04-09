@@ -735,12 +735,28 @@ pub async fn validate_handler(
 
     match parse_result {
         Ok(refs) => {
-            for (ds_id, _) in &refs {
-                if state.registry.get(ds_id).is_none() {
-                    return Json(ValidateResponse {
+            for (ds_id, table) in &refs {
+                let connector = match state.registry.get(ds_id) {
+                    Some(c) => c,
+                    None => return Json(ValidateResponse {
                         valid: false,
                         error: Some(format!("datasource '{}' not found in registry", ds_id)),
-                    });
+                    }),
+                };
+                // Check table exists in datasource
+                match connector.discover_schemas().await {
+                    Ok(schemas) => {
+                        if !schemas.iter().any(|s| s.name == *table) {
+                            return Json(ValidateResponse {
+                                valid: false,
+                                error: Some(format!("table '{}' not found in datasource '{}'", table, ds_id)),
+                            });
+                        }
+                    }
+                    Err(e) => return Json(ValidateResponse {
+                        valid: false,
+                        error: Some(format!("failed to discover schemas for '{}': {}", ds_id, e)),
+                    }),
                 }
             }
             Json(ValidateResponse {

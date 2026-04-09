@@ -1631,3 +1631,64 @@ async fn test_single_source_no_partial_errors() {
     // No partial_errors field when empty (skip_serializing_if)
     assert!(json.get("partial_errors").is_none());
 }
+
+// ── Enhanced validate tests ──
+
+async fn post_validate(app: axum::Router, query: &str, format: &str) -> serde_json::Value {
+    let body = serde_json::json!({"query": query, "format": format});
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query/validate")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    serde_json::from_slice(&bytes).unwrap()
+}
+
+#[tokio::test]
+async fn test_validate_valid_table() {
+    let json = post_validate(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs",
+        "sql",
+    ).await;
+    assert_eq!(json["valid"], true);
+}
+
+#[tokio::test]
+async fn test_validate_unknown_datasource_v2() {
+    let json = post_validate(
+        build_federation_app(),
+        "SELECT * FROM nonexistent.logs",
+        "sql",
+    ).await;
+    assert_eq!(json["valid"], false);
+    assert!(json["error"].as_str().unwrap().contains("not found in registry"));
+}
+
+#[tokio::test]
+async fn test_validate_unknown_table() {
+    let json = post_validate(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.nonexistent_table",
+        "sql",
+    ).await;
+    assert_eq!(json["valid"], false);
+    assert!(json["error"].as_str().unwrap().contains("not found in datasource"));
+}
+
+#[tokio::test]
+async fn test_validate_bad_syntax() {
+    let json = post_validate(
+        build_federation_app(),
+        "NOT A VALID QUERY",
+        "sql",
+    ).await;
+    assert_eq!(json["valid"], false);
+}
