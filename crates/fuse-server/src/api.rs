@@ -338,13 +338,16 @@ pub async fn query_handler(
                             result_cols[col_idx].push(batch.column(col_idx).slice(*row_idx, 1));
                         }
                     }
-                    let arrays: Vec<arrow::array::ArrayRef> = result_cols.into_iter()
+                    let arrays: Result<Vec<arrow::array::ArrayRef>, _> = result_cols.into_iter()
                         .map(|slices| {
                             let refs: Vec<&dyn arrow::array::Array> = slices.iter().map(|a| a.as_ref()).collect();
-                            arrow::compute::concat(&refs).unwrap()
+                            arrow::compute::concat(&refs)
                         })
                         .collect();
-                    vec![arrow::record_batch::RecordBatch::try_new(schema, arrays).unwrap()]
+                    match arrays.and_then(|a| arrow::record_batch::RecordBatch::try_new(schema, a)) {
+                        Ok(batch) => vec![batch],
+                        Err(_) => vec![],
+                    }
                 }
             } else {
                 batches
@@ -414,7 +417,8 @@ async fn execute_single(
     format: &str,
     (ds_id, table): &(String, String),
 ) -> Result<FederatedResult, String> {
-    let connector = state.registry.get(ds_id).unwrap();
+    let connector = state.registry.get(ds_id)
+        .ok_or_else(|| format!("datasource '{}' not found", ds_id))?;
     let sub_query = build_sub_query(query, format, table)?;
     let start = std::time::Instant::now();
     let batches = connector.execute(&sub_query).await.map_err(|e| e.to_string())?;
@@ -474,7 +478,10 @@ async fn execute_union(
 
     let mut handles = Vec::new();
     for (i, (ds_id, _)) in refs.iter().enumerate() {
-        let connector = state.registry.get(ds_id).unwrap();
+        let connector = match state.registry.get(ds_id) {
+            Some(c) => c,
+            None => continue, // skip missing datasource
+        };
         let sub_query = per_source[i].clone();
         let conn = connector.clone();
         let ds = ds_id.clone();
@@ -559,8 +566,10 @@ async fn execute_join(
     let (ds_a, table_a) = &refs[0];
     let (ds_b, table_b) = &refs[1];
 
-    let conn_a = state.registry.get(ds_a).unwrap();
-    let conn_b = state.registry.get(ds_b).unwrap();
+    let conn_a = state.registry.get(ds_a)
+        .ok_or_else(|| format!("datasource '{}' not found", ds_a))?;
+    let conn_b = state.registry.get(ds_b)
+        .ok_or_else(|| format!("datasource '{}' not found", ds_b))?;
 
     let sq_a = fuse_core::connector::SubQuery {
         table: table_a.clone(),
@@ -1162,7 +1171,7 @@ pub async fn get_saved_query(
     Path(name): Path<String>,
 ) -> impl IntoResponse {
     match state.saved_queries.get(&name) {
-        Some(sq) => Json(serde_json::to_value(sq).unwrap()).into_response(),
+        Some(sq) => Json(serde_json::json!(sq)).into_response(),
         None => error_json(StatusCode::NOT_FOUND, format!("saved query '{}' not found", name)).into_response(),
     }
 }
