@@ -164,4 +164,34 @@ mod tests {
         assert_eq!(r2.status(), StatusCode::TOO_MANY_REQUESTS);
         assert_eq!(r2.headers().get("Retry-After").unwrap(), "60");
     }
+
+    #[test]
+    fn test_extract_ip_from_x_real_ip() {
+        use axum::http::Request;
+        let req = Request::builder()
+            .header("x-real-ip", "203.0.113.5")
+            .body(Body::empty())
+            .unwrap();
+        let ip = extract_ip(&req);
+        assert_eq!(ip, Some(IpAddr::from([203, 0, 113, 5])));
+    }
+
+    #[test]
+    fn test_extract_ip_xff_takes_priority() {
+        use axum::http::Request;
+        let req = Request::builder()
+            .header("x-forwarded-for", "10.0.0.1, 10.0.0.2")
+            .header("x-real-ip", "10.0.0.99")
+            .body(Body::empty())
+            .unwrap();
+        let ip = extract_ip(&req);
+        assert_eq!(ip, Some(IpAddr::from([10, 0, 0, 1])));
+    }
+
+    #[test]
+    fn test_extract_ip_none_when_no_headers() {
+        use axum::http::Request;
+        let req = Request::builder().body(Body::empty()).unwrap();
+        assert_eq!(extract_ip(&req), None);
+    }
 }
