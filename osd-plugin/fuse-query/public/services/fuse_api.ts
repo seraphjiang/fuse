@@ -22,6 +22,14 @@ export class FuseApiService {
     return this.http.get(`${API_BASE}/datasources`);
   }
 
+  async getSchemas(datasourceId: string): Promise<Array<{ name: string; schema_type: string }>> {
+    return this.http.get(`${API_BASE}/datasources/${datasourceId}/schemas`);
+  }
+
+  async getFields(datasourceId: string, table: string): Promise<Array<{ name: string; data_type: string; nullable: boolean }>> {
+    return this.http.get(`${API_BASE}/datasources/${datasourceId}/schemas/${table}/fields`);
+  }
+
   async query(request: QueryRequest): Promise<QueryResponse> {
     return this.http.post(`${API_BASE}/query`, { body: JSON.stringify(request) });
   }
