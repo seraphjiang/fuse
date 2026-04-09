@@ -12,6 +12,7 @@ mod merger;
 mod optimizer;
 pub mod ppl;
 mod planner;
+pub mod spark;
 mod sql_to_subquery;
 
 pub use cost::{
@@ -27,3 +28,7 @@ pub use merger::{
 };
 pub use optimizer::{apply_connector_pushdown, PushdownDecision};
 pub use planner::{FuseEngine, FuseExecutor};
+pub use spark::{
+    plan_federated_join, should_delegate_to_spark, EmrServerlessBackend, FederatedJoinStrategy,
+    LivyBackend, SparkBackend, SparkJobStatus,
+};

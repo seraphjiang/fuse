@@ -4,6 +4,7 @@ members = [
     "crates/fuse-engine",
     "crates/fuse-connectors/opensearch",
     "crates/fuse-connectors/s3",
+    "crates/fuse-connectors/prometheus",
     "crates/fuse-server",
 ]
 resolver = "2"
@@ -32,6 +33,7 @@ toml = "0.8"
 
 # HTTP & gRPC
 axum = { version = "0.8", features = ["json"] }
+reqwest = { version = "0.12", features = ["json"] }
 tonic = "0.12"
 prost = "0.13"
 
