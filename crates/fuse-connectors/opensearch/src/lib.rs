@@ -20,6 +20,9 @@ use fuse_core::registry::ConnectorFactory;
 
 use crate::client::OpenSearchClient;
 
+/// Queries with no limit or limit above this threshold use scroll pagination.
+const SCROLL_THRESHOLD: u64 = 10_000;
+
 /// OpenSearch connector implementing the FederatedConnector trait.
 #[derive(Debug)]
 pub struct OpenSearchConnector {
@@ -45,6 +48,63 @@ impl OpenSearchConnector {
             .and_then(|v: &toml::Value| v.as_integer())
             .unwrap_or(16) as usize;
         Ok(Self::new(config.id.clone(), client, max_concurrent))
+    }
+
+    /// Scroll through all pages and collect into Vec<RecordBatch>.
+    async fn execute_scroll(&self, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
+        let dsl = pushdown::translate_to_query_dsl(query);
+
+        let resp = self
+            .client
+            .client()
+            .search(opensearch::SearchParts::Index(&[&query.table]))
+            .scroll("1m")
+            .body(dsl)
+            .send()
+            .await
+            .map_err(|e| ConnectorError::query(e))?;
+
+        let mut body = resp
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|e| ConnectorError::query(e))?;
+
+        let mut batches = Vec::new();
+        let mut collected: usize = 0;
+        let limit = query.limit;
+
+        loop {
+            let batch = parse_hits_to_batch(&body, query)?;
+            if batch.num_rows() == 0 {
+                break;
+            }
+            collected += batch.num_rows();
+            batches.push(batch);
+            if limit.map_or(false, |l| collected >= l as usize) {
+                break;
+            }
+
+            let scroll_id = body
+                .get("_scroll_id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ConnectorError::query("missing _scroll_id"))?;
+
+            let scroll_resp = self
+                .client
+                .client()
+                .scroll(opensearch::ScrollParts::None)
+                .body(serde_json::json!({"scroll": "1m", "scroll_id": scroll_id}))
+                .send()
+                .await
+                .map_err(|e| ConnectorError::query(e))?;
+
+            body = scroll_resp
+                .json::<serde_json::Value>()
+                .await
+                .map_err(|e| ConnectorError::query(e))?;
+        }
+
+        Ok(batches)
     }
 }
 
@@ -253,6 +313,12 @@ impl FederatedConnector for OpenSearchConnector {
     }
 
     async fn execute(&self, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
+        let use_scroll = query.limit.map_or(true, |l| l > SCROLL_THRESHOLD);
+
+        if use_scroll && query.aggregations.is_empty() {
+            return self.execute_scroll(query).await;
+        }
+
         let dsl = pushdown::translate_to_query_dsl(query);
 
         let resp = self
@@ -500,5 +566,48 @@ impl ConnectorFactory for OpenSearchConnectorFactory {
         config: &ConnectorConfig,
     ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
         Ok(Arc::new(OpenSearchConnector::from_config(config).await?))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sq(limit: Option<u64>) -> SubQuery {
+        SubQuery {
+            table: "logs".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            having: None,
+            sort: vec![],
+            limit,
+            passthrough: None,
+        }
+    }
+
+    #[test]
+    fn test_scroll_threshold_no_limit_uses_scroll() {
+        let q = sq(None);
+        assert!(q.limit.map_or(true, |l| l > SCROLL_THRESHOLD));
+    }
+
+    #[test]
+    fn test_scroll_threshold_small_limit_no_scroll() {
+        let q = sq(Some(100));
+        assert!(!q.limit.map_or(true, |l| l > SCROLL_THRESHOLD));
+    }
+
+    #[test]
+    fn test_scroll_threshold_exactly_at_boundary() {
+        let q = sq(Some(SCROLL_THRESHOLD));
+        assert!(!q.limit.map_or(true, |l| l > SCROLL_THRESHOLD));
+    }
+
+    #[test]
+    fn test_scroll_threshold_above_boundary() {
+        let q = sq(Some(SCROLL_THRESHOLD + 1));
+        assert!(q.limit.map_or(true, |l| l > SCROLL_THRESHOLD));
     }
 }
