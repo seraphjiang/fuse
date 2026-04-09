@@ -17,7 +17,7 @@ Items are ordered by priority. Status: `todo` | `in-progress` | `blocked` | `don
 | 009 | PPL parser extension (multi-source FROM) | — | todo | 003 |
 | 010 | Result merger (union, global sort/limit) | — | todo | 003 |
 | 011 | README update with build/run instructions | — | todo | 005 |
-| 012 | docker-compose for local dev (OS cluster) | — | todo | — |
+| 012 | docker-compose for local dev (OS cluster) | explorer | done | — |
 
 ## P0: Playground & Live Test Site
 
