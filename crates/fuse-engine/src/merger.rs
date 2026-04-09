@@ -12,31 +12,59 @@ use std::sync::Arc;
 
 use arrow::array::{new_null_array, RecordBatch};
 use arrow::compute::{concat_batches, lexsort_to_indices, take, SortColumn};
-use arrow::datatypes::{Field, Schema, SchemaRef};
+use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use datafusion::error::{DataFusionError, Result};
 
 /// Compute the union schema of multiple schemas.
 ///
-/// Fields are collected in order of first appearance. If a field appears in
-/// multiple schemas, it is included once (using the first occurrence's type).
-/// Fields missing from some schemas will be filled with nulls during alignment.
+/// Fields are collected in order of first appearance. When the same field
+/// appears with different types across schemas, the wider type is chosen
+/// (e.g. Int32 + Int64 → Int64). Fields missing from some schemas will be
+/// filled with nulls during alignment.
 pub fn union_schema(schemas: &[SchemaRef]) -> SchemaRef {
+    let mut field_map: Vec<(String, DataType)> = Vec::new();
     let mut seen = HashSet::new();
-    let mut fields = Vec::new();
     for schema in schemas {
         for field in schema.fields() {
-            if seen.insert(field.name().clone()) {
-                // Mark nullable since not all sources may have this field
-                let f = if schemas.len() > 1 {
-                    Field::new(field.name(), field.data_type().clone(), true)
-                } else {
-                    field.as_ref().clone()
-                };
-                fields.push(f);
+            if let Some(pos) = field_map.iter().position(|(n, _)| n == field.name()) {
+                // Widen type if needed
+                field_map[pos].1 = wider_type(&field_map[pos].1, field.data_type());
+            } else if seen.insert(field.name().clone()) {
+                field_map.push((field.name().clone(), field.data_type().clone()));
             }
         }
     }
+    let fields: Vec<Field> = field_map
+        .into_iter()
+        .map(|(name, dt)| Field::new(name, dt, schemas.len() > 1))
+        .collect();
     Arc::new(Schema::new(fields))
+}
+
+/// Pick the wider of two Arrow data types for type coercion.
+fn wider_type(a: &DataType, b: &DataType) -> DataType {
+    if a == b {
+        return a.clone();
+    }
+    match (a, b) {
+        // Integer widening
+        (DataType::Int8, DataType::Int16 | DataType::Int32 | DataType::Int64) => b.clone(),
+        (DataType::Int16, DataType::Int32 | DataType::Int64) => b.clone(),
+        (DataType::Int32, DataType::Int64) => b.clone(),
+        (DataType::Int16 | DataType::Int32 | DataType::Int64, DataType::Int8) => a.clone(),
+        (DataType::Int32 | DataType::Int64, DataType::Int16) => a.clone(),
+        (DataType::Int64, DataType::Int32) => a.clone(),
+        // Float widening
+        (DataType::Float32, DataType::Float64) => DataType::Float64,
+        (DataType::Float64, DataType::Float32) => DataType::Float64,
+        // Int → Float
+        (DataType::Int8 | DataType::Int16 | DataType::Int32 | DataType::Int64, DataType::Float64) => DataType::Float64,
+        (DataType::Float64, DataType::Int8 | DataType::Int16 | DataType::Int32 | DataType::Int64) => DataType::Float64,
+        // String widening
+        (DataType::Utf8, DataType::LargeUtf8) | (DataType::LargeUtf8, DataType::Utf8) => DataType::LargeUtf8,
+        // Default: keep first
+        _ => a.clone(),
+    }
 }
 
 /// Align a RecordBatch to a target schema.
@@ -50,7 +78,16 @@ pub fn align_batch(batch: &RecordBatch, target: &SchemaRef) -> Result<RecordBatc
         .iter()
         .map(|field| {
             match batch.schema().index_of(field.name()) {
-                Ok(idx) => Ok(batch.column(idx).clone()),
+                Ok(idx) => {
+                    let col = batch.column(idx);
+                    if col.data_type() == field.data_type() {
+                        Ok(col.clone())
+                    } else {
+                        // Cast to target type
+                        arrow::compute::cast(col, field.data_type())
+                            .map_err(|e| DataFusionError::ArrowError(Box::new(e), None))
+                    }
+                }
                 Err(_) => {
                     // Missing column → null array
                     Ok(new_null_array(field.data_type(), num_rows))
@@ -363,5 +400,54 @@ mod tests {
         let b = make_batch(&s, &["a", "b", "c"], &[1, 2, 3]);
         let result = merge_batches(vec![b], None).unwrap();
         assert_eq!(result[0].num_rows(), 3);
+    }
+
+    #[test]
+    fn test_wider_type_int_widening() {
+        assert_eq!(wider_type(&DataType::Int32, &DataType::Int64), DataType::Int64);
+        assert_eq!(wider_type(&DataType::Int64, &DataType::Int32), DataType::Int64);
+        assert_eq!(wider_type(&DataType::Int8, &DataType::Int32), DataType::Int32);
+    }
+
+    #[test]
+    fn test_wider_type_float() {
+        assert_eq!(wider_type(&DataType::Float32, &DataType::Float64), DataType::Float64);
+        assert_eq!(wider_type(&DataType::Int32, &DataType::Float64), DataType::Float64);
+    }
+
+    #[test]
+    fn test_wider_type_same() {
+        assert_eq!(wider_type(&DataType::Utf8, &DataType::Utf8), DataType::Utf8);
+    }
+
+    #[test]
+    fn test_union_schema_type_widening() {
+        let s1 = Arc::new(Schema::new(vec![
+            Field::new("val", DataType::Int32, false),
+        ]));
+        let s2 = Arc::new(Schema::new(vec![
+            Field::new("val", DataType::Int64, false),
+        ]));
+        let merged = union_schema(&[s1, s2]);
+        assert_eq!(merged.field(0).data_type(), &DataType::Int64);
+    }
+
+    #[test]
+    fn test_align_batch_casts_types() {
+        use arrow::array::Int32Array;
+        // Source has Int32, target expects Int64
+        let src_schema = Arc::new(Schema::new(vec![
+            Field::new("val", DataType::Int32, false),
+        ]));
+        let target = Arc::new(Schema::new(vec![
+            Field::new("val", DataType::Int64, true),
+        ]));
+        let batch = RecordBatch::try_new(
+            src_schema,
+            vec![Arc::new(Int32Array::from(vec![1, 2, 3]))],
+        ).unwrap();
+        let aligned = align_batch(&batch, &target).unwrap();
+        assert_eq!(aligned.schema().field(0).data_type(), &DataType::Int64);
+        assert_eq!(aligned.num_rows(), 3);
     }
 }
