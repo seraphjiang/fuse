@@ -101,14 +101,9 @@ impl PrometheusConnector {
                         .get("password")
                         .and_then(|v: &toml::Value| v.as_str())
                         .unwrap_or_default();
-                    // Basic auth: base64(user:pass)
-                    let credentials = format!("{user}:{pass}");
-                    let encoded: String = credentials
-                        .bytes()
-                        .flat_map(|b| std::ascii::escape_default(b))
-                        .map(|b| b as char)
-                        .collect();
-                    // Use a simple encoding for basic auth header
+                    use base64::Engine as _;
+                    let encoded = base64::engine::general_purpose::STANDARD
+                        .encode(format!("{user}:{pass}"));
                     if let Ok(val) = HeaderValue::from_str(&format!("Basic {encoded}")) {
                         headers.insert(AUTHORIZATION, val);
                     }
@@ -619,5 +614,20 @@ mod tests {
         assert_eq!(s.fields().len(), 3);
         assert_eq!(s.field(0).name(), "__name__");
         assert_eq!(s.field(2).name(), "value");
+    }
+
+    #[test]
+    fn test_basic_auth_is_valid_base64() {
+        // Verify the basic auth header is proper RFC 7617 base64, not ascii-escaped
+        use base64::Engine as _;
+        let user = "admin";
+        let pass = "s3cr3t";
+        let encoded = base64::engine::general_purpose::STANDARD.encode(format!("{user}:{pass}"));
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(&encoded)
+            .unwrap();
+        assert_eq!(String::from_utf8(decoded).unwrap(), "admin:s3cr3t");
+        // Must not contain backslash-escaped bytes (the old bug)
+        assert!(!encoded.contains('\\'));
     }
 }
