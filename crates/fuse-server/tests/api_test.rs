@@ -87,6 +87,52 @@ impl FederatedConnector for MockConnector {
     }
 }
 
+/// A connector that sleeps before returning results, for timeout testing.
+#[derive(Debug)]
+struct SlowMockConnector {
+    id: String,
+    delay_ms: u64,
+}
+
+impl SlowMockConnector {
+    fn new(id: &str, delay_ms: u64) -> Self {
+        Self { id: id.to_string(), delay_ms }
+    }
+}
+
+#[async_trait]
+impl FederatedConnector for SlowMockConnector {
+    fn id(&self) -> &str { &self.id }
+    fn connector_type(&self) -> &str { "slow-mock" }
+    fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+    async fn health_check(&self) -> ConnectorHealth {
+        ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(1), message: None }
+    }
+    async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
+        Ok(vec![SchemaInfo { name: "logs".into(), schema_type: SchemaType::Index, estimated_row_count: Some(100) }])
+    }
+    async fn get_schema(&self, _: &str) -> Result<Schema, ConnectorError> {
+        Ok(Schema::new(vec![
+            Field::new("host", DataType::Utf8, false),
+            Field::new("status", DataType::Int64, false),
+        ]))
+    }
+    async fn execute(&self, _: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
+        tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
+        let schema = Arc::new(self.get_schema("").await?);
+        Ok(vec![RecordBatch::try_new(schema, vec![
+            Arc::new(StringArray::from(vec!["h1"])),
+            Arc::new(Int64Array::from(vec![200])),
+        ]).map_err(ConnectorError::query)?])
+    }
+    async fn execute_streaming(
+        &self, query: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+    ) -> Result<(), ConnectorError> {
+        for batch in self.execute(query).await? { tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?; }
+        Ok(())
+    }
+}
+
 fn build_test_app() -> axum::Router {
     let registry = ConnectorRegistry::new();
     registry
@@ -1183,9 +1229,19 @@ async fn test_timeout_explicit_succeeds() {
 
 #[tokio::test]
 async fn test_timeout_zero_ms_times_out() {
-    // 0ms timeout should fail immediately
-    let body = serde_json::json!({"query": "SELECT * FROM cluster_a.logs", "format": "sql", "timeout_ms": 0});
-    let resp = build_federation_app()
+    // Use a slow connector (200ms delay) with a 50ms timeout → guaranteed timeout
+    let registry = ConnectorRegistry::new();
+    registry.register(Arc::new(SlowMockConnector::new("slow_ds", 200))).unwrap();
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(QueryHistory::new()),
+    });
+    let app = fuse_server::build_router(state);
+
+    let body = serde_json::json!({"query": "SELECT * FROM slow_ds.logs", "format": "sql", "timeout_ms": 50});
+    let resp = app
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -1196,7 +1252,8 @@ async fn test_timeout_zero_ms_times_out() {
         )
         .await
         .unwrap();
-    // Either times out (500) or succeeds if mock is instant — both are valid
-    let status = resp.status();
-    assert!(status == StatusCode::OK || status == StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(json["error"].as_str().unwrap().contains("timed out"));
 }
