@@ -1,0 +1,19 @@
+[package]
+name = "fuse-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "HTTP API server for the Fuse federated query engine"
+
+[dependencies]
+fuse-core = { path = "../fuse-core" }
+fuse-engine = { path = "../fuse-engine" }
+fuse-connector-opensearch = { path = "../fuse-connectors/opensearch" }
+arrow = { workspace = true }
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
