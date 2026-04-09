@@ -2103,3 +2103,24 @@ async fn test_plan_cache_different_queries() {
     assert_eq!(s1, StatusCode::OK);
     assert_eq!(s2, StatusCode::OK);
 }
+
+// ── Trace ID tests ──
+
+#[tokio::test]
+async fn test_response_contains_trace_id() {
+    let (status, json) = post_query(build_test_app(), "SELECT * FROM testds.logs", "sql").await;
+    assert_eq!(status, StatusCode::OK);
+    let trace_id = json["metadata"]["trace_id"].as_str().unwrap();
+    assert!(!trace_id.is_empty());
+    assert!(trace_id.starts_with("q-"));
+}
+
+#[tokio::test]
+async fn test_trace_ids_are_unique() {
+    let app = build_test_app();
+    let (_, json1) = post_query(app.clone(), "SELECT * FROM testds.logs", "sql").await;
+    let (_, json2) = post_query(app, "SELECT * FROM testds.logs", "sql").await;
+    let t1 = json1["metadata"]["trace_id"].as_str().unwrap();
+    let t2 = json2["metadata"]["trace_id"].as_str().unwrap();
+    assert_ne!(t1, t2);
+}
