@@ -33,6 +33,26 @@ tr:hover td{background:#161b22}
 .plan{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:"SF Mono",Consolas,monospace;font-size:13px;white-space:pre-wrap;color:#79c0ff;max-height:200px;overflow:auto}
 .empty{padding:40px;text-align:center;color:#484f58;font-size:14px}
 .error{color:#f85149;padding:12px;background:#1c0d0d;border:1px solid #f8514933;border-radius:6px;font-size:13px}
+/* Help panel */
+.help-toggle{background:none;border:1px solid #30363d;color:#8b949e;font-size:12px;padding:4px 10px;border-radius:4px;cursor:pointer;margin-left:auto}
+.help-toggle:hover{color:#e1e4e8;border-color:#58a6ff}
+.help-panel{display:none;border:1px solid #21262d;border-radius:6px;background:#161b22;padding:16px;font-size:13px;overflow:auto;max-height:420px}
+.help-panel.open{display:block}
+.help-panel h3{color:#58a6ff;font-size:13px;font-weight:600;margin:16px 0 8px;text-transform:uppercase;letter-spacing:.5px}
+.help-panel h3:first-child{margin-top:0}
+.example{display:flex;gap:8px;align-items:flex-start;padding:6px 8px;border-radius:4px;cursor:pointer;margin:2px 0}
+.example:hover{background:#21262d}
+.example-label{color:#e1e4e8;font-weight:500;min-width:180px;flex-shrink:0}
+.example-query{color:#8b949e;font-family:"SF Mono",Consolas,monospace;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.example-badge{font-size:10px;padding:1px 5px;border-radius:3px;font-weight:600;flex-shrink:0}
+.badge-sql{background:#1f3a5f;color:#58a6ff}
+.badge-ppl{background:#2d1f3a;color:#bc8cff}
+.help-section{margin-bottom:12px}
+.help-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.help-item{padding:4px 0;color:#8b949e}
+.help-item code{color:#e1e4e8;background:#21262d;padding:1px 4px;border-radius:3px;font-size:12px}
+.help-item strong{color:#e1e4e8;font-weight:500}
+kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5px;font-size:11px;color:#e1e4e8;font-family:inherit}
 </style>
 </head>
 <body>
@@ -55,9 +75,62 @@ tr:hover td{background:#161b22}
     <button class="primary" id="run-btn" onclick="runQuery()">▶ Run</button>
     <button id="explain-btn" onclick="explainQuery()">Explain</button>
     <button id="validate-btn" onclick="validateQuery()">Validate</button>
+    <button class="help-toggle" onclick="toggleHelp()">Examples &amp; Help ▾</button>
   </div>
 
-  <textarea id="editor" placeholder="SELECT * FROM datasource.index WHERE status = 500 LIMIT 100" spellcheck="false">SELECT * FROM prod_cluster.test_index LIMIT 10</textarea>
+  <textarea id="editor" placeholder="SELECT * FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20" spellcheck="false">SELECT service, status, message FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20</textarea>
+
+  <div class="help-panel" id="help-panel">
+    <h3>Example Queries <span style="color:#8b949e;font-weight:400;text-transform:none">(click to load)</span></h3>
+
+    <div class="example" onclick="loadExample('ppl','source = cluster_a.application_logs, cluster_b.application_logs | where status >= 500 | head 20')">
+      <span class="example-badge badge-ppl">PPL</span>
+      <span class="example-label">Search errors across clusters</span>
+      <span class="example-query">source = cluster_a.application_logs, cluster_b.application_logs | where status >= 500 | head 20</span>
+    </div>
+    <div class="example" onclick="loadExample('sql','SELECT service, count(*) as errors FROM cluster_a.application_logs WHERE status >= 500 GROUP BY service ORDER BY errors DESC')">
+      <span class="example-badge badge-sql">SQL</span>
+      <span class="example-label">Error count by service</span>
+      <span class="example-query">SELECT service, count(*) as errors FROM cluster_a.application_logs WHERE status >= 500 GROUP BY service ORDER BY errors DESC</span>
+    </div>
+    <div class="example" onclick="loadExample('sql',`SELECT * FROM cluster_a.application_logs WHERE trace_id = &apos;trace-001&apos;`)">
+      <span class="example-badge badge-sql">SQL</span>
+      <span class="example-label">Cross-cluster trace lookup</span>
+      <span class="example-query">SELECT * FROM cluster_a.application_logs WHERE trace_id = 'trace-001'</span>
+    </div>
+    <div class="example" onclick="loadExample('ppl','source = cluster_a.application_logs | stats count() by status | sort - count()')">
+      <span class="example-badge badge-ppl">PPL</span>
+      <span class="example-label">Aggregate by status code</span>
+      <span class="example-query">source = cluster_a.application_logs | stats count() by status | sort - count()</span>
+    </div>
+    <div class="example" onclick="loadExample('sql','SELECT service, status, message FROM cluster_a.application_logs UNION ALL SELECT service, status, message FROM cluster_b.application_logs LIMIT 20')">
+      <span class="example-badge badge-sql">SQL</span>
+      <span class="example-label">Federated union</span>
+      <span class="example-query">SELECT service, status, message FROM cluster_a.application_logs UNION ALL SELECT service, status, message FROM cluster_b.application_logs LIMIT 20</span>
+    </div>
+
+    <h3>Available Datasources</h3>
+    <div class="help-grid">
+      <div class="help-item"><strong>cluster_a</strong> — api-gateway, auth-service, user-service</div>
+      <div class="help-item"><strong>cluster_b</strong> — order-service, payment-service, notification-service</div>
+    </div>
+    <div class="help-item" style="margin-top:4px">Index: <code>application_logs</code> — Fields: timestamp, service, status, message, trace_id, user_id, response_time_ms, method, path</div>
+
+    <h3>API Endpoints</h3>
+    <div class="help-item"><code>GET  /api/fuse/health</code> — Engine + connector health</div>
+    <div class="help-item"><code>GET  /api/fuse/datasources</code> — List registered datasources</div>
+    <div class="help-item"><code>GET  /api/fuse/datasources/{id}/schemas</code> — Discover schemas</div>
+    <div class="help-item"><code>GET  /api/fuse/datasources/{id}/schemas/{table}/fields</code> — Field info</div>
+    <div class="help-item"><code>POST /api/fuse/query</code> — Execute query <code>{"query":"...","format":"sql|ppl"}</code></div>
+    <div class="help-item"><code>POST /api/fuse/query/explain</code> — Show execution plan</div>
+    <div class="help-item"><code>POST /api/fuse/query/validate</code> — Validate without executing</div>
+
+    <h3>Keyboard Shortcuts</h3>
+    <div class="help-grid">
+      <div class="help-item"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> — Run query</div>
+      <div class="help-item"><kbd>Cmd</kbd>+<kbd>Enter</kbd> — Run query (macOS)</div>
+    </div>
+  </div>
 
   <div id="plan-box" class="plan" style="display:none"></div>
   <div id="error-box" class="error" style="display:none"></div>
@@ -66,12 +139,11 @@ tr:hover td{background:#161b22}
     <span id="meta-cols"></span>
     <span id="meta-time"></span>
   </div>
-  <div class="results" id="results"><div class="empty">Run a query to see results</div></div>
+  <div class="results" id="results"><div class="empty">Run a query to see results — or open <strong>Examples &amp; Help</strong> above</div></div>
 </main>
 
 <script>
 const API = window.location.origin;
-
 const $ = id => document.getElementById(id);
 
 async function api(path, opts) {
@@ -81,7 +153,16 @@ async function api(path, opts) {
   return body;
 }
 
-// Health
+function toggleHelp() {
+  $('help-panel').classList.toggle('open');
+}
+
+function loadExample(fmt, query) {
+  $('format').value = fmt;
+  $('editor').value = query;
+  $('editor').focus();
+}
+
 async function checkHealth() {
   try {
     const h = await api('/api/fuse/health');
@@ -93,7 +174,6 @@ async function checkHealth() {
   }
 }
 
-// Datasources
 async function loadDatasources() {
   try {
     const ds = await api('/api/fuse/datasources');
@@ -201,12 +281,10 @@ async function validateQuery() {
   }
 }
 
-// Keyboard shortcut: Ctrl/Cmd+Enter to run
 $('editor').addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runQuery(); }
 });
 
-// Init
 checkHealth();
 loadDatasources();
 setInterval(checkHealth, 30000);
