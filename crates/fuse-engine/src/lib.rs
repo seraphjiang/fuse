@@ -16,7 +16,7 @@ mod optimizer;
 pub mod ppl;
 mod planner;
 pub mod spark;
-mod sql_to_subquery;
+pub mod sql_to_subquery;
 
 pub use cost::{
     estimate_local_cost, estimate_remote_cost, pick_cheapest_connector, should_push_down,

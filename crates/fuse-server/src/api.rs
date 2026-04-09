@@ -112,15 +112,36 @@ pub async fn query_handler(
         }
     };
 
-    let sub_query = fuse_core::connector::SubQuery {
-        table,
-        projections: vec![],
-        filter: None,
-        aggregations: vec![],
-        group_by: vec![],
-        sort: vec![],
-        limit: Some(100),
-        passthrough: None,
+    let sub_query = match format.as_str() {
+        "ppl" => fuse_core::connector::SubQuery {
+            table,
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: Some(100),
+            passthrough: None,
+        },
+        _ => {
+            // Use full SQL→SubQuery translation for filter/limit/sort pushdown
+            match fuse_engine::sql_to_subquery::sql_to_subquery(&req.query) {
+                Ok(mut sq) => {
+                    sq.table = table; // override with resolved table name
+                    sq
+                }
+                Err(_) => fuse_core::connector::SubQuery {
+                    table,
+                    projections: vec![],
+                    filter: None,
+                    aggregations: vec![],
+                    group_by: vec![],
+                    sort: vec![],
+                    limit: Some(100),
+                    passthrough: None,
+                },
+            }
+        }
     };
 
     match connector.execute(&sub_query).await {
