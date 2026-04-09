@@ -16,7 +16,7 @@ use tower::ServiceExt;
 use fuse_core::connector::*;
 use fuse_core::error::ConnectorError;
 use fuse_core::registry::ConnectorRegistry;
-use fuse_server::api::AppState;
+use fuse_server::api::{AppState, RunningQueries};
 use fuse_server::history::QueryHistory;
 
 // ── Mock connector ──
@@ -143,6 +143,7 @@ fn build_test_app() -> axum::Router {
         alert_rules: vec![],
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(fuse_server::history::QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
     });
     fuse_server::build_router(state)
 }
@@ -449,7 +450,7 @@ fn build_capturing_app() -> (axum::Router, Arc<CapturingConnector>) {
     let connector = Arc::new(CapturingConnector::new("capds"));
     let registry = ConnectorRegistry::new();
     registry.register(connector.clone()).unwrap();
-    let state = Arc::new(AppState { registry: Arc::new(registry), alert_rules: vec![], view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()), history: Arc::new(fuse_server::history::QueryHistory::new()) });
+    let state = Arc::new(AppState { registry: Arc::new(registry), alert_rules: vec![], view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()), history: Arc::new(QueryHistory::new()), running_queries: Arc::new(RunningQueries::new()) });
     (fuse_server::build_router(state), connector)
 }
 
@@ -508,6 +509,7 @@ fn build_federation_app() -> axum::Router {
         alert_rules: vec![],
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(fuse_server::history::QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
     });
     fuse_server::build_router(state)
 }
@@ -717,6 +719,7 @@ async fn test_view_lifecycle() {
         alert_rules: vec![],
         view_registry: view_registry.clone(),
         history: Arc::new(QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
     });
     let app = fuse_server::build_router(state);
 
@@ -1002,6 +1005,7 @@ async fn test_history_records_query() {
         alert_rules: vec![],
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: history.clone(),
+        running_queries: Arc::new(RunningQueries::new()),
     });
     let app = fuse_server::build_router(state);
 
@@ -1052,6 +1056,7 @@ fn build_rate_limited_app(global_rpm: u32, per_ip_rpm: u32) -> axum::Router {
         alert_rules: vec![],
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(fuse_server::history::QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
     });
     fuse_server::build_router_with_limits(
         state,
@@ -1237,6 +1242,7 @@ async fn test_timeout_zero_ms_times_out() {
         alert_rules: vec![],
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
     });
     let app = fuse_server::build_router(state);
 
@@ -1256,4 +1262,88 @@ async fn test_timeout_zero_ms_times_out() {
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert!(json["error"].as_str().unwrap().contains("timed out"));
+}
+
+// ── Query cancellation tests ──
+
+#[tokio::test]
+async fn test_cancel_nonexistent_query() {
+    let app = build_federation_app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/fuse/query/q-nonexistent/cancel")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_list_running_queries_empty() {
+    let app = build_federation_app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/queries/running")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(json["running"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_cancel_slow_query() {
+    // Start a slow query, cancel it, verify it returns cancelled error
+    let registry = ConnectorRegistry::new();
+    registry.register(Arc::new(SlowMockConnector::new("slow_ds", 5000))).unwrap();
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
+    });
+    let running = state.running_queries.clone();
+    let app = fuse_server::build_router(state);
+
+    // Spawn the slow query
+    let app2 = app.clone();
+    let query_handle = tokio::spawn(async move {
+        let body = serde_json::json!({"query": "SELECT * FROM slow_ds.logs", "format": "sql", "timeout_ms": 10000});
+        let resp = app2
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/fuse/query")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        resp.status()
+    });
+
+    // Wait a bit for the query to register
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    // Cancel all running queries
+    let ids = running.list();
+    assert!(!ids.is_empty(), "expected at least one running query");
+    for id in &ids {
+        assert!(running.cancel(id));
+    }
+
+    // The query should return an error
+    let status = query_handle.await.unwrap();
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
 }

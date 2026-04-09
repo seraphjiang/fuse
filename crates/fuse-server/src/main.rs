@@ -73,6 +73,7 @@ async fn main() -> anyhow::Result<()> {
         alert_rules: vec![],
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(fuse_server::history::QueryHistory::new()),
+        running_queries: Arc::new(fuse_server::api::RunningQueries::new()),
     });
 
     // Build router with rate limits from config
