@@ -10,6 +10,7 @@ pub mod cache;
 pub mod cache_middleware;
 pub mod cost;
 pub mod join;
+pub mod materialized;
 mod merger;
 mod optimizer;
 pub mod ppl;
