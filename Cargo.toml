@@ -47,6 +47,8 @@ opensearch = { version = "2", features = ["aws-auth"] }
 # S3 & Parquet
 aws-sdk-s3 = "1"
 aws-sdk-cloudwatchlogs = "1"
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 parquet = { version = "58", features = ["arrow", "async"] }
 bytes = "1"

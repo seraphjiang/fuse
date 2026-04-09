@@ -13,12 +13,21 @@ use fuse_server::api::AppState;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info,fuse_server=debug".into()),
-        )
-        .init();
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "info,fuse_server=debug".into());
+
+    let log_format = std::env::var("FUSE_LOG_FORMAT").unwrap_or_default();
+    if log_format == "json" {
+        tracing_subscriber::fmt()
+            .json()
+            .with_env_filter(env_filter)
+            .with_target(true)
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .init();
+    }
 
     // Load config
     let config_path = std::env::var("FUSE_CONFIG").unwrap_or_else(|_| "fuse.toml".to_string());
@@ -77,6 +86,10 @@ async fn main() -> anyhow::Result<()> {
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
         plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
     });
+
+    // Initialize metrics
+    let metrics_handle = fuse_server::metrics::init();
+    fuse_server::metrics::set_handle(metrics_handle);
 
     // Build router with rate limits from config
     let rl = fuse_server::rate_limit::RateLimitState::new(

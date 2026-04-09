@@ -3,6 +3,7 @@
 pub mod api;
 pub mod health;
 pub mod history;
+pub mod metrics;
 pub mod plan_cache;
 pub mod rate_limit;
 pub mod saved_queries;
@@ -62,6 +63,7 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/api/fuse/views", get(api::list_views))
         .route("/api/fuse/views/{name}", get(api::get_view))
         .route("/api/fuse/views/{name}/refresh", post(api::refresh_view))
+        .route("/metrics", get(metrics::metrics_handler))
         .layer(middleware::from_fn(rate_limit::rate_limit_middleware))
         .layer(axum::Extension(rl))
         .layer(TraceLayer::new_for_http()

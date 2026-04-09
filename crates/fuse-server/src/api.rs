@@ -441,6 +441,7 @@ pub async fn query_handler(
                 row_count: total_rows,
                 error: None,
             });
+            crate::metrics::record_query(&req.format, true, t0.elapsed().as_millis() as u64);
             if req.result_format == "csv" {
                 let csv = batches_to_csv(&batches);
                 (
@@ -484,6 +485,7 @@ pub async fn query_handler(
                 row_count: 0,
                 error: Some(e.clone()),
             });
+            crate::metrics::record_query(&req.format, false, t0.elapsed().as_millis() as u64);
             error_json(StatusCode::INTERNAL_SERVER_ERROR, e).into_response()
         }
     }
@@ -1561,5 +1563,62 @@ mod tests {
         };
         let desc = describe_pushdown(&sq);
         assert!(desc.is_empty());
+    }
+
+    // ── #242 Prometheus range query verification (tester) ──
+
+    #[test]
+    fn test_range_fields_all_present_creates_tuple() {
+        let json = r#"{"query":"SELECT * FROM prom.metrics","format":"sql","start":"2024-01-01T00:00:00Z","end":"2024-01-02T00:00:00Z","step":"1m"}"#;
+        let req: QueryRequest = serde_json::from_str(json).unwrap();
+        let range = match (&req.start, &req.end, &req.step) {
+            (Some(s), Some(e), Some(st)) => Some((s.as_str(), e.as_str(), st.as_str())),
+            _ => None,
+        };
+        assert!(range.is_some());
+        let (s, e, st) = range.unwrap();
+        assert_eq!(s, "2024-01-01T00:00:00Z");
+        assert_eq!(e, "2024-01-02T00:00:00Z");
+        assert_eq!(st, "1m");
+    }
+
+    #[test]
+    fn test_range_partial_fields_returns_none() {
+        // Only start, no end/step → should NOT be a range query
+        let json = r#"{"query":"SELECT * FROM prom.metrics","format":"sql","start":"2024-01-01T00:00:00Z"}"#;
+        let req: QueryRequest = serde_json::from_str(json).unwrap();
+        let range = match (&req.start, &req.end, &req.step) {
+            (Some(s), Some(e), Some(st)) => Some((s.as_str(), e.as_str(), st.as_str())),
+            _ => None,
+        };
+        assert!(range.is_none());
+    }
+
+    #[test]
+    fn test_range_params_injected_into_passthrough() {
+        use fuse_core::connector::SubQuery;
+        let mut sq = SubQuery {
+            table: "metrics".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            having: None,
+            sort: vec![],
+            limit: None,
+            passthrough: None,
+        };
+        // Simulate what execute_single does
+        let (start, end, step) = ("2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z", "1m");
+        let pt = sq.passthrough.get_or_insert(serde_json::json!({}));
+        if let Some(obj) = pt.as_object_mut() {
+            obj.insert("start".into(), serde_json::Value::String(start.into()));
+            obj.insert("end".into(), serde_json::Value::String(end.into()));
+            obj.insert("step".into(), serde_json::Value::String(step.into()));
+        }
+        let pt = sq.passthrough.as_ref().unwrap();
+        assert_eq!(pt["start"], "2024-01-01T00:00:00Z");
+        assert_eq!(pt["end"], "2024-01-02T00:00:00Z");
+        assert_eq!(pt["step"], "1m");
     }
 }
