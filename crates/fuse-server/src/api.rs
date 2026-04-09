@@ -89,6 +89,12 @@ pub struct QueryRequest {
     /// Named query parameters. Keys without $ prefix are matched against $key in query.
     #[serde(default)]
     pub params: std::collections::HashMap<String, serde_json::Value>,
+    /// Prometheus range query: start time (RFC3339 or Unix timestamp string).
+    pub start: Option<String>,
+    /// Prometheus range query: end time (RFC3339 or Unix timestamp string).
+    pub end: Option<String>,
+    /// Prometheus range query: step duration (e.g. "15s", "1m").
+    pub step: Option<String>,
 }
 
 fn default_format() -> String {

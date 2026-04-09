@@ -7,6 +7,7 @@ members = [
     "crates/fuse-connectors/s3-o11y",
     "crates/fuse-connectors/example",
     "crates/fuse-connectors/prometheus",
+    "crates/fuse-connectors/cloudwatch",
     "crates/fuse-connector-sdk",
     "crates/fuse-server",
 ]
@@ -45,6 +46,7 @@ opensearch = { version = "2", features = ["aws-auth"] }
 
 # S3 & Parquet
 aws-sdk-s3 = "1"
+aws-sdk-cloudwatchlogs = "1"
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 parquet = { version = "58", features = ["arrow", "async"] }
 bytes = "1"

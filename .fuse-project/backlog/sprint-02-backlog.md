@@ -40,7 +40,7 @@
 | 230 | Subquery support: SELECT * FROM (SELECT ...) AS sub | planner | done | Recursive extraction + filter merging. Commit: 12847cb. Tests: 484→502 |
 | 231 | HAVING clause in GROUP BY | planner | done | Commit: 12847cb. Tests: 484→487 |
 | 232 | IN/NOT IN filter pushdown | explorer | done | HAVING pushdown to UNION ALL sources. Commit: 50f68cf. 2 tests |
-| 233 | LIKE/ILIKE filter pushdown | explorer | done | Already implemented in Sprint 1 (ComparisonOp::Like + all connectors) |
+| 233 | LIKE/ILIKE filter pushdown | planner | done | Added ILike variant + case_insensitive wildcard. Commit: c52181d. Tests: 502→532 |
 | 234 | COUNT DISTINCT aggregation pushdown | explorer | done | End-to-end: AggFunction::CountDistinct → cardinality. Commit: 3752c6d. 3 tests |
 | 235 | PPL: lookup command (cross-datasource enrichment) | planner | todo | OpenSearch PPL extension |
 | 236 | Query plan cache (same query → skip planning) | planner | todo | |

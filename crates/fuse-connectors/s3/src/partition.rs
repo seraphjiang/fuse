@@ -205,4 +205,79 @@ mod tests {
         let p = partitions(&[("year", "2024")]);
         assert!(partition_matches(&FilterExpr::IsNotNull("year".into()), &p));
     }
+
+    // ── Verification: no false negatives (tester) ──
+
+    #[test]
+    fn test_not_eq_keeps_non_matching() {
+        // NOT(year = '2023') should KEEP year=2024
+        let p = partitions(&[("year", "2024")]);
+        let f = FilterExpr::Not(Box::new(
+            FilterExpr::Comparison { field: "year".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("2023".into()) },
+        ));
+        assert!(partition_matches(&f, &p));
+    }
+
+    #[test]
+    fn test_not_eq_prunes_matching() {
+        // NOT(year = '2024') should PRUNE year=2024
+        let p = partitions(&[("year", "2024")]);
+        let f = FilterExpr::Not(Box::new(
+            FilterExpr::Comparison { field: "year".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("2024".into()) },
+        ));
+        assert!(!partition_matches(&f, &p));
+    }
+
+    #[test]
+    fn test_not_range_is_conservative() {
+        // NOT(year > '2023') — conservative: can't safely prune, must keep
+        let p = partitions(&[("year", "2024")]);
+        let f = FilterExpr::Not(Box::new(
+            FilterExpr::Comparison { field: "year".into(), op: ComparisonOp::Gt, value: ScalarValue::Utf8("2023".into()) },
+        ));
+        assert!(partition_matches(&f, &p));
+    }
+
+    #[test]
+    fn test_like_is_conservative() {
+        // LIKE can't be evaluated on partitions — must keep file
+        let p = partitions(&[("service", "api-gateway")]);
+        let f = FilterExpr::Comparison { field: "service".into(), op: ComparisonOp::Like, value: ScalarValue::Utf8("api%".into()) };
+        assert!(partition_matches(&f, &p));
+    }
+
+    #[test]
+    fn test_or_both_fail_prunes() {
+        let p = partitions(&[("year", "2022")]);
+        let f = FilterExpr::Or(
+            Box::new(FilterExpr::Comparison { field: "year".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("2023".into()) }),
+            Box::new(FilterExpr::Comparison { field: "year".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("2024".into()) }),
+        );
+        assert!(!partition_matches(&f, &p));
+    }
+
+    #[test]
+    fn test_and_both_match_keeps() {
+        let p = partitions(&[("year", "2024"), ("month", "03")]);
+        let f = FilterExpr::And(
+            Box::new(FilterExpr::Comparison { field: "year".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("2024".into()) }),
+            Box::new(FilterExpr::Comparison { field: "month".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("03".into()) }),
+        );
+        assert!(partition_matches(&f, &p));
+    }
+
+    #[test]
+    fn test_is_null_conservative_on_unknown_column() {
+        // IS NULL on non-partition column — must keep (conservative)
+        let p = partitions(&[("year", "2024")]);
+        assert!(partition_matches(&FilterExpr::IsNull("status".into()), &p));
+    }
+
+    #[test]
+    fn test_empty_partitions_always_keeps() {
+        // No partition info — can never prune
+        let p = HashMap::new();
+        let f = FilterExpr::Comparison { field: "year".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("2024".into()) };
+        assert!(partition_matches(&f, &p));
+    }
 }
