@@ -89,36 +89,54 @@ pub async fn query_handler(
     State(state): State<Arc<AppState>>,
     Json(req): Json<QueryRequest>,
 ) -> impl IntoResponse {
-    // Phase 1: parse datasource.table from query, fan out to connector
     let format = req.format.to_lowercase();
-    let parse_result = match format.as_str() {
-        "ppl" => parse_ppl_source(&req.query),
-        _ => parse_sql_source(&req.query),
+
+    // Parse all datasource.table references from the query
+    let refs = match format.as_str() {
+        "ppl" => parse_ppl_sources(&req.query),
+        _ => parse_sql_sources(&req.query),
     };
 
-    let (ds_id, table) = match parse_result {
-        Ok(v) => v,
+    let refs = match refs {
+        Ok(r) if r.is_empty() => {
+            return error_json(StatusCode::BAD_REQUEST, "no datasource.table references found")
+                .into_response()
+        }
+        Ok(r) => r,
         Err(e) => return error_json(StatusCode::BAD_REQUEST, e).into_response(),
     };
 
-    let connector = match state.registry.get(&ds_id) {
-        Some(c) => c,
-        None => {
+    // Validate all datasources exist
+    for (ds_id, _) in &refs {
+        if state.registry.get(ds_id).is_none() {
             return error_json(
                 StatusCode::NOT_FOUND,
                 format!("datasource '{}' not found", ds_id),
             )
-            .into_response()
+            .into_response();
         }
+    }
+
+    let result = if refs.len() == 1 {
+        // Single datasource — direct execution
+        execute_single(&state, &req.query, &format, &refs[0]).await
+    } else if is_union_query(&req.query) {
+        // UNION ALL — fan out to each connector, merge results
+        execute_union(&state, &req.query, &format, &refs).await
+    } else {
+        // JOIN — use join executor
+        execute_join(&state, &refs).await
     };
 
-    let sub_query = match build_sub_query(&req.query, &format, &table) {
-        Ok(sq) => sq,
-        Err(e) => return error_json(StatusCode::BAD_REQUEST, e).into_response(),
-    };
-
-    match connector.execute(&sub_query).await {
+    match result {
         Ok(batches) => {
+            // Apply global limit if present in query
+            let limit = parse_limit(&req.query);
+            let batches = if let Some(n) = limit {
+                fuse_engine::merge_batches(batches, Some(n)).unwrap_or_default()
+            } else {
+                batches
+            };
             let (columns, rows) = batches_to_json(&batches);
             let total_rows = rows.len() as u64;
             Json(QueryResponse {
@@ -133,6 +151,112 @@ pub async fn query_handler(
         }
         Err(e) => error_json(StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
+}
+
+/// Execute a single-datasource query.
+async fn execute_single(
+    state: &AppState,
+    query: &str,
+    format: &str,
+    (ds_id, table): &(String, String),
+) -> Result<Vec<arrow::record_batch::RecordBatch>, String> {
+    let connector = state.registry.get(ds_id).unwrap();
+    let sub_query = build_sub_query(query, format, table)?;
+    connector.execute(&sub_query).await.map_err(|e| e.to_string())
+}
+
+/// Execute a UNION ALL query — fan out to each connector in parallel, merge.
+async fn execute_union(
+    state: &AppState,
+    query: &str,
+    format: &str,
+    refs: &[(String, String)],
+) -> Result<Vec<arrow::record_batch::RecordBatch>, String> {
+    let mut handles = Vec::new();
+
+    for (ds_id, table) in refs {
+        let connector = state.registry.get(ds_id).unwrap();
+        let sub_query = build_sub_query(query, format, table)?;
+        let conn = connector.clone();
+        handles.push(tokio::spawn(async move { conn.execute(&sub_query).await }));
+    }
+
+    let mut batch_sets = Vec::new();
+    for handle in handles {
+        match handle.await {
+            Ok(Ok(batches)) => batch_sets.push(batches),
+            Ok(Err(e)) => return Err(e.to_string()),
+            Err(e) => return Err(format!("task join error: {e}")),
+        }
+    }
+
+    fuse_engine::union_batches(batch_sets).map_err(|e| e.to_string())
+}
+
+/// Execute a cross-datasource JOIN using the join executor.
+async fn execute_join(
+    state: &AppState,
+    refs: &[(String, String)],
+) -> Result<Vec<arrow::record_batch::RecordBatch>, String> {
+    if refs.len() != 2 {
+        return Err(format!("JOIN requires exactly 2 datasources, got {}", refs.len()));
+    }
+
+    let (ds_a, table_a) = &refs[0];
+    let (ds_b, table_b) = &refs[1];
+
+    let conn_a = state.registry.get(ds_a).unwrap();
+    let conn_b = state.registry.get(ds_b).unwrap();
+
+    // Fetch both sides in parallel with no filters (join executor handles the rest)
+    let sq_a = fuse_core::connector::SubQuery {
+        table: table_a.clone(),
+        projections: vec![],
+        filter: None,
+        aggregations: vec![],
+        group_by: vec![],
+        sort: vec![],
+        limit: None,
+        passthrough: None,
+    };
+    let mut sq_b = sq_a.clone();
+    sq_b.table = table_b.clone();
+
+    let (res_a, res_b) = tokio::join!(conn_a.execute(&sq_a), conn_b.execute(&sq_b));
+    let batches_a = res_a.map_err(|e| e.to_string())?;
+    let batches_b = res_b.map_err(|e| e.to_string())?;
+
+    if batches_a.is_empty() || batches_b.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // Find common columns to use as join key
+    let schema_a = batches_a[0].schema();
+    let schema_b = batches_b[0].schema();
+    let join_key = find_join_key(&schema_a, &schema_b)
+        .ok_or_else(|| "no common column found for JOIN key".to_string())?;
+
+    fuse_engine::hash_join(
+        &batches_a,
+        &join_key,
+        &batches_b,
+        &join_key,
+        fuse_engine::JoinType::Inner,
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// Find the first column name that exists in both schemas.
+fn find_join_key(
+    a: &arrow::datatypes::SchemaRef,
+    b: &arrow::datatypes::SchemaRef,
+) -> Option<String> {
+    for field in a.fields() {
+        if b.field_with_name(field.name()).is_ok() {
+            return Some(field.name().clone());
+        }
+    }
+    None
 }
 
 /// GET /api/fuse/datasources
@@ -205,16 +329,24 @@ pub async fn explain_handler(
 ) -> impl IntoResponse {
     let format = req.format.to_lowercase();
     let parse_result = match format.as_str() {
-        "ppl" => parse_ppl_source(&req.query),
-        _ => parse_sql_source(&req.query),
+        "ppl" => parse_ppl_sources(&req.query),
+        _ => parse_sql_sources(&req.query),
     };
 
     match parse_result {
-        Ok((ds_id, table)) => {
-            let connector_exists = state.registry.get(&ds_id).is_some();
+        Ok(refs) => {
+            let strategy = if refs.len() == 1 {
+                "SingleSource"
+            } else if is_union_query(&req.query) {
+                "UnionAll"
+            } else {
+                "CrossSourceJoin"
+            };
+            let ds_list: Vec<String> = refs.iter().map(|(ds, t)| format!("{ds}.{t}")).collect();
+            let all_found = refs.iter().all(|(ds, _)| state.registry.get(ds).is_some());
             let plan = format!(
-                "FederatedPlan {{\n  datasource: \"{}\",\n  table: \"{}\",\n  format: \"{}\",\n  connector_found: {},\n  strategy: FanOut\n}}",
-                ds_id, table, format, connector_exists
+                "FederatedPlan {{\n  datasources: {:?},\n  format: \"{}\",\n  all_connectors_found: {},\n  strategy: {}\n}}",
+                ds_list, format, all_found, strategy
             );
             Json(ExplainResponse { plan }).into_response()
         }
@@ -229,23 +361,24 @@ pub async fn validate_handler(
 ) -> impl IntoResponse {
     let format = req.format.to_lowercase();
     let parse_result = match format.as_str() {
-        "ppl" => parse_ppl_source(&req.query),
-        _ => parse_sql_source(&req.query),
+        "ppl" => parse_ppl_sources(&req.query),
+        _ => parse_sql_sources(&req.query),
     };
 
     match parse_result {
-        Ok((ds_id, _table)) => {
-            if state.registry.get(&ds_id).is_none() {
-                Json(ValidateResponse {
-                    valid: false,
-                    error: Some(format!("datasource '{}' not found in registry", ds_id)),
-                })
-            } else {
-                Json(ValidateResponse {
-                    valid: true,
-                    error: None,
-                })
+        Ok(refs) => {
+            for (ds_id, _) in &refs {
+                if state.registry.get(ds_id).is_none() {
+                    return Json(ValidateResponse {
+                        valid: false,
+                        error: Some(format!("datasource '{}' not found in registry", ds_id)),
+                    });
+                }
             }
+            Json(ValidateResponse {
+                valid: true,
+                error: None,
+            })
         }
         Err(e) => Json(ValidateResponse {
             valid: false,
@@ -262,38 +395,80 @@ pub async fn health_handler(State(state): State<Arc<AppState>>) -> impl IntoResp
 
 // ── Helpers ──
 
-/// Minimal PPL source parser: `source = datasource.table | ...`
-fn parse_ppl_source(query: &str) -> Result<(String, String), String> {
+/// Parse all datasource.table references from a PPL query.
+/// PPL: `source = ds1.table1, ds2.table2 | ...`
+fn parse_ppl_sources(query: &str) -> Result<Vec<(String, String)>, String> {
     let rest = query
         .trim()
         .strip_prefix("source")
+        .or_else(|| query.trim().strip_prefix("search"))
         .and_then(|s| s.trim_start().strip_prefix('='))
         .map(|s| s.trim_start())
         .ok_or_else(|| "PPL query must start with 'source = '".to_string())?;
 
     let source_part = rest.split('|').next().unwrap_or(rest).trim();
-    let first = source_part.split(',').next().unwrap_or(source_part).trim();
-    parse_qualified_name(first)
+    source_part
+        .split(',')
+        .map(|s| parse_qualified_name(s.trim()))
+        .collect()
 }
 
-/// Minimal SQL source parser: `... FROM datasource.table ...`
-fn parse_sql_source(query: &str) -> Result<(String, String), String> {
+/// Parse all datasource.table references from a SQL query.
+/// Finds all `datasource.table` patterns after FROM, JOIN, and in UNION ALL subqueries.
+fn parse_sql_sources(query: &str) -> Result<Vec<(String, String)>, String> {
+    let mut refs = Vec::new();
     let lower = query.to_lowercase();
-    let pos = lower
-        .find("from ")
-        .ok_or_else(|| "SQL query must contain FROM clause".to_string())?;
-    let after = query[pos + 5..].trim_start();
-    let token = after
-        .split_whitespace()
-        .next()
-        .ok_or_else(|| "expected table reference after FROM".to_string())?;
-    parse_qualified_name(token)
+
+    // Find references after FROM and JOIN keywords
+    for keyword in &["from ", "join "] {
+        let mut search_from = 0;
+        while let Some(pos) = lower[search_from..].find(keyword) {
+            let abs_pos = search_from + pos + keyword.len();
+            let after = query[abs_pos..].trim_start();
+            // Take the first token (might be `ds.table` or `ds.table` with alias)
+            let token = after
+                .split(|c: char| c.is_whitespace() || c == ',' || c == ')')
+                .next()
+                .unwrap_or("");
+            if let Ok(r) = parse_qualified_name(token) {
+                if !refs.contains(&r) {
+                    refs.push(r);
+                }
+            }
+            search_from = abs_pos;
+        }
+    }
+
+    if refs.is_empty() {
+        Err("SQL query must contain a FROM clause with a qualified datasource.table reference".into())
+    } else {
+        Ok(refs)
+    }
+}
+
+/// Check if a SQL query contains UNION ALL.
+fn is_union_query(query: &str) -> bool {
+    query.to_lowercase().contains("union all")
+}
+
+/// Extract LIMIT value from end of query.
+fn parse_limit(query: &str) -> Option<usize> {
+    let lower = query.to_lowercase();
+    let pos = lower.rfind("limit ")?;
+    let after = query[pos + 6..].trim();
+    let num_str = after
+        .split(|c: char| !c.is_ascii_digit())
+        .next()?;
+    num_str.parse().ok()
 }
 
 fn parse_qualified_name(name: &str) -> Result<(String, String), String> {
-    name.split_once('.')
+    // Strip alias: "ds.table AS a" or "ds.table a" → "ds.table"
+    let clean = name.split_whitespace().next().unwrap_or(name);
+    clean
+        .split_once('.')
         .map(|(ds, tbl)| (ds.to_string(), tbl.to_string()))
-        .ok_or_else(|| format!("expected 'datasource.table', got '{}'", name))
+        .ok_or_else(|| format!("expected 'datasource.table', got '{}'", clean))
 }
 
 /// Build a SubQuery from a user query string using the full translation pipeline.
