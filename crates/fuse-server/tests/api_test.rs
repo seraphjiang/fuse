@@ -764,3 +764,88 @@ async fn test_stream_unknown_datasource_returns_error_event() {
     let text = String::from_utf8_lossy(&body);
     assert!(text.contains("\"error\""), "SSE stream must contain an error event for unknown datasource");
 }
+
+// ── PPL validate / explain tests ──
+
+#[tokio::test]
+async fn test_validate_ppl_valid() {
+    let app = build_test_app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query/validate")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"query": "source = testds.logs | where status >= 500", "format": "ppl"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["valid"], true);
+}
+
+#[tokio::test]
+async fn test_validate_ppl_invalid_syntax() {
+    let app = build_test_app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query/validate")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"query": "not ppl", "format": "ppl"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["valid"], false);
+}
+
+#[tokio::test]
+async fn test_explain_ppl_query() {
+    let app = build_test_app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query/explain")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"query": "source = testds.logs | head 10", "format": "ppl"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(json["plan"].as_str().unwrap().contains("testds"));
+}
+
+#[tokio::test]
+async fn test_fields_endpoint() {
+    let app = build_test_app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/datasources/testds/schemas/logs/fields")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let fields = json.as_array().unwrap();
+    assert!(!fields.is_empty());
+    assert!(fields.iter().any(|f| f["name"] == "host"));
+}
