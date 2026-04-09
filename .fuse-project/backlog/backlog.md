@@ -33,8 +33,8 @@ Items are ordered by priority. Status: `todo` | `in-progress` | `blocked` | `don
 | 056 | ALB + security group (Amazon VPN IPs only) | infra | done | 055 |
 | 057 | CodePipeline: CodeCommit → Build → Deploy | infra | done | 054, 055, 056 |
 | 058 | OpenSearch Serverless collections + data | infra | done | — |
-| 059 | fuse.toml for playground | infra | in-progress | 058 |
-| 060 | End-to-end: push → deploy → query works | tester | in-progress | 057, 059 |
+| 059 | fuse.toml for playground | infra | done | 058 |
+| 060 | End-to-end: push → deploy → query works | tester | done | 057, 059 |
 | 061 | Custom domain: fuse.huanji.profile.aws.dev | infra | done | 056 |
 | 062 | OpenAPI spec (docs/api/openapi.yaml) | general | done | 004 |
 | 063 | Expanded test suite | tester | done | 005 |
@@ -73,7 +73,7 @@ Items are ordered by priority. Status: `todo` | `in-progress` | `blocked` | `don
 | 070 | OSD plugin (query bar + results table) | general | done | 004 |
 | 071 | Publish fuse-connector-sdk to crates.io | general | done (dry-run) | 031 |
 | 072 | Blog post + demo video | explorer | done (draft) | 073 |
-| 073 | Federated demo data (logs across 2 clusters) | infra | in-progress | 058 |
+| 073 | Federated demo data (logs across 2 clusters) | infra | done | 058 |
 | 074 | CONTRIBUTING.md with DCO | explorer | done | — |
 | 075 | GitHub Issues templates | explorer | done | — |
 | 077 | Performance benchmarks (benches/) | planner | done | 003 |
@@ -87,4 +87,4 @@ Items are ordered by priority. Status: `todo` | `in-progress` | `blocked` | `don
 | 090 | Tests for cache.rs + cache_middleware.rs | explorer | done | 040 |
 | 091 | Tests for S3 connector (select, reader) | planner | in-progress | 020 |
 | 092 | Tests for Prometheus connector (promql, parsing) | planner | in-progress | 030 |
-| 093 | Coverage audit across all modules | tester | in-progress | — |
+| 093 | Coverage audit across all modules | infra | done | — |
