@@ -702,3 +702,65 @@ async fn test_view_lifecycle() {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["metadata"]["total_rows"], 2);
 }
+
+// ── Streaming endpoint tests ──
+
+#[tokio::test]
+async fn test_stream_endpoint_returns_sse() {
+    let app = build_test_app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query/stream")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"query": "SELECT * FROM testds.logs"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    // SSE responses use text/event-stream content type
+    let ct = resp.headers().get("content-type").unwrap().to_str().unwrap();
+    assert!(ct.contains("text/event-stream"), "expected SSE content-type, got: {ct}");
+}
+
+#[tokio::test]
+async fn test_stream_endpoint_contains_done_event() {
+    let app = build_test_app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query/stream")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"query": "SELECT * FROM testds.logs"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let text = String::from_utf8_lossy(&body);
+    assert!(text.contains("\"done\""), "SSE stream must contain a done event");
+    assert!(text.contains("\"metadata\""), "SSE stream must contain a metadata event");
+}
+
+#[tokio::test]
+async fn test_stream_unknown_datasource_returns_error_event() {
+    let app = build_test_app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query/stream")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"query": "SELECT * FROM nope.logs"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK); // SSE always 200, errors in stream
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let text = String::from_utf8_lossy(&body);
+    assert!(text.contains("\"error\""), "SSE stream must contain an error event for unknown datasource");
+}
