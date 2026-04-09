@@ -42,7 +42,7 @@
 | 232 | IN/NOT IN filter pushdown | explorer | done | HAVING pushdown to UNION ALL sources. Commit: 50f68cf. 2 tests |
 | 233 | LIKE/ILIKE filter pushdown | planner | done | Added ILike variant + case_insensitive wildcard. Commit: c52181d. Tests: 502→532 |
 | 234 | COUNT DISTINCT aggregation pushdown | explorer | done | End-to-end: AggFunction::CountDistinct → cardinality. Commit: 3752c6d. 3 tests |
-| 235 | PPL: lookup command (cross-datasource enrichment) | planner | todo | OpenSearch PPL extension |
+| 235 | PPL: lookup command (cross-datasource enrichment) | planner | done | 11 PPL commands. extract_lookups() API. Commit: 6099fb7. Tests: 576→582 |
 | 236 | Query plan cache (same query → skip planning) | planner | todo | |
 
 ## P2: Connector Improvements
@@ -58,7 +58,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 250 | Structured logging (tracing-subscriber JSON) | infra | todo | Currently text logs |
+| 250 | Structured logging (tracing-subscriber JSON) | infra | done | FUSE_LOG_FORMAT=json, already in 7448bde |
 | 251 | Metrics endpoint (Prometheus /metrics) | explorer | done | 4 metrics: queries_total, duration_ms, active_queries, connector_healthy. Commit: 7448bde. 3 tests |
 | 252 | Distributed tracing (OpenTelemetry) | infra | todo | Trace across connectors |
 | 253 | Graceful shutdown (drain in-flight queries) | explorer | done | SIGTERM/SIGINT → drain 10s → cancel_all. Commit: 7ae3d5d. 2 tests |

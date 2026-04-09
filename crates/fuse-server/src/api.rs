@@ -133,6 +133,7 @@ pub struct QueryResponse {
 pub struct QueryMetadata {
     pub total_rows: u64,
     pub format: String,
+    pub trace_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub datasources_queried: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -279,6 +280,16 @@ pub async fn query_handler(
 ) -> impl IntoResponse {
     let t0 = std::time::Instant::now();
     let format = req.format.to_lowercase();
+    let query_id = format!("q-{:x}", t0.elapsed().as_nanos() ^ std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+
+    tracing::info!(
+        query_id = %query_id,
+        format = %format,
+        analyze = req.analyze,
+        query_len = req.query.len(),
+        "Query received"
+    );
 
     // Bind parameters if provided
     let query = if req.params.is_empty() {
@@ -442,6 +453,14 @@ pub async fn query_handler(
                 error: None,
             });
             crate::metrics::record_query(&req.format, true, t0.elapsed().as_millis() as u64);
+            tracing::info!(
+                query_id = %query_id,
+                format = %format,
+                total_rows = total_rows,
+                latency_ms = t0.elapsed().as_millis() as u64,
+                datasources = ?fed.datasources,
+                "Query completed"
+            );
             if req.result_format == "csv" {
                 let csv = batches_to_csv(&batches);
                 (
@@ -456,6 +475,7 @@ pub async fn query_handler(
                     metadata: QueryMetadata {
                         total_rows,
                         format: req.format,
+                        trace_id: query_id.clone(),
                         datasources_queried: if fed.datasources.len() > 1 {
                             Some(fed.datasources)
                         } else {
@@ -486,6 +506,13 @@ pub async fn query_handler(
                 error: Some(e.clone()),
             });
             crate::metrics::record_query(&req.format, false, t0.elapsed().as_millis() as u64);
+            tracing::warn!(
+                query_id = %query_id,
+                format = %format,
+                latency_ms = t0.elapsed().as_millis() as u64,
+                error = %e,
+                "Query failed"
+            );
             error_json(StatusCode::INTERNAL_SERVER_ERROR, e).into_response()
         }
     }
@@ -1374,7 +1401,7 @@ pub async fn get_view(
             Json(QueryResponse {
                 columns,
                 rows: rows.clone(),
-                metadata: QueryMetadata { total_rows: rows.len() as u64, format: "view".into(), datasources_queried: None, datasource_stats: None },
+                metadata: QueryMetadata { total_rows: rows.len() as u64, format: "view".into(), trace_id: format!("v-{:x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()), datasources_queried: None, datasource_stats: None },
                 execution_profile: None,
                 partial_errors: vec![],
             }).into_response()

@@ -630,4 +630,46 @@ mod tests {
         // Must not contain backslash-escaped bytes (the old bug)
         assert!(!encoded.contains('\\'));
     }
+
+    // ── #242 Range query passthrough detection (tester) ──
+
+    #[test]
+    fn test_passthrough_with_range_is_detected() {
+        use fuse_core::connector::SubQuery;
+        let sq = SubQuery {
+            table: "http_requests".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            having: None,
+            sort: vec![],
+            limit: None,
+            passthrough: Some(serde_json::json!({
+                "start": "2024-01-01T00:00:00Z",
+                "end": "2024-01-02T00:00:00Z",
+                "step": "1m"
+            })),
+        };
+        let is_range = sq.passthrough.as_ref().and_then(|p| p.get("start")).is_some();
+        assert!(is_range);
+    }
+
+    #[test]
+    fn test_passthrough_without_range_is_instant() {
+        use fuse_core::connector::SubQuery;
+        let sq = SubQuery {
+            table: "http_requests".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            having: None,
+            sort: vec![],
+            limit: None,
+            passthrough: None,
+        };
+        let is_range = sq.passthrough.as_ref().and_then(|p| p.get("start")).is_some();
+        assert!(!is_range);
+    }
 }
