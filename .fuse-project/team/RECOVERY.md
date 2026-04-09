@@ -21,6 +21,10 @@ kiro-hive tell general "$(cat .fuse-project/team/agents/general.md)"
 
 # 4. Share project state
 kiro-hive broadcast "Read .fuse-project/backlog/backlog.md for current work items and .fuse-project/sprints/sprint-01.md for the active sprint. The repo is at ~/wss/fuse/"
+
+# 5. Start the watchdog (auto-pokes idle agents every 5 min)
+chmod +x ~/wss/fuse/scripts/watchdog-cron.sh
+(crontab -l 2>/dev/null | grep -v watchdog-cron; echo "*/5 * * * * /local/home/huanji/wss/fuse/scripts/watchdog-cron.sh") | crontab -
 ```
 
 ## Team Composition
@@ -121,6 +125,33 @@ Implement the S3/Parquet connector (backlog #020)."
 # Update .fuse-project/team/roster.md
 # Update .fuse-project/backlog/backlog.md (assign #020 to s3-dev)
 ```
+
+## Watchdog (Auto-Poke Idle Agents)
+
+A cron job runs every 5 minutes to check for idle agents and nudge them to pick up backlog work. Fully detached — doesn't block any agent's session.
+
+**How it works:**
+- `scripts/watchdog-cron.sh` checks `kiro-hive status`
+- If an agent is idle (not Thinking/Creating/etc), sends a poke message
+- Skips the coordinator (sisyphus) and any actively working agents
+- Logs to `/tmp/fuse-watchdog.log`
+
+**Install:**
+```bash
+chmod +x ~/wss/fuse/scripts/watchdog-cron.sh
+(crontab -l 2>/dev/null | grep -v watchdog-cron; echo "*/5 * * * * /local/home/huanji/wss/fuse/scripts/watchdog-cron.sh") | crontab -
+```
+
+**Verify:** `crontab -l | grep watchdog`
+
+**Check logs:** `tail -20 /tmp/fuse-watchdog.log`
+
+**Remove:**
+```bash
+crontab -l | grep -v watchdog-cron | crontab -
+```
+
+**Customize interval:** Change `*/5` to `*/10` for every 10 minutes, etc.
 
 ## Disaster Recovery Checklist
 
