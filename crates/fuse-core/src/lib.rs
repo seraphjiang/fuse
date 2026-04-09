@@ -6,6 +6,7 @@ pub mod connector;
 pub mod error;
 pub mod registry;
 pub mod security;
+pub mod version;
 
 // Re-export commonly used types at crate root for convenience
 pub use connector::{

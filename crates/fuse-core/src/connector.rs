@@ -20,6 +20,11 @@ pub trait FederatedConnector: Send + Sync + fmt::Debug {
     /// Connector type string (e.g., "opensearch", "s3", "prometheus").
     fn connector_type(&self) -> &str;
 
+    /// Protocol version this connector implements. Defaults to current.
+    fn version(&self) -> crate::version::ConnectorVersion {
+        crate::version::ConnectorVersion::current()
+    }
+
     /// Declare what this connector can do.
     fn capabilities(&self) -> ConnectorCapabilities;
 

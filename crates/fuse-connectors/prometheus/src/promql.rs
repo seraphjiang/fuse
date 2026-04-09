@@ -104,3 +104,149 @@ fn scalar_to_string(value: &ScalarValue) -> Option<String> {
         ScalarValue::Null => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fuse_core::connector::{AggFunction, AggregationExpr, SortExpr};
+
+    fn simple_query(table: &str) -> SubQuery {
+        SubQuery {
+            table: table.into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            passthrough: None,
+        }
+    }
+
+    #[test]
+    fn test_build_promql_simple_metric() {
+        let q = simple_query("http_requests_total");
+        assert_eq!(build_promql(&q), "http_requests_total");
+    }
+
+    #[test]
+    fn test_build_promql_with_label_matchers() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::And(
+                Box::new(FilterExpr::Comparison {
+                    field: "job".into(),
+                    op: ComparisonOp::Eq,
+                    value: ScalarValue::Utf8("api".into()),
+                }),
+                Box::new(FilterExpr::Comparison {
+                    field: "status".into(),
+                    op: ComparisonOp::Neq,
+                    value: ScalarValue::Utf8("200".into()),
+                }),
+            )),
+            ..simple_query("http_requests_total")
+        };
+        let pql = build_promql(&q);
+        assert!(pql.starts_with("http_requests_total{"));
+        assert!(pql.contains(r#"job="api""#));
+        assert!(pql.contains(r#"status!="200""#));
+    }
+
+    #[test]
+    fn test_build_promql_with_aggregation() {
+        let q = SubQuery {
+            aggregations: vec![AggregationExpr {
+                function: AggFunction::Sum,
+                field: None,
+                alias: "total".into(),
+            }],
+            ..simple_query("http_requests_total")
+        };
+        assert_eq!(build_promql(&q), "sum(http_requests_total)");
+    }
+
+    #[test]
+    fn test_build_promql_with_aggregation_and_group_by() {
+        let q = SubQuery {
+            aggregations: vec![AggregationExpr {
+                function: AggFunction::Count,
+                field: None,
+                alias: "cnt".into(),
+            }],
+            group_by: vec!["job".into(), "instance".into()],
+            ..simple_query("up")
+        };
+        assert_eq!(build_promql(&q), "count by (job, instance) (up)");
+    }
+
+    #[test]
+    fn test_build_promql_with_rate_passthrough() {
+        let q = SubQuery {
+            passthrough: Some(serde_json::json!({"function": "rate", "range": "5m"})),
+            ..simple_query("http_requests_total")
+        };
+        assert_eq!(build_promql(&q), "rate(http_requests_total[5m])");
+    }
+
+    #[test]
+    fn test_extract_label_matchers_eq() {
+        let f = FilterExpr::Comparison {
+            field: "env".into(),
+            op: ComparisonOp::Eq,
+            value: ScalarValue::Utf8("prod".into()),
+        };
+        let matchers = extract_label_matchers(&f);
+        assert_eq!(matchers, vec![r#"env="prod""#]);
+    }
+
+    #[test]
+    fn test_extract_label_matchers_like_becomes_regex() {
+        let f = FilterExpr::Comparison {
+            field: "path".into(),
+            op: ComparisonOp::Like,
+            value: ScalarValue::Utf8("/api/.*".into()),
+        };
+        let matchers = extract_label_matchers(&f);
+        assert_eq!(matchers, vec![r#"path=~"/api/.*""#]);
+    }
+
+    #[test]
+    fn test_extract_label_matchers_not_eq() {
+        let f = FilterExpr::Not(Box::new(FilterExpr::Comparison {
+            field: "env".into(),
+            op: ComparisonOp::Eq,
+            value: ScalarValue::Utf8("test".into()),
+        }));
+        let matchers = extract_label_matchers(&f);
+        assert_eq!(matchers, vec![r#"env!="test""#]);
+    }
+
+    #[test]
+    fn test_extract_label_matchers_unsupported_op_returns_empty() {
+        let f = FilterExpr::Comparison {
+            field: "val".into(),
+            op: ComparisonOp::Gt,
+            value: ScalarValue::Int64(100),
+        };
+        let matchers = extract_label_matchers(&f);
+        assert!(matchers.is_empty());
+    }
+
+    #[test]
+    fn test_extract_label_matchers_and_combines() {
+        let f = FilterExpr::And(
+            Box::new(FilterExpr::Comparison {
+                field: "a".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Utf8("1".into()),
+            }),
+            Box::new(FilterExpr::Comparison {
+                field: "b".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Utf8("2".into()),
+            }),
+        );
+        let matchers = extract_label_matchers(&f);
+        assert_eq!(matchers.len(), 2);
+    }
+}

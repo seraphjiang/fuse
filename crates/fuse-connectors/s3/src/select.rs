@@ -81,3 +81,124 @@ fn scalar_to_sql(value: &ScalarValue) -> String {
         ScalarValue::Utf8(s) => format!("'{}'", s.replace('\'', "''")),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_filter_eq() {
+        let f = FilterExpr::Comparison {
+            field: "status".into(),
+            op: ComparisonOp::Eq,
+            value: ScalarValue::Int64(200),
+        };
+        assert_eq!(
+            filter_to_s3_select_where(&f).unwrap(),
+            r#"s."status" = 200"#
+        );
+    }
+
+    #[test]
+    fn test_filter_like() {
+        let f = FilterExpr::Comparison {
+            field: "msg".into(),
+            op: ComparisonOp::Like,
+            value: ScalarValue::Utf8("%error%".into()),
+        };
+        assert_eq!(
+            filter_to_s3_select_where(&f).unwrap(),
+            r#"s."msg" LIKE '%error%'"#
+        );
+    }
+
+    #[test]
+    fn test_filter_and_or() {
+        let f = FilterExpr::And(
+            Box::new(FilterExpr::Comparison {
+                field: "a".into(),
+                op: ComparisonOp::Gt,
+                value: ScalarValue::Int64(1),
+            }),
+            Box::new(FilterExpr::Or(
+                Box::new(FilterExpr::IsNull("b".into())),
+                Box::new(FilterExpr::IsNotNull("c".into())),
+            )),
+        );
+        let sql = filter_to_s3_select_where(&f).unwrap();
+        assert!(sql.contains("AND"));
+        assert!(sql.contains("OR"));
+        assert!(sql.contains("IS NULL"));
+        assert!(sql.contains("IS NOT NULL"));
+    }
+
+    #[test]
+    fn test_filter_not() {
+        let f = FilterExpr::Not(Box::new(FilterExpr::Comparison {
+            field: "x".into(),
+            op: ComparisonOp::Eq,
+            value: ScalarValue::Boolean(true),
+        }));
+        assert_eq!(
+            filter_to_s3_select_where(&f).unwrap(),
+            r#"NOT (s."x" = TRUE)"#
+        );
+    }
+
+    #[test]
+    fn test_filter_in_list() {
+        let f = FilterExpr::In {
+            field: "id".into(),
+            values: vec![
+                ScalarValue::Utf8("a".into()),
+                ScalarValue::Utf8("b".into()),
+            ],
+        };
+        assert_eq!(
+            filter_to_s3_select_where(&f).unwrap(),
+            r#"s."id" IN ('a', 'b')"#
+        );
+    }
+
+    #[test]
+    fn test_build_s3_select_all_columns() {
+        let sql = build_s3_select_query(&[], None, None);
+        assert_eq!(sql, "SELECT * FROM s3object s");
+    }
+
+    #[test]
+    fn test_build_s3_select_with_projections() {
+        let sql = build_s3_select_query(&["a".into(), "b".into()], None, None);
+        assert_eq!(sql, r#"SELECT s."a", s."b" FROM s3object s"#);
+    }
+
+    #[test]
+    fn test_build_s3_select_with_filter_and_limit() {
+        let f = FilterExpr::Comparison {
+            field: "status".into(),
+            op: ComparisonOp::Gte,
+            value: ScalarValue::Int64(500),
+        };
+        let sql = build_s3_select_query(&["status".into()], Some(&f), Some(10));
+        assert_eq!(
+            sql,
+            r#"SELECT s."status" FROM s3object s WHERE s."status" >= 500 LIMIT 10"#
+        );
+    }
+
+    #[test]
+    fn test_scalar_to_sql_string_escaping() {
+        let val = ScalarValue::Utf8("it's".into());
+        assert_eq!(scalar_to_sql(&val), "'it''s'");
+    }
+
+    #[test]
+    fn test_scalar_to_sql_null() {
+        assert_eq!(scalar_to_sql(&ScalarValue::Null), "NULL");
+    }
+
+    #[test]
+    fn test_scalar_to_sql_float() {
+        assert_eq!(scalar_to_sql(&ScalarValue::Float64(3.14)), "3.14");
+    }
+}

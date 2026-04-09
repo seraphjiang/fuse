@@ -32,50 +32,59 @@ Items are ordered by priority. Status: `todo` | `in-progress` | `blocked` | `don
 | 055 | ECS Fargate cluster + service + task def | infra | done | 053 |
 | 056 | ALB + security group (Amazon VPN IPs only) | infra | done | 055 |
 | 057 | CodePipeline: CodeCommit → Build → Deploy | infra | done | 054, 055, 056 |
-| 058 | OpenSearch Serverless collection (test data) | infra | todo | — |
-| 059 | fuse.toml for playground (points at OS Serverless) | — | blocked | 058 |
-| 060 | End-to-end: push → deploy → query works | tester | blocked | 057, 059 |
-| 061 | Custom domain: fuse.huanji.profile.aws.dev | infra | in-progress | 056 |
-| 062 | OpenAPI spec (docs/api/openapi.yaml) | — | todo | 004 |
-| 063 | Expanded test suite (PPL, merger, API tests) | tester | in-progress | 005 |
+| 058 | OpenSearch Serverless collections + data | infra | done | — |
+| 059 | fuse.toml for playground | infra | in-progress | 058 |
+| 060 | End-to-end: push → deploy → query works | tester | in-progress | 057, 059 |
+| 061 | Custom domain: fuse.huanji.profile.aws.dev | infra | done | 056 |
+| 062 | OpenAPI spec (docs/api/openapi.yaml) | general | done | 004 |
+| 063 | Expanded test suite | tester | done | 005 |
 
 ## Phase 2: Cross-Type Federation
 
 | ID | Item | Owner | Status | Depends On |
 |----|------|-------|--------|------------|
-| 020 | S3/Parquet connector | — | todo | 001 |
-| 021 | Cross-type JOIN execution (hash-join, semi-join) | — | todo | 003, 020 |
-| 022 | Query optimizer: cost-based planning | — | todo | 003 |
-| 023 | Spark delegation for heavy JOINs | — | todo | 003 |
+| 020 | S3/Parquet connector | general | done | 001 |
+| 021 | Cross-type JOIN execution (hash-join, semi-join) | planner | done | 003, 020 |
+| 022 | Query optimizer: cost-based planning | planner | done | 003 |
+| 023 | Spark delegation interface | planner | done | 003 |
 | 024 | Visual join builder (OSD plugin) | — | todo | 021 |
 
 ## Phase 3: Extensibility
 
 | ID | Item | Owner | Status | Depends On |
 |----|------|-------|--------|------------|
-| 030 | Prometheus connector | — | todo | 001 |
-| 031 | Connector SDK + docs | — | todo | 001, 020, 030 |
+| 030 | Prometheus connector | general | done | 001 |
+| 031 | Connector SDK + docs | general | done | 001, 020, 030 |
 | 032 | Connector protocol versioning | — | todo | 031 |
 
 ## Phase 4: Advanced
 
 | ID | Item | Owner | Status | Depends On |
 |----|------|-------|--------|------------|
-| 040 | Query result caching (TTL per connector) | — | todo | 003 |
+| 040 | Query result caching (TTL per connector) | explorer | done (needs tests) | 003 |
 | 041 | Materialized views | — | todo | 040 |
 | 042 | Alerting integration | — | todo | 003 |
-| 043 | RBAC / field-level security | — | todo | 004 |
+| 043 | RBAC / field-level security | general | done | 004 |
 
-## Community Adoption (P1)
+## Community Adoption
 
 | ID | Item | Owner | Status | Depends On |
 |----|------|-------|--------|------------|
-| 070 | OSD plugin (query bar + results table) | — | todo | 004 |
-| 071 | Publish fuse-connector-sdk to crates.io | — | todo | 031 |
-| 072 | Blog post + demo video | — | todo | 073 |
-| 073 | Federated demo data (logs across 2 clusters) | infra | todo | 058 |
-| 074 | CONTRIBUTING.md with DCO | — | todo | — |
-| 075 | GitHub Issues templates (bug, feature, connector) | — | todo | — |
-| 077 | Performance benchmarks (benches/) | — | todo | 003 |
+| 070 | OSD plugin (query bar + results table) | general | done | 004 |
+| 071 | Publish fuse-connector-sdk to crates.io | general | done (dry-run) | 031 |
+| 072 | Blog post + demo video | explorer | done (draft) | 073 |
+| 073 | Federated demo data (logs across 2 clusters) | infra | in-progress | 058 |
+| 074 | CONTRIBUTING.md with DCO | explorer | done | — |
+| 075 | GitHub Issues templates | explorer | done | — |
+| 077 | Performance benchmarks (benches/) | planner | done | 003 |
 | 080 | OpenSearch community forum post | — | todo | 072 |
-| 081 | RFC on opensearch-project/OpenSearch-Dashboards | — | todo | 070 |
+| 081 | RFC on opensearch-project/OpenSearch-Dashboards | planner | done (draft) | 070 |
+
+## Test Coverage (P0 — Steering Rule #1)
+
+| ID | Item | Owner | Status | Depends On |
+|----|------|-------|--------|------------|
+| 090 | Tests for cache.rs + cache_middleware.rs | explorer | in-progress | 040 |
+| 091 | Tests for S3 connector (select, reader) | planner | in-progress | 020 |
+| 092 | Tests for Prometheus connector (promql, parsing) | planner | in-progress | 030 |
+| 093 | Coverage audit across all modules | tester | in-progress | — |

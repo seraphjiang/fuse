@@ -249,3 +249,161 @@ async fn test_result_merger() {
     assert_eq!(limited.len(), 1);
     assert_eq!(limited[0].num_rows(), 2);
 }
+
+// ── Cache middleware tests ──
+
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::Duration;
+
+use fuse_engine::cache::QueryCache;
+use fuse_engine::cache_middleware::CachingConnectorWrapper;
+
+/// A mock connector that counts how many times execute() is called.
+#[derive(Debug)]
+struct CountingConnector {
+    id: String,
+    call_count: AtomicU32,
+}
+
+impl CountingConnector {
+    fn new(id: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            call_count: AtomicU32::new(0),
+        }
+    }
+
+    fn calls(&self) -> u32 {
+        self.call_count.load(Ordering::SeqCst)
+    }
+}
+
+#[async_trait]
+impl FederatedConnector for CountingConnector {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "mock"
+    }
+    fn capabilities(&self) -> ConnectorCapabilities {
+        ConnectorCapabilities::full()
+    }
+    async fn health_check(&self) -> ConnectorHealth {
+        ConnectorHealth {
+            status: HealthStatus::Healthy,
+            latency_ms: Some(1),
+            message: None,
+        }
+    }
+    async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
+        Ok(vec![])
+    }
+    async fn get_schema(&self, _table: &str) -> Result<Schema, ConnectorError> {
+        Ok(MockOpenSearchConnector::test_schema())
+    }
+    async fn execute(&self, _query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
+        self.call_count.fetch_add(1, Ordering::SeqCst);
+        Ok(MockOpenSearchConnector::test_batches())
+    }
+    async fn execute_streaming(
+        &self,
+        _query: &SubQuery,
+        tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+    ) -> Result<(), ConnectorError> {
+        for batch in MockOpenSearchConnector::test_batches() {
+            tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+        }
+        Ok(())
+    }
+}
+
+fn test_subquery() -> SubQuery {
+    SubQuery {
+        table: "test_index".to_string(),
+        projections: vec![],
+        filter: None,
+        aggregations: vec![],
+        group_by: vec![],
+        sort: vec![],
+        limit: Some(100),
+        passthrough: None,
+    }
+}
+
+#[tokio::test]
+async fn test_caching_wrapper_cache_miss_then_hit() {
+    let inner = Arc::new(CountingConnector::new("c1"));
+    let cache = Arc::new(QueryCache::new());
+    let wrapper = CachingConnectorWrapper::new(inner.clone(), cache.clone(), Duration::from_secs(60));
+
+    let query = test_subquery();
+
+    // First call — cache miss, delegates to inner
+    let r1 = wrapper.execute(&query).await.unwrap();
+    assert_eq!(inner.calls(), 1);
+    assert_eq!(r1[0].num_rows(), 3);
+
+    // Second call — cache hit, inner NOT called again
+    let r2 = wrapper.execute(&query).await.unwrap();
+    assert_eq!(inner.calls(), 1); // still 1
+    assert_eq!(r2[0].num_rows(), 3);
+
+    let stats = cache.stats();
+    assert_eq!(stats.hits, 1);
+    assert_eq!(stats.misses, 1);
+}
+
+#[tokio::test]
+async fn test_caching_wrapper_expired_entry_refetches() {
+    let inner = Arc::new(CountingConnector::new("c1"));
+    let cache = Arc::new(QueryCache::new());
+    let wrapper = CachingConnectorWrapper::new(inner.clone(), cache.clone(), Duration::from_millis(0));
+
+    let query = test_subquery();
+
+    // First call
+    wrapper.execute(&query).await.unwrap();
+    assert_eq!(inner.calls(), 1);
+
+    // Wait for expiry
+    tokio::time::sleep(Duration::from_millis(1)).await;
+
+    // Second call — expired, should re-fetch
+    wrapper.execute(&query).await.unwrap();
+    assert_eq!(inner.calls(), 2);
+}
+
+#[tokio::test]
+async fn test_caching_wrapper_delegates_metadata() {
+    let inner = Arc::new(CountingConnector::new("c1"));
+    let cache = Arc::new(QueryCache::new());
+    let wrapper = CachingConnectorWrapper::new(inner.clone(), cache, Duration::from_secs(60));
+
+    assert_eq!(wrapper.id(), "c1");
+    assert_eq!(wrapper.connector_type(), "mock");
+
+    let h = wrapper.health_check().await;
+    assert_eq!(h.status, HealthStatus::Healthy);
+}
+
+#[tokio::test]
+async fn test_caching_wrapper_streaming_bypasses_cache() {
+    let inner = Arc::new(CountingConnector::new("c1"));
+    let cache = Arc::new(QueryCache::new());
+    let wrapper = CachingConnectorWrapper::new(inner.clone(), cache.clone(), Duration::from_secs(60));
+
+    let query = test_subquery();
+    let (tx, mut rx) = mpsc::channel(10);
+
+    wrapper.execute_streaming(&query, tx).await.unwrap();
+
+    let mut rows = 0;
+    while let Some(Ok(batch)) = rx.recv().await {
+        rows += batch.num_rows();
+    }
+    assert_eq!(rows, 3);
+
+    // Streaming should not populate cache
+    assert_eq!(cache.stats().entries, 0);
+}

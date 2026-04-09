@@ -319,3 +319,88 @@ impl ConnectorFactory for S3ConnectorFactory {
         Ok(Arc::new(connector))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_capabilities() {
+        // Create a dummy connector to test capabilities
+        let sdk_config = tokio::runtime::Runtime::new().unwrap().block_on(async {
+            aws_config::defaults(aws_config::BehaviorVersion::latest())
+                .region(aws_sdk_s3::config::Region::new("us-east-1"))
+                .load()
+                .await
+        });
+        let client = S3Client::new(&sdk_config);
+        let connector = S3ParquetConnector::new(
+            "test".into(),
+            client,
+            "test-bucket".into(),
+            "prefix/".into(),
+        );
+
+        let caps = connector.capabilities();
+        assert!(caps.supports_filtering);
+        assert!(caps.supports_projection);
+        assert!(!caps.supports_aggregation);
+        assert!(!caps.supports_sorting);
+        assert!(caps.supports_limit);
+        assert!(!caps.supports_join);
+        assert!(caps.supports_streaming);
+        assert_eq!(caps.max_concurrent_queries, 8);
+        assert!(matches!(caps.latency_class, LatencyClass::High));
+    }
+
+    #[test]
+    fn test_key_to_table_name_simple() {
+        assert_eq!(
+            S3ParquetConnector::key_to_table_name("prefix/logs/file.parquet", "prefix/"),
+            "logs"
+        );
+    }
+
+    #[test]
+    fn test_key_to_table_name_no_prefix() {
+        assert_eq!(
+            S3ParquetConnector::key_to_table_name("data.parquet", ""),
+            "data"
+        );
+    }
+
+    #[test]
+    fn test_key_to_table_name_nested() {
+        assert_eq!(
+            S3ParquetConnector::key_to_table_name("prefix/metrics/2024/01.parquet", "prefix/"),
+            "metrics"
+        );
+    }
+
+    #[test]
+    fn test_key_to_table_name_parq_extension() {
+        assert_eq!(
+            S3ParquetConnector::key_to_table_name("events.parq", ""),
+            "events"
+        );
+    }
+
+    #[test]
+    fn test_connector_type() {
+        let sdk_config = tokio::runtime::Runtime::new().unwrap().block_on(async {
+            aws_config::defaults(aws_config::BehaviorVersion::latest())
+                .region(aws_sdk_s3::config::Region::new("us-east-1"))
+                .load()
+                .await
+        });
+        let client = S3Client::new(&sdk_config);
+        let connector = S3ParquetConnector::new(
+            "my-s3".into(),
+            client,
+            "bucket".into(),
+            "".into(),
+        );
+        assert_eq!(connector.id(), "my-s3");
+        assert_eq!(connector.connector_type(), "s3");
+    }
+}
