@@ -13,6 +13,7 @@ use fuse_core::alerting::{AlertEvaluator, AlertRule};
 use fuse_engine::materialized::MaterializedViewRegistry;
 use crate::history::QueryHistory;
 use crate::saved_queries::SavedQueryRegistry;
+use crate::plan_cache::{PlanCache, CachedPlan};
 
 use crate::health;
 
@@ -43,6 +44,15 @@ impl RunningQueries {
     pub fn list(&self) -> Vec<String> {
         self.inner.lock().unwrap().keys().cloned().collect()
     }
+    pub fn count(&self) -> usize {
+        self.inner.lock().unwrap().len()
+    }
+    pub fn cancel_all(&self) {
+        let mut map = self.inner.lock().unwrap();
+        for (_, token) in map.drain() {
+            token.cancel();
+        }
+    }
 }
 
 /// Shared application state passed to all handlers.
@@ -54,6 +64,7 @@ pub struct AppState {
     pub history: Arc<QueryHistory>,
     pub running_queries: Arc<RunningQueries>,
     pub saved_queries: Arc<SavedQueryRegistry>,
+    pub plan_cache: Arc<PlanCache>,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.
@@ -276,10 +287,17 @@ pub async fn query_handler(
         bind_params(&req.query, &req.params)
     };
 
-    // Parse all datasource.table references from the query
-    let refs = match format.as_str() {
-        "ppl" => parse_ppl_sources(&query),
-        _ => parse_sql_sources(&query),
+    // Parse all datasource.table references from the query (with plan cache)
+    let cache_key = format!("{}:{}", format, query);
+    let cached = state.plan_cache.get(&cache_key);
+
+    let refs = if let Some(ref plan) = cached {
+        Ok(plan.sources.clone())
+    } else {
+        match format.as_str() {
+            "ppl" => parse_ppl_sources(&query),
+            _ => parse_sql_sources(&query),
+        }
     };
 
     let refs = match refs {
@@ -335,9 +353,21 @@ pub async fn query_handler(
 
     match result {
         Ok(fed) => {
-            let order_by = parse_order_by(&query);
-            let limit = parse_limit(&query);
-            let is_distinct = strip_string_literals(&query).to_lowercase().contains("select distinct");
+            // Use cached plan or parse fresh
+            let (order_by, limit, is_distinct, offset) = if let Some(ref plan) = cached {
+                (plan.order_by.clone(), plan.limit, plan.is_distinct, plan.offset)
+            } else {
+                let ob = parse_order_by(&query);
+                let lim = parse_limit(&query);
+                let dist = strip_string_literals(&query).to_lowercase().contains("select distinct");
+                let off = parse_offset(&query).unwrap_or(0);
+                // Cache the plan for next time
+                state.plan_cache.insert(cache_key.clone(), CachedPlan::new(
+                    refs.clone(), is_union_query(&query), refs.len() > 1 && !is_union_query(&query),
+                    dist, lim, off, ob.clone(),
+                ));
+                (ob, lim, dist, off)
+            };
 
             // Apply global ORDER BY if present
             let batches = if let Some((col, desc)) = &order_by {
@@ -368,7 +398,6 @@ pub async fn query_handler(
             };
 
             // Apply global OFFSET + LIMIT
-            let offset = parse_offset(&query).unwrap_or(0);
             let batches = if offset > 0 || limit.is_some() {
                 // Flatten, skip offset, take limit
                 let all_rows: Vec<_> = batches.iter()
@@ -1445,8 +1474,33 @@ mod tests {
         let rq = RunningQueries::new();
         rq.insert("q-001".into(), CancellationToken::new());
         rq.cancel("q-001");
-        // After cancel, entry is removed — second cancel returns false
         assert!(!rq.cancel("q-001"));
+    }
+
+    #[test]
+    fn test_running_queries_count() {
+        let rq = RunningQueries::new();
+        assert_eq!(rq.count(), 0);
+        rq.insert("a".into(), CancellationToken::new());
+        rq.insert("b".into(), CancellationToken::new());
+        assert_eq!(rq.count(), 2);
+        rq.remove("a");
+        assert_eq!(rq.count(), 1);
+    }
+
+    #[test]
+    fn test_running_queries_cancel_all() {
+        let rq = RunningQueries::new();
+        let t1 = CancellationToken::new();
+        let t2 = CancellationToken::new();
+        let t1c = t1.clone();
+        let t2c = t2.clone();
+        rq.insert("a".into(), t1);
+        rq.insert("b".into(), t2);
+        rq.cancel_all();
+        assert_eq!(rq.count(), 0);
+        assert!(t1c.is_cancelled());
+        assert!(t2c.is_cancelled());
     }
 
     #[test]
@@ -1465,5 +1519,47 @@ mod tests {
         assert!(req.start.is_none());
         assert!(req.end.is_none());
         assert!(req.step.is_none());
+    }
+
+    // ── describe_pushdown verification (tester) ──
+
+    #[test]
+    fn test_describe_pushdown_all_fields() {
+        use fuse_core::connector::*;
+        let sq = SubQuery {
+            table: "logs".into(),
+            projections: vec!["host".into(), "status".into()],
+            filter: Some(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Gte, value: ScalarValue::Int64(500) }),
+            aggregations: vec![AggregationExpr { function: AggFunction::Count, field: None, alias: "cnt".into() }],
+            group_by: vec!["host".into()],
+            having: None,
+            sort: vec![],
+            limit: Some(10),
+            passthrough: None,
+        };
+        let desc = describe_pushdown(&sq);
+        assert!(desc.iter().any(|d| d.contains("projection")));
+        assert!(desc.iter().any(|d| d.contains("filter")));
+        assert!(desc.iter().any(|d| d.contains("aggregation")));
+        assert!(desc.iter().any(|d| d.contains("group_by")));
+        assert!(desc.iter().any(|d| d.contains("limit")));
+    }
+
+    #[test]
+    fn test_describe_pushdown_empty_query() {
+        use fuse_core::connector::*;
+        let sq = SubQuery {
+            table: "logs".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            having: None,
+            sort: vec![],
+            limit: None,
+            passthrough: None,
+        };
+        let desc = describe_pushdown(&sq);
+        assert!(desc.is_empty());
     }
 }

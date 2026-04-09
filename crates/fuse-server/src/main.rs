@@ -75,6 +75,7 @@ async fn main() -> anyhow::Result<()> {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(fuse_server::api::RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
     });
 
     // Build router with rate limits from config
@@ -82,12 +83,51 @@ async fn main() -> anyhow::Result<()> {
         config.engine.rate_limit_global,
         config.engine.rate_limit_per_ip,
     );
+    let running_queries = state.running_queries.clone();
     let app = fuse_server::build_router_with_limits(state, rl);
 
     let bind = &config.engine.bind;
     let listener = tokio::net::TcpListener::bind(bind).await?;
     info!(bind = %bind, "Fuse server starting");
-    axum::serve(listener, app).await?;
 
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal(running_queries))
+        .await?;
+
+    info!("Fuse server stopped");
     Ok(())
+}
+
+async fn shutdown_signal(running_queries: Arc<fuse_server::api::RunningQueries>) {
+    let ctrl_c = async { tokio::signal::ctrl_c().await.unwrap() };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .unwrap()
+            .recv()
+            .await;
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => info!("Received SIGINT"),
+        _ = terminate => info!("Received SIGTERM"),
+    }
+
+    info!(in_flight = running_queries.count(), "Shutting down — draining in-flight queries");
+
+    // Give in-flight queries up to 10 seconds to complete
+    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(10);
+    while running_queries.count() > 0 && tokio::time::Instant::now() < deadline {
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    }
+
+    if running_queries.count() > 0 {
+        info!(remaining = running_queries.count(), "Grace period expired — cancelling remaining queries");
+        running_queries.cancel_all();
+    }
+
+    info!("Shutdown complete");
 }
