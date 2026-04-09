@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuse Query Playground</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e1e4e8;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #21262d;background:#161b22}
+header h1{font-size:18px;font-weight:600;color:#58a6ff}
+header h1 span{color:#8b949e;font-weight:400}
+.health{display:flex;align-items:center;gap:6px;font-size:13px;color:#8b949e}
+.health-dot{width:10px;height:10px;border-radius:50%;background:#484f58}
+.health-dot.healthy{background:#3fb950}
+.health-dot.degraded{background:#d29922}
+.health-dot.unhealthy{background:#f85149}
+main{flex:1;display:flex;flex-direction:column;padding:16px 24px;gap:12px;max-width:1200px;width:100%;margin:0 auto}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+select,button{background:#21262d;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;padding:6px 12px;font-size:13px;cursor:pointer}
+select:hover,button:hover{border-color:#58a6ff}
+button.primary{background:#238636;border-color:#238636;font-weight:600}
+button.primary:hover{background:#2ea043}
+button:disabled{opacity:.5;cursor:not-allowed}
+textarea{width:100%;min-height:120px;background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:"SF Mono",Consolas,monospace;font-size:14px;resize:vertical;line-height:1.5}
+textarea:focus{outline:none;border-color:#58a6ff}
+.results{flex:1;overflow:auto;border:1px solid #21262d;border-radius:6px;background:#0d1117}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{position:sticky;top:0;background:#161b22;text-align:left;padding:8px 12px;border-bottom:2px solid #30363d;color:#8b949e;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.5px}
+td{padding:6px 12px;border-bottom:1px solid #21262d;white-space:nowrap;max-width:400px;overflow:hidden;text-overflow:ellipsis}
+tr:hover td{background:#161b22}
+.meta{font-size:12px;color:#8b949e;padding:8px 0;display:flex;gap:16px}
+.plan{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:"SF Mono",Consolas,monospace;font-size:13px;white-space:pre-wrap;color:#79c0ff;max-height:200px;overflow:auto}
+.empty{padding:40px;text-align:center;color:#484f58;font-size:14px}
+.error{color:#f85149;padding:12px;background:#1c0d0d;border:1px solid #f8514933;border-radius:6px;font-size:13px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Fuse <span>Query Playground</span></h1>
+  <div class="health" id="health">
+    <span class="health-dot" id="health-dot"></span>
+    <span id="health-text">connecting…</span>
+  </div>
+</header>
+
+<main>
+  <div class="toolbar">
+    <select id="format">
+      <option value="sql">SQL</option>
+      <option value="ppl">PPL</option>
+    </select>
+    <select id="datasource"><option value="">Loading…</option></select>
+    <button class="primary" id="run-btn" onclick="runQuery()">▶ Run</button>
+    <button id="explain-btn" onclick="explainQuery()">Explain</button>
+    <button id="validate-btn" onclick="validateQuery()">Validate</button>
+  </div>
+
+  <textarea id="editor" placeholder="SELECT * FROM datasource.index WHERE status = 500 LIMIT 100" spellcheck="false">SELECT * FROM prod_cluster.test_index LIMIT 10</textarea>
+
+  <div id="plan-box" class="plan" style="display:none"></div>
+  <div id="error-box" class="error" style="display:none"></div>
+  <div class="meta" id="meta" style="display:none">
+    <span id="meta-rows"></span>
+    <span id="meta-cols"></span>
+    <span id="meta-time"></span>
+  </div>
+  <div class="results" id="results"><div class="empty">Run a query to see results</div></div>
+</main>
+
+<script>
+const API = window.location.origin;
+
+const $ = id => document.getElementById(id);
+
+async function api(path, opts) {
+  const r = await fetch(API + path, opts);
+  const body = await r.json();
+  if (!r.ok) throw new Error(body.error || r.statusText);
+  return body;
+}
+
+// Health
+async function checkHealth() {
+  try {
+    const h = await api('/api/fuse/health');
+    $('health-dot').className = 'health-dot ' + h.status;
+    $('health-text').textContent = h.status + ' · v' + h.version;
+  } catch {
+    $('health-dot').className = 'health-dot unhealthy';
+    $('health-text').textContent = 'unreachable';
+  }
+}
+
+// Datasources
+async function loadDatasources() {
+  try {
+    const ds = await api('/api/fuse/datasources');
+    const sel = $('datasource');
+    sel.innerHTML = '<option value="">All datasources</option>';
+    ds.forEach(d => {
+      const o = document.createElement('option');
+      o.value = d.id;
+      o.textContent = d.id + ' (' + d.connector_type + ')';
+      sel.appendChild(o);
+    });
+  } catch { /* ignore */ }
+}
+
+function clearOutput() {
+  $('error-box').style.display = 'none';
+  $('plan-box').style.display = 'none';
+  $('meta').style.display = 'none';
+}
+
+function showError(msg) {
+  clearOutput();
+  $('error-box').textContent = msg;
+  $('error-box').style.display = 'block';
+}
+
+function renderTable(columns, rows) {
+  if (!columns.length) {
+    $('results').innerHTML = '<div class="empty">No results</div>';
+    return;
+  }
+  let html = '<table><thead><tr>';
+  columns.forEach(c => html += '<th>' + esc(c) + '</th>');
+  html += '</tr></thead><tbody>';
+  rows.forEach(row => {
+    html += '<tr>';
+    row.forEach(v => html += '<td title="' + esc(String(v)) + '">' + esc(String(v)) + '</td>');
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  $('results').innerHTML = html;
+}
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function runQuery() {
+  clearOutput();
+  $('run-btn').disabled = true;
+  const t0 = performance.now();
+  try {
+    const body = { query: $('editor').value, format: $('format').value };
+    const res = await api('/api/fuse/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const ms = Math.round(performance.now() - t0);
+    renderTable(res.columns, res.rows);
+    $('meta-rows').textContent = res.metadata.total_rows + ' rows';
+    $('meta-cols').textContent = res.columns.length + ' columns';
+    $('meta-time').textContent = ms + ' ms';
+    $('meta').style.display = 'flex';
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    $('run-btn').disabled = false;
+  }
+}
+
+async function explainQuery() {
+  clearOutput();
+  try {
+    const body = { query: $('editor').value, format: $('format').value };
+    const res = await api('/api/fuse/query/explain', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    $('plan-box').textContent = res.plan;
+    $('plan-box').style.display = 'block';
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+async function validateQuery() {
+  clearOutput();
+  try {
+    const body = { query: $('editor').value, format: $('format').value };
+    const res = await api('/api/fuse/query/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (res.valid) {
+      $('plan-box').textContent = '✓ Query is valid';
+      $('plan-box').style.display = 'block';
+    } else {
+      showError('Validation failed: ' + res.error);
+    }
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+// Keyboard shortcut: Ctrl/Cmd+Enter to run
+$('editor').addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runQuery(); }
+});
+
+// Init
+checkHealth();
+loadDatasources();
+setInterval(checkHealth, 30000);
+</script>
+</body>
+</html>
