@@ -292,4 +292,55 @@ mod tests {
         let cost_with_limit = estimate_remote_cost(&caps, &stats, &with_limit);
         assert!(cost_with_limit.total < cost_no_limit.total);
     }
+
+    #[test]
+    fn test_cost_estimate_zero() {
+        let c = CostEstimate::zero();
+        assert_eq!(c.cpu, 0.0);
+        assert_eq!(c.network, 0.0);
+        assert_eq!(c.total, 0.0);
+    }
+
+    #[test]
+    fn test_cost_estimate_total() {
+        let c = CostEstimate::new(10.0, 20.0);
+        assert_eq!(c.total, 30.0);
+    }
+
+    #[test]
+    fn test_local_cost_increases_with_rows() {
+        let caps = low_latency_caps();
+        let small = TableStats { estimated_rows: 100, avg_row_bytes: 200 };
+        let large = TableStats { estimated_rows: 1_000_000, avg_row_bytes: 200 };
+        let workload = QueryWorkload::default();
+        let cost_small = estimate_local_cost(&caps, &small, &workload);
+        let cost_large = estimate_local_cost(&caps, &large, &workload);
+        assert!(cost_large.total > cost_small.total);
+    }
+
+    #[test]
+    fn test_filter_reduces_remote_cost() {
+        let caps = low_latency_caps();
+        let stats = big_table();
+        let no_filter = QueryWorkload { has_filter: false, ..Default::default() };
+        let with_filter = QueryWorkload { has_filter: true, ..Default::default() };
+        let cost_no = estimate_remote_cost(&caps, &stats, &no_filter);
+        let cost_yes = estimate_remote_cost(&caps, &stats, &with_filter);
+        assert!(cost_yes.total <= cost_no.total);
+    }
+
+    #[test]
+    fn test_small_table_prefers_local() {
+        let caps = high_latency_caps();
+        let stats = TableStats { estimated_rows: 10, avg_row_bytes: 100 };
+        let workload = QueryWorkload::default();
+        // Small table + high latency → local is cheaper
+        assert!(!should_push_down(&caps, &stats, &workload));
+    }
+
+    #[test]
+    fn test_pick_cheapest_returns_none_for_empty() {
+        let workload = QueryWorkload::default();
+        assert_eq!(pick_cheapest_connector(&[], &workload), None);
+    }
 }

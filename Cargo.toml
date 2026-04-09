@@ -5,6 +5,7 @@ members = [
     "crates/fuse-connectors/opensearch",
     "crates/fuse-connectors/s3",
     "crates/fuse-connectors/s3-o11y",
+    "crates/fuse-connectors/example",
     "crates/fuse-connectors/prometheus",
     "crates/fuse-connector-sdk",
     "crates/fuse-server",

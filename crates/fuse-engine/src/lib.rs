@@ -16,6 +16,7 @@ mod optimizer;
 pub mod plan;
 pub mod ppl;
 mod planner;
+pub mod rewrite;
 pub mod spark;
 pub mod sql_to_subquery;
 

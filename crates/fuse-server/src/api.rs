@@ -179,31 +179,39 @@ async fn execute_union(
     format: &str,
     refs: &[(String, String)],
 ) -> Result<Vec<arrow::record_batch::RecordBatch>, String> {
-    // Build a per-table sub-query for each datasource.
-    // For UNION ALL, each connector gets the same filters/projections/limit
-    // but scoped to its own table.
-    let base_sq = build_sub_query(query, format, &refs[0].1).ok();
+    // Build base sub-query from the user's query (has filters, projections, limit)
+    let base_sq = build_sub_query(query, format, &refs[0].1)
+        .unwrap_or_else(|_| fuse_core::connector::SubQuery {
+            table: String::new(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            passthrough: None,
+        });
+
+    // Build per-source sub-queries and push down predicates/projections/limits
+    let mut per_source: Vec<fuse_core::connector::SubQuery> = refs
+        .iter()
+        .map(|(_, table)| fuse_core::connector::SubQuery {
+            table: table.clone(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            passthrough: None,
+        })
+        .collect();
+    fuse_engine::rewrite::push_down_to_sources(&base_sq, &mut per_source);
 
     let mut handles = Vec::new();
-    for (ds_id, table) in refs {
+    for (i, (ds_id, _)) in refs.iter().enumerate() {
         let connector = state.registry.get(ds_id).unwrap();
-        let sub_query = match &base_sq {
-            Some(sq) => {
-                let mut per_table = sq.clone();
-                per_table.table = table.clone();
-                per_table
-            }
-            None => fuse_core::connector::SubQuery {
-                table: table.clone(),
-                projections: vec![],
-                filter: None,
-                aggregations: vec![],
-                group_by: vec![],
-                sort: vec![],
-                limit: None,
-                passthrough: None,
-            },
-        };
+        let sub_query = per_source[i].clone();
         let conn = connector.clone();
         handles.push(tokio::spawn(async move { conn.execute(&sub_query).await }));
     }
