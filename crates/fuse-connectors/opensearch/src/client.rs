@@ -93,7 +93,17 @@ impl OpenSearchClient {
                         .service_name(service);
                     tracing::info!(region, service, "SigV4 auth configured for OpenSearch connector");
                 }
-                _ => {} // none, bearer — bearer needs additional support
+                "bearer" => {
+                    let token = resolve_secret(auth_table, "token", "token_env");
+                    if token.is_empty() {
+                        return Err(ConnectorError::Connection(
+                            "bearer auth requires 'token' or 'token_env'".into(),
+                        ));
+                    }
+                    builder = builder.auth(Credentials::Bearer(token));
+                    tracing::info!("Bearer auth configured for OpenSearch connector");
+                }
+                _ => {} // none — no auth
             }
         }
 
@@ -126,4 +136,54 @@ fn resolve_secret(table: &toml::Table, direct_key: &str, env_key: &str) -> Strin
         return std::env::var(env_name).unwrap_or_default();
     }
     String::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fuse_core::config::ConnectorConfig;
+    use std::collections::HashMap;
+
+    fn config_with_auth(auth_toml: &str) -> ConnectorConfig {
+        let full = format!(
+            "[connector]\nid = \"test\"\ntype = \"opensearch\"\nurl = \"http://localhost:9200\"\n{}",
+            auth_toml
+        );
+        let parsed: toml::Value = toml::from_str(&full).unwrap();
+        let table = parsed["connector"].as_table().unwrap();
+        let mut props: HashMap<String, toml::Value> = HashMap::new();
+        for (k, v) in table {
+            props.insert(k.clone(), v.clone());
+        }
+        ConnectorConfig {
+            id: "test".into(),
+            connector_type: "opensearch".into(),
+            properties: props,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bearer_missing_token_returns_error() {
+        let config = config_with_auth("[connector.auth]\ntype = \"bearer\"\n");
+        let result = OpenSearchClient::from_config(&config).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("token"));
+    }
+
+    #[tokio::test]
+    async fn test_no_auth_builds_client() {
+        let config = config_with_auth("");
+        // No auth section — should build successfully (no network call needed for construction)
+        let result = OpenSearchClient::from_config(&config).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_basic_auth_builds_client() {
+        let config = config_with_auth(
+            "[connector.auth]\ntype = \"basic\"\nusername = \"admin\"\npassword = \"pass\"\n",
+        );
+        let result = OpenSearchClient::from_config(&config).await;
+        assert!(result.is_ok());
+    }
 }
