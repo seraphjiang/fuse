@@ -99,6 +99,15 @@ fn translate_comparison(field: &str, op: ComparisonOp, value: &ScalarValue) -> s
                 serde_json::json!({"match_all": {}})
             }
         }
+        ComparisonOp::ILike => {
+            // Map ILIKE to case-insensitive wildcard query
+            if let ScalarValue::Utf8(pattern) = value {
+                let wildcard = pattern.replace('%', "*").replace('_', "?");
+                serde_json::json!({"wildcard": {field: {"value": wildcard, "case_insensitive": true}}})
+            } else {
+                serde_json::json!({"match_all": {}})
+            }
+        }
     }
 }
 
@@ -139,10 +148,14 @@ fn translate_single_agg(agg: &AggregationExpr) -> serde_json::Value {
                 serde_json::json!({"value_count": {"field": "_id"}})
             }
         }
+        AggFunction::CountDistinct => {
+            serde_json::json!({"cardinality": {"field": agg.field.as_deref().unwrap_or("_id")}})
+        }
         AggFunction::Sum => serde_json::json!({"sum": {"field": agg.field.as_deref().unwrap_or("_id")}}),
         AggFunction::Avg => serde_json::json!({"avg": {"field": agg.field.as_deref().unwrap_or("_id")}}),
         AggFunction::Min => serde_json::json!({"min": {"field": agg.field.as_deref().unwrap_or("_id")}}),
         AggFunction::Max => serde_json::json!({"max": {"field": agg.field.as_deref().unwrap_or("_id")}}),
+        AggFunction::CountDistinct => serde_json::json!({"cardinality": {"field": agg.field.as_deref().unwrap_or("_id")}}),
     }
 }
 

@@ -192,6 +192,7 @@ pub enum ComparisonOp {
     Gt,
     Gte,
     Like,
+    ILike,
 }
 
 #[derive(Debug, Clone)]
@@ -213,6 +214,7 @@ pub struct AggregationExpr {
 #[derive(Debug, Clone, Copy)]
 pub enum AggFunction {
     Count,
+    CountDistinct,
     Sum,
     Avg,
     Min,

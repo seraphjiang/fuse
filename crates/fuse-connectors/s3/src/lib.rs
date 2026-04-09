@@ -2,6 +2,7 @@
 
 //! S3/Parquet connector for the Fuse federated query engine.
 
+pub mod partition;
 pub mod reader;
 pub mod select;
 
@@ -19,6 +20,8 @@ use fuse_core::config::ConnectorConfig;
 use fuse_core::connector::*;
 use fuse_core::error::ConnectorError;
 use fuse_core::registry::ConnectorFactory;
+
+use partition::{extract_partitions, partition_matches};
 
 const DEFAULT_BATCH_SIZE: usize = 8192;
 
@@ -143,12 +146,30 @@ impl S3ParquetConnector {
             .to_string()
     }
 
-    /// Find the first Parquet key matching a table name.
-    async fn find_key_for_table(&self, table: &str) -> Result<String, ConnectorError> {
+    /// Find Parquet keys matching a table name, pruning by partition filter.
+    async fn find_keys_for_table(
+        &self,
+        table: &str,
+        filter: Option<&FilterExpr>,
+    ) -> Result<Vec<String>, ConnectorError> {
         let keys = self.list_parquet_keys().await?;
-        keys.into_iter()
-            .find(|k| Self::key_to_table_name(k, &self.prefix) == table)
-            .ok_or_else(|| ConnectorError::schema(format!("no Parquet file found for table '{table}'")))
+        let matching: Vec<String> = keys
+            .into_iter()
+            .filter(|k| Self::key_to_table_name(k, &self.prefix) == table)
+            .filter(|k| {
+                if let Some(f) = filter {
+                    let parts = extract_partitions(k);
+                    partition_matches(f, &parts)
+                } else {
+                    true
+                }
+            })
+            .collect();
+        if matching.is_empty() {
+            Err(ConnectorError::schema(format!("no Parquet file found for table '{table}'")))
+        } else {
+            Ok(matching)
+        }
     }
 }
 
@@ -219,28 +240,29 @@ impl FederatedConnector for S3ParquetConnector {
     }
 
     async fn get_schema(&self, table: &str) -> Result<Schema, ConnectorError> {
-        let key = self.find_key_for_table(table).await?;
+        let keys = self.find_keys_for_table(table, None).await?;
+        let key = &keys[0];
         debug!(key = key.as_str(), "Reading Parquet schema from S3");
-        let data = self.get_object_bytes(&key).await?;
+        let data = self.get_object_bytes(key).await?;
         reader::read_schema(&data)
     }
 
     async fn execute(&self, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
-        let key = self.find_key_for_table(&query.table).await?;
-        debug!(key = key.as_str(), table = query.table.as_str(), "Executing S3 Parquet query");
+        let keys = self.find_keys_for_table(&query.table, query.filter.as_ref()).await?;
+        debug!(files = keys.len(), table = query.table.as_str(), "Executing S3 Parquet query with partition pruning");
 
-        let data = self.get_object_bytes(&key).await?;
-        let mut batches = reader::read_batches(&data, &query.projections, DEFAULT_BATCH_SIZE)?;
-
-        // Client-side filter if we have one (S3 Select not used in download path)
-        // For Phase 2, we'll add S3 Select support here.
-        // For now, filters and sort are handled by the engine's merge layer.
+        let mut all_batches = Vec::new();
+        for key in &keys {
+            let data = self.get_object_bytes(key).await?;
+            let batches = reader::read_batches(&data, &query.projections, DEFAULT_BATCH_SIZE)?;
+            all_batches.extend(batches);
+        }
 
         // Apply limit client-side
         if let Some(limit) = query.limit {
             let limit = limit as usize;
             let mut total = 0;
-            batches = batches
+            all_batches = all_batches
                 .into_iter()
                 .take_while(|b| {
                     let take = total < limit;
@@ -248,18 +270,17 @@ impl FederatedConnector for S3ParquetConnector {
                     take
                 })
                 .collect();
-            // Slice last batch if needed
-            if let Some(last) = batches.last() {
+            if let Some(last) = all_batches.last() {
                 let excess = total.saturating_sub(limit);
                 if excess > 0 {
                     let trimmed = last.slice(0, last.num_rows() - excess);
-                    let len = batches.len();
-                    batches[len - 1] = trimmed;
+                    let len = all_batches.len();
+                    all_batches[len - 1] = trimmed;
                 }
             }
         }
 
-        Ok(batches)
+        Ok(all_batches)
     }
 
     async fn execute_streaming(
@@ -267,28 +288,25 @@ impl FederatedConnector for S3ParquetConnector {
         query: &SubQuery,
         tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
     ) -> Result<(), ConnectorError> {
-        let key = self.find_key_for_table(&query.table).await?;
-        let data = self.get_object_bytes(&key).await?;
-        let batches = reader::read_batches(&data, &query.projections, DEFAULT_BATCH_SIZE)?;
+        let keys = self.find_keys_for_table(&query.table, query.filter.as_ref()).await?;
 
         let limit = query.limit.map(|n| n as usize);
         let mut sent = 0usize;
 
-        for batch in batches {
-            if let Some(lim) = limit {
-                if sent >= lim {
-                    break;
-                }
-                let remaining = lim - sent;
-                let batch = if batch.num_rows() > remaining {
-                    batch.slice(0, remaining)
+        'outer: for key in &keys {
+            let data = self.get_object_bytes(key).await?;
+            let batches = reader::read_batches(&data, &query.projections, DEFAULT_BATCH_SIZE)?;
+
+            for batch in batches {
+                if let Some(lim) = limit {
+                    if sent >= lim { break 'outer; }
+                    let remaining = lim - sent;
+                    let batch = if batch.num_rows() > remaining { batch.slice(0, remaining) } else { batch };
+                    sent += batch.num_rows();
+                    tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
                 } else {
-                    batch
-                };
-                sent += batch.num_rows();
-                tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
-            } else {
-                tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+                    tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+                }
             }
         }
 

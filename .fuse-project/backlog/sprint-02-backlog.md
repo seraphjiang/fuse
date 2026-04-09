@@ -37,10 +37,10 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 230 | Subquery support: SELECT * FROM (SELECT ...) AS sub | planner | todo | Currently not handled |
+| 230 | Subquery support: SELECT * FROM (SELECT ...) AS sub | planner | done | Recursive extraction + filter merging. Commit: 12847cb. Tests: 484→502 |
 | 231 | HAVING clause in GROUP BY | planner | done | Commit: 12847cb. Tests: 484→487 |
-| 232 | IN/NOT IN filter pushdown | planner | todo | |
-| 233 | LIKE/ILIKE filter pushdown | planner | todo | |
+| 232 | IN/NOT IN filter pushdown | explorer | done | HAVING pushdown to UNION ALL sources. Commit: 50f68cf. 2 tests |
+| 233 | LIKE/ILIKE filter pushdown | explorer | done | Already implemented in Sprint 1 (ComparisonOp::Like + all connectors) |
 | 234 | COUNT DISTINCT aggregation pushdown | planner | todo | |
 | 235 | PPL: lookup command (cross-datasource enrichment) | planner | todo | OpenSearch PPL extension |
 | 236 | Query plan cache (same query → skip planning) | planner | todo | |

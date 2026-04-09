@@ -43,6 +43,7 @@ pub fn build_promql(query: &SubQuery) -> String {
             fuse_core::connector::AggFunction::Avg => "avg",
             fuse_core::connector::AggFunction::Min => "min",
             fuse_core::connector::AggFunction::Max => "max",
+            fuse_core::connector::AggFunction::CountDistinct => "count",
         };
         if query.group_by.is_empty() {
             format!("{func}({base})")

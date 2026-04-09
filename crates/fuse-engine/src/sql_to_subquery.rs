@@ -157,12 +157,17 @@ fn try_extract_agg(expr: &SqlExpr, alias: Option<String>) -> Option<AggregationE
     };
 
     let func_name = f.name.to_string().to_lowercase();
-    let agg_fn = match func_name.as_str() {
-        "count" => AggFunction::Count,
-        "sum" => AggFunction::Sum,
-        "avg" => AggFunction::Avg,
-        "min" => AggFunction::Min,
-        "max" => AggFunction::Max,
+    let is_distinct = matches!(
+        &f.args,
+        FunctionArguments::List(arg_list) if arg_list.duplicate_treatment == Some(ast::DuplicateTreatment::Distinct)
+    );
+    let agg_fn = match (func_name.as_str(), is_distinct) {
+        ("count", true) => AggFunction::CountDistinct,
+        ("count", false) => AggFunction::Count,
+        ("sum", _) => AggFunction::Sum,
+        ("avg", _) => AggFunction::Avg,
+        ("min", _) => AggFunction::Min,
+        ("max", _) => AggFunction::Max,
         _ => return None,
     };
 
@@ -245,6 +250,25 @@ fn translate_expr(expr: &SqlExpr) -> Option<FilterExpr> {
                 Some(FilterExpr::Not(Box::new(like_expr)))
             } else {
                 Some(like_expr)
+            }
+        }
+        SqlExpr::ILike {
+            expr,
+            pattern,
+            negated,
+            ..
+        } => {
+            let field = expr_to_column_name(expr)?;
+            let value = sql_expr_to_scalar(pattern)?;
+            let ilike_expr = FilterExpr::Comparison {
+                field,
+                op: ComparisonOp::ILike,
+                value,
+            };
+            if *negated {
+                Some(FilterExpr::Not(Box::new(ilike_expr)))
+            } else {
+                Some(ilike_expr)
             }
         }
         SqlExpr::Nested(inner) => translate_expr(inner),
@@ -711,5 +735,93 @@ mod tests {
         ).unwrap();
         let f = sq.filter.unwrap();
         assert!(matches!(f, FilterExpr::Comparison { .. }));
+    }
+
+    #[test]
+    fn test_in_list_filter() {
+        let sq = sql_to_subquery(
+            "SELECT * FROM logs WHERE status IN (200, 201, 204)",
+        ).unwrap();
+        let f = sq.filter.unwrap();
+        if let FilterExpr::In { field, values } = f {
+            assert_eq!(field, "status");
+            assert_eq!(values.len(), 3);
+        } else {
+            panic!("expected In, got {:?}", f);
+        }
+    }
+
+    #[test]
+    fn test_not_in_list_filter() {
+        let sq = sql_to_subquery(
+            "SELECT * FROM logs WHERE host NOT IN ('h1', 'h2')",
+        ).unwrap();
+        let f = sq.filter.unwrap();
+        // NOT IN wraps In in Not
+        assert!(matches!(f, FilterExpr::Not(_)));
+        if let FilterExpr::Not(inner) = f {
+            assert!(matches!(*inner, FilterExpr::In { .. }));
+        }
+    }
+
+    #[test]
+    fn test_in_list_with_strings() {
+        let sq = sql_to_subquery(
+            "SELECT * FROM logs WHERE host IN ('web-01', 'web-02')",
+        ).unwrap();
+        let f = sq.filter.unwrap();
+        if let FilterExpr::In { field, values } = f {
+            assert_eq!(field, "host");
+            assert_eq!(values.len(), 2);
+        } else {
+            panic!("expected In, got {:?}", f);
+        }
+    }
+
+    // ── Subquery verification tests (tester) ──
+
+    #[test]
+    fn test_subquery_nested_two_levels() {
+        let sq = sql_to_subquery(
+            "SELECT * FROM (SELECT * FROM (SELECT * FROM logs) AS inner_q) AS outer_q",
+        ).unwrap();
+        assert_eq!(sq.table, "logs");
+    }
+
+    #[test]
+    fn test_subquery_preserves_outer_limit() {
+        let sq = sql_to_subquery(
+            "SELECT * FROM (SELECT * FROM logs WHERE status >= 500) AS sub LIMIT 10",
+        ).unwrap();
+        assert_eq!(sq.limit, Some(10));
+        assert!(sq.filter.is_some());
+    }
+
+    #[test]
+    fn test_subquery_inner_and_outer_both_and() {
+        let sq = sql_to_subquery(
+            "SELECT * FROM (SELECT * FROM logs WHERE status > 400 AND host = 'h1') AS sub WHERE service = 'api'",
+        ).unwrap();
+        let f = sq.filter.unwrap();
+        assert!(matches!(f, FilterExpr::And(_, _)));
+    }
+
+    #[test]
+    fn test_subquery_with_projections() {
+        let sq = sql_to_subquery(
+            "SELECT host, status FROM (SELECT * FROM logs WHERE status = 200) AS sub",
+        ).unwrap();
+        assert_eq!(sq.table, "logs");
+        assert!(sq.projections.contains(&"host".to_string()));
+        assert!(sq.projections.contains(&"status".to_string()));
+    }
+
+    #[test]
+    fn test_subquery_no_filter_either_side() {
+        let sq = sql_to_subquery(
+            "SELECT * FROM (SELECT * FROM logs) AS sub",
+        ).unwrap();
+        assert_eq!(sq.table, "logs");
+        assert!(sq.filter.is_none());
     }
 }
