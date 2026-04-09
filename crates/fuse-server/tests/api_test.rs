@@ -305,3 +305,108 @@ async fn test_schemas_unknown_datasource_returns_404() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
+
+// ── Pushdown integration tests (retro action items) ──
+
+/// Capturing mock that records the SubQuery it receives.
+#[derive(Debug)]
+struct CapturingConnector {
+    id: String,
+    captured: std::sync::Mutex<Option<SubQuery>>,
+}
+
+impl CapturingConnector {
+    fn new(id: &str) -> Self {
+        Self { id: id.to_string(), captured: std::sync::Mutex::new(None) }
+    }
+    fn last_query(&self) -> Option<SubQuery> {
+        self.captured.lock().unwrap().clone()
+    }
+}
+
+#[async_trait]
+impl FederatedConnector for CapturingConnector {
+    fn id(&self) -> &str { &self.id }
+    fn connector_type(&self) -> &str { "capturing" }
+    fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+    async fn health_check(&self) -> ConnectorHealth {
+        ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(1), message: None }
+    }
+    async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> { Ok(vec![]) }
+    async fn get_schema(&self, _table: &str) -> Result<Schema, ConnectorError> {
+        Ok(Schema::new(vec![
+            Field::new("service", DataType::Utf8, false),
+            Field::new("status", DataType::Int64, false),
+        ]))
+    }
+    async fn execute(&self, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
+        *self.captured.lock().unwrap() = Some(query.clone());
+        let schema = Arc::new(self.get_schema("").await?);
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(vec!["svc-a"])),
+                Arc::new(Int64Array::from(vec![200_i64])),
+            ],
+        ).map_err(ConnectorError::query)?;
+        Ok(vec![batch])
+    }
+    async fn execute_streaming(
+        &self,
+        query: &SubQuery,
+        tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+    ) -> Result<(), ConnectorError> {
+        for b in self.execute(query).await? {
+            tx.send(Ok(b)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+        }
+        Ok(())
+    }
+}
+
+fn build_capturing_app() -> (axum::Router, Arc<CapturingConnector>) {
+    let connector = Arc::new(CapturingConnector::new("capds"));
+    let registry = ConnectorRegistry::new();
+    registry.register(connector.clone()).unwrap();
+    let state = Arc::new(AppState { registry: Arc::new(registry) });
+    (fuse_server::build_router(state), connector)
+}
+
+#[tokio::test]
+async fn test_limit_pushdown() {
+    let (app, connector) = build_capturing_app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"query": "SELECT * FROM capds.logs LIMIT 42"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let q = connector.last_query().expect("connector was not called");
+    assert_eq!(q.limit, Some(42), "LIMIT 42 must be pushed down to SubQuery");
+}
+
+#[tokio::test]
+async fn test_where_pushdown() {
+    let (app, connector) = build_capturing_app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"query": "SELECT * FROM capds.logs WHERE status = 500"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let q = connector.last_query().expect("connector was not called");
+    assert!(q.filter.is_some(), "WHERE status = 500 must be pushed down to SubQuery.filter");
+}

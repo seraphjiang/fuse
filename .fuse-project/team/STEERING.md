@@ -51,3 +51,25 @@ Non-negotiable rules for all agents. Read before starting any work.
 - Read `.fuse-project/ENVIRONMENT.md` for live URLs, AWS resources, API examples
 - Playground: https://fuse.huanji.profile.aws.dev
 - All pushes go to GitHub + CodeCommit (triggers pipeline)
+
+## Rule 7: Self-Assign (Sprint 2+)
+
+- When done with a task, pick the next unblocked item from the backlog yourself
+- Do NOT wait for sisyphus to assign you work
+- Update backlog status to `in-progress` when you start, `done` when complete
+- Priority order: P0 blockers → test coverage gaps → community adoption → features
+
+## Rule 8: Completion Protocol
+
+Every [DONE] report MUST include:
+1. Commit hash (from `git log --oneline -1`)
+2. Backlog item(s) updated to `done`
+3. Test count (before → after)
+
+Format: `[DONE] #NNN — <description>. Commit: <hash>. Tests: N → M.`
+
+## Rule 9: Heartbeat
+
+- If working on a task for 30+ minutes, send a [HEARTBEAT] to sisyphus
+- Include: what's done, what's in progress, any blockers
+- This prevents duplicate work and lets sisyphus re-route if needed

@@ -62,7 +62,7 @@ Items are ordered by priority. Status: `todo` | `in-progress` | `blocked` | `don
 | ID | Item | Owner | Status | Depends On |
 |----|------|-------|--------|------------|
 | 040 | Query result caching (TTL per connector) | explorer | done (needs tests) | 003 |
-| 041 | Materialized views | — | todo | 040 |
+| 041 | Materialized views | explorer | in-progress | 040 |
 | 042 | Alerting integration | — | todo | 003 |
 | 043 | RBAC / field-level security | general | done | 004 |
 
@@ -77,7 +77,7 @@ Items are ordered by priority. Status: `todo` | `in-progress` | `blocked` | `don
 | 074 | CONTRIBUTING.md with DCO | explorer | done | — |
 | 075 | GitHub Issues templates | explorer | done | — |
 | 077 | Performance benchmarks (benches/) | planner | done | 003 |
-| 080 | OpenSearch community forum post | — | todo | 072 |
+| 080 | OpenSearch community forum post | explorer | done | 072 |
 | 081 | RFC on opensearch-project/OpenSearch-Dashboards | planner | done (draft) | 070 |
 
 ## Test Coverage (P0 — Steering Rule #1)

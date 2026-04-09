@@ -112,36 +112,9 @@ pub async fn query_handler(
         }
     };
 
-    let sub_query = match format.as_str() {
-        "ppl" => fuse_core::connector::SubQuery {
-            table,
-            projections: vec![],
-            filter: None,
-            aggregations: vec![],
-            group_by: vec![],
-            sort: vec![],
-            limit: Some(100),
-            passthrough: None,
-        },
-        _ => {
-            // Use full SQL→SubQuery translation for filter/limit/sort pushdown
-            match fuse_engine::sql_to_subquery::sql_to_subquery(&req.query) {
-                Ok(mut sq) => {
-                    sq.table = table; // override with resolved table name
-                    sq
-                }
-                Err(_) => fuse_core::connector::SubQuery {
-                    table,
-                    projections: vec![],
-                    filter: None,
-                    aggregations: vec![],
-                    group_by: vec![],
-                    sort: vec![],
-                    limit: Some(100),
-                    passthrough: None,
-                },
-            }
-        }
+    let sub_query = match build_sub_query(&req.query, &format, &table) {
+        Ok(sq) => sq,
+        Err(e) => return error_json(StatusCode::BAD_REQUEST, e).into_response(),
     };
 
     match connector.execute(&sub_query).await {
@@ -321,6 +294,46 @@ fn parse_qualified_name(name: &str) -> Result<(String, String), String> {
     name.split_once('.')
         .map(|(ds, tbl)| (ds.to_string(), tbl.to_string()))
         .ok_or_else(|| format!("expected 'datasource.table', got '{}'", name))
+}
+
+/// Build a SubQuery from a user query string using the full translation pipeline.
+///
+/// For PPL: parse PPL → translate to SQL → parse SQL into SubQuery.
+/// For SQL: parse SQL directly into SubQuery.
+/// Falls back to a minimal SubQuery if translation fails.
+fn build_sub_query(
+    query: &str,
+    format: &str,
+    table: &str,
+) -> Result<fuse_core::connector::SubQuery, String> {
+    let sql = if format == "ppl" {
+        let parsed = fuse_engine::ppl::parse_ppl(query)
+            .map_err(|e| format!("PPL parse error: {e}"))?;
+        fuse_engine::ppl::ppl_to_sql(&parsed)
+            .map_err(|e| format!("PPL translation error: {e}"))?
+    } else {
+        query.to_string()
+    };
+
+    match fuse_engine::sql_to_subquery::sql_to_subquery(&sql) {
+        Ok(mut sq) => {
+            sq.table = table.to_string();
+            Ok(sq)
+        }
+        Err(_) => {
+            // Fallback: minimal SubQuery with no hardcoded limit
+            Ok(fuse_core::connector::SubQuery {
+                table: table.to_string(),
+                projections: vec![],
+                filter: None,
+                aggregations: vec![],
+                group_by: vec![],
+                sort: vec![],
+                limit: None,
+                passthrough: None,
+            })
+        }
+    }
 }
 
 /// Convert Arrow RecordBatches to JSON columns + rows.

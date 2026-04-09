@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-BASE="${1:-http://fuse-playground-alb-556139505.us-west-2.elb.amazonaws.com}"
+BASE="${1:-https://fuse-playground-alb-556139505.us-west-2.elb.amazonaws.com}"
 PASS=0
 FAIL=0
 RESULTS=()
@@ -33,15 +33,15 @@ run_test() {
     fi
 }
 
-http_get() { curl -sf --max-time 10 "$BASE$1" 2>/dev/null; }
+http_get() { curl -skf --max-time 10 "$BASE$1" 2>/dev/null; }
 
 http_post() {
-    curl -sf --max-time 10 -X POST "$BASE$1" \
+    curl -skf --max-time 10 -X POST "$BASE$1" \
         -H "Content-Type: application/json" -d "$2" 2>/dev/null
 }
 
 http_status() {
-    curl -so /dev/null --max-time 10 -w "%{http_code}" "$@" 2>/dev/null
+    curl -sko /dev/null --max-time 10 -w "%{http_code}" "$@" 2>/dev/null
 }
 
 # ── Tests ──
