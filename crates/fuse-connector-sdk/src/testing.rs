@@ -303,3 +303,106 @@ pub async fn smoke_test(connector: &dyn FederatedConnector) -> Result<(), Connec
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mock() -> MockConnector {
+        MockConnector::new("test_ds")
+            .with_table("logs", vec!["message", "level"])
+            .with_rows("logs", vec![
+                vec!["hello world", "INFO"],
+                vec!["something broke", "ERROR"],
+            ])
+    }
+
+    #[tokio::test]
+    async fn test_mock_health_check() {
+        let m = mock();
+        let h = m.health_check().await;
+        assert_eq!(h.status, HealthStatus::Healthy);
+    }
+
+    #[tokio::test]
+    async fn test_mock_discover_schemas() {
+        let m = mock();
+        let schemas = m.discover_schemas().await.unwrap();
+        assert_eq!(schemas.len(), 1);
+        assert_eq!(schemas[0].name, "logs");
+    }
+
+    #[tokio::test]
+    async fn test_mock_get_schema() {
+        let m = mock();
+        let schema = m.get_schema("logs").await.unwrap();
+        let names: Vec<_> = schema.fields().iter().map(|f| f.name().as_str()).collect();
+        assert!(names.contains(&"message"));
+        assert!(names.contains(&"level"));
+    }
+
+    #[tokio::test]
+    async fn test_mock_execute_returns_rows() {
+        let m = mock();
+        let q = SubQuery {
+            table: "logs".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            passthrough: None,
+        };
+        let batches = m.execute(&q).await.unwrap();
+        let total: usize = batches.iter().map(|b| b.num_rows()).sum();
+        assert_eq!(total, 2);
+        assert_eq!(m.execute_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_mock_execute_unknown_table_error() {
+        let m = mock();
+        let q = SubQuery {
+            table: "nonexistent".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            passthrough: None,
+        };
+        assert!(m.execute(&q).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_smoke_test_passes_for_mock() {
+        let m = mock();
+        smoke_test(&m).await.unwrap();
+    }
+
+    #[test]
+    fn test_assert_batch_columns() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("a", DataType::Utf8, false),
+            Field::new("b", DataType::Utf8, false),
+        ]));
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(vec!["x"])),
+                Arc::new(StringArray::from(vec!["y"])),
+            ],
+        ).unwrap();
+        assert_batch_columns(&batch, &["a", "b"]);
+        assert_batch_row_count(&batch, 1);
+        assert_batches_non_empty(&[batch]);
+    }
+
+    #[tokio::test]
+    async fn test_assert_healthy() {
+        let m = mock();
+        assert_healthy(&m).await;
+    }
+}

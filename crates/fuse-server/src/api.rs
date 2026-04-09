@@ -6,6 +6,7 @@ use axum::extract::{Json, Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use serde::{Deserialize, Serialize};
+use tokio_util::sync::CancellationToken;
 
 use fuse_core::registry::ConnectorRegistry;
 use fuse_core::alerting::{AlertEvaluator, AlertRule};
@@ -14,6 +15,35 @@ use crate::history::QueryHistory;
 
 use crate::health;
 
+/// Tracks running queries for cancellation.
+pub struct RunningQueries {
+    inner: std::sync::Mutex<std::collections::HashMap<String, CancellationToken>>,
+}
+
+impl RunningQueries {
+    pub fn new() -> Self {
+        Self { inner: std::sync::Mutex::new(std::collections::HashMap::new()) }
+    }
+    fn insert(&self, id: String, token: CancellationToken) {
+        self.inner.lock().unwrap().insert(id, token);
+    }
+    fn remove(&self, id: &str) {
+        self.inner.lock().unwrap().remove(id);
+    }
+    /// Cancel a running query. Returns true if found.
+    pub fn cancel(&self, id: &str) -> bool {
+        if let Some(token) = self.inner.lock().unwrap().remove(id) {
+            token.cancel();
+            true
+        } else {
+            false
+        }
+    }
+    pub fn list(&self) -> Vec<String> {
+        self.inner.lock().unwrap().keys().cloned().collect()
+    }
+}
+
 /// Shared application state passed to all handlers.
 pub struct AppState {
     pub registry: Arc<ConnectorRegistry>,
@@ -21,6 +51,7 @@ pub struct AppState {
     pub alert_rules: Vec<AlertRule>,
     pub view_registry: Arc<MaterializedViewRegistry>,
     pub history: Arc<QueryHistory>,
+    pub running_queries: Arc<RunningQueries>,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.

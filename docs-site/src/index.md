@@ -68,3 +68,4 @@ curl -X POST http://localhost:9400/api/fuse/query \
 | S3 O11y | `s3-o11y` | IAM | ✅ Production |
 | Prometheus | `prometheus` | Bearer, None | ✅ Production |
 | Custom | SDK | Any | ✅ Via fuse-connector-sdk |
+
