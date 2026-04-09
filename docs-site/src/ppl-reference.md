@@ -94,6 +94,35 @@ source = cluster_a.application_logs
 | head 10
 ```
 
+## rename
+
+Rename fields:
+
+```
+source = cluster_a.application_logs
+| rename response_time_ms as latency
+| fields service, latency
+| head 10
+```
+
+## top
+
+Most frequent values:
+
+```
+source = cluster_a.application_logs
+| top 5 service
+```
+
+## rare
+
+Least frequent values:
+
+```
+source = cluster_a.application_logs
+| rare 5 service
+```
+
 ## Multi-Source Queries
 
 Query across clusters in a single PPL statement:

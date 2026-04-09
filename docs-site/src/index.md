@@ -41,6 +41,12 @@ Fuse is a cross-datasource federated query engine for [OpenSearch Dashboards](ht
 - **Caching** — TTL-based query result cache per connector type
 - **Alerting** — Rule-based alerting on federated queries
 - **Materialized views** — Pre-computed cross-datasource views
+- **Saved queries** — Named query templates with parameter binding
+- **CSV export** — Download results as CSV
+- **Query cancellation** — Cancel long-running queries by ID
+- **Per-query timeout** — Configurable timeout_ms per request
+- **Partial failure resilience** — UNION ALL continues if one datasource fails
+- **OSD plugin** — Native OpenSearch Dashboards integration
 
 ## Quick Start
 

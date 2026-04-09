@@ -13,7 +13,10 @@ Execute a SQL or PPL query.
 {
   "query": "SELECT * FROM cluster_a.application_logs LIMIT 5",
   "format": "sql",
-  "analyze": false
+  "analyze": false,
+  "timeout_ms": 30000,
+  "result_format": "json",
+  "params": {}
 }
 ```
 
@@ -22,6 +25,9 @@ Execute a SQL or PPL query.
 | `query` | string | required | SQL or PPL query |
 | `format` | string | `"sql"` | `"sql"` or `"ppl"` |
 | `analyze` | bool | `false` | Include execution profile with timing |
+| `timeout_ms` | int | `30000` | Per-query timeout in milliseconds |
+| `result_format` | string | `"json"` | `"json"` or `"csv"` |
+| `params` | object | `{}` | Named parameters for `$name` placeholders |
 
 **Response:**
 ```json
@@ -189,6 +195,68 @@ curl http://localhost:9400/api/fuse/history
 ]
 ```
 
+### GET /api/fuse/stats
+
+Aggregated query statistics.
+
+```bash
+curl http://localhost:9400/api/fuse/stats
+```
+
+## Saved Query Endpoints
+
+### GET /api/fuse/saved
+
+List all saved query templates.
+
+```bash
+curl http://localhost:9400/api/fuse/saved
+```
+
+### POST /api/fuse/saved
+
+Save a named query template.
+
+```bash
+curl -X POST http://localhost:9400/api/fuse/saved \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "error_search", "query": "SELECT * FROM cluster_a.application_logs WHERE status >= $code", "format": "sql"}'
+```
+
+### GET /api/fuse/saved/{name}
+
+Get a specific saved query.
+
+```bash
+curl http://localhost:9400/api/fuse/saved/error_search
+```
+
+### DELETE /api/fuse/saved/{name}
+
+Delete a saved query.
+
+```bash
+curl -X DELETE http://localhost:9400/api/fuse/saved/error_search
+```
+
+## Query Lifecycle Endpoints
+
+### GET /api/fuse/queries/running
+
+List currently running queries.
+
+```bash
+curl http://localhost:9400/api/fuse/queries/running
+```
+
+### DELETE /api/fuse/query/{id}/cancel
+
+Cancel a running query by ID.
+
+```bash
+curl -X DELETE http://localhost:9400/api/fuse/query/abc123/cancel
+```
+
 ## Alert Endpoints
 
 ### GET /api/fuse/alerts
@@ -244,6 +312,7 @@ All errors return:
 | Status | Meaning |
 |--------|---------|
 | 400 | Parse error, missing FROM, bad syntax |
-| 404 | Datasource or view not found |
-| 429 | Rate limited |
+| 404 | Datasource, view, or saved query not found |
+| 408 | Query timeout (exceeded timeout_ms) |
+| 429 | Rate limited — too many requests |
 | 500 | Connector error, timeout, internal failure |

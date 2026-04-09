@@ -85,6 +85,55 @@ WHERE cnt > 10
 ORDER BY cnt DESC
 ```
 
+## DISTINCT
+
+```sql
+SELECT DISTINCT service
+FROM cluster_a.application_logs
+```
+
+## OFFSET (Pagination)
+
+```sql
+SELECT service, status
+FROM cluster_a.application_logs
+ORDER BY timestamp DESC
+LIMIT 10 OFFSET 20
+```
+
+## BETWEEN
+
+```sql
+SELECT service, status, response_time_ms
+FROM cluster_a.application_logs
+WHERE response_time_ms BETWEEN 100 AND 500
+```
+
+## HAVING
+
+```sql
+SELECT service, count(*) as errors
+FROM cluster_a.application_logs
+WHERE status >= 500
+GROUP BY service
+HAVING count(*) > 5
+ORDER BY errors DESC
+```
+
+## Parameterized Queries
+
+Use named parameters with `$name` syntax:
+
+```bash
+curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "SELECT * FROM cluster_a.application_logs WHERE service = $svc AND status >= $code LIMIT $n",
+    "format": "sql",
+    "params": {"svc": "api-gateway", "code": 500, "n": 10}
+  }'
+```
+
 ## Tips
 
 - Always use `LIMIT` to avoid fetching entire indices
