@@ -25,7 +25,13 @@ async fn playground() -> impl IntoResponse {
 }
 
 /// Build the Fuse API router with the given shared state.
+/// Build the Fuse API router with the given shared state and default rate limits.
 pub fn build_router(state: Arc<AppState>) -> Router {
+    build_router_with_limits(state, rate_limit::RateLimitState::default())
+}
+
+/// Build the Fuse API router with custom rate limits (useful for testing).
+pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitState) -> Router {
     Router::new()
         .route("/", get(playground))
         .route("/playground", get(playground))
@@ -49,6 +55,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/fuse/views", get(api::list_views))
         .route("/api/fuse/views/{name}", get(api::get_view))
         .route("/api/fuse/views/{name}/refresh", post(api::refresh_view))
+        .layer(middleware::from_fn(rate_limit::rate_limit_middleware))
+        .layer(axum::Extension(rl))
         .layer(TraceLayer::new_for_http()
             .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(Level::INFO))
             .on_response(tower_http::trace::DefaultOnResponse::new().level(Level::INFO)))
