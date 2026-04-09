@@ -54,6 +54,10 @@ pub enum PplCommand {
     Eval(Vec<EvalExpr>),
     /// rename old_name AS new_name, ...
     Rename(Vec<RenameExpr>),
+    /// top N field1, field2 — most frequent values
+    Top { n: u64, fields: Vec<String> },
+    /// rare field1, field2 — least frequent values
+    Rare { fields: Vec<String> },
 }
 
 #[derive(Debug, Clone)]
@@ -240,6 +244,8 @@ fn parse_command(input: &str) -> Result<PplCommand, PplParseError> {
         "dedup" => parse_dedup(rest),
         "eval" => parse_eval(rest),
         "rename" => parse_rename(rest),
+        "top" => parse_top(rest),
+        "rare" => parse_rare(rest),
         other => Err(PplParseError(format!("Unknown command: '{}'", other))),
     }
 }
@@ -388,6 +394,30 @@ fn parse_rename(input: &str) -> Result<PplCommand, PplParseError> {
         renames.push(RenameExpr { old_name, new_name });
     }
     Ok(PplCommand::Rename(renames))
+}
+
+/// Parse `top N field1, field2` — N is optional (default 10)
+fn parse_top(input: &str) -> Result<PplCommand, PplParseError> {
+    let parts: Vec<&str> = input.splitn(2, |c: char| c.is_whitespace()).collect();
+    let (n, field_str) = if let Ok(num) = parts[0].parse::<u64>() {
+        (num, parts.get(1).copied().unwrap_or(""))
+    } else {
+        (10, input)
+    };
+    let fields: Vec<String> = field_str.split(',').map(|f| f.trim().to_string()).filter(|f| !f.is_empty()).collect();
+    if fields.is_empty() {
+        return Err(PplParseError("top requires at least one field".into()));
+    }
+    Ok(PplCommand::Top { n, fields })
+}
+
+/// Parse `rare field1, field2`
+fn parse_rare(input: &str) -> Result<PplCommand, PplParseError> {
+    let fields: Vec<String> = input.split(',').map(|f| f.trim().to_string()).filter(|f| !f.is_empty()).collect();
+    if fields.is_empty() {
+        return Err(PplParseError("rare requires at least one field".into()));
+    }
+    Ok(PplCommand::Rare { fields })
 }
 
 // ── SQL generation helpers ──
