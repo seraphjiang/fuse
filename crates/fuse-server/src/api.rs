@@ -279,11 +279,30 @@ pub async fn query_handler(
 
     match result {
         Ok(fed) => {
+            let order_by = parse_order_by(&query);
             let limit = parse_limit(&query);
-            let batches = if let Some(n) = limit {
-                fuse_engine::merge_batches(fed.batches, Some(n)).unwrap_or_default()
+
+            // Apply global ORDER BY if present
+            let batches = if let Some((col, desc)) = &order_by {
+                if let Ok(schema) = fed.batches.first().map(|b| b.schema()).ok_or(()) {
+                    if let Ok(idx) = schema.index_of(col) {
+                        fuse_engine::sort_batches(fed.batches, &[idx], &[*desc], None)
+                            .unwrap_or_default()
+                    } else {
+                        fed.batches
+                    }
+                } else {
+                    fed.batches
+                }
             } else {
                 fed.batches
+            };
+
+            // Apply global LIMIT
+            let batches = if let Some(n) = limit {
+                fuse_engine::merge_batches(batches, Some(n)).unwrap_or_default()
+            } else {
+                batches
             };
             let (columns, rows) = batches_to_json(&batches);
             let total_rows = rows.len() as u64;
@@ -868,6 +887,23 @@ fn parse_limit(query: &str) -> Option<usize> {
         .split(|c: char| !c.is_ascii_digit())
         .next()?;
     num_str.parse().ok()
+}
+
+/// Extract ORDER BY column name and direction from query.
+/// Returns (column_name, descending).
+fn parse_order_by(query: &str) -> Option<(String, bool)> {
+    let lower = query.to_lowercase();
+    let pos = lower.rfind("order by ")?;
+    let after = query[pos + 9..].trim();
+    // Stop at LIMIT or end
+    let clause = after.split_once("limit").map(|(c, _)| c.trim()).unwrap_or(after.trim());
+    let parts: Vec<&str> = clause.split_whitespace().collect();
+    if parts.is_empty() {
+        return None;
+    }
+    let col = parts[0].trim_matches(|c: char| !c.is_alphanumeric() && c != '_').to_string();
+    let desc = parts.get(1).map(|d| d.to_lowercase() == "desc").unwrap_or(false);
+    Some((col, desc))
 }
 
 /// Build a QueryWorkload from query text for cost estimation.

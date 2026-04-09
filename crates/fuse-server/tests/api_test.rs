@@ -1692,3 +1692,52 @@ async fn test_validate_bad_syntax() {
     ).await;
     assert_eq!(json["valid"], false);
 }
+
+// ── Global ORDER BY tests ──
+
+#[tokio::test]
+async fn test_union_order_by_desc() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs ORDER BY status DESC",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert!(rows.len() >= 4);
+    // status column — find its index
+    let columns = json["columns"].as_array().unwrap();
+    let status_idx = columns.iter().position(|c| c == "status").unwrap();
+    // First rows should have higher status values
+    let first: i64 = rows[0][status_idx].as_str().unwrap().parse().unwrap();
+    let last: i64 = rows[rows.len() - 1][status_idx].as_str().unwrap().parse().unwrap();
+    assert!(first >= last);
+}
+
+#[tokio::test]
+async fn test_union_order_by_asc() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs ORDER BY status ASC",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    let columns = json["columns"].as_array().unwrap();
+    let status_idx = columns.iter().position(|c| c == "status").unwrap();
+    let first: i64 = rows[0][status_idx].as_str().unwrap().parse().unwrap();
+    let last: i64 = rows[rows.len() - 1][status_idx].as_str().unwrap().parse().unwrap();
+    assert!(first <= last);
+}
+
+#[tokio::test]
+async fn test_order_by_with_limit() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs ORDER BY status DESC LIMIT 2",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+}
