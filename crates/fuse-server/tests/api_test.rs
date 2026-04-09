@@ -1978,3 +1978,48 @@ async fn test_subquery_with_outer_filter() {
     ).await;
     assert_eq!(status, StatusCode::OK);
 }
+
+// ── Execution plan profile tests ──
+
+#[tokio::test]
+async fn test_analyze_profile_has_cost_and_detail() {
+    let (status, json) = post_query_analyze(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "sql",
+        true,
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    eprintln!("ANALYZE: {}", serde_json::to_string_pretty(&json).unwrap());
+    let profile = &json["execution_profile"];
+    assert!(profile["total_ms"].as_u64().is_some());
+    let nodes = profile["nodes"].as_array().unwrap();
+    assert_eq!(nodes.len(), 1);
+    let union_node = &nodes[0];
+    assert_eq!(union_node["op"], "UnionAll");
+    // Should have estimated_cost from children
+    assert!(union_node["estimated_cost"].as_f64().is_some());
+    // Children should be RemoteScan with detail
+    let children = union_node["children"].as_array().unwrap();
+    assert_eq!(children.len(), 2);
+    assert_eq!(children[0]["op"], "RemoteScan");
+    assert!(children[0]["detail"].as_str().is_some());
+    assert!(children[0]["data_bytes"].as_u64().is_some());
+}
+
+#[tokio::test]
+async fn test_analyze_single_source_pushdown() {
+    let (status, json) = post_query_analyze(
+        build_test_app(),
+        "SELECT host FROM testds.logs WHERE status > 200",
+        "sql",
+        true,
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let profile = &json["execution_profile"];
+    let nodes = profile["nodes"].as_array().unwrap();
+    assert_eq!(nodes[0]["op"], "RemoteScan");
+    // Should have pushdown descriptions
+    let pushdown = nodes[0]["pushdown"].as_array().unwrap();
+    assert!(!pushdown.is_empty());
+}

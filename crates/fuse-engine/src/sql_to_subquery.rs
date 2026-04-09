@@ -558,6 +558,38 @@ mod tests {
         assert_eq!(sq.aggregations[0].field.as_deref(), Some("user_id"));
     }
 
+    // ── COUNT DISTINCT verification (tester) ──
+
+    #[test]
+    fn test_count_distinct_with_group_by() {
+        let sq = sql_to_subquery(
+            "SELECT service, COUNT(DISTINCT trace_id) AS uniq FROM logs GROUP BY service",
+        ).unwrap();
+        assert_eq!(sq.group_by, vec!["service"]);
+        assert!(matches!(sq.aggregations[0].function, AggFunction::CountDistinct));
+        assert_eq!(sq.aggregations[0].field.as_deref(), Some("trace_id"));
+    }
+
+    #[test]
+    fn test_count_distinct_and_count_together() {
+        let sq = sql_to_subquery(
+            "SELECT COUNT(*) AS total, COUNT(DISTINCT host) AS unique_hosts FROM logs",
+        ).unwrap();
+        assert_eq!(sq.aggregations.len(), 2);
+        assert!(matches!(sq.aggregations[0].function, AggFunction::Count));
+        assert!(matches!(sq.aggregations[1].function, AggFunction::CountDistinct));
+    }
+
+    #[test]
+    fn test_count_distinct_with_where_and_limit() {
+        let sq = sql_to_subquery(
+            "SELECT COUNT(DISTINCT service) FROM logs WHERE status >= 500 LIMIT 1",
+        ).unwrap();
+        assert!(matches!(sq.aggregations[0].function, AggFunction::CountDistinct));
+        assert!(sq.filter.is_some());
+        assert_eq!(sq.limit, Some(1));
+    }
+
     #[test]
     fn test_dotted_table_name() {
         // SQL parser treats "cluster_a" as schema, "logs" as table

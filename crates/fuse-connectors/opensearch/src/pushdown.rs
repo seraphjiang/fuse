@@ -373,4 +373,46 @@ mod tests {
         assert_eq!(dsl["size"], 0);
         assert_eq!(dsl["aggs"]["unique_users"]["cardinality"]["field"], "user_id");
     }
+
+    // ── COUNT DISTINCT verification (tester) ──
+
+    #[test]
+    fn test_count_distinct_with_group_by() {
+        let mut q = make_query();
+        q.group_by = vec!["service".into()];
+        q.aggregations = vec![AggregationExpr {
+            function: AggFunction::CountDistinct,
+            field: Some("trace_id".into()),
+            alias: "unique_traces".into(),
+        }];
+        let dsl = translate_to_query_dsl(&q);
+        assert_eq!(dsl["size"], 0);
+        // Should have group_by terms agg with nested cardinality
+        assert!(dsl["aggs"]["group_by"].is_object());
+    }
+
+    #[test]
+    fn test_count_distinct_no_field_defaults_to_id() {
+        let mut q = make_query();
+        q.aggregations = vec![AggregationExpr {
+            function: AggFunction::CountDistinct,
+            field: None,
+            alias: "unique_docs".into(),
+        }];
+        let dsl = translate_to_query_dsl(&q);
+        assert_eq!(dsl["aggs"]["unique_docs"]["cardinality"]["field"], "_id");
+    }
+
+    #[test]
+    fn test_count_distinct_and_regular_count_together() {
+        let mut q = make_query();
+        q.aggregations = vec![
+            AggregationExpr { function: AggFunction::Count, field: None, alias: "total".into() },
+            AggregationExpr { function: AggFunction::CountDistinct, field: Some("host".into()), alias: "unique_hosts".into() },
+        ];
+        let dsl = translate_to_query_dsl(&q);
+        assert_eq!(dsl["size"], 0);
+        assert!(dsl["aggs"]["total"].is_object());
+        assert_eq!(dsl["aggs"]["unique_hosts"]["cardinality"]["field"], "host");
+    }
 }

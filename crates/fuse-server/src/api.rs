@@ -149,10 +149,50 @@ pub struct ProfileNode {
     pub actual_ms: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_rows: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_cost: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub pushdown: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<ProfileNode>,
+}
+
+impl ProfileNode {
+    fn scan(ds: &str, rows: u64, ms: u64, bytes: u64, pushdown: Vec<String>) -> Self {
+        Self {
+            op: "RemoteScan".into(),
+            datasource: Some(ds.into()),
+            actual_rows: rows,
+            actual_ms: ms,
+            data_bytes: Some(bytes),
+            estimated_rows: None,
+            estimated_cost: None,
+            detail: Some(format!("Scan {}", ds)),
+            pushdown,
+            children: vec![],
+        }
+    }
+
+    fn parent(op: &str, rows: u64, ms: u64, children: Vec<ProfileNode>) -> Self {
+        // Cost = sum of children ms + own ms; critical path = max child ms
+        let cost: f64 = children.iter().map(|c| c.actual_ms as f64).sum::<f64>() + ms as f64;
+        Self {
+            op: op.into(),
+            datasource: None,
+            actual_rows: rows,
+            actual_ms: ms,
+            data_bytes: None,
+            estimated_rows: None,
+            estimated_cost: Some(cost),
+            detail: None,
+            pushdown: vec![],
+            children,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -270,8 +310,12 @@ pub async fn query_handler(
     state.running_queries.insert(query_id.clone(), cancel_token.clone());
 
     let exec_future = async {
+        let range = match (&req.start, &req.end, &req.step) {
+            (Some(s), Some(e), Some(st)) => Some((s.as_str(), e.as_str(), st.as_str())),
+            _ => None,
+        };
         if refs.len() == 1 {
-            execute_single(&state, &query, &format, &refs[0]).await
+            execute_single(&state, &query, &format, &refs[0], range).await
         } else if format == "ppl" || is_union_query(&query) {
             execute_union(&state, &query, &format, &refs).await
         } else {
@@ -422,10 +466,20 @@ async fn execute_single(
     query: &str,
     format: &str,
     (ds_id, table): &(String, String),
+    range: Option<(&str, &str, &str)>, // (start, end, step) for Prometheus range queries
 ) -> Result<FederatedResult, String> {
     let connector = state.registry.get(ds_id)
         .ok_or_else(|| format!("datasource '{}' not found", ds_id))?;
-    let sub_query = build_sub_query(query, format, table)?;
+    let mut sub_query = build_sub_query(query, format, table)?;
+    // Inject range params as passthrough for Prometheus connector
+    if let Some((start, end, step)) = range {
+        let pt = sub_query.passthrough.get_or_insert(serde_json::json!({}));
+        if let Some(obj) = pt.as_object_mut() {
+            obj.insert("start".into(), serde_json::Value::String(start.to_string()));
+            obj.insert("end".into(), serde_json::Value::String(end.to_string()));
+            obj.insert("step".into(), serde_json::Value::String(step.to_string()));
+        }
+    }
     let start = std::time::Instant::now();
     let batches = connector.execute(&sub_query).await.map_err(|e| e.to_string())?;
     let elapsed = start.elapsed().as_millis() as u64;
@@ -435,15 +489,7 @@ async fn execute_single(
         batches,
         stats: None,
         datasources: vec![ds_id.clone()],
-        profile_nodes: vec![ProfileNode {
-            op: "RemoteScan".into(),
-            datasource: Some(ds_id.clone()),
-            actual_rows: row_count,
-            actual_ms: elapsed,
-            data_bytes: Some(data_bytes),
-            pushdown: vec![],
-            children: vec![],
-        }],
+        profile_nodes: vec![ProfileNode::scan(ds_id, row_count, elapsed, data_bytes, describe_pushdown(&sub_query))],
         partial_errors: vec![],
     })
 }
@@ -515,15 +561,7 @@ async fn execute_union(
                 let data_bytes: u64 = batches.iter().map(|b| b.get_array_memory_size() as u64).sum();
                 let tagged = add_datasource_column(&batches, &ds_id);
 
-                scan_nodes.push(ProfileNode {
-                    op: "RemoteScan".into(),
-                    datasource: Some(ds_id.clone()),
-                    actual_rows: row_count,
-                    actual_ms: latency_ms,
-                    data_bytes: Some(data_bytes),
-                    pushdown: vec![],
-                    children: vec![],
-                });
+                scan_nodes.push(ProfileNode::scan(&ds_id, row_count, latency_ms, data_bytes, vec![]));
 
                 ds_stats.insert(ds_id, DatasourceStat { rows: row_count, latency_ms });
                 batch_sets.push(tagged);
@@ -547,15 +585,7 @@ async fn execute_union(
         batches: merged,
         stats: Some(ds_stats),
         datasources,
-        profile_nodes: vec![ProfileNode {
-            op: "UnionAll".into(),
-            datasource: None,
-            actual_rows: total_rows,
-            actual_ms: 0,
-            data_bytes: None,
-            pushdown: vec![],
-            children: scan_nodes,
-        }],
+        profile_nodes: vec![ProfileNode::parent("UnionAll", total_rows, 0, scan_nodes)],
         partial_errors,
     })
 }
@@ -639,38 +669,14 @@ async fn execute_join(
     let bytes_a: u64 = batches_a.iter().map(|b| b.get_array_memory_size() as u64).sum();
     let bytes_b: u64 = batches_b.iter().map(|b| b.get_array_memory_size() as u64).sum();
 
-    let scan_a = ProfileNode {
-        op: "RemoteScan".into(),
-        datasource: Some(ds_a.clone()),
-        actual_rows: rows_a,
-        actual_ms: latency_a,
-        data_bytes: Some(bytes_a),
-        pushdown: vec![],
-        children: vec![],
-    };
-    let scan_b = ProfileNode {
-        op: "RemoteScan".into(),
-        datasource: Some(ds_b.clone()),
-        actual_rows: rows_b,
-        actual_ms: latency_b,
-        data_bytes: Some(bytes_b),
-        pushdown: vec![],
-        children: vec![],
-    };
+    let scan_a = ProfileNode::scan(ds_a, rows_a, latency_a, bytes_a, vec![]);
+    let scan_b = ProfileNode::scan(ds_b, rows_b, latency_b, bytes_b, vec![]);
 
     Ok(FederatedResult {
         batches: joined,
         stats: Some(ds_stats),
         datasources: vec![ds_a.clone(), ds_b.clone()],
-        profile_nodes: vec![ProfileNode {
-            op: "HashJoin".into(),
-            datasource: None,
-            actual_rows: join_rows,
-            actual_ms: join_ms,
-            data_bytes: None,
-            pushdown: vec![],
-            children: vec![scan_a, scan_b],
-        }],
+        profile_nodes: vec![ProfileNode::parent("HashJoin", join_rows, join_ms, vec![scan_a, scan_b])],
         partial_errors: vec![],
     })
 }
@@ -944,6 +950,27 @@ fn add_datasource_column(
             arrow::record_batch::RecordBatch::try_new(schema, columns).ok()
         })
         .collect()
+}
+
+/// Describe pushdown operations from a SubQuery for profile display.
+fn describe_pushdown(sq: &fuse_core::connector::SubQuery) -> Vec<String> {
+    let mut desc = Vec::new();
+    if !sq.projections.is_empty() {
+        desc.push(format!("projection: {}", sq.projections.join(", ")));
+    }
+    if sq.filter.is_some() {
+        desc.push("filter: pushed".into());
+    }
+    if !sq.aggregations.is_empty() {
+        desc.push(format!("aggregation: {} agg(s)", sq.aggregations.len()));
+    }
+    if !sq.group_by.is_empty() {
+        desc.push(format!("group_by: {}", sq.group_by.join(", ")));
+    }
+    if sq.limit.is_some() {
+        desc.push(format!("limit: {}", sq.limit.unwrap()));
+    }
+    desc
 }
 
 /// Check if a SQL query contains UNION ALL.
