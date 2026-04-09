@@ -30,3 +30,4 @@ Thumbs.db
 # Cross-team comms (local only)
 .fuse-project/comms/
 .fuse-project/local/
+*perf-review*
