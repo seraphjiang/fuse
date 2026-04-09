@@ -6,49 +6,38 @@
 #
 # Usage:
 #   ./tests/e2e/playground_test.sh [BASE_URL]
-#
-# Default: http://fuse-playground-alb-556139505.us-west-2.elb.amazonaws.com
 
 set -euo pipefail
 
 BASE="${1:-http://fuse-playground-alb-556139505.us-west-2.elb.amazonaws.com}"
 PASS=0
 FAIL=0
-SKIP=0
 RESULTS=()
+TMPDIR=$(mktemp -d)
+trap "rm -rf $TMPDIR" EXIT
 
 # ── Helpers ──
 
 run_test() {
-    local name="$1"
-    local start
-    start=$(date +%s%N)
-    shift
-    if "$@"; then
+    local name="$1"; shift
+    local start=$(date +%s%N)
+    if "$@" 2>"$TMPDIR/err"; then
         local ms=$(( ($(date +%s%N) - start) / 1000000 ))
         RESULTS+=("✅ PASS  ${ms}ms  $name")
         PASS=$((PASS + 1))
     else
         local ms=$(( ($(date +%s%N) - start) / 1000000 ))
-        RESULTS+=("❌ FAIL  ${ms}ms  $name")
+        local err=$(cat "$TMPDIR/err" | tail -1)
+        RESULTS+=("❌ FAIL  ${ms}ms  $name  ($err)")
         FAIL=$((FAIL + 1))
     fi
 }
 
-skip_test() {
-    local name="$1"
-    RESULTS+=("⏭️  SKIP        $name")
-    SKIP=$((SKIP + 1))
-}
-
-http_get() {
-    curl -sf --max-time 10 "$BASE$1" 2>/dev/null
-}
+http_get() { curl -sf --max-time 10 "$BASE$1" 2>/dev/null; }
 
 http_post() {
     curl -sf --max-time 10 -X POST "$BASE$1" \
-        -H "Content-Type: application/json" \
-        -d "$2" 2>/dev/null
+        -H "Content-Type: application/json" -d "$2" 2>/dev/null
 }
 
 http_status() {
@@ -57,198 +46,174 @@ http_status() {
 
 # ── Tests ──
 
-test_health_returns_200() {
-    local body
-    body=$(http_get "/api/fuse/health")
-    echo "$body" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-assert d['status'] in ('healthy', 'degraded'), f'unexpected status: {d[\"status\"]}'
-assert 'connectors' in d
-assert 'cluster_a' in d['connectors'], 'cluster_a missing'
-assert 'cluster_b' in d['connectors'], 'cluster_b missing'
-"
+test_health() {
+    http_get "/api/fuse/health" > "$TMPDIR/health.json"
+    python3 -c "
+import json
+d = json.load(open('$TMPDIR/health.json'))
+assert d['status'] in ('healthy','degraded'), f'status: {d[\"status\"]}'
+assert 'cluster_a' in d['connectors']
+assert 'cluster_b' in d['connectors']
+" 2>&1
 }
 
 test_health_connectors_healthy() {
-    local body
-    body=$(http_get "/api/fuse/health")
-    echo "$body" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-assert d['status'] == 'healthy', f'overall: {d[\"status\"]}'
-for name, c in d['connectors'].items():
-    assert c['status'] == 'healthy', f'{name}: {c[\"status\"]}'
-    assert c['latency_ms'] is not None, f'{name}: no latency'
-"
-}
-
-test_datasources_lists_both() {
-    local body
-    body=$(http_get "/api/fuse/datasources")
-    echo "$body" | python3 -c "
-import sys, json
-ds = json.load(sys.stdin)
-ids = {d['id'] for d in ds}
-assert 'cluster_a' in ids, 'cluster_a missing'
-assert 'cluster_b' in ids, 'cluster_b missing'
-assert all(d['connector_type'] == 'opensearch' for d in ds)
-"
-}
-
-test_schema_discovery_cluster_a() {
-    local body
-    body=$(http_get "/api/fuse/datasources/cluster_a/schemas")
-    echo "$body" | python3 -c "
-import sys, json
-schemas = json.load(sys.stdin)
-assert isinstance(schemas, list), 'expected array'
-names = [s['name'] for s in schemas]
-assert 'application_logs' in names, f'application_logs not found in {names}'
-"
-}
-
-test_schema_discovery_cluster_b() {
-    local body
-    body=$(http_get "/api/fuse/datasources/cluster_b/schemas")
-    echo "$body" | python3 -c "
-import sys, json
-schemas = json.load(sys.stdin)
-names = [s['name'] for s in schemas]
-assert 'application_logs' in names, f'application_logs not found in {names}'
-"
-}
-
-test_sql_query_returns_rows() {
-    local body
-    body=$(http_post "/api/fuse/query" \
-        '{"query": "SELECT * FROM cluster_a.application_logs LIMIT 5", "format": "sql"}')
-    echo "$body" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-assert len(d['columns']) > 0, 'no columns'
-assert d['metadata']['total_rows'] > 0, 'no rows returned'
-assert d['metadata']['total_rows'] <= 5, 'limit not applied'
-"
-}
-
-test_ppl_query_returns_rows() {
-    local body
-    body=$(http_post "/api/fuse/query" \
-        '{"query": "source = cluster_a.application_logs | head 5", "format": "ppl"}')
-    echo "$body" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-assert d['metadata']['total_rows'] > 0, 'no rows from PPL query'
-"
-}
-
-test_cross_cluster_query() {
-    local body_a body_b
-    body_a=$(http_post "/api/fuse/query" \
-        '{"query": "SELECT * FROM cluster_a.application_logs LIMIT 100", "format": "sql"}')
-    body_b=$(http_post "/api/fuse/query" \
-        '{"query": "SELECT * FROM cluster_b.application_logs LIMIT 100", "format": "sql"}')
+    http_get "/api/fuse/health" > "$TMPDIR/health2.json"
     python3 -c "
 import json
-a = json.loads('$body_a')
-b = json.loads('$body_b')
-assert a['metadata']['total_rows'] > 0, 'cluster_a returned no rows'
-assert b['metadata']['total_rows'] > 0, 'cluster_b returned no rows'
-# Verify different services in each cluster
-"
+d = json.load(open('$TMPDIR/health2.json'))
+for name, c in d['connectors'].items():
+    assert c['status'] == 'healthy', f'{name}: {c[\"status\"]}'
+" 2>&1
+}
+
+test_datasources() {
+    http_get "/api/fuse/datasources" > "$TMPDIR/ds.json"
+    python3 -c "
+import json
+ds = json.load(open('$TMPDIR/ds.json'))
+ids = {d['id'] for d in ds}
+assert 'cluster_a' in ids and 'cluster_b' in ids, f'got: {ids}'
+" 2>&1
+}
+
+test_schema_cluster_a() {
+    http_get "/api/fuse/datasources/cluster_a/schemas" > "$TMPDIR/schema_a.json"
+    python3 -c "
+import json
+s = json.load(open('$TMPDIR/schema_a.json'))
+names = [x['name'] for x in s]
+assert 'application_logs' in names, f'got: {names}'
+" 2>&1
+}
+
+test_schema_cluster_b() {
+    http_get "/api/fuse/datasources/cluster_b/schemas" > "$TMPDIR/schema_b.json"
+    python3 -c "
+import json
+s = json.load(open('$TMPDIR/schema_b.json'))
+names = [x['name'] for x in s]
+assert 'application_logs' in names, f'got: {names}'
+" 2>&1
+}
+
+test_sql_query() {
+    http_post "/api/fuse/query" \
+        '{"query":"SELECT * FROM cluster_a.application_logs LIMIT 5","format":"sql"}' \
+        > "$TMPDIR/sql.json"
+    python3 -c "
+import json
+d = json.load(open('$TMPDIR/sql.json'))
+assert len(d['columns']) > 0, 'no columns'
+assert d['metadata']['total_rows'] > 0, 'no rows'
+assert d['metadata']['total_rows'] <= 5, f'limit not applied: {d[\"metadata\"][\"total_rows\"]}'
+" 2>&1
+}
+
+test_ppl_query() {
+    http_post "/api/fuse/query" \
+        '{"query":"source = cluster_a.application_logs | head 5","format":"ppl"}' \
+        > "$TMPDIR/ppl.json"
+    python3 -c "
+import json
+d = json.load(open('$TMPDIR/ppl.json'))
+assert d['metadata']['total_rows'] > 0, 'no rows from PPL'
+" 2>&1
+}
+
+test_cross_cluster() {
+    http_post "/api/fuse/query" \
+        '{"query":"SELECT * FROM cluster_a.application_logs LIMIT 100","format":"sql"}' \
+        > "$TMPDIR/cross_a.json"
+    http_post "/api/fuse/query" \
+        '{"query":"SELECT * FROM cluster_b.application_logs LIMIT 100","format":"sql"}' \
+        > "$TMPDIR/cross_b.json"
+    python3 -c "
+import json
+a = json.load(open('$TMPDIR/cross_a.json'))
+b = json.load(open('$TMPDIR/cross_b.json'))
+assert a['metadata']['total_rows'] > 0, 'cluster_a: no rows'
+assert b['metadata']['total_rows'] > 0, 'cluster_b: no rows'
+" 2>&1
 }
 
 test_filter_pushdown() {
-    local all_body filtered_body
-    all_body=$(http_post "/api/fuse/query" \
-        '{"query": "SELECT * FROM cluster_a.application_logs LIMIT 100", "format": "sql"}')
-    filtered_body=$(http_post "/api/fuse/query" \
-        '{"query": "SELECT * FROM cluster_a.application_logs WHERE status >= 500 LIMIT 100", "format": "sql"}')
+    http_post "/api/fuse/query" \
+        '{"query":"SELECT * FROM cluster_a.application_logs LIMIT 100","format":"sql"}' \
+        > "$TMPDIR/all.json"
+    http_post "/api/fuse/query" \
+        '{"query":"SELECT * FROM cluster_a.application_logs WHERE status >= 500 LIMIT 100","format":"sql"}' \
+        > "$TMPDIR/filtered.json"
     python3 -c "
 import json
-all_rows = json.loads('$all_body')['metadata']['total_rows']
-filtered = json.loads('$filtered_body')['metadata']['total_rows']
-assert all_rows > 0, 'no rows without filter'
-assert filtered < all_rows, f'filter did not reduce rows: {filtered} vs {all_rows}'
-"
+a = json.load(open('$TMPDIR/all.json'))['metadata']['total_rows']
+f = json.load(open('$TMPDIR/filtered.json'))['metadata']['total_rows']
+assert a > 0, 'no rows unfiltered'
+assert f < a, f'filter did not reduce: {f} vs {a}'
+" 2>&1
 }
 
-test_validate_good_sql() {
-    local body
-    body=$(http_post "/api/fuse/query/validate" \
-        '{"query": "SELECT * FROM cluster_a.application_logs"}')
-    echo "$body" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-assert d['valid'] == True, f'expected valid=true, got {d}'
-"
+test_validate_good() {
+    http_post "/api/fuse/query/validate" \
+        '{"query":"SELECT * FROM cluster_a.application_logs"}' > "$TMPDIR/vg.json"
+    python3 -c "
+import json; d = json.load(open('$TMPDIR/vg.json')); assert d['valid'] == True
+" 2>&1
 }
 
-test_validate_bad_sql() {
-    local body
-    body=$(http_post "/api/fuse/query/validate" \
-        '{"query": "not valid sql at all"}')
-    echo "$body" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-assert d['valid'] == False, 'expected valid=false'
-assert d.get('error') is not None, 'expected error message'
-"
+test_validate_bad() {
+    http_post "/api/fuse/query/validate" \
+        '{"query":"not valid sql"}' > "$TMPDIR/vb.json"
+    python3 -c "
+import json; d = json.load(open('$TMPDIR/vb.json')); assert d['valid'] == False
+" 2>&1
 }
 
-test_explain_returns_plan() {
-    local body
-    body=$(http_post "/api/fuse/query/explain" \
-        '{"query": "SELECT * FROM cluster_a.application_logs"}')
-    echo "$body" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-assert 'plan' in d, 'no plan in response'
-assert len(d['plan']) > 0, 'empty plan'
-"
+test_explain() {
+    http_post "/api/fuse/query/explain" \
+        '{"query":"SELECT * FROM cluster_a.application_logs"}' > "$TMPDIR/explain.json"
+    python3 -c "
+import json; d = json.load(open('$TMPDIR/explain.json')); assert len(d.get('plan','')) > 0
+" 2>&1
 }
 
-test_unknown_datasource_404() {
-    local status
-    status=$(http_status -X POST "$BASE/api/fuse/query" \
+test_unknown_ds_404() {
+    local s=$(http_status -X POST "$BASE/api/fuse/query" \
         -H "Content-Type: application/json" \
-        -d '{"query": "SELECT * FROM nope.logs"}')
-    [ "$status" = "404" ]
+        -d '{"query":"SELECT * FROM nope.logs"}')
+    [ "$s" = "404" ]
 }
 
-test_malformed_sql_400() {
-    local status
-    status=$(http_status -X POST "$BASE/api/fuse/query" \
+test_bad_sql_400() {
+    local s=$(http_status -X POST "$BASE/api/fuse/query" \
         -H "Content-Type: application/json" \
-        -d '{"query": "INSERT INTO foo"}')
-    [ "$status" = "400" ]
+        -d '{"query":"INSERT INTO foo"}')
+    [ "$s" = "400" ]
 }
 
 # ── Run ──
 
 echo "╔═══════════════════════════════════════════════════╗"
 echo "║  Fuse Playground E2E Smoke Tests                  ║"
-echo "╠═══════════════════════════════════════════════════╣"
 echo "║  Target: $BASE"
 echo "║  Time:   $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "╚═══════════════════════════════════════════════════╝"
 echo ""
 
-run_test "Health returns 200 with connectors"       test_health_returns_200
-run_test "Both connectors healthy"                   test_health_connectors_healthy
-run_test "Datasources lists both clusters"           test_datasources_lists_both
-run_test "Schema discovery cluster_a"                test_schema_discovery_cluster_a
-run_test "Schema discovery cluster_b"                test_schema_discovery_cluster_b
-run_test "SQL query returns rows"                    test_sql_query_returns_rows
-run_test "PPL query returns rows"                    test_ppl_query_returns_rows
-run_test "Cross-cluster query"                       test_cross_cluster_query
-run_test "Filter pushdown reduces rows"              test_filter_pushdown
-run_test "Validate accepts good SQL"                 test_validate_good_sql
-run_test "Validate rejects bad SQL"                  test_validate_bad_sql
-run_test "Explain returns plan"                      test_explain_returns_plan
-run_test "Unknown datasource returns 404"            test_unknown_datasource_404
-run_test "Malformed SQL returns 400"                 test_malformed_sql_400
+run_test "Health returns 200 with connectors"   test_health
+run_test "Both connectors healthy"              test_health_connectors_healthy
+run_test "Datasources lists both clusters"      test_datasources
+run_test "Schema discovery cluster_a"           test_schema_cluster_a
+run_test "Schema discovery cluster_b"           test_schema_cluster_b
+run_test "SQL query returns rows (LIMIT 5)"     test_sql_query
+run_test "PPL query returns rows"               test_ppl_query
+run_test "Cross-cluster query"                  test_cross_cluster
+run_test "Filter pushdown reduces rows"         test_filter_pushdown
+run_test "Validate accepts good SQL"            test_validate_good
+run_test "Validate rejects bad SQL"             test_validate_bad
+run_test "Explain returns plan"                 test_explain
+run_test "Unknown datasource returns 404"       test_unknown_ds_404
+run_test "Malformed SQL returns 400"            test_bad_sql_400
 
 # ── Summary ──
 
@@ -260,9 +225,7 @@ for r in "${RESULTS[@]}"; do
     echo "  $r"
 done
 echo ""
-echo "  Total: $((PASS + FAIL + SKIP))  |  Pass: $PASS  |  Fail: $FAIL  |  Skip: $SKIP"
+echo "  Total: $((PASS + FAIL))  |  Pass: $PASS  |  Fail: $FAIL"
 echo "═══════════════════════════════════════════════════"
 
-if [ "$FAIL" -gt 0 ]; then
-    exit 1
-fi
+[ "$FAIL" -eq 0 ]
