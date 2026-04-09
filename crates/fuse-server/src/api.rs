@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use fuse_core::registry::ConnectorRegistry;
 use fuse_core::alerting::{AlertEvaluator, AlertRule};
+use fuse_engine::materialized::MaterializedViewRegistry;
 
 use crate::health;
 
@@ -17,6 +18,7 @@ pub struct AppState {
     pub registry: Arc<ConnectorRegistry>,
     #[allow(dead_code)]
     pub alert_rules: Vec<AlertRule>,
+    pub view_registry: Arc<MaterializedViewRegistry>,
 }
 
 // ── Request / Response types ──
