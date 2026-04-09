@@ -77,3 +77,84 @@ pub trait ConnectorFactory: Send + Sync {
         config: &ConnectorConfig,
     ) -> Result<Arc<dyn FederatedConnector>, ConnectorError>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::connector::*;
+    use async_trait::async_trait;
+    use tokio::sync::mpsc;
+    use arrow::record_batch::RecordBatch;
+
+    #[derive(Debug)]
+    struct StubConnector { id: String, health: HealthStatus }
+
+    #[async_trait]
+    impl FederatedConnector for StubConnector {
+        fn id(&self) -> &str { &self.id }
+        fn connector_type(&self) -> &str { "stub" }
+        fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+        async fn health_check(&self) -> ConnectorHealth {
+            ConnectorHealth { status: self.health.clone(), latency_ms: Some(1), message: None }
+        }
+        async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, crate::error::ConnectorError> { Ok(vec![]) }
+        async fn get_schema(&self, _: &str) -> Result<arrow::datatypes::Schema, crate::error::ConnectorError> {
+            Ok(arrow::datatypes::Schema::empty())
+        }
+        async fn execute(&self, _: &SubQuery) -> Result<Vec<RecordBatch>, crate::error::ConnectorError> { Ok(vec![]) }
+        async fn execute_streaming(&self, _: &SubQuery, _: mpsc::Sender<Result<RecordBatch, crate::error::ConnectorError>>) -> Result<(), crate::error::ConnectorError> { Ok(()) }
+    }
+
+    fn stub(id: &str) -> Arc<dyn FederatedConnector> {
+        Arc::new(StubConnector { id: id.to_string(), health: HealthStatus::Healthy })
+    }
+
+    fn unhealthy_stub(id: &str) -> Arc<dyn FederatedConnector> {
+        Arc::new(StubConnector { id: id.to_string(), health: HealthStatus::Unhealthy })
+    }
+
+    #[test]
+    fn test_register_and_get() {
+        let reg = ConnectorRegistry::new();
+        reg.register(stub("a")).unwrap();
+        assert!(reg.get("a").is_some());
+        assert!(reg.get("b").is_none());
+    }
+
+    #[test]
+    fn test_duplicate_register_fails() {
+        let reg = ConnectorRegistry::new();
+        reg.register(stub("a")).unwrap();
+        assert!(reg.register(stub("a")).is_err());
+    }
+
+    #[test]
+    fn test_list_and_datasource_names() {
+        let reg = ConnectorRegistry::new();
+        reg.register(stub("x")).unwrap();
+        reg.register(stub("y")).unwrap();
+        assert_eq!(reg.list().len(), 2);
+        let mut names = reg.datasource_names();
+        names.sort();
+        assert_eq!(names, vec!["x", "y"]);
+    }
+
+    #[tokio::test]
+    async fn test_health_check_all() {
+        let reg = ConnectorRegistry::new();
+        reg.register(stub("ok")).unwrap();
+        reg.register(unhealthy_stub("bad")).unwrap();
+        let checks = reg.health_check_all().await;
+        assert_eq!(checks.len(), 2);
+        assert_eq!(checks["ok"].status, HealthStatus::Healthy);
+        assert_eq!(checks["bad"].status, HealthStatus::Unhealthy);
+    }
+
+    #[test]
+    fn test_empty_registry() {
+        let reg = ConnectorRegistry::new();
+        assert!(reg.list().is_empty());
+        assert!(reg.datasource_names().is_empty());
+        assert!(reg.get("anything").is_none());
+    }
+}

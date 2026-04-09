@@ -52,3 +52,70 @@ pub async fn check_health(registry: &ConnectorRegistry) -> HealthResponse {
         connectors,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use arrow::record_batch::RecordBatch;
+    use async_trait::async_trait;
+    use fuse_core::connector::*;
+    use fuse_core::error::ConnectorError;
+    use tokio::sync::mpsc;
+
+    #[derive(Debug)]
+    struct HealthStub { id: String, status: HealthStatus, msg: Option<String> }
+
+    #[async_trait]
+    impl FederatedConnector for HealthStub {
+        fn id(&self) -> &str { &self.id }
+        fn connector_type(&self) -> &str { "stub" }
+        fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+        async fn health_check(&self) -> ConnectorHealth {
+            ConnectorHealth { status: self.status.clone(), latency_ms: Some(1), message: self.msg.clone() }
+        }
+        async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> { Ok(vec![]) }
+        async fn get_schema(&self, _: &str) -> Result<arrow::datatypes::Schema, ConnectorError> {
+            Ok(arrow::datatypes::Schema::empty())
+        }
+        async fn execute(&self, _: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> { Ok(vec![]) }
+        async fn execute_streaming(&self, _: &SubQuery, _: mpsc::Sender<Result<RecordBatch, ConnectorError>>) -> Result<(), ConnectorError> { Ok(()) }
+    }
+
+    #[tokio::test]
+    async fn test_all_healthy() {
+        let reg = ConnectorRegistry::new();
+        reg.register(Arc::new(HealthStub { id: "a".into(), status: HealthStatus::Healthy, msg: None })).unwrap();
+        reg.register(Arc::new(HealthStub { id: "b".into(), status: HealthStatus::Healthy, msg: None })).unwrap();
+        let resp = check_health(&reg).await;
+        assert_eq!(resp.status, "healthy");
+        assert_eq!(resp.connectors.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_one_unhealthy() {
+        let reg = ConnectorRegistry::new();
+        reg.register(Arc::new(HealthStub { id: "ok".into(), status: HealthStatus::Healthy, msg: None })).unwrap();
+        reg.register(Arc::new(HealthStub { id: "bad".into(), status: HealthStatus::Unhealthy, msg: Some("down".into()) })).unwrap();
+        let resp = check_health(&reg).await;
+        assert_eq!(resp.status, "unhealthy");
+        assert_eq!(resp.connectors["bad"].message.as_deref(), Some("down"));
+    }
+
+    #[tokio::test]
+    async fn test_degraded_status() {
+        let reg = ConnectorRegistry::new();
+        reg.register(Arc::new(HealthStub { id: "ok".into(), status: HealthStatus::Healthy, msg: None })).unwrap();
+        reg.register(Arc::new(HealthStub { id: "meh".into(), status: HealthStatus::Degraded, msg: None })).unwrap();
+        let resp = check_health(&reg).await;
+        assert_eq!(resp.status, "degraded");
+    }
+
+    #[tokio::test]
+    async fn test_empty_registry_healthy() {
+        let reg = ConnectorRegistry::new();
+        let resp = check_health(&reg).await;
+        assert_eq!(resp.status, "healthy");
+        assert!(resp.connectors.is_empty());
+    }
+}
