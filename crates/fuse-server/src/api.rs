@@ -73,10 +73,17 @@ pub struct QueryRequest {
     pub analyze: bool,
     /// Per-query timeout in milliseconds. If not set, uses server default (30s).
     pub timeout_ms: Option<u64>,
+    /// Output format: "json" (default) or "csv".
+    #[serde(default = "default_result_format")]
+    pub result_format: String,
 }
 
 fn default_format() -> String {
     "sql".to_string()
+}
+
+fn default_result_format() -> String {
+    "json".to_string()
 }
 
 const DEFAULT_TIMEOUT_MS: u64 = 30_000;
@@ -250,29 +257,38 @@ pub async fn query_handler(
                 row_count: total_rows,
                 error: None,
             });
-            Json(QueryResponse {
-                columns,
-                rows,
-                metadata: QueryMetadata {
-                    total_rows,
-                    format: req.format,
-                    datasources_queried: if fed.datasources.len() > 1 {
-                        Some(fed.datasources)
+            if req.result_format == "csv" {
+                let csv = batches_to_csv(&batches);
+                (
+                    StatusCode::OK,
+                    [(axum::http::header::CONTENT_TYPE, "text/csv")],
+                    csv,
+                ).into_response()
+            } else {
+                Json(QueryResponse {
+                    columns,
+                    rows,
+                    metadata: QueryMetadata {
+                        total_rows,
+                        format: req.format,
+                        datasources_queried: if fed.datasources.len() > 1 {
+                            Some(fed.datasources)
+                        } else {
+                            None
+                        },
+                        datasource_stats: fed.stats,
+                    },
+                    execution_profile: if req.analyze {
+                        Some(ExecutionProfile {
+                            total_ms: t0.elapsed().as_millis() as u64,
+                            nodes: fed.profile_nodes,
+                        })
                     } else {
                         None
                     },
-                    datasource_stats: fed.stats,
-                },
-                execution_profile: if req.analyze {
-                    Some(ExecutionProfile {
-                        total_ms: t0.elapsed().as_millis() as u64,
-                        nodes: fed.profile_nodes,
-                    })
-                } else {
-                    None
-                },
-            })
-            .into_response()
+                })
+                .into_response()
+            }
         }
         Err(e) => {
             state.history.push(crate::history::HistoryEntry {
@@ -890,6 +906,23 @@ fn batches_to_json(
     }
 
     (columns, rows)
+}
+
+/// Convert Arrow RecordBatches to CSV string.
+fn batches_to_csv(batches: &[arrow::record_batch::RecordBatch]) -> String {
+    if batches.is_empty() {
+        return String::new();
+    }
+    let mut buf = Vec::new();
+    {
+        let mut writer = arrow::csv::WriterBuilder::new()
+            .with_header(true)
+            .build(&mut buf);
+        for batch in batches {
+            writer.write(batch).ok();
+        }
+    }
+    String::from_utf8(buf).unwrap_or_default()
 }
 
 /// GET /api/fuse/history — last 50 queries with stats.

@@ -1347,3 +1347,76 @@ async fn test_cancel_slow_query() {
     let status = query_handle.await.unwrap();
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
 }
+
+// ── CSV result format tests ──
+
+#[tokio::test]
+async fn test_result_format_json_default() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(json["columns"].is_array());
+    assert!(json["rows"].is_array());
+}
+
+#[tokio::test]
+async fn test_result_format_csv() {
+    let body = serde_json::json!({
+        "query": "SELECT * FROM cluster_a.logs",
+        "format": "sql",
+        "result_format": "csv"
+    });
+    let resp = build_federation_app()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers().get("content-type").unwrap().to_str().unwrap(),
+        "text/csv"
+    );
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let csv = String::from_utf8(bytes.to_vec()).unwrap();
+    // CSV should have header row + data rows
+    let lines: Vec<&str> = csv.trim().lines().collect();
+    assert!(lines.len() >= 2, "expected header + data, got: {}", csv);
+    assert!(lines[0].contains("host"));
+    assert!(lines[0].contains("status"));
+}
+
+#[tokio::test]
+async fn test_result_format_csv_union() {
+    let body = serde_json::json!({
+        "query": "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "format": "sql",
+        "result_format": "csv"
+    });
+    let resp = build_federation_app()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let csv = String::from_utf8(bytes.to_vec()).unwrap();
+    let lines: Vec<&str> = csv.trim().lines().collect();
+    // Header + rows from both datasources (2 rows each + _datasource column)
+    assert!(lines.len() >= 3);
+    assert!(lines[0].contains("_datasource"));
+}
