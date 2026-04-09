@@ -202,6 +202,22 @@ paths:
                   - `{"type":"done","total_rows":42}`
                   - `{"type":"error","message":"..."}`
 
+  /api/fuse/history:
+    get:
+      summary: Query history
+      description: Returns recent query executions with timing and row counts.
+      operationId: history
+      tags: [System]
+      responses:
+        "200":
+          description: List of recent queries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistoryEntry"
+
   /api/fuse/alerts:
     get:
       summary: List alert rules
@@ -326,6 +342,10 @@ components:
           enum: [sql, ppl]
           default: sql
           description: Query language format
+        analyze:
+          type: boolean
+          default: false
+          description: When true, includes execution_profile with actual timing in response
 
     QueryResponse:
       type: object
@@ -334,7 +354,7 @@ components:
           type: array
           items:
             type: string
-          description: Column names
+          description: Column names (includes _datasource for cross-datasource queries)
         rows:
           type: array
           items:
@@ -348,6 +368,84 @@ components:
               type: integer
             format:
               type: string
+            datasources_queried:
+              type: array
+              items:
+                type: string
+              nullable: true
+              description: List of datasource IDs involved in the query
+            datasource_stats:
+              type: object
+              additionalProperties:
+                $ref: "#/components/schemas/DatasourceStat"
+              nullable: true
+              description: Per-datasource row counts and latency
+            execution_profile:
+              $ref: "#/components/schemas/ExecutionProfile"
+              nullable: true
+              description: Present when analyze=true
+
+    DatasourceStat:
+      type: object
+      properties:
+        rows:
+          type: integer
+        latency_ms:
+          type: integer
+
+    ExecutionProfile:
+      type: object
+      properties:
+        total_ms:
+          type: integer
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProfileNode"
+
+    ProfileNode:
+      type: object
+      properties:
+        op:
+          type: string
+          description: Operation name (RemoteScan, Merge, HashJoin, etc.)
+        datasource:
+          type: string
+          nullable: true
+        actual_rows:
+          type: integer
+        actual_ms:
+          type: integer
+        data_bytes:
+          type: integer
+          nullable: true
+        pushdown:
+          type: array
+          items:
+            type: string
+          description: Pushdown operations (filter, projection, limit)
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProfileNode"
+
+    HistoryEntry:
+      type: object
+      properties:
+        query:
+          type: string
+        format:
+          type: string
+        timestamp:
+          type: integer
+          description: Unix timestamp (seconds)
+        latency_ms:
+          type: integer
+        row_count:
+          type: integer
+        error:
+          type: string
+          nullable: true
 
     DatasourceInfo:
       type: object
@@ -439,6 +537,30 @@ components:
       properties:
         plan:
           type: string
+          description: Human-readable text plan
+        plan_tree:
+          $ref: "#/components/schemas/PlanNode"
+          nullable: true
+          description: Structured plan tree
+
+    PlanNode:
+      type: object
+      properties:
+        op:
+          type: string
+        detail:
+          type: string
+          nullable: true
+        estimated_rows:
+          type: integer
+          nullable: true
+        estimated_cost:
+          type: number
+          nullable: true
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanNode"
 
     ErrorResponse:
       type: object
