@@ -61,6 +61,7 @@ Your role: <ROLE>
 Your crates: <CRATE_LIST>
 
 Key files to read:
+- .fuse-project/ENVIRONMENT.md              (live URLs, AWS resources, API examples)
 - .fuse-project/team/agents/<your-name>.md  (your profile)
 - .fuse-project/backlog/backlog.md          (work items)
 - .fuse-project/sprints/sprint-01.md        (current sprint)
