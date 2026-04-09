@@ -76,5 +76,10 @@ export class FuseQueryServerPlugin implements Plugin {
       try { return res.ok({ body: await proxy('/query/explain', 'POST', req.body) }); }
       catch (e: any) { return res.customError({ statusCode: 502, body: { message: e.message } }); }
     });
+
+    router.get({ path: `${API_BASE}/history`, validate: false }, async (_ctx, _req, res) => {
+      try { return res.ok({ body: await proxy('/history', 'GET') }); }
+      catch (e: any) { return res.customError({ statusCode: 502, body: { message: e.message } }); }
+    });
   }
 }

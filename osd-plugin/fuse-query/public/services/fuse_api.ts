@@ -9,6 +9,7 @@ import {
   HealthResponse,
   ValidateResponse,
   ExplainResponse,
+  HistoryEntry,
 } from '../../common';
 
 export class FuseApiService {
@@ -26,7 +27,10 @@ export class FuseApiService {
     return this.http.get(`${API_BASE}/datasources/${datasourceId}/schemas`);
   }
 
-  async getFields(datasourceId: string, table: string): Promise<Array<{ name: string; data_type: string; nullable: boolean }>> {
+  async getFields(
+    datasourceId: string,
+    table: string
+  ): Promise<Array<{ name: string; data_type: string; nullable: boolean }>> {
     return this.http.get(`${API_BASE}/datasources/${datasourceId}/schemas/${table}/fields`);
   }
 
@@ -40,5 +44,9 @@ export class FuseApiService {
 
   async explain(request: QueryRequest): Promise<ExplainResponse> {
     return this.http.post(`${API_BASE}/query/explain`, { body: JSON.stringify(request) });
+  }
+
+  async history(): Promise<HistoryEntry[]> {
+    return this.http.get(`${API_BASE}/history`);
   }
 }
