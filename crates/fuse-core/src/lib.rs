@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Fuse Core — connector traits, config, error types
 
+pub mod alerting;
 pub mod config;
 pub mod connector;
 pub mod error;

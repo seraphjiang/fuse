@@ -461,3 +461,162 @@ impl ConnectorFactory for PrometheusConnectorFactory {
         Ok(Arc::new(PrometheusConnector::from_config(config)?))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_connector() -> PrometheusConnector {
+        PrometheusConnector::new(
+            "test-prom".into(),
+            "http://localhost:9090".into(),
+            reqwest::Client::new(),
+        )
+    }
+
+    #[test]
+    fn test_capabilities() {
+        let c = make_connector();
+        let caps = c.capabilities();
+        assert!(caps.supports_filtering);
+        assert!(!caps.supports_projection);
+        assert!(caps.supports_aggregation);
+        assert!(!caps.supports_sorting);
+        assert!(!caps.supports_limit);
+        assert!(!caps.supports_join);
+        assert!(!caps.supports_streaming);
+        assert_eq!(caps.max_concurrent_queries, 8);
+        assert!(matches!(caps.latency_class, LatencyClass::Medium));
+    }
+
+    #[test]
+    fn test_connector_metadata() {
+        let c = make_connector();
+        assert_eq!(c.id(), "test-prom");
+        assert_eq!(c.connector_type(), "prometheus");
+    }
+
+    #[test]
+    fn test_parse_vector_results_empty() {
+        let results: Vec<serde_json::Value> = vec![];
+        let batches = parse_vector_results(&results).unwrap();
+        assert!(batches.is_empty());
+    }
+
+    #[test]
+    fn test_parse_vector_results_single() {
+        let results = vec![serde_json::json!({
+            "metric": {"__name__": "up", "job": "api"},
+            "value": [1609459200.0, "1"]
+        })];
+        let batches = parse_vector_results(&results).unwrap();
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].num_rows(), 1);
+        assert_eq!(batches[0].num_columns(), 3); // __name__, labels, value
+
+        let names = batches[0]
+            .column(0)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        assert_eq!(names.value(0), "up");
+
+        let values = batches[0]
+            .column(2)
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .unwrap();
+        assert_eq!(values.value(0), 1.0);
+    }
+
+    #[test]
+    fn test_parse_vector_results_multiple() {
+        let results = vec![
+            serde_json::json!({
+                "metric": {"__name__": "up", "job": "api"},
+                "value": [1609459200.0, "1"]
+            }),
+            serde_json::json!({
+                "metric": {"__name__": "up", "job": "web"},
+                "value": [1609459200.0, "0"]
+            }),
+        ];
+        let batches = parse_vector_results(&results).unwrap();
+        assert_eq!(batches[0].num_rows(), 2);
+    }
+
+    #[test]
+    fn test_parse_vector_results_nan_value() {
+        let results = vec![serde_json::json!({
+            "metric": {"__name__": "m"},
+            "value": [1609459200.0, "NaN"]
+        })];
+        let batches = parse_vector_results(&results).unwrap();
+        let values = batches[0]
+            .column(2)
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .unwrap();
+        assert!(values.value(0).is_nan());
+    }
+
+    #[test]
+    fn test_parse_matrix_results_empty() {
+        let results: Vec<serde_json::Value> = vec![];
+        let batches = parse_matrix_results(&results).unwrap();
+        assert!(batches.is_empty());
+    }
+
+    #[test]
+    fn test_parse_matrix_results_with_samples() {
+        let results = vec![serde_json::json!({
+            "metric": {"__name__": "cpu_usage", "host": "server1"},
+            "values": [
+                [1609459200.0, "0.5"],
+                [1609459215.0, "0.7"],
+                [1609459230.0, "0.3"]
+            ]
+        })];
+        let batches = parse_matrix_results(&results).unwrap();
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].num_rows(), 3);
+        assert_eq!(batches[0].num_columns(), 4); // __name__, labels, timestamp, value
+
+        let values = batches[0]
+            .column(3)
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .unwrap();
+        assert_eq!(values.value(0), 0.5);
+        assert_eq!(values.value(1), 0.7);
+        assert_eq!(values.value(2), 0.3);
+    }
+
+    #[test]
+    fn test_parse_matrix_results_no_values() {
+        let results = vec![serde_json::json!({
+            "metric": {"__name__": "m"},
+            "values": []
+        })];
+        let batches = parse_matrix_results(&results).unwrap();
+        assert!(batches.is_empty());
+    }
+
+    #[test]
+    fn test_timeseries_schema_fields() {
+        let s = timeseries_schema();
+        assert_eq!(s.fields().len(), 4);
+        assert_eq!(s.field(0).name(), "__name__");
+        assert_eq!(s.field(1).name(), "labels");
+        assert_eq!(s.field(2).name(), "timestamp");
+        assert_eq!(s.field(3).name(), "value");
+    }
+
+    #[test]
+    fn test_instant_schema_fields() {
+        let s = instant_schema();
+        assert_eq!(s.fields().len(), 3);
+        assert_eq!(s.field(0).name(), "__name__");
+        assert_eq!(s.field(2).name(), "value");
+    }
+}
