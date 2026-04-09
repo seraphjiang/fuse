@@ -362,4 +362,145 @@ All error responses use the same format:
 |--------|---------|
 | 400 | Bad request — invalid query syntax |
 | 404 | Not found — datasource or table doesn't exist |
+| 429 | Too Many Requests — rate limit exceeded (see `Retry-After` header) |
 | 500 | Internal error — connector failure |
+
+---
+
+## 8. Stream Query Results (SSE)
+
+`POST /api/fuse/query/stream`
+
+Same request body as `/api/fuse/query`. Returns `text/event-stream` with chunked results.
+
+**Request body:** same as [Execute Query](#5-execute-query)
+
+**Event types** (each `data:` line is a JSON object):
+
+| Type | Fields | Description |
+|------|--------|-------------|
+| `metadata` | `columns: string[]` | Column names — always first event |
+| `batch` | `rows: string[][]` | A chunk of result rows |
+| `progress` | `batches_sent: number` | Sent every 5 batches |
+| `done` | `total_rows: number` | Stream complete |
+| `error` | `message: string` | Error during execution |
+
+**Example:**
+
+```bash
+curl -N -X POST https://fuse.huanji.profile.aws.dev/api/fuse/query/stream \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT * FROM cluster_a.services LIMIT 100"}'
+```
+
+```
+data: {"type":"metadata","columns":["trace_id","service","status"]}
+data: {"type":"batch","rows":[["abc-001","api-gateway","200"]]}
+data: {"type":"done","total_rows":1}
+```
+
+---
+
+## 9. Query History
+
+`GET /api/fuse/history`
+
+Returns the last 50 executed queries with timing and result stats, newest first.
+
+**Response:** array of history entries
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `query` | string | Query text |
+| `format` | string | `sql` or `ppl` |
+| `timestamp` | number | Unix timestamp (seconds) |
+| `latency_ms` | number | Execution time |
+| `row_count` | number | Rows returned |
+| `error` | string? | Error message if query failed |
+
+**Example:**
+
+```bash
+curl https://fuse.huanji.profile.aws.dev/api/fuse/history
+```
+
+---
+
+## 10. List Alert Rules
+
+`GET /api/fuse/alerts`
+
+Returns all configured alert rules from `fuse.toml`.
+
+**Example:**
+
+```bash
+curl https://fuse.huanji.profile.aws.dev/api/fuse/alerts
+```
+
+---
+
+## 11. Evaluate Alert Rules
+
+`POST /api/fuse/alerts/evaluate`
+
+Runs all configured alert rules immediately. Returns only firing alerts.
+
+**Response:** array of `AlertResult` objects with `rule_name`, `state`, `value`, `threshold`, `message`.
+
+**Example:**
+
+```bash
+curl -X POST https://fuse.huanji.profile.aws.dev/api/fuse/alerts/evaluate
+```
+
+---
+
+## 12. Materialized Views
+
+### List Views
+
+`GET /api/fuse/views`
+
+Returns all registered views with staleness status.
+
+```bash
+curl https://fuse.huanji.profile.aws.dev/api/fuse/views
+```
+
+### Get View Results
+
+`GET /api/fuse/views/:name`
+
+Returns cached results for a view. Returns 503 if the view has never been refreshed.
+
+```bash
+curl https://fuse.huanji.profile.aws.dev/api/fuse/views/error_summary
+```
+
+**Errors:** 404 if view not found, 503 if not yet refreshed.
+
+### Refresh a View
+
+`POST /api/fuse/views/:name/refresh`
+
+Re-executes the view's query and updates the cache.
+
+```bash
+curl -X POST https://fuse.huanji.profile.aws.dev/api/fuse/views/error_summary/refresh
+```
+
+**Response:** `{"refreshed": true, "view": "error_summary"}`
+
+---
+
+## Rate Limiting
+
+All endpoints are subject to rate limiting:
+
+| Limit | Default | Config key |
+|-------|---------|------------|
+| Global | 1000 req/min | `[engine] rate_limit_global` |
+| Per-IP | 100 req/min | `[engine] rate_limit_per_ip` |
+
+When exceeded, returns `429 Too Many Requests` with `Retry-After: 60` header.

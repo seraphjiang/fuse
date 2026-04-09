@@ -209,6 +209,14 @@ pub async fn query_handler(
                     },
                     datasource_stats: fed.stats,
                 },
+                execution_profile: if req.analyze {
+                    Some(ExecutionProfile {
+                        total_ms: t0.elapsed().as_millis() as u64,
+                        nodes: fed.profile_nodes,
+                    })
+                } else {
+                    None
+                },
             })
             .into_response()
         }
@@ -235,11 +243,24 @@ async fn execute_single(
 ) -> Result<FederatedResult, String> {
     let connector = state.registry.get(ds_id).unwrap();
     let sub_query = build_sub_query(query, format, table)?;
+    let start = std::time::Instant::now();
     let batches = connector.execute(&sub_query).await.map_err(|e| e.to_string())?;
+    let elapsed = start.elapsed().as_millis() as u64;
+    let row_count: u64 = batches.iter().map(|b| b.num_rows() as u64).sum();
+    let data_bytes: u64 = batches.iter().map(|b| b.get_array_memory_size() as u64).sum();
     Ok(FederatedResult {
         batches,
         stats: None,
         datasources: vec![ds_id.clone()],
+        profile_nodes: vec![ProfileNode {
+            op: "RemoteScan".into(),
+            datasource: Some(ds_id.clone()),
+            actual_rows: row_count,
+            actual_ms: elapsed,
+            data_bytes: Some(data_bytes),
+            pushdown: vec![],
+            children: vec![],
+        }],
     })
 }
 
@@ -294,14 +315,25 @@ async fn execute_union(
     let mut batch_sets = Vec::new();
     let mut ds_stats = std::collections::HashMap::new();
     let mut datasources = Vec::new();
+    let mut scan_nodes = Vec::new();
 
     for handle in handles {
         let (ds_id, result, latency_ms) = handle.await.map_err(|e| format!("task join error: {e}"))?;
         let batches = result.map_err(|e| e.to_string())?;
         let row_count: u64 = batches.iter().map(|b| b.num_rows() as u64).sum();
+        let data_bytes: u64 = batches.iter().map(|b| b.get_array_memory_size() as u64).sum();
 
-        // Add _datasource column to each batch
         let tagged = add_datasource_column(&batches, &ds_id);
+
+        scan_nodes.push(ProfileNode {
+            op: "RemoteScan".into(),
+            datasource: Some(ds_id.clone()),
+            actual_rows: row_count,
+            actual_ms: latency_ms,
+            data_bytes: Some(data_bytes),
+            pushdown: vec![],
+            children: vec![],
+        });
 
         ds_stats.insert(ds_id.clone(), DatasourceStat { rows: row_count, latency_ms });
         datasources.push(ds_id);
@@ -309,10 +341,21 @@ async fn execute_union(
     }
 
     let merged = fuse_engine::union_batches(batch_sets).map_err(|e| e.to_string())?;
+    let total_rows: u64 = merged.iter().map(|b| b.num_rows() as u64).sum();
+
     Ok(FederatedResult {
         batches: merged,
         stats: Some(ds_stats),
         datasources,
+        profile_nodes: vec![ProfileNode {
+            op: "UnionAll".into(),
+            datasource: None,
+            actual_rows: total_rows,
+            actual_ms: 0, // filled by caller from t0
+            data_bytes: None,
+            pushdown: vec![],
+            children: scan_nodes,
+        }],
     })
 }
 
@@ -365,6 +408,7 @@ async fn execute_join(
             batches: vec![],
             stats: Some(ds_stats),
             datasources: vec![ds_a.clone(), ds_b.clone()],
+            profile_nodes: vec![],
         });
     }
 
@@ -373,10 +417,10 @@ async fn execute_join(
     let join_key = find_join_key(&schema_a, &schema_b)
         .ok_or_else(|| "no common column found for JOIN key".to_string())?;
 
-    // Add _datasource column to each side before join
     let tagged_a = add_datasource_column(&batches_a, ds_a);
     let tagged_b = add_datasource_column(&batches_b, ds_b);
 
+    let join_start = std::time::Instant::now();
     let joined = fuse_engine::hash_join(
         &tagged_a,
         &join_key,
@@ -385,11 +429,44 @@ async fn execute_join(
         fuse_engine::JoinType::Inner,
     )
     .map_err(|e| e.to_string())?;
+    let join_ms = join_start.elapsed().as_millis() as u64;
+
+    let join_rows: u64 = joined.iter().map(|b| b.num_rows() as u64).sum();
+    let bytes_a: u64 = batches_a.iter().map(|b| b.get_array_memory_size() as u64).sum();
+    let bytes_b: u64 = batches_b.iter().map(|b| b.get_array_memory_size() as u64).sum();
+
+    let scan_a = ProfileNode {
+        op: "RemoteScan".into(),
+        datasource: Some(ds_a.clone()),
+        actual_rows: rows_a,
+        actual_ms: latency_a,
+        data_bytes: Some(bytes_a),
+        pushdown: vec![],
+        children: vec![],
+    };
+    let scan_b = ProfileNode {
+        op: "RemoteScan".into(),
+        datasource: Some(ds_b.clone()),
+        actual_rows: rows_b,
+        actual_ms: latency_b,
+        data_bytes: Some(bytes_b),
+        pushdown: vec![],
+        children: vec![],
+    };
 
     Ok(FederatedResult {
         batches: joined,
         stats: Some(ds_stats),
         datasources: vec![ds_a.clone(), ds_b.clone()],
+        profile_nodes: vec![ProfileNode {
+            op: "HashJoin".into(),
+            datasource: None,
+            actual_rows: join_rows,
+            actual_ms: join_ms,
+            data_bytes: None,
+            pushdown: vec![],
+            children: vec![scan_a, scan_b],
+        }],
     })
 }
 
@@ -868,6 +945,7 @@ pub async fn get_view(
                 columns,
                 rows: rows.clone(),
                 metadata: QueryMetadata { total_rows: rows.len() as u64, format: "view".into(), datasources_queried: None, datasource_stats: None },
+                execution_profile: None,
             }).into_response()
         }
     }

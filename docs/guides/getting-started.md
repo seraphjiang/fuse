@@ -10,8 +10,8 @@ Fuse is a federated query engine that lets you run a single SQL or PPL query acr
 
 | ID | Type | Cluster | Index |
 |----|------|---------|-------|
-| `cluster_a` | OpenSearch Serverless | fuse-cluster-a (us-west-2) | `services` |
-| `cluster_b` | OpenSearch Serverless | fuse-cluster-b (us-west-2) | `services` |
+| `cluster_a` | OpenSearch Serverless | fuse-cluster-a (us-west-2) | `services`, `application_logs` |
+| `cluster_b` | OpenSearch Serverless | fuse-cluster-b (us-west-2) | `services`, `application_logs` |
 
 The `services` index contains simulated microservice request logs with these fields:
 
@@ -84,30 +84,34 @@ source = cluster_a.services
 This is the core Fuse feature — one query, two clusters, merged results:
 
 ```sql
--- Search both clusters simultaneously
+-- UNION ALL: fan out to both clusters, merge results
 SELECT trace_id, service, status
 FROM cluster_a.services
+UNION ALL
+SELECT trace_id, service, status
+FROM cluster_b.services
 WHERE status >= 500
 LIMIT 100
 ```
 
-> **Note:** To query both clusters in a single statement, list them comma-separated (Phase 1 multi-source syntax):
-> ```sql
-> SELECT * FROM cluster_a.services, cluster_b.services WHERE status = 500
-> ```
-
-### Cross-cluster trace correlation
-
-Find a trace that spans both clusters:
-
-```sql
--- Find all events for a specific trace across both clusters
-SELECT trace_id, service, status, message
-FROM cluster_a.services
-WHERE trace_id = 'abc-1234'
+```ppl
+-- PPL multi-source: comma-separated sources fan out automatically
+source = cluster_a.services, cluster_b.services
+| where status >= 500
+| head 100
 ```
 
-Then run the same query against `cluster_b.services` to correlate.
+### Cross-cluster trace correlation (JOIN)
+
+Find a trace that spans both clusters using a hash join on `trace_id`:
+
+```sql
+SELECT a.trace_id, a.service AS service_a, b.service AS service_b,
+       a.status AS status_a, b.status AS status_b
+FROM cluster_a.services a
+JOIN cluster_b.services b ON a.trace_id = b.trace_id
+WHERE a.status >= 500
+```
 
 ---
 
@@ -115,21 +119,12 @@ Then run the same query against `cluster_b.services` to correlate.
 
 All endpoints are at `https://fuse.huanji.profile.aws.dev/api/fuse/`.
 
+The playground UI at `/` includes a **Feeling Lucky** button that runs a random example query — useful for exploring the demo data without writing SQL.
+
 ### Health check
 
 ```bash
 curl https://fuse.huanji.profile.aws.dev/api/fuse/health
-```
-
-```json
-{
-  "status": "ok",
-  "version": "0.1.0",
-  "connectors": {
-    "cluster_a": { "status": "healthy", "latency_ms": 12 },
-    "cluster_b": { "status": "healthy", "latency_ms": 15 }
-  }
-}
 ```
 
 ### List datasources
@@ -172,16 +167,22 @@ curl -X POST https://fuse.huanji.profile.aws.dev/api/fuse/query \
   }'
 ```
 
+### Stream query results (SSE)
+
+```bash
+curl -N -X POST https://fuse.huanji.profile.aws.dev/api/fuse/query/stream \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT * FROM cluster_a.services LIMIT 100", "format": "sql"}'
+```
+
+Events arrive as `data: {...}` lines with `type`: `metadata`, `batch`, `progress`, `done`, or `error`.
+
 ### Validate a query
 
 ```bash
 curl -X POST https://fuse.huanji.profile.aws.dev/api/fuse/query/validate \
   -H 'Content-Type: application/json' \
   -d '{"query": "SELECT * FROM cluster_a.services", "format": "sql"}'
-```
-
-```json
-{ "valid": true }
 ```
 
 ### Explain a query plan
@@ -192,10 +193,48 @@ curl -X POST https://fuse.huanji.profile.aws.dev/api/fuse/query/explain \
   -d '{"query": "SELECT * FROM cluster_a.services WHERE status = 500", "format": "sql"}'
 ```
 
+### Query history
+
+Returns the last 50 queries with latency and row count:
+
+```bash
+curl https://fuse.huanji.profile.aws.dev/api/fuse/history
+```
+
 ```json
-{
-  "plan": "FederatedPlan {\n  datasource: \"cluster_a\",\n  table: \"services\",\n  format: \"sql\",\n  connector_found: true,\n  strategy: FanOut\n}"
-}
+[
+  {
+    "query": "SELECT * FROM cluster_a.services LIMIT 10",
+    "format": "sql",
+    "timestamp": 1712678400,
+    "latency_ms": 45,
+    "row_count": 10,
+    "error": null
+  }
+]
+```
+
+### Alert rules
+
+```bash
+# List configured alert rules
+curl https://fuse.huanji.profile.aws.dev/api/fuse/alerts
+
+# Evaluate all rules now
+curl -X POST https://fuse.huanji.profile.aws.dev/api/fuse/alerts/evaluate
+```
+
+### Materialized views
+
+```bash
+# List views
+curl https://fuse.huanji.profile.aws.dev/api/fuse/views
+
+# Query a view (returns cached results)
+curl https://fuse.huanji.profile.aws.dev/api/fuse/views/error_summary
+
+# Refresh a view
+curl -X POST https://fuse.huanji.profile.aws.dev/api/fuse/views/error_summary/refresh
 ```
 
 ---
@@ -337,7 +376,8 @@ SELECT * FROM cluster_a.services LIMIT 5
 
 ## Next Steps
 
-- **Build a connector:** See [Writing a Connector](./writing-a-connector.md) and the `fuse-connector-sdk` crate
+- **Build a connector:** Copy `crates/fuse-connectors/example/` and follow [Writing a Connector](./writing-a-connector.md)
 - **OSD Plugin:** Install the `fuseQuery` plugin to query from within OpenSearch Dashboards
-- **API Reference:** Full OpenAPI spec at [docs/api/openapi.yaml](../api/openapi.yaml)
+- **API Reference:** Full reference at [docs/api/api-reference.md](../api/api-reference.md) and OpenAPI spec at [docs/api/openapi.yaml](../api/openapi.yaml)
+- **Connector guide:** Auth config, S3 O11y, SigV4 — see [docs/connectors/connector-guide.md](../connectors/connector-guide.md)
 - **GitHub:** https://github.com/seraphjiang/fuse

@@ -39,6 +39,37 @@ tr:hover td{background:#161b22}
 .provenance.visible{display:flex}
 .prov-chip{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500}
 .ds-tag{padding:1px 6px;border-radius:3px;font-size:11px;font-weight:600;display:inline-block}
+/* Plan tree */
+.plan-tree{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:"SF Mono",Consolas,monospace;font-size:12px;max-height:300px;overflow:auto;display:none}
+.plan-tree.visible{display:block}
+.plan-node{margin-left:20px;padding:2px 0}
+.plan-op{font-weight:600;color:#e1e4e8}
+.plan-detail{color:#8b949e;margin-left:4px}
+.plan-stat{font-size:11px;margin-left:8px}
+.plan-fast{color:#3fb950}
+.plan-med{color:#d29922}
+.plan-slow{color:#f85149}
+.plan-badge{font-size:9px;padding:1px 4px;border-radius:2px;background:#1f3a5f;color:#58a6ff;margin-left:4px}
+/* Analyze checkbox */
+.analyze-label{font-size:12px;color:#8b949e;display:flex;align-items:center;gap:4px;cursor:pointer}
+.analyze-label input{cursor:pointer}
+/* Tabs */
+.tabs{display:flex;gap:0;border-bottom:1px solid #21262d;margin-bottom:0}
+.tab{padding:6px 14px;font-size:12px;color:#8b949e;cursor:pointer;border-bottom:2px solid transparent;background:none;border-top:none;border-left:none;border-right:none}
+.tab:hover{color:#e1e4e8}
+.tab.active{color:#58a6ff;border-bottom-color:#58a6ff}
+.tab-content{display:none;border:1px solid #21262d;border-top:none;border-radius:0 0 6px 6px;background:#161b22;padding:16px;font-size:13px;overflow:auto;max-height:420px}
+.tab-content.active{display:block}
+.doc-section{margin-bottom:16px}
+.doc-section h4{color:#58a6ff;font-size:12px;font-weight:600;margin:12px 0 6px;text-transform:uppercase;letter-spacing:.4px}
+.doc-section h4:first-child{margin-top:0}
+.doc-section p{color:#8b949e;margin:4px 0;line-height:1.5}
+.doc-section pre{background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:8px;font-size:12px;color:#79c0ff;overflow-x:auto;margin:6px 0}
+.doc-section code{background:#21262d;padding:1px 4px;border-radius:3px;font-size:12px;color:#e1e4e8}
+.doc-table{width:100%;border-collapse:collapse;font-size:12px;margin:6px 0}
+.doc-table th{text-align:left;padding:4px 8px;border-bottom:1px solid #30363d;color:#8b949e;font-size:11px}
+.doc-table td{padding:4px 8px;border-bottom:1px solid #21262d;color:#e1e4e8}
+.troubleshoot{padding:6px 8px;border-left:3px solid #d29922;margin:4px 0;background:#1a1500}
 /* Help panel */
 .help-toggle{background:none;border:1px solid #30363d;color:#8b949e;font-size:12px;padding:4px 10px;border-radius:4px;cursor:pointer;margin-left:auto}
 .help-toggle:hover{color:#e1e4e8;border-color:#58a6ff}
@@ -79,79 +110,141 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
     </select>
     <select id="datasource"><option value="">Loading…</option></select>
     <button class="primary" id="run-btn" onclick="runQuery()">▶ Run</button>
+    <label class="analyze-label"><input type="checkbox" id="analyze-cb"> Analyze</label>
     <button class="lucky" id="lucky-btn" onclick="feelingLucky()">🎲 Feeling Lucky</button>
     <button id="explain-btn" onclick="explainQuery()">Explain</button>
     <button id="validate-btn" onclick="validateQuery()">Validate</button>
-    <button class="help-toggle" onclick="toggleHelp()">Examples &amp; Help ▾</button>
+    <button class="help-toggle" onclick="toggleHelp()">📖 Docs &amp; Examples ▾</button>
   </div>
 
   <textarea id="editor" placeholder="SELECT * FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20" spellcheck="false">SELECT service, status, message FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20</textarea>
 
   <div class="help-panel" id="help-panel">
-    <h3>Example Queries <span style="color:#8b949e;font-weight:400;text-transform:none">(click to load)</span></h3>
-
-    <div class="example" onclick="loadExample('ppl','source = cluster_a.application_logs, cluster_b.application_logs | where status >= 500 | head 20')">
-      <span class="example-badge badge-ppl">PPL</span>
-      <span class="example-label">Search errors across clusters</span>
-      <span class="example-query">source = cluster_a.application_logs, cluster_b.application_logs | where status >= 500 | head 20</span>
-    </div>
-    <div class="example" onclick="loadExample('sql','SELECT service, count(*) as errors FROM cluster_a.application_logs WHERE status >= 500 GROUP BY service ORDER BY errors DESC')">
-      <span class="example-badge badge-sql">SQL</span>
-      <span class="example-label">Error count by service</span>
-      <span class="example-query">SELECT service, count(*) as errors FROM cluster_a.application_logs WHERE status >= 500 GROUP BY service ORDER BY errors DESC</span>
-    </div>
-    <div class="example" onclick="loadExample('sql',`SELECT * FROM cluster_a.application_logs WHERE trace_id = &apos;trace-001&apos;`)">
-      <span class="example-badge badge-sql">SQL</span>
-      <span class="example-label">Cross-cluster trace lookup</span>
-      <span class="example-query">SELECT * FROM cluster_a.application_logs WHERE trace_id = 'trace-001'</span>
-    </div>
-    <div class="example" onclick="loadExample('ppl','source = cluster_a.application_logs | stats count() by status | sort - count()')">
-      <span class="example-badge badge-ppl">PPL</span>
-      <span class="example-label">Aggregate by status code</span>
-      <span class="example-query">source = cluster_a.application_logs | stats count() by status | sort - count()</span>
-    </div>
-    <div class="example" onclick="loadExample('sql','SELECT service, status, message FROM cluster_a.application_logs UNION ALL SELECT service, status, message FROM cluster_b.application_logs LIMIT 20')">
-      <span class="example-badge badge-sql">SQL</span>
-      <span class="example-label">Federated union</span>
-      <span class="example-query">SELECT service, status, message FROM cluster_a.application_logs UNION ALL SELECT service, status, message FROM cluster_b.application_logs LIMIT 20</span>
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('examples')">Examples</button>
+      <button class="tab" onclick="switchTab('docs')">📖 Docs</button>
+      <button class="tab" onclick="switchTab('api')">API</button>
     </div>
 
-    <h3>Cross-Datasource (OS + S3 O11y)</h3>
-    <div class="example" onclick="loadExample('sql',`SELECT * FROM s3_o11y.fuse_logs LIMIT 20`)">
-      <span class="example-badge badge-sql">SQL</span>
-      <span class="example-label">Browse S3 O11y logs</span>
-      <span class="example-query">SELECT * FROM s3_o11y.fuse_logs LIMIT 20</span>
-    </div>
-    <div class="example" onclick="loadExample('sql',`SELECT l.trace_id, l.service, l.status, s.level, s.message FROM cluster_a.application_logs l JOIN s3_o11y.fuse_logs s ON l.trace_id = s.trace_id WHERE l.status >= 500`)">
-      <span class="example-badge badge-sql">SQL</span>
-      <span class="example-label">Trace correlation (OS + S3)</span>
-      <span class="example-query">SELECT l.trace_id, l.service, l.status, s.level, s.message FROM cluster_a.application_logs l JOIN s3_o11y.fuse_logs s ON l.trace_id = s.trace_id WHERE l.status >= 500</span>
+    <!-- EXAMPLES TAB -->
+    <div class="tab-content active" id="tab-examples">
+      <div class="doc-section"><h4>Single Cluster</h4>
+        <div class="example" onclick="loadExample('sql','SELECT service, status, message FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20')"><span class="example-badge badge-sql">SQL</span><span class="example-label">Error search</span><span class="example-query">SELECT ... WHERE status >= 500 LIMIT 20</span></div>
+        <div class="example" onclick="loadExample('sql','SELECT service, count(*) as errors FROM cluster_a.application_logs WHERE status >= 500 GROUP BY service ORDER BY errors DESC')"><span class="example-badge badge-sql">SQL</span><span class="example-label">Error count by service</span><span class="example-query">SELECT service, count(*) ... GROUP BY service ORDER BY errors DESC</span></div>
+        <div class="example" onclick="loadExample('ppl','source = cluster_a.application_logs | stats count() by status | sort - count()')"><span class="example-badge badge-ppl">PPL</span><span class="example-label">Aggregate by status</span><span class="example-query">source = ... | stats count() by status | sort - count()</span></div>
+        <div class="example" onclick="loadExample('ppl','source = cluster_a.application_logs | where response_time_ms > 1000 | sort - response_time_ms | head 10')"><span class="example-badge badge-ppl">PPL</span><span class="example-label">Duration outliers</span><span class="example-query">... | where response_time_ms > 1000 | sort - response_time_ms</span></div>
+      </div>
+      <div class="doc-section"><h4>Cross-Cluster</h4>
+        <div class="example" onclick="loadExample('ppl','source = cluster_a.application_logs, cluster_b.application_logs | where status >= 500 | head 20')"><span class="example-badge badge-ppl">PPL</span><span class="example-label">Errors across clusters</span><span class="example-query">source = cluster_a..., cluster_b... | where status >= 500</span></div>
+        <div class="example" onclick="loadExample('sql','SELECT service, status, message FROM cluster_a.application_logs UNION ALL SELECT service, status, message FROM cluster_b.application_logs LIMIT 20')"><span class="example-badge badge-sql">SQL</span><span class="example-label">Federated UNION ALL</span><span class="example-query">SELECT ... UNION ALL SELECT ... LIMIT 20</span></div>
+      </div>
+      <div class="doc-section"><h4>Cross-Datasource (OS + S3)</h4>
+        <div class="example" onclick="loadExample('sql','SELECT * FROM s3_o11y.fuse_logs LIMIT 20')"><span class="example-badge badge-sql">SQL</span><span class="example-label">Browse S3 O11y logs</span><span class="example-query">SELECT * FROM s3_o11y.fuse_logs LIMIT 20</span></div>
+        <div class="example" onclick="loadExample('sql',`SELECT l.trace_id, l.service, l.status, s.level, s.message FROM cluster_a.application_logs l JOIN s3_o11y.fuse_logs s ON l.trace_id = s.trace_id WHERE l.status >= 500`)"><span class="example-badge badge-sql">SQL</span><span class="example-label">Trace correlation JOIN</span><span class="example-query">... JOIN s3_o11y.fuse_logs ON trace_id WHERE status >= 500</span></div>
+      </div>
     </div>
 
-    <h3>Available Datasources</h3>
-    <div class="help-grid">
-      <div class="help-item"><strong>cluster_a</strong> — api-gateway, auth-service, user-service</div>
-      <div class="help-item"><strong>cluster_b</strong> — order-service, payment-service, notification-service</div>
+    <!-- DOCS TAB -->
+    <div class="tab-content" id="tab-docs">
+      <div class="doc-section"><h4>Getting Started</h4>
+        <p>Fuse is a federated query engine that lets you query across multiple OpenSearch clusters and S3 data from a single SQL or PPL query.</p>
+        <pre>Dashboards → Fuse Server → DataFusion Planner
+                              ↓       ↓       ↓
+                           OS(a)   OS(b)   S3 O11y
+                              ↓
+                         Result Merger</pre>
+        <p>Write a query above, click <strong>▶ Run</strong>, or try <strong>🎲 Feeling Lucky</strong>.</p>
+      </div>
+      <div class="doc-section"><h4>Available Datasources</h4>
+        <table class="doc-table"><thead><tr><th>ID</th><th>Type</th><th>Services / Data</th></tr></thead><tbody>
+          <tr><td><code>cluster_a</code></td><td>OpenSearch (AOSS)</td><td>api-gateway, auth-service, user-service</td></tr>
+          <tr><td><code>cluster_b</code></td><td>OpenSearch (AOSS)</td><td>order-service, payment-service, notification-service</td></tr>
+          <tr><td><code>s3_o11y</code></td><td>S3 NDJSON</td><td>Fuse server logs (gzipped)</td></tr>
+        </tbody></table>
+        <p>Index: <code>application_logs</code> — Fields: <code>timestamp</code>, <code>service</code>, <code>status</code>, <code>message</code>, <code>trace_id</code>, <code>user_id</code>, <code>response_time_ms</code>, <code>method</code>, <code>path</code></p>
+      </div>
+      <div class="doc-section"><h4>SQL Reference</h4>
+        <p>Tables use <code>datasource.table</code> syntax.</p>
+        <div class="example" onclick="loadExample('sql','SELECT service, status FROM cluster_a.application_logs WHERE status >= 500 ORDER BY status DESC LIMIT 10')"><span class="example-badge badge-sql">SQL</span><span class="example-label">SELECT / WHERE / ORDER BY / LIMIT</span></div>
+        <div class="example" onclick="loadExample('sql','SELECT service, count(*) as cnt, avg(response_time_ms) as avg_ms FROM cluster_a.application_logs GROUP BY service ORDER BY cnt DESC')"><span class="example-badge badge-sql">SQL</span><span class="example-label">GROUP BY + aggregations</span></div>
+        <div class="example" onclick="loadExample('sql','SELECT a.service, b.service FROM cluster_a.application_logs a JOIN cluster_b.application_logs b ON a.trace_id = b.trace_id LIMIT 10')"><span class="example-badge badge-sql">SQL</span><span class="example-label">JOIN across datasources</span></div>
+        <p>Functions: <code>COUNT</code>, <code>SUM</code>, <code>AVG</code>, <code>MIN</code>, <code>MAX</code></p>
+      </div>
+      <div class="doc-section"><h4>PPL Reference</h4>
+        <p>Syntax: <code>source = ds.table | command | command</code></p>
+        <div class="example" onclick="loadExample('ppl','source = cluster_a.application_logs | where status >= 500 | fields service, status, message | head 10')"><span class="example-badge badge-ppl">PPL</span><span class="example-label">where + fields + head</span></div>
+        <div class="example" onclick="loadExample('ppl','source = cluster_a.application_logs | stats count() as cnt by service | sort - cnt | head 5')"><span class="example-badge badge-ppl">PPL</span><span class="example-label">stats + sort</span></div>
+        <div class="example" onclick="loadExample('ppl','source = cluster_a.application_logs | dedup trace_id | head 10')"><span class="example-badge badge-ppl">PPL</span><span class="example-label">dedup</span></div>
+        <p>Commands: <code>where</code>, <code>stats</code> (by), <code>sort</code> (- desc), <code>head</code>, <code>fields</code>, <code>dedup</code>, <code>eval</code></p>
+        <p>Multi-source: <code>source = a.table, b.table | ...</code></p>
+      </div>
+      <div class="doc-section"><h4>Data Provenance</h4>
+        <p>Cross-datasource queries add a <code>_datasource</code> column showing which source each row came from. The provenance bar below results shows per-datasource row counts and latency.</p>
+      </div>
+      <div class="doc-section"><h4>EXPLAIN / ANALYZE</h4>
+        <p><strong>Explain</strong> shows the execution plan without running the query. <strong>Analyze</strong> (checkbox) runs the query and shows actual row counts and timing per node.</p>
+        <p>Pushdown badges on RemoteScan nodes show which operations were pushed to the connector (filter, projection, limit).</p>
+        <p>Color coding: <span style="color:#3fb950">green &lt;50ms</span>, <span style="color:#d29922">yellow &lt;200ms</span>, <span style="color:#f85149">red &gt;200ms</span></p>
+      </div>
+      <div class="doc-section"><h4>Troubleshooting</h4>
+        <div class="troubleshoot"><strong>"datasource not found"</strong> — Check datasource name matches <code>cluster_a</code>, <code>cluster_b</code>, or <code>s3_o11y</code></div>
+        <div class="troubleshoot"><strong>"empty results"</strong> — Verify the index has data. Try <code>SELECT * FROM ds.table LIMIT 1</code></div>
+        <div class="troubleshoot"><strong>"timeout"</strong> — Reduce LIMIT, check connector health via GET /api/fuse/health</div>
+        <div class="troubleshoot"><strong>"degraded health"</strong> — A connector is slow or unreachable. Check config and network</div>
+      </div>
+      <div class="doc-section"><h4>Keyboard Shortcuts</h4>
+        <p><kbd>Ctrl</kbd>+<kbd>Enter</kbd> / <kbd>Cmd</kbd>+<kbd>Enter</kbd> — Run query</p>
+      </div>
     </div>
-    <div class="help-item" style="margin-top:4px"><strong>s3_o11y</strong> — S3 O11y gzipped NDJSON logs (s3://s3-query-logs-544277935543-us-west-1/fuse/)</div>
-    <div class="help-item" style="margin-top:4px">Index: <code>application_logs</code> — Fields: timestamp, service, status, message, trace_id, user_id, response_time_ms, method, path</div>
 
-    <h3>API Endpoints</h3>
-    <div class="help-item"><code>GET  /api/fuse/health</code> — Engine + connector health</div>
-    <div class="help-item"><code>GET  /api/fuse/datasources</code> — List registered datasources</div>
-    <div class="help-item"><code>GET  /api/fuse/datasources/{id}/schemas</code> — Discover schemas</div>
-    <div class="help-item"><code>GET  /api/fuse/datasources/{id}/schemas/{table}/fields</code> — Field info</div>
-    <div class="help-item"><code>POST /api/fuse/query</code> — Execute query <code>{"query":"...","format":"sql|ppl"}</code></div>
-    <div class="help-item"><code>POST /api/fuse/query/explain</code> — Show execution plan</div>
-    <div class="help-item"><code>POST /api/fuse/query/validate</code> — Validate without executing</div>
-
-    <h3>Keyboard Shortcuts</h3>
-    <div class="help-grid">
-      <div class="help-item"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> — Run query</div>
-      <div class="help-item"><kbd>Cmd</kbd>+<kbd>Enter</kbd> — Run query (macOS)</div>
+    <!-- API TAB -->
+    <div class="tab-content" id="tab-api">
+      <div class="doc-section"><h4>Query Endpoints</h4>
+        <table class="doc-table"><thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead><tbody>
+          <tr><td>POST</td><td><code>/api/fuse/query</code></td><td>Execute query. Body: <code>{"query":"...","format":"sql|ppl","analyze":false}</code></td></tr>
+          <tr><td>POST</td><td><code>/api/fuse/query/explain</code></td><td>Show execution plan</td></tr>
+          <tr><td>POST</td><td><code>/api/fuse/query/validate</code></td><td>Validate without executing</td></tr>
+        </tbody></table>
+        <pre>curl -X POST /api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"SELECT * FROM cluster_a.application_logs LIMIT 5"}'</pre>
+      </div>
+      <div class="doc-section"><h4>Discovery Endpoints</h4>
+        <table class="doc-table"><thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead><tbody>
+          <tr><td>GET</td><td><code>/api/fuse/health</code></td><td>Engine + connector health</td></tr>
+          <tr><td>GET</td><td><code>/api/fuse/datasources</code></td><td>List registered datasources</td></tr>
+          <tr><td>GET</td><td><code>/api/fuse/datasources/{id}/schemas</code></td><td>List tables/indices</td></tr>
+          <tr><td>GET</td><td><code>/api/fuse/datasources/{id}/schemas/{table}/fields</code></td><td>Field names and types</td></tr>
+        </tbody></table>
+        <pre>curl /api/fuse/datasources/cluster_a/schemas/application_logs/fields</pre>
+      </div>
+      <div class="doc-section"><h4>Response Schema</h4>
+        <pre>{
+  "columns": ["service","status","message"],
+  "rows": [["api-gw","500","timeout"],...],
+  "metadata": {
+    "total_rows": 20,
+    "format": "sql",
+    "datasources_queried": ["cluster_a","cluster_b"],
+    "datasource_stats": {
+      "cluster_a": {"rows":12,"latency_ms":45},
+      "cluster_b": {"rows":8,"latency_ms":67}
+    },
+    "execution_profile": { "total_ms":112, "nodes":[...] }
+  }
+}</pre>
+      </div>
+      <div class="doc-section"><h4>Error Codes</h4>
+        <table class="doc-table"><thead><tr><th>Status</th><th>Meaning</th></tr></thead><tbody>
+          <tr><td>400</td><td>Parse error, missing FROM, bad syntax</td></tr>
+          <tr><td>404</td><td>Datasource not found in registry</td></tr>
+          <tr><td>500</td><td>Connector error, timeout, internal failure</td></tr>
+        </tbody></table>
+      </div>
     </div>
   </div>
 
+  <div id="plan-tree" class="plan-tree"></div>
   <div id="plan-box" class="plan" style="display:none"></div>
   <div id="error-box" class="error" style="display:none"></div>
   <div class="meta" id="meta" style="display:none">
@@ -208,6 +301,13 @@ function toggleHelp() {
   $('help-panel').classList.toggle('open');
 }
 
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  $('tab-' + name).classList.add('active');
+}
+
 function loadExample(fmt, query) {
   $('format').value = fmt;
   $('editor').value = query;
@@ -244,6 +344,7 @@ function clearOutput() {
   $('plan-box').style.display = 'none';
   $('meta').style.display = 'none';
   $('provenance').classList.remove('visible');
+  $('plan-tree').classList.remove('visible');
 }
 
 function showError(msg) {
@@ -317,6 +418,33 @@ function renderProvenance(res) {
   }
 }
 
+function renderPlanTree(profile) {
+  function timeClass(ms) { return ms < 50 ? 'plan-fast' : ms < 200 ? 'plan-med' : 'plan-slow'; }
+  function renderNode(node, depth) {
+    const indent = '  '.repeat(depth);
+    const tc = timeClass(node.actual_ms);
+    let line = indent + '<span class="plan-op">' + esc(node.op) + '</span>';
+    if (node.datasource) line += ' <span class="plan-detail">[' + esc(node.datasource) + ']</span>';
+    line += ' <span class="plan-stat ' + tc + '">' + node.actual_rows + ' rows, ' + node.actual_ms + 'ms</span>';
+    if (node.data_bytes) line += ' <span class="plan-stat plan-detail">' + formatBytes(node.data_bytes) + '</span>';
+    if (node.pushdown && node.pushdown.length) {
+      node.pushdown.forEach(p => { line += ' <span class="plan-badge">' + esc(p) + '</span>'; });
+    }
+    let html = '<div class="plan-node">' + line + '</div>';
+    if (node.children) node.children.forEach(c => { html += renderNode(c, depth + 1); });
+    return html;
+  }
+  function formatBytes(b) {
+    if (b < 1024) return b + 'B';
+    if (b < 1048576) return (b/1024).toFixed(1) + 'KB';
+    return (b/1048576).toFixed(1) + 'MB';
+  }
+  let html = '<div class="plan-node"><span class="plan-op">Total</span> <span class="plan-stat ' + timeClass(profile.total_ms) + '">' + profile.total_ms + 'ms</span></div>';
+  profile.nodes.forEach(n => { html += renderNode(n, 1); });
+  $('plan-tree').innerHTML = html;
+  $('plan-tree').classList.add('visible');
+}
+
 function esc(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -326,7 +454,8 @@ async function runQuery() {
   $('run-btn').disabled = true;
   const t0 = performance.now();
   try {
-    const body = { query: $('editor').value, format: $('format').value };
+    const analyze = $('analyze-cb').checked;
+    const body = { query: $('editor').value, format: $('format').value, analyze };
     const res = await api('/api/fuse/query', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -335,6 +464,9 @@ async function runQuery() {
     const ms = Math.round(performance.now() - t0);
     renderTable(res.columns, res.rows);
     renderProvenance(res);
+    if (analyze && res.metadata.execution_profile) {
+      renderPlanTree(res.metadata.execution_profile);
+    }
     $('meta-rows').textContent = res.metadata.total_rows + ' rows';
     $('meta-cols').textContent = res.columns.length + ' columns';
     $('meta-time').textContent = ms + ' ms';

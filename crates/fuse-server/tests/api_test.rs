@@ -1064,3 +1064,87 @@ async fn test_rate_limit_response_body() {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert!(json["error"].as_str().unwrap().contains("rate limit"));
 }
+
+// ── EXPLAIN ANALYZE tests ──
+
+async fn post_query_analyze(app: axum::Router, query: &str, format: &str, analyze: bool) -> (StatusCode, serde_json::Value) {
+    let body = serde_json::json!({"query": query, "format": format, "analyze": analyze});
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = resp.status();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    (status, json)
+}
+
+#[tokio::test]
+async fn test_analyze_false_no_profile() {
+    let (status, json) = post_query_analyze(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs",
+        "sql",
+        false,
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(json.get("execution_profile").is_none());
+}
+
+#[tokio::test]
+async fn test_analyze_true_has_profile() {
+    let (status, json) = post_query_analyze(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs",
+        "sql",
+        true,
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let profile = &json["execution_profile"];
+    assert!(profile["total_ms"].is_number());
+    let nodes = profile["nodes"].as_array().unwrap();
+    assert_eq!(nodes.len(), 1);
+    assert_eq!(nodes[0]["op"], "RemoteScan");
+    assert_eq!(nodes[0]["datasource"], "cluster_a");
+    assert!(nodes[0]["actual_rows"].as_u64().unwrap() > 0);
+}
+
+#[tokio::test]
+async fn test_analyze_union_shows_per_datasource() {
+    let (status, json) = post_query_analyze(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "sql",
+        true,
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let profile = &json["execution_profile"];
+    let nodes = profile["nodes"].as_array().unwrap();
+    assert_eq!(nodes[0]["op"], "UnionAll");
+    let children = nodes[0]["children"].as_array().unwrap();
+    assert_eq!(children.len(), 2);
+    assert_eq!(children[0]["op"], "RemoteScan");
+    assert_eq!(children[1]["op"], "RemoteScan");
+    // Both have timing
+    assert!(children[0]["actual_ms"].is_number());
+    assert!(children[1]["actual_ms"].is_number());
+}
+
+#[tokio::test]
+async fn test_analyze_default_false() {
+    // analyze not specified → should default to false
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(json.get("execution_profile").is_none());
+}
