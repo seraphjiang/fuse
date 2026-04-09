@@ -47,6 +47,32 @@ impl QueryHistory {
     pub fn len(&self) -> usize {
         self.entries.lock().unwrap().len()
     }
+
+    /// Compute aggregate stats from history.
+    pub fn stats(&self) -> QueryStats {
+        let q = self.entries.lock().unwrap();
+        let total = q.len() as u64;
+        if total == 0 {
+            return QueryStats { total_queries: 0, error_count: 0, avg_latency_ms: 0, p95_latency_ms: 0, total_rows_returned: 0 };
+        }
+        let error_count = q.iter().filter(|e| e.error.is_some()).count() as u64;
+        let total_rows_returned: u64 = q.iter().map(|e| e.row_count).sum();
+        let avg_latency_ms = q.iter().map(|e| e.latency_ms).sum::<u64>() / total;
+        let mut latencies: Vec<u64> = q.iter().map(|e| e.latency_ms).collect();
+        latencies.sort_unstable();
+        let p95_idx = ((latencies.len() as f64) * 0.95).ceil() as usize;
+        let p95_latency_ms = latencies[p95_idx.min(latencies.len() - 1)];
+        QueryStats { total_queries: total, error_count, avg_latency_ms, p95_latency_ms, total_rows_returned }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct QueryStats {
+    pub total_queries: u64,
+    pub error_count: u64,
+    pub avg_latency_ms: u64,
+    pub p95_latency_ms: u64,
+    pub total_rows_returned: u64,
 }
 
 pub fn now_secs() -> u64 {
@@ -115,5 +141,33 @@ mod tests {
         });
         let list = h.list();
         assert_eq!(list[0].error.as_deref(), Some("parse error"));
+    }
+
+    #[test]
+    fn test_stats_empty() {
+        let h = QueryHistory::new();
+        let s = h.stats();
+        assert_eq!(s.total_queries, 0);
+        assert_eq!(s.error_count, 0);
+        assert_eq!(s.avg_latency_ms, 0);
+    }
+
+    #[test]
+    fn test_stats_counts() {
+        let h = QueryHistory::new();
+        h.push(HistoryEntry { query: "q1".into(), format: "sql".into(), timestamp: 0, latency_ms: 10, row_count: 5, error: None });
+        h.push(HistoryEntry { query: "q2".into(), format: "sql".into(), timestamp: 0, latency_ms: 30, row_count: 0, error: Some("err".into()) });
+        let s = h.stats();
+        assert_eq!(s.total_queries, 2);
+        assert_eq!(s.error_count, 1);
+        assert_eq!(s.avg_latency_ms, 20);
+        assert_eq!(s.total_rows_returned, 5);
+    }
+
+    #[test]
+    fn test_now_secs_is_recent() {
+        let t = now_secs();
+        // Should be after 2024-01-01 (unix 1704067200)
+        assert!(t > 1_704_067_200);
     }
 }

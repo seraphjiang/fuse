@@ -930,6 +930,11 @@ pub async fn history_handler(State(state): State<Arc<AppState>>) -> impl IntoRes
     Json(state.history.list())
 }
 
+/// GET /api/fuse/stats — aggregated query statistics.
+pub async fn stats_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    Json(state.history.stats())
+}
+
 // ── Query cancellation handlers ──
 
 /// DELETE /api/fuse/query/:id — cancel a running query.
