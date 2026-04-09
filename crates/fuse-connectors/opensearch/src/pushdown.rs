@@ -360,4 +360,17 @@ mod tests {
         let dsl = translate_to_query_dsl(&q);
         assert!(dsl["query"]["bool"]["must_not"][0]["term"]["status"].as_i64() == Some(200));
     }
+
+    #[test]
+    fn test_count_distinct_becomes_cardinality() {
+        let mut q = make_query();
+        q.aggregations = vec![AggregationExpr {
+            function: AggFunction::CountDistinct,
+            field: Some("user_id".into()),
+            alias: "unique_users".into(),
+        }];
+        let dsl = translate_to_query_dsl(&q);
+        assert_eq!(dsl["size"], 0);
+        assert_eq!(dsl["aggs"]["unique_users"]["cardinality"]["field"], "user_id");
+    }
 }
