@@ -14,26 +14,30 @@ Items are ordered by priority. Status: `todo` | `in-progress` | `blocked` | `don
 | 006 | Integration test: 2-cluster federation | explorer | done | 005 |
 | 007 | Sample fuse.toml config | explorer | done | 004 |
 | 008 | CI workflow (.github/workflows/ci.yml) | explorer | done | 005 |
-| 009 | PPL parser extension (multi-source FROM) | — | todo | 003 |
-| 010 | Result merger (union, global sort/limit) | — | todo | 003 |
-| 011 | README update with build/run instructions | — | todo | 005 |
+| 009 | PPL parser extension (multi-source FROM) | planner | done | 003 |
+| 010 | Result merger (union, global sort/limit) | planner | done | 003 |
+| 011 | README update with build/run instructions | planner | done | 005 |
 | 012 | docker-compose for local dev (OS cluster) | explorer | done | — |
+| 013 | Wire FuseExecutor::execute() to connectors | general | done | 001, 003 |
 
 ## P0: Playground & Live Test Site
 
 | ID | Item | Owner | Status | Depends On |
 |----|------|-------|--------|------------|
-| 050 | Dockerfile (multi-stage build) | — | todo | 005 |
-| 051 | docker-compose.yml (fuse-server + OpenSearch) | — | todo | 050 |
-| 052 | CodeCommit repo + dual remote setup | infra | todo | — |
-| 053 | ECR repository | infra | todo | — |
-| 054 | CodeBuild project (Rust toolchain) | infra | todo | 052, 053 |
-| 055 | ECS Fargate cluster + service + task def | infra | todo | 053 |
-| 056 | ALB + security group (Amazon VPN IPs only) | infra | todo | 055 |
-| 057 | CodePipeline: CodeCommit → Build → Deploy | infra | todo | 054, 055, 056 |
+| 050 | Dockerfile (multi-stage build) | general | done | 005 |
+| 051 | docker-compose.yml (fuse-server + OpenSearch) | general | done | 050 |
+| 052 | CodeCommit repo + dual remote setup | infra | done | — |
+| 053 | ECR repository | infra | done | — |
+| 054 | CodeBuild project (Rust toolchain) | infra | done | 052, 053 |
+| 055 | ECS Fargate cluster + service + task def | infra | done | 053 |
+| 056 | ALB + security group (Amazon VPN IPs only) | infra | done | 055 |
+| 057 | CodePipeline: CodeCommit → Build → Deploy | infra | done | 054, 055, 056 |
 | 058 | OpenSearch Serverless collection (test data) | infra | todo | — |
-| 059 | fuse.toml for playground (points at OS Serverless) | — | todo | 058 |
-| 060 | End-to-end: push → deploy → query works | — | todo | 057, 059 |
+| 059 | fuse.toml for playground (points at OS Serverless) | — | blocked | 058 |
+| 060 | End-to-end: push → deploy → query works | tester | blocked | 057, 059 |
+| 061 | Custom domain: fuse.huanji.profile.aws.dev | infra | in-progress | 056 |
+| 062 | OpenAPI spec (docs/api/openapi.yaml) | — | todo | 004 |
+| 063 | Expanded test suite (PPL, merger, API tests) | tester | in-progress | 005 |
 
 ## Phase 2: Cross-Type Federation
 

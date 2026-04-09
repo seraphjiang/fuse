@@ -1,19 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
-mod api;
-mod health;
-
 use std::sync::Arc;
 
-use axum::routing::{get, post};
-use axum::Router;
 use tracing::info;
 
 use fuse_core::config::FuseConfig;
 use fuse_core::registry::{ConnectorFactory, ConnectorRegistry};
 use fuse_connector_opensearch::OpenSearchConnectorFactory;
 
-use api::AppState;
+use fuse_server::api::AppState;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -73,21 +68,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // Build router
-    let app = Router::new()
-        .route("/api/fuse/query", post(api::query_handler))
-        .route("/api/fuse/datasources", get(api::list_datasources))
-        .route(
-            "/api/fuse/datasources/{id}/schemas",
-            get(api::get_schemas),
-        )
-        .route(
-            "/api/fuse/datasources/{id}/schemas/{table}/fields",
-            get(api::get_fields),
-        )
-        .route("/api/fuse/query/explain", post(api::explain_handler))
-        .route("/api/fuse/query/validate", post(api::validate_handler))
-        .route("/api/fuse/health", get(api::health_handler))
-        .with_state(state);
+    let app = fuse_server::build_router(state);
 
     let bind = &config.engine.bind;
     let listener = tokio::net::TcpListener::bind(bind).await?;

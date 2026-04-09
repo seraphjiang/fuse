@@ -1,0 +1,417 @@
+openapi: "3.0.3"
+info:
+  title: Fuse Federated Query Engine API
+  description: |
+    REST API for the Fuse federated query engine. Supports SQL and PPL queries
+    across multiple heterogeneous datasources (OpenSearch, S3, Prometheus).
+  version: "0.1.0"
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: http://localhost:9400
+    description: Local development
+
+paths:
+  /api/fuse/query:
+    post:
+      summary: Execute a query
+      description: |
+        Execute a SQL or PPL query against registered datasources.
+        Tables are referenced as `datasource.table`.
+      operationId: query
+      tags: [Query]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryRequest"
+            examples:
+              sql:
+                summary: SQL query
+                value:
+                  query: "SELECT * FROM prod_cluster.logs WHERE status = 500"
+                  format: sql
+              ppl:
+                summary: PPL query
+                value:
+                  query: "source = cluster_a.logs, cluster_b.logs | where status >= 500 | stats count() by service"
+                  format: ppl
+      responses:
+        "200":
+          description: Query results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueryResponse"
+              example:
+                columns: [service, status, message]
+                rows:
+                  - [auth-svc, "500", "internal error"]
+                  - [api-gw, "502", "upstream timeout"]
+                metadata:
+                  total_rows: 2
+                  format: sql
+        "400":
+          description: Invalid query syntax or missing FROM clause
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Datasource not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Connector execution failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/fuse/query/explain:
+    post:
+      summary: Explain a query plan
+      description: Returns the federated execution plan without running the query.
+      operationId: explain
+      tags: [Query]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryRequest"
+      responses:
+        "200":
+          description: Execution plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExplainResponse"
+              example:
+                plan: |
+                  FederatedPlan {
+                    datasource: "prod_cluster",
+                    table: "logs",
+                    format: "sql",
+                    connector_found: true,
+                    strategy: FanOut
+                  }
+        "400":
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/fuse/query/validate:
+    post:
+      summary: Validate a query
+      description: Checks query syntax and datasource availability without executing.
+      operationId: validate
+      tags: [Query]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryRequest"
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidateResponse"
+              examples:
+                valid:
+                  value:
+                    valid: true
+                invalid:
+                  value:
+                    valid: false
+                    error: "datasource 'missing_ds' not found in registry"
+
+  /api/fuse/datasources:
+    get:
+      summary: List datasources
+      description: Returns all registered datasources with their capabilities.
+      operationId: listDatasources
+      tags: [Datasources]
+      responses:
+        "200":
+          description: List of datasources
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DatasourceInfo"
+              example:
+                - id: prod_cluster
+                  connector_type: opensearch
+                  capabilities:
+                    supports_filtering: true
+                    supports_projection: true
+                    supports_aggregation: true
+                    supports_sorting: true
+                    supports_limit: true
+                    supports_join: false
+                    supports_streaming: true
+                    max_concurrent_queries: 16
+                    latency_class: Medium
+
+  /api/fuse/datasources/{id}/schemas:
+    get:
+      summary: List schemas for a datasource
+      description: Discovers available tables/indices from the datasource.
+      operationId: getSchemas
+      tags: [Datasources]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: prod_cluster
+      responses:
+        "200":
+          description: List of schema names
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+              example: [logs, metrics, traces]
+        "404":
+          description: Datasource not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Schema discovery failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/fuse/datasources/{id}/schemas/{table}/fields:
+    get:
+      summary: Get fields for a table
+      description: Returns the field names, types, and nullability for a table.
+      operationId: getFields
+      tags: [Datasources]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: prod_cluster
+        - name: table
+          in: path
+          required: true
+          schema:
+            type: string
+          example: logs
+      responses:
+        "200":
+          description: Field list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FieldInfo"
+              example:
+                - name: "@timestamp"
+                  data_type: Utf8
+                  nullable: false
+                - name: status
+                  data_type: Int64
+                  nullable: true
+                - name: message
+                  data_type: Utf8
+                  nullable: true
+        "404":
+          description: Datasource not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Schema retrieval failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/fuse/health:
+    get:
+      summary: Health check
+      description: |
+        Returns overall health status and per-connector health.
+        Status is `healthy` if all connectors are healthy, `degraded` if some
+        are unhealthy, and `unhealthy` if any are unhealthy.
+      operationId: health
+      tags: [Health]
+      responses:
+        "200":
+          description: Health status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: healthy
+                version: "0.1.0"
+                connectors:
+                  prod_cluster:
+                    status: healthy
+                    latency_ms: 12
+                  staging_cluster:
+                    status: healthy
+                    latency_ms: 8
+
+components:
+  schemas:
+    QueryRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+          description: SQL or PPL query string
+        format:
+          type: string
+          enum: [sql, ppl]
+          default: sql
+          description: Query language format
+
+    QueryResponse:
+      type: object
+      properties:
+        columns:
+          type: array
+          items:
+            type: string
+        rows:
+          type: array
+          items:
+            type: array
+            items: {}
+        metadata:
+          $ref: "#/components/schemas/QueryMetadata"
+
+    QueryMetadata:
+      type: object
+      properties:
+        total_rows:
+          type: integer
+          format: int64
+        format:
+          type: string
+
+    ExplainResponse:
+      type: object
+      properties:
+        plan:
+          type: string
+
+    ValidateResponse:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        error:
+          type: string
+          nullable: true
+
+    DatasourceInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        connector_type:
+          type: string
+        capabilities:
+          $ref: "#/components/schemas/ConnectorCapabilities"
+
+    ConnectorCapabilities:
+      type: object
+      properties:
+        supports_filtering:
+          type: boolean
+        supports_projection:
+          type: boolean
+        supports_aggregation:
+          type: boolean
+        supports_sorting:
+          type: boolean
+        supports_limit:
+          type: boolean
+        supports_join:
+          type: boolean
+        supports_streaming:
+          type: boolean
+        max_concurrent_queries:
+          type: integer
+        latency_class:
+          type: string
+          enum: [Low, Medium, High]
+
+    FieldInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        data_type:
+          type: string
+        nullable:
+          type: boolean
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        version:
+          type: string
+        connectors:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ConnectorHealthInfo"
+
+    ConnectorHealthInfo:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        latency_ms:
+          type: integer
+          nullable: true
+        message:
+          type: string
+          nullable: true
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+
+tags:
+  - name: Query
+    description: Execute, explain, and validate queries
+  - name: Datasources
+    description: Browse registered datasources and their schemas
+  - name: Health
+    description: Service health monitoring

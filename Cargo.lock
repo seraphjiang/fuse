@@ -1631,6 +1631,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arrow",
+ "async-trait",
  "axum",
  "fuse-connector-opensearch",
  "fuse-core",
@@ -1638,6 +1639,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
 ]

@@ -231,6 +231,16 @@ fuse/
 | 3 | Prometheus connector + Connector SDK | 6 weeks |
 | 4 | Caching, materialized views, RBAC | 8 weeks |
 
+## Dev Scripts
+
+```bash
+# Check prerequisites and verify build
+./scripts/setup-dev.sh
+
+# Full local test: start OpenSearch, run tests, smoke test API, clean up
+./scripts/test-local.sh
+```
+
 ## Contributing
 
 See [`.fuse-project/`](.fuse-project/) for backlog, architecture decisions (ADRs), sprint plans, and project requirements.
