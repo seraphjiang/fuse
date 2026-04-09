@@ -144,7 +144,7 @@ fn build_test_app() -> axum::Router {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
     });
     fuse_server::build_router(state)
 }
@@ -451,7 +451,7 @@ fn build_capturing_app() -> (axum::Router, Arc<CapturingConnector>) {
     let connector = Arc::new(CapturingConnector::new("capds"));
     let registry = ConnectorRegistry::new();
     registry.register(connector.clone()).unwrap();
-    let state = Arc::new(AppState { registry: Arc::new(registry), alert_rules: vec![], view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()), history: Arc::new(QueryHistory::new()), running_queries: Arc::new(RunningQueries::new()), saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()) });
+    let state = Arc::new(AppState { registry: Arc::new(registry), alert_rules: vec![], view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()), history: Arc::new(QueryHistory::new()), running_queries: Arc::new(RunningQueries::new()), saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)) });
     (fuse_server::build_router(state), connector)
 }
 
@@ -511,7 +511,7 @@ fn build_federation_app() -> axum::Router {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
     });
     fuse_server::build_router(state)
 }
@@ -722,7 +722,7 @@ async fn test_view_lifecycle() {
         view_registry: view_registry.clone(),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
     });
     let app = fuse_server::build_router(state);
 
@@ -1009,7 +1009,7 @@ async fn test_history_records_query() {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: history.clone(),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
     });
     let app = fuse_server::build_router(state);
 
@@ -1061,7 +1061,7 @@ fn build_rate_limited_app(global_rpm: u32, per_ip_rpm: u32) -> axum::Router {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
     });
     fuse_server::build_router_with_limits(
         state,
@@ -1248,7 +1248,7 @@ async fn test_timeout_zero_ms_times_out() {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
     });
     let app = fuse_server::build_router(state);
 
@@ -1317,7 +1317,7 @@ async fn test_cancel_slow_query() {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
     });
     let running = state.running_queries.clone();
     let app = fuse_server::build_router(state);
@@ -1586,7 +1586,7 @@ async fn test_union_partial_failure_returns_partial_results() {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
     });
     let app = fuse_server::build_router(state);
 
@@ -1617,7 +1617,7 @@ async fn test_union_all_fail_returns_error() {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
     });
     let app = fuse_server::build_router(state);
 
@@ -2021,4 +2021,63 @@ async fn test_analyze_single_source_pushdown() {
     // Should have pushdown descriptions
     let pushdown = nodes[0]["pushdown"].as_array().unwrap();
     assert!(!pushdown.is_empty());
+}
+
+// ── #224 Execution plan viz verification (tester) ──
+
+#[tokio::test]
+async fn test_analyze_scan_node_has_datasource() {
+    let (status, json) = post_query_analyze(
+        build_test_app(),
+        "SELECT * FROM testds.logs",
+        "sql",
+        true,
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let nodes = json["execution_profile"]["nodes"].as_array().unwrap();
+    assert_eq!(nodes[0]["datasource"], "testds");
+}
+
+#[tokio::test]
+async fn test_analyze_pushdown_describes_projection() {
+    let (status, json) = post_query_analyze(
+        build_test_app(),
+        "SELECT host, status FROM testds.logs",
+        "sql",
+        true,
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let pushdown = json["execution_profile"]["nodes"][0]["pushdown"].as_array().unwrap();
+    let has_projection = pushdown.iter().any(|p| p.as_str().unwrap().contains("projection"));
+    assert!(has_projection, "pushdown should describe projection: {:?}", pushdown);
+}
+
+#[tokio::test]
+async fn test_analyze_pushdown_describes_limit() {
+    let (status, json) = post_query_analyze(
+        build_test_app(),
+        "SELECT * FROM testds.logs LIMIT 5",
+        "sql",
+        true,
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let pushdown = json["execution_profile"]["nodes"][0]["pushdown"].as_array().unwrap();
+    let has_limit = pushdown.iter().any(|p| p.as_str().unwrap().contains("limit"));
+    assert!(has_limit, "pushdown should describe limit: {:?}", pushdown);
+}
+
+#[tokio::test]
+async fn test_analyze_union_parent_cost_gte_children() {
+    let (status, json) = post_query_analyze(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "sql",
+        true,
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let union_node = &json["execution_profile"]["nodes"][0];
+    let parent_cost = union_node["estimated_cost"].as_f64().unwrap();
+    let children = union_node["children"].as_array().unwrap();
+    let child_sum: f64 = children.iter().map(|c| c["actual_ms"].as_f64().unwrap_or(0.0)).sum();
+    assert!(parent_cost >= child_sum, "parent cost {} should >= child sum {}", parent_cost, child_sum);
 }

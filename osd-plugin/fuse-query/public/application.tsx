@@ -14,7 +14,7 @@ const FuseQueryApp: React.FC<{ http: CoreStart['http'] }> = ({ http }) => {
   const api = useMemo(() => new FuseApiService(http), [http]);
   const [format, setFormat] = useState<'sql' | 'ppl'>('sql');
   const [query, setQuery] = useState('');
-  const [datasource, setDatasource] = useState('');
+  const [datasource, setDatasource] = useState<string[]>([]);
   const [result, setResult] = useState<QueryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);

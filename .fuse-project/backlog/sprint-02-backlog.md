@@ -31,7 +31,7 @@
 | 221 | Query bar component (SQL/PPL toggle, syntax highlighting) | explorer | done | QueryEditor 155 lines, Ctrl+Enter, analyze checkbox. Commit: 102618e |
 | 222 | Results table component (sortable, paginated, provenance colors) | explorer | done | ResultsTable 160 lines, sort/pagination/provenance. Commit: 102618e |
 | 223 | Datasource picker (multi-select from /api/fuse/datasources) | general | todo | Depends: 220 |
-| 224 | Visual execution plan component (tree view from analyze:true) | planner | todo | Depends: 220 |
+| 224 | Visual execution plan component (tree view from analyze:true) | planner | done | ProfileNode with cost/detail/pushdown. Commit: 98e326e. Tests: 532→559 |
 
 ## P2: Query Engine Depth
 
@@ -51,8 +51,8 @@
 |----|------|-------|--------|-------|
 | 240 | OpenSearch scroll/PIT for large result sets | general | done | Scroll for limit>10k, aggs single-shot. Tests: 487→502. Commit: 1786a61 |
 | 241 | S3 Parquet partition pruning | general | done | Hive-style pruning, 12 tests. Commit: 0d654fe |
-| 242 | Prometheus range query support (start/end/step) | general | todo | Currently only instant queries |
-| 243 | CloudWatch Logs connector | general | todo | New connector type |
+| 242 | Prometheus range query support (start/end/step) | general | done | query_range API, passthrough params. Commit: 7b60394. Tests: 526→561 |
+| 243 | CloudWatch Logs connector | explorer | done | 6th connector. Insights API, filter/sort/limit pushdown, 11 tests. Commit: 300c730 |
 
 ## P3: Observability & Operations
 

@@ -3,6 +3,7 @@
 pub mod api;
 pub mod health;
 pub mod history;
+pub mod plan_cache;
 pub mod rate_limit;
 pub mod saved_queries;
 pub mod streaming;
