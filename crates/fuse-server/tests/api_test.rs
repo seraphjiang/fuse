@@ -1741,3 +1741,31 @@ async fn test_order_by_with_limit() {
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 2);
 }
+
+// ── DISTINCT tests ──
+
+#[tokio::test]
+async fn test_select_distinct_union_deduplicates() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT DISTINCT host, status FROM cluster_a.logs UNION ALL SELECT DISTINCT host, status FROM cluster_b.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    // Both sources return same data (h1/200, h2/500), DISTINCT should dedup to 2
+    assert_eq!(rows.len(), 2);
+}
+
+#[tokio::test]
+async fn test_non_distinct_union_keeps_all() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    // Without DISTINCT, all 4 rows kept (2 per source + _datasource column makes them unique)
+    assert!(rows.len() >= 4);
+}

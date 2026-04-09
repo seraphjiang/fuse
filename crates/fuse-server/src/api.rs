@@ -281,6 +281,7 @@ pub async fn query_handler(
         Ok(fed) => {
             let order_by = parse_order_by(&query);
             let limit = parse_limit(&query);
+            let is_distinct = query.to_lowercase().contains("select distinct");
 
             // Apply global ORDER BY if present
             let batches = if let Some((col, desc)) = &order_by {
@@ -296,6 +297,18 @@ pub async fn query_handler(
                 }
             } else {
                 fed.batches
+            };
+
+            // Apply DISTINCT — dedup on all non-_datasource columns
+            let batches = if is_distinct && !batches.is_empty() {
+                let dedup_cols: Vec<String> = batches[0].schema().fields().iter()
+                    .map(|f| f.name().clone())
+                    .filter(|n| n != "_datasource")
+                    .collect();
+                let col_refs: Vec<&str> = dedup_cols.iter().map(|s| s.as_str()).collect();
+                fuse_engine::dedup_batches(batches, &col_refs).unwrap_or_default()
+            } else {
+                batches
             };
 
             // Apply global LIMIT
