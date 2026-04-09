@@ -93,7 +93,8 @@ impl FederatedConnector for OpenSearchConnector {
                 }
             }
             _ => {
-                // Fallback: try a simple GET / (works on AOSS)
+                // Fallback: try a simple GET / — any response means reachable
+                // AOSS may return 403 but that still means the endpoint is up
                 match self.client.client()
                     .send::<(), ()>(
                         opensearch::http::Method::Get,
@@ -105,15 +106,10 @@ impl FederatedConnector for OpenSearchConnector {
                     )
                     .await
                 {
-                    Ok(r) if r.status_code().is_success() => ConnectorHealth {
+                    Ok(_) => ConnectorHealth {
                         status: HealthStatus::Healthy,
                         latency_ms: Some(start.elapsed().as_millis() as u64),
                         message: None,
-                    },
-                    Ok(_) => ConnectorHealth {
-                        status: HealthStatus::Degraded,
-                        latency_ms: Some(start.elapsed().as_millis() as u64),
-                        message: Some("non-200 from root endpoint".into()),
                     },
                     Err(e) => ConnectorHealth {
                         status: HealthStatus::Unhealthy,
@@ -163,8 +159,9 @@ impl FederatedConnector for OpenSearchConnector {
             }
         }
 
-        // Fallback: use _aliases API (works on AOSS)
-        let resp = self
+        // Fallback: use _aliases API, then _mapping wildcard
+        // Check status code before parsing to avoid treating error responses as data
+        let aliases_resp = self
             .client
             .client()
             .send::<(), ()>(
@@ -175,27 +172,66 @@ impl FederatedConnector for OpenSearchConnector {
                 None,
                 None,
             )
-            .await
-            .map_err(|e| ConnectorError::schema(e))?;
+            .await;
 
-        let body = resp
-            .json::<serde_json::Value>()
-            .await
-            .map_err(|e| ConnectorError::schema(e))?;
+        if let Ok(r) = aliases_resp {
+            if r.status_code().is_success() {
+                if let Ok(body) = r.json::<serde_json::Value>().await {
+                    if let Some(obj) = body.as_object() {
+                        // Verify it's real index data, not an error response
+                        if !obj.contains_key("error") && !obj.contains_key("status") {
+                            return Ok(obj
+                                .keys()
+                                .filter(|name| !name.starts_with('.'))
+                                .map(|name| SchemaInfo {
+                                    name: name.clone(),
+                                    schema_type: SchemaType::Index,
+                                    estimated_row_count: None,
+                                })
+                                .collect());
+                        }
+                    }
+                }
+            }
+        }
 
-        let obj = body
-            .as_object()
-            .ok_or_else(|| ConnectorError::schema("expected object from _aliases"))?;
+        // Last resort: try GET /_mapping (AOSS supports this)
+        let mapping_resp = self
+            .client
+            .client()
+            .send::<(), ()>(
+                opensearch::http::Method::Get,
+                "/_mapping",
+                opensearch::http::headers::HeaderMap::new(),
+                None,
+                None,
+                None,
+            )
+            .await;
 
-        Ok(obj
-            .keys()
-            .filter(|name| !name.starts_with('.'))
-            .map(|name| SchemaInfo {
-                name: name.clone(),
-                schema_type: SchemaType::Index,
-                estimated_row_count: None,
-            })
-            .collect())
+        if let Ok(r) = mapping_resp {
+            if r.status_code().is_success() {
+                if let Ok(body) = r.json::<serde_json::Value>().await {
+                    if let Some(obj) = body.as_object() {
+                        if !obj.contains_key("error") {
+                            return Ok(obj
+                                .keys()
+                                .filter(|name| !name.starts_with('.'))
+                                .map(|name| SchemaInfo {
+                                    name: name.clone(),
+                                    schema_type: SchemaType::Index,
+                                    estimated_row_count: None,
+                                })
+                                .collect());
+                        }
+                    }
+                }
+            }
+        }
+
+        // If all discovery methods fail, return empty rather than error
+        // The connector can still execute queries if the user knows the index name
+        Ok(vec![])
     }
 
     async fn get_schema(&self, table: &str) -> Result<Schema, ConnectorError> {
