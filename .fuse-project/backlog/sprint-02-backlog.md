@@ -41,7 +41,7 @@
 | 231 | HAVING clause in GROUP BY | planner | done | Commit: 12847cb. Tests: 484→487 |
 | 232 | IN/NOT IN filter pushdown | explorer | done | HAVING pushdown to UNION ALL sources. Commit: 50f68cf. 2 tests |
 | 233 | LIKE/ILIKE filter pushdown | explorer | done | Already implemented in Sprint 1 (ComparisonOp::Like + all connectors) |
-| 234 | COUNT DISTINCT aggregation pushdown | planner | todo | |
+| 234 | COUNT DISTINCT aggregation pushdown | explorer | done | End-to-end: AggFunction::CountDistinct → cardinality. Commit: 3752c6d. 3 tests |
 | 235 | PPL: lookup command (cross-datasource enrichment) | planner | todo | OpenSearch PPL extension |
 | 236 | Query plan cache (same query → skip planning) | planner | todo | |
 
@@ -50,7 +50,7 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 240 | OpenSearch scroll/PIT for large result sets | general | done | Scroll for limit>10k, aggs single-shot. Tests: 487→502. Commit: 1786a61 |
-| 241 | S3 Parquet partition pruning | general | todo | Skip files based on WHERE clause |
+| 241 | S3 Parquet partition pruning | general | done | Hive-style pruning, 12 tests. Commit: 0d654fe |
 | 242 | Prometheus range query support (start/end/step) | general | todo | Currently only instant queries |
 | 243 | CloudWatch Logs connector | general | todo | New connector type |
 
