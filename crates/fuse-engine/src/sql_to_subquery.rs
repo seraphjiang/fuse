@@ -249,14 +249,24 @@ fn translate_binary_op(
 ) -> Option<FilterExpr> {
     match op {
         ast::BinaryOperator::And => {
-            let l = translate_expr(left)?;
-            let r = translate_expr(right)?;
-            Some(FilterExpr::And(Box::new(l), Box::new(r)))
+            let l = translate_expr(left);
+            let r = translate_expr(right);
+            match (l, r) {
+                (Some(l), Some(r)) => Some(FilterExpr::And(Box::new(l), Box::new(r))),
+                (Some(l), None) => Some(l),
+                (None, Some(r)) => Some(r),
+                (None, None) => None,
+            }
         }
         ast::BinaryOperator::Or => {
-            let l = translate_expr(left)?;
-            let r = translate_expr(right)?;
-            Some(FilterExpr::Or(Box::new(l), Box::new(r)))
+            let l = translate_expr(left);
+            let r = translate_expr(right);
+            match (l, r) {
+                (Some(l), Some(r)) => Some(FilterExpr::Or(Box::new(l), Box::new(r))),
+                // If either side of OR is untranslatable, we can't push down
+                // the filter — dropping one side would widen results incorrectly
+                _ => None,
+            }
         }
         _ => {
             let comp_op = match op {
@@ -522,5 +532,29 @@ mod tests {
         let sq = sql_to_subquery("SELECT * FROM logs WHERE status NOT BETWEEN 400 AND 499").unwrap();
         let f = sq.filter.unwrap();
         assert!(matches!(f, FilterExpr::Not(_)));
+    }
+
+    #[test]
+    fn test_and_with_untranslatable_preserves_other_side() {
+        // CASE WHEN is untranslatable, but status = 200 should survive
+        let sq = sql_to_subquery(
+            "SELECT * FROM logs WHERE status = 200 AND CASE WHEN status > 0 THEN 1 ELSE 0 END = 1",
+        ).unwrap();
+        let f = sq.filter.unwrap();
+        if let FilterExpr::Comparison { field, op, .. } = f {
+            assert_eq!(field, "status");
+            assert!(matches!(op, ComparisonOp::Eq));
+        } else {
+            panic!("expected Comparison, got {:?}", f);
+        }
+    }
+
+    #[test]
+    fn test_or_with_untranslatable_drops_both() {
+        // OR with untranslatable side must drop entire filter (can't safely keep one side)
+        let sq = sql_to_subquery(
+            "SELECT * FROM logs WHERE status = 200 OR CASE WHEN status > 0 THEN 1 ELSE 0 END = 1",
+        ).unwrap();
+        assert!(sq.filter.is_none());
     }
 }
