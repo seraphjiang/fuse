@@ -1,0 +1,9 @@
+{
+  "id": "fuseQuery",
+  "version": "0.1.0",
+  "opensearchDashboardsVersion": "2.17.0",
+  "server": true,
+  "ui": true,
+  "requiredPlugins": ["data", "navigation"],
+  "optionalPlugins": []
+}

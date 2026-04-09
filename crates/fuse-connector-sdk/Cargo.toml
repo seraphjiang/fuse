@@ -3,7 +3,11 @@ name = "fuse-connector-sdk"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "SDK for building Fuse federated query engine connectors"
+repository.workspace = true
+description = "SDK for building connectors for the Fuse federated query engine"
+readme = "README.md"
+keywords = ["fuse", "federated-query", "opensearch", "connector", "arrow"]
+categories = ["database", "api-bindings"]
 
 [dependencies]
 fuse-core = { path = "../fuse-core" }
