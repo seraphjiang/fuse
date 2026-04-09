@@ -492,4 +492,45 @@ mod tests {
         let result = hash_join(&[build], "id", &[], "id", JoinType::Inner).unwrap();
         assert!(result.is_empty());
     }
+
+    #[test]
+    fn test_hash_join_many_to_many_duplicate_keys() {
+        // Build: two rows with key "a", Probe: two rows with key "a"
+        // Should produce 2×2 = 4 result rows
+        let build = build_batch(&["a", "a"], &[1, 2]);
+        let probe = probe_batch(&["a", "a"], &["x", "y"]);
+        let result = hash_join(&[build], "id", &[probe], "id", JoinType::Inner).unwrap();
+        assert_eq!(result[0].num_rows(), 4);
+    }
+
+    #[test]
+    fn test_extract_join_keys_skips_nulls() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Utf8, true),
+            Field::new("value", DataType::Int64, false),
+        ]));
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(vec![Some("a"), None, Some("b"), None])),
+                Arc::new(Int64Array::from(vec![1, 2, 3, 4])),
+            ],
+        )
+        .unwrap();
+        let keys = extract_join_keys(&[batch], "id").unwrap();
+        assert_eq!(keys.len(), 2); // only "a" and "b", nulls skipped
+    }
+
+    #[test]
+    fn test_keys_to_in_filter_empty_returns_none() {
+        let result = keys_to_in_filter("id", vec![]);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_left_join_empty_build_side() {
+        let probe = probe_batch(&["a", "b"], &["alice", "bob"]);
+        let result = hash_join(&[], "id", &[probe], "id", JoinType::Left).unwrap();
+        assert!(result.is_empty());
+    }
 }

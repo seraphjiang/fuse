@@ -110,3 +110,125 @@ impl FederatedConnector for CachingConnectorWrapper {
         self.inner.execute_streaming(query, tx).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    use arrow::array::Int64Array;
+    use arrow::datatypes::{DataType, Field};
+
+    #[derive(Debug)]
+    struct MockInner {
+        call_count: AtomicU32,
+    }
+
+    impl MockInner {
+        fn new() -> Self {
+            Self { call_count: AtomicU32::new(0) }
+        }
+        fn calls(&self) -> u32 {
+            self.call_count.load(Ordering::SeqCst)
+        }
+        fn batch() -> Vec<RecordBatch> {
+            let schema = Arc::new(Schema::new(vec![Field::new("v", DataType::Int64, false)]));
+            vec![RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(vec![1, 2]))]).unwrap()]
+        }
+    }
+
+    #[async_trait]
+    impl FederatedConnector for MockInner {
+        fn id(&self) -> &str { "mock" }
+        fn connector_type(&self) -> &str { "test" }
+        fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+        async fn health_check(&self) -> ConnectorHealth {
+            ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(1), message: None }
+        }
+        async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> { Ok(vec![]) }
+        async fn get_schema(&self, _: &str) -> Result<Schema, ConnectorError> {
+            Ok(Schema::new(vec![Field::new("v", DataType::Int64, false)]))
+        }
+        async fn execute(&self, _: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
+            self.call_count.fetch_add(1, Ordering::SeqCst);
+            Ok(Self::batch())
+        }
+        async fn execute_streaming(
+            &self, _: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+        ) -> Result<(), ConnectorError> {
+            for b in Self::batch() { tx.send(Ok(b)).await.map_err(|_| ConnectorError::ChannelClosed)?; }
+            Ok(())
+        }
+    }
+
+    fn query() -> SubQuery {
+        SubQuery {
+            table: "t".into(), projections: vec![], filter: None,
+            aggregations: vec![], group_by: vec![], sort: vec![],
+            limit: None, passthrough: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_cache_miss_then_hit() {
+        let inner = Arc::new(MockInner::new());
+        let cache = Arc::new(QueryCache::new());
+        let w = CachingConnectorWrapper::new(inner.clone(), cache.clone(), Duration::from_secs(60));
+
+        // Miss — delegates
+        let r = w.execute(&query()).await.unwrap();
+        assert_eq!(r[0].num_rows(), 2);
+        assert_eq!(inner.calls(), 1);
+
+        // Hit — cached
+        let r = w.execute(&query()).await.unwrap();
+        assert_eq!(r[0].num_rows(), 2);
+        assert_eq!(inner.calls(), 1); // still 1
+
+        assert_eq!(cache.stats().hits, 1);
+        assert_eq!(cache.stats().misses, 1);
+    }
+
+    #[tokio::test]
+    async fn test_expired_entry_refetches() {
+        let inner = Arc::new(MockInner::new());
+        let cache = Arc::new(QueryCache::new());
+        let w = CachingConnectorWrapper::new(inner.clone(), cache, Duration::from_millis(0));
+
+        w.execute(&query()).await.unwrap();
+        assert_eq!(inner.calls(), 1);
+
+        tokio::time::sleep(Duration::from_millis(1)).await;
+
+        w.execute(&query()).await.unwrap();
+        assert_eq!(inner.calls(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_streaming_bypasses_cache() {
+        let inner = Arc::new(MockInner::new());
+        let cache = Arc::new(QueryCache::new());
+        let w = CachingConnectorWrapper::new(inner, cache.clone(), Duration::from_secs(60));
+
+        let (tx, mut rx) = mpsc::channel(10);
+        w.execute_streaming(&query(), tx).await.unwrap();
+        let mut rows = 0;
+        while let Some(Ok(b)) = rx.recv().await { rows += b.num_rows(); }
+        assert_eq!(rows, 2);
+        assert_eq!(cache.stats().entries, 0);
+    }
+
+    #[tokio::test]
+    async fn test_delegates_metadata() {
+        let inner = Arc::new(MockInner::new());
+        let cache = Arc::new(QueryCache::new());
+        let w = CachingConnectorWrapper::new(inner, cache, Duration::from_secs(60));
+
+        assert_eq!(w.id(), "mock");
+        assert_eq!(w.connector_type(), "test");
+        assert!(w.capabilities().supports_filtering);
+        assert_eq!(w.health_check().await.status, HealthStatus::Healthy);
+        assert!(w.discover_schemas().await.unwrap().is_empty());
+        assert_eq!(w.get_schema("t").await.unwrap().fields().len(), 1);
+    }
+}

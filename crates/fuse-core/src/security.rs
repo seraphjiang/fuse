@@ -300,4 +300,77 @@ mod tests {
         assert_eq!(email_col.value(0), "****");
         assert_eq!(email_col.value(1), "****");
     }
+
+    #[test]
+    fn test_empty_policies_allows_everything() {
+        let config = SecurityConfig {
+            enabled: true,
+            policies: vec![],
+        };
+        let engine = PolicyEngine::new(&config);
+        let user = UserContext {
+            username: "anyone".into(),
+            roles: vec![],
+        };
+        let fields = vec!["ssn".into(), "email".into(), "name".into()];
+        let result = engine.evaluate("prod", "logs", &fields, &user);
+        assert!(result.values().all(|p| *p == FieldPolicy::Allow));
+    }
+
+    #[test]
+    fn test_overlapping_policies_deny_wins_over_mask() {
+        let config = SecurityConfig {
+            enabled: true,
+            policies: vec![
+                PolicyConfig {
+                    datasource: "prod".into(),
+                    index: Some("logs".into()),
+                    deny_fields: vec![],
+                    mask_fields: vec!["secret".into()],
+                    allowed_roles: vec![],
+                },
+                PolicyConfig {
+                    datasource: "prod".into(),
+                    index: Some("logs".into()),
+                    deny_fields: vec!["secret".into()],
+                    mask_fields: vec![],
+                    allowed_roles: vec![],
+                },
+            ],
+        };
+        let engine = PolicyEngine::new(&config);
+        let user = UserContext {
+            username: "analyst".into(),
+            roles: vec![],
+        };
+        let fields = vec!["secret".into()];
+        let result = engine.evaluate("prod", "logs", &fields, &user);
+        assert_eq!(result["secret"], FieldPolicy::Deny);
+    }
+
+    #[test]
+    fn test_filter_batches_empty_input() {
+        let engine = PolicyEngine::new(&test_config());
+        let filter = ResultFilter::new(engine);
+        let user = UserContext {
+            username: "analyst".into(),
+            roles: vec![],
+        };
+        let result = filter.filter_batches(vec![], "prod", "logs", &user).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_mask_column_with_nulls() {
+        let col: Arc<dyn Array> = Arc::new(StringArray::from(vec![
+            Some("real"),
+            None,
+            Some("data"),
+        ]));
+        let masked = mask_column(&col);
+        let arr = masked.as_any().downcast_ref::<StringArray>().unwrap();
+        assert_eq!(arr.value(0), "****");
+        assert!(arr.is_null(1));
+        assert_eq!(arr.value(2), "****");
+    }
 }
