@@ -2,253 +2,191 @@
 
 **Cross-Datasource Federated Query Engine for OpenSearch Dashboards**
 
-Fuse is a standalone query engine that federates queries across multiple heterogeneous datasources — OpenSearch clusters, S3 data lakes, Prometheus, and more — from a single query interface in OpenSearch Dashboards.
+Fuse federates queries across multiple OpenSearch clusters, S3 data lakes, and Prometheus from a single SQL or PPL query. Built on [Apache DataFusion](https://datafusion.apache.org/) and [datafusion-federation](https://github.com/datafusion-contrib/datafusion-federation).
 
-Built on [Apache DataFusion](https://datafusion.apache.org/) and [datafusion-federation](https://github.com/datafusion-contrib/datafusion-federation) for SQL planning, optimization, and push-down to remote engines.
+🎮 **[Live Playground](https://fuse.huanji.profile.aws.dev)** (Amazon VPN) · 📖 **[Proposal](https://github.com/opensearch-project/OpenSearch-Dashboards/issues/11705)** · 📐 **[Connector Guide](docs/guides/writing-a-connector.md)**
 
-> 🚧 **Status: Incubation / Proposal** — See the [full proposal](https://github.com/opensearch-project/OpenSearch-Dashboards/issues/11705)
+## Architecture
 
-## Prerequisites
+```
+┌─────────────────────────────────────────────┐
+│  OpenSearch Dashboards                      │
+│  Query Bar (SQL + PPL) / Dashboard Panels   │
+└──────────────────┬──────────────────────────┘
+                   │ REST API (:9400)
+┌──────────────────▼──────────────────────────┐
+│  Fuse Server (axum)                         │
+│                                             │
+│  PPL Parser ──→ SQL Translation             │
+│                    ↓                        │
+│  DataFusion SessionContext                  │
+│  + FederationOptimizerRule                  │
+│  + Cost-Based Join Planner                  │
+│       ┌────────┼────────┬──────────┐        │
+│       ▼        ▼        ▼          ▼        │
+│   OpenSearch  S3/NDJSON  S3/Parquet  Prom   │
+│   (SigV4)    (gzip)     (col prune) (PromQL)│
+│       └────────┼────────┴──────────┘        │
+│            Result Merger                    │
+│       (align, dedup, sort, limit)           │
+│                                             │
+│  Query Cache (per-connector TTL)            │
+│  Materialized Views (scheduled refresh)     │
+└─────────────────────────────────────────────┘
+```
 
-- **Rust** stable toolchain (1.85+) — install via [rustup](https://rustup.rs/)
-- **OpenSSL dev headers** — `apt install libssl-dev pkg-config` (Debian/Ubuntu) or `yum install openssl-devel` (RHEL/AL2)
-- **Docker & Docker Compose** (optional, for local dev environment)
-
-## Build
+## Quick Start
 
 ```bash
+git clone https://github.com/seraphjiang/fuse
+cd fuse
+
+# Option 1: Local with Docker
+docker compose up -d          # Start OpenSearch cluster
+cargo run -p fuse-server      # Start Fuse on :9400
+open http://localhost:9400/   # Playground UI
+
+# Option 2: Just build and test
 cargo build --release
+cargo test --all-targets
 ```
 
-## Run
+### Prerequisites
 
-1. Copy and edit the sample config:
+- Rust stable (1.85+) — `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+- OpenSSL dev — `apt install libssl-dev pkg-config` or `yum install openssl-devel`
+- Docker (optional, for local OpenSearch)
 
-```bash
-cp fuse.toml my-fuse.toml
-# Edit my-fuse.toml with your datasource URLs and credentials
-```
+## Query Examples
 
-2. Start the server:
-
-```bash
-FUSE_CONFIG=my-fuse.toml cargo run -p fuse-server
-```
-
-The server binds to `0.0.0.0:9400` by default (configurable in `fuse.toml`).
-
-## Docker
-
-Spin up a full dev environment with two OpenSearch nodes and Dashboards:
-
-```bash
-docker-compose up
-```
-
-| Service | URL |
-|---------|-----|
-| Fuse API | http://localhost:9400 |
-| OpenSearch | http://localhost:9200 |
-| Dashboards | http://localhost:5601 |
-
-## API Examples
-
-### Health Check
-
-```bash
-curl http://localhost:9400/api/fuse/health
-```
-
-```json
-{
-  "status": "healthy",
-  "version": "0.1.0",
-  "connectors": {
-    "prod_cluster": { "status": "healthy", "latency_ms": 12 }
-  }
-}
-```
-
-### List Datasources
-
-```bash
-curl http://localhost:9400/api/fuse/datasources
-```
-
-### Query (SQL)
+### Multi-cluster error analysis (SQL)
 
 ```bash
 curl -X POST http://localhost:9400/api/fuse/query \
   -H 'Content-Type: application/json' \
   -d '{
-    "query": "SELECT * FROM prod_cluster.logs WHERE status = 500",
+    "query": "SELECT service, count(*) as errors FROM cluster_a.application_logs WHERE status >= 500 GROUP BY service ORDER BY errors DESC",
     "format": "sql"
   }'
 ```
 
-### Query (PPL)
+### Cross-cluster search (PPL)
 
 ```bash
 curl -X POST http://localhost:9400/api/fuse/query \
   -H 'Content-Type: application/json' \
   -d '{
-    "query": "source = cluster_a.logs, cluster_b.logs | where status >= 500 | stats count() by service",
+    "query": "source = cluster_a.application_logs, cluster_b.application_logs | where status >= 500 | stats count() by service | sort - count()",
     "format": "ppl"
   }'
 ```
 
-### Explain Plan
+### Cross-source JOIN (OpenSearch + S3)
 
 ```bash
-curl -X POST http://localhost:9400/api/fuse/query/explain \
+curl -X POST http://localhost:9400/api/fuse/query \
   -H 'Content-Type: application/json' \
-  -d '{"query": "SELECT * FROM prod_cluster.logs", "format": "sql"}'
+  -d '{
+    "query": "SELECT l.trace_id, l.service, s.level, s.message FROM cluster_a.application_logs l JOIN s3_o11y.fuse_logs s ON l.trace_id = s.trace_id WHERE l.status >= 500",
+    "format": "sql"
+  }'
 ```
 
-### Validate Query
+### Federated UNION ALL
 
 ```bash
-curl -X POST http://localhost:9400/api/fuse/query/validate \
+curl -X POST http://localhost:9400/api/fuse/query \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source = prod_cluster.logs | head 10", "format": "ppl"}'
+  -d '{
+    "query": "SELECT service, status, message FROM cluster_a.application_logs UNION ALL SELECT service, status, message FROM cluster_b.application_logs LIMIT 20",
+    "format": "sql"
+  }'
 ```
 
-### Browse Schemas
+### Other endpoints
 
 ```bash
-# List tables for a datasource
-curl http://localhost:9400/api/fuse/datasources/prod_cluster/schemas
-
-# Get fields for a specific table
-curl http://localhost:9400/api/fuse/datasources/prod_cluster/schemas/logs/fields
+curl http://localhost:9400/api/fuse/health              # Health + connector status
+curl http://localhost:9400/api/fuse/datasources          # List connectors
+curl http://localhost:9400/api/fuse/datasources/cluster_a/schemas        # Tables
+curl http://localhost:9400/api/fuse/datasources/cluster_a/schemas/application_logs/fields  # Fields
 ```
 
-## Query Languages
+## Connectors
 
-### SQL
+| Connector | Type | Auth | Push-down |
+|-----------|------|------|-----------|
+| OpenSearch | `opensearch` | Basic, SigV4 (AOSS) | Filter, projection, aggregation, sort, limit |
+| S3/Parquet | `s3` | SigV4 (IAM) | Projection (column pruning), limit |
+| S3 O11y | `s3-o11y` | SigV4 (IAM) | Projection, limit |
+| Prometheus | `prometheus` | Bearer token | Time range, label filters |
 
-Standard SQL routed through DataFusion's optimizer with federation push-down:
-
-```sql
-SELECT service, count(*) AS errors
-FROM prod_cluster.logs
-WHERE status = 500 AND @timestamp > '2025-01-01'
-GROUP BY service
-ORDER BY errors DESC
-LIMIT 20
-```
-
-### PPL (Piped Processing Language)
-
-OpenSearch PPL syntax with multi-source federation:
-
-```
-source = cluster_a.logs, cluster_b.logs
-| where status >= 500
-| stats count() by service
-| sort - count
-| head 20
-```
-
-Supported PPL commands: `where`, `stats` (with `by`), `sort`, `head`, `fields`, `dedup`.
-
-PPL queries are translated to SQL internally and executed through the same DataFusion federation pipeline.
-
-## Configuration
-
-See [`fuse.toml`](fuse.toml) for the full configuration reference. Key sections:
+### Configuration
 
 ```toml
 [engine]
 bind = "0.0.0.0:9400"
 max_concurrent_queries = 64
-default_timeout = "30s"
 
 [[connector]]
-id = "prod_cluster"
+id = "cluster_a"
 type = "opensearch"
-url = "https://opensearch-prod.example.com:9200"
+url = "https://your-cluster.us-west-2.aoss.amazonaws.com"
 
 [connector.auth]
-type = "basic"
-username = "admin"
-password_env = "FUSE_PROD_PASSWORD"
+type = "sigv4"
+region = "us-west-2"
+service = "aoss"
+
+[[connector]]
+id = "s3_o11y"
+type = "s3-o11y"
+bucket = "your-log-bucket"
+prefix = "logs/"
+region = "us-west-1"
 ```
 
-Auth types: `basic`, `sigv4`, `bearer`.
+### Build Your Own
+
+Implement the `FederatedConnector` trait (~8 methods) and register a factory. See the [connector authoring guide](docs/guides/writing-a-connector.md).
 
 ## Project Structure
 
 ```
 fuse/
-├── Cargo.toml                  # Workspace root
-├── fuse.toml                   # Sample configuration
-├── Dockerfile                  # Multi-stage build
-├── docker-compose.yml          # Dev environment (OpenSearch + Dashboards)
 ├── crates/
-│   ├── fuse-core/              # Connector traits, registry, config, errors
-│   ├── fuse-engine/            # DataFusion federation, PPL parser, result merger
+│   ├── fuse-core/              # Connector traits, registry, config, errors, alerting, RBAC
+│   ├── fuse-engine/            # DataFusion federation, PPL parser, JOINs, caching, materialized views
 │   ├── fuse-connectors/
-│   │   └── opensearch/         # OpenSearch connector implementation
-│   └── fuse-server/            # REST API (axum)
+│   │   ├── opensearch/         # OpenSearch connector (SigV4, Query DSL pushdown)
+│   │   ├── s3/                 # S3/Parquet connector
+│   │   ├── s3-o11y/            # S3 O11y connector (gzipped NDJSON)
+│   │   └── prometheus/         # Prometheus connector
+│   ├── fuse-connector-sdk/     # Connector SDK for third-party development
+│   └── fuse-server/            # REST API (axum) + embedded playground
+├── playground/                 # Query playground UI (vanilla HTML/JS/CSS)
 ├── docs/
-│   └── design/                 # Design documents
-├── tests/integration/          # Integration tests
-└── .fuse-project/              # Project management (backlog, ADRs, sprints)
+│   ├── api/openapi.yaml        # OpenAPI 3.1 spec
+│   ├── guides/                 # Connector authoring guide
+│   ├── rfcs/                   # Integration RFCs
+│   └── blog/                   # Blog posts
+├── scripts/                    # setup-dev.sh, test-local.sh
+├── fuse.toml                   # Sample configuration
+├── Dockerfile                  # Multi-stage Rust build
+└── docker-compose.yml          # Dev environment (OpenSearch + Dashboards)
 ```
-
-## Architecture
-
-```
-┌─────────────────────────────────┐
-│  OpenSearch Dashboards (UI)     │
-│  Query Bar / Dashboard Panels   │
-└──────────────┬──────────────────┘
-               │ REST API (:9400)
-┌──────────────▼──────────────────┐
-│  Fuse Server (axum)             │
-│                                 │
-│  PPL Parser → SQL Translation   │
-│         ↓                       │
-│  DataFusion SessionContext      │
-│  + FederationOptimizerRule      │
-│         ↓                       │
-│  FuseExecutor (SQLExecutor)     │
-│    ┌────┼────────┐              │
-│    ▼    ▼        ▼              │
-│   OS   S3    Prometheus         │
-│         ↓                       │
-│  Result Merger (align + dedup)  │
-└─────────────────────────────────┘
-```
-
-## Roadmap
-
-| Phase | Focus | Timeline |
-|-------|-------|----------|
-| 1 | Same-type federation (OS ↔ OS) | 8 weeks |
-| 2 | Cross-type federation (OS ↔ S3) + JOINs | 8 weeks |
-| 3 | Prometheus connector + Connector SDK | 6 weeks |
-| 4 | Caching, materialized views, RBAC | 8 weeks |
 
 ## Dev Scripts
 
 ```bash
-# Check prerequisites and verify build
-./scripts/setup-dev.sh
-
-# Full local test: start OpenSearch, run tests, smoke test API, clean up
-./scripts/test-local.sh
+./scripts/setup-dev.sh    # Check prerequisites, verify build
+./scripts/test-local.sh   # Docker + OpenSearch + cargo test + API smoke test
 ```
 
 ## Contributing
 
-See [`.fuse-project/`](.fuse-project/) for backlog, architecture decisions (ADRs), sprint plans, and project requirements.
-
-- 📋 [Proposal & Design Doc](https://github.com/opensearch-project/OpenSearch-Dashboards/issues/11705)
-- 📐 [Connector Interface Design](docs/design/connector-interface-and-query-parser.md)
-- 💬 Open an issue to discuss
+See [CONTRIBUTING.md](CONTRIBUTING.md) for DCO sign-off, code style, and PR checklist. Connector contributions welcome — follow the [connector guide](docs/guides/writing-a-connector.md).
 
 ## License
 
-This project is licensed under the Apache License 2.0 — see [LICENSE](LICENSE) for details.
+Apache License 2.0 — see [LICENSE](LICENSE).

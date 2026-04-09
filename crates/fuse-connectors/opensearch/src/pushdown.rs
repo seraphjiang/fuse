@@ -166,3 +166,185 @@ fn scalar_to_json(value: &ScalarValue) -> serde_json::Value {
         ScalarValue::Utf8(s) => serde_json::json!(s),
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_query() -> SubQuery {
+        SubQuery {
+            table: "logs".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            passthrough: None,
+        }
+    }
+
+    #[test]
+    fn test_match_all_when_no_filter() {
+        let dsl = translate_to_query_dsl(&make_query());
+        assert_eq!(dsl["query"], serde_json::json!({"match_all": {}}));
+    }
+
+    #[test]
+    fn test_limit_becomes_size() {
+        let mut q = make_query();
+        q.limit = Some(25);
+        let dsl = translate_to_query_dsl(&q);
+        assert_eq!(dsl["size"], 25);
+    }
+
+    #[test]
+    fn test_projections_become_source() {
+        let mut q = make_query();
+        q.projections = vec!["service".into(), "status".into()];
+        let dsl = translate_to_query_dsl(&q);
+        assert_eq!(dsl["_source"], serde_json::json!(["service", "status"]));
+    }
+
+    #[test]
+    fn test_equality_filter() {
+        let mut q = make_query();
+        q.filter = Some(FilterExpr::Comparison {
+            field: "service".into(),
+            op: ComparisonOp::Eq,
+            value: ScalarValue::Utf8("api-gateway".into()),
+        });
+        let dsl = translate_to_query_dsl(&q);
+        assert_eq!(dsl["query"], serde_json::json!({"term": {"service": "api-gateway"}}));
+    }
+
+    #[test]
+    fn test_range_filter_gte() {
+        let mut q = make_query();
+        q.filter = Some(FilterExpr::Comparison {
+            field: "status".into(),
+            op: ComparisonOp::Gte,
+            value: ScalarValue::Int64(500),
+        });
+        let dsl = translate_to_query_dsl(&q);
+        assert_eq!(dsl["query"], serde_json::json!({"range": {"status": {"gte": 500}}}));
+    }
+
+    #[test]
+    fn test_and_filter() {
+        let mut q = make_query();
+        q.filter = Some(FilterExpr::And(
+            Box::new(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Gte, value: ScalarValue::Int64(500) }),
+            Box::new(FilterExpr::Comparison { field: "service".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("auth".into()) }),
+        ));
+        let dsl = translate_to_query_dsl(&q);
+        let must = &dsl["query"]["bool"]["must"];
+        assert!(must.is_array());
+        assert_eq!(must.as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_or_filter() {
+        let mut q = make_query();
+        q.filter = Some(FilterExpr::Or(
+            Box::new(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(500) }),
+            Box::new(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(503) }),
+        ));
+        let dsl = translate_to_query_dsl(&q);
+        assert_eq!(dsl["query"]["bool"]["minimum_should_match"], 1);
+    }
+
+    #[test]
+    fn test_not_filter() {
+        let mut q = make_query();
+        q.filter = Some(FilterExpr::Not(
+            Box::new(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(200) }),
+        ));
+        let dsl = translate_to_query_dsl(&q);
+        assert!(dsl["query"]["bool"]["must_not"].is_array());
+    }
+
+    #[test]
+    fn test_in_filter() {
+        let mut q = make_query();
+        q.filter = Some(FilterExpr::In {
+            field: "status".into(),
+            values: vec![ScalarValue::Int64(500), ScalarValue::Int64(502)],
+        });
+        let dsl = translate_to_query_dsl(&q);
+        assert_eq!(dsl["query"]["terms"]["status"], serde_json::json!([500, 502]));
+    }
+
+    #[test]
+    fn test_is_null_filter() {
+        let mut q = make_query();
+        q.filter = Some(FilterExpr::IsNull("message".into()));
+        let dsl = translate_to_query_dsl(&q);
+        assert!(dsl["query"]["bool"]["must_not"][0]["exists"]["field"].as_str() == Some("message"));
+    }
+
+    #[test]
+    fn test_is_not_null_filter() {
+        let mut q = make_query();
+        q.filter = Some(FilterExpr::IsNotNull("message".into()));
+        let dsl = translate_to_query_dsl(&q);
+        assert_eq!(dsl["query"]["exists"]["field"], "message");
+    }
+
+    #[test]
+    fn test_like_filter() {
+        let mut q = make_query();
+        q.filter = Some(FilterExpr::Comparison {
+            field: "message".into(),
+            op: ComparisonOp::Like,
+            value: ScalarValue::Utf8("%timeout%".into()),
+        });
+        let dsl = translate_to_query_dsl(&q);
+        assert_eq!(dsl["query"]["wildcard"]["message"]["value"], "*timeout*");
+    }
+
+    #[test]
+    fn test_sort() {
+        let mut q = make_query();
+        q.sort = vec![
+            SortExpr { field: "timestamp".into(), descending: true },
+            SortExpr { field: "status".into(), descending: false },
+        ];
+        let dsl = translate_to_query_dsl(&q);
+        let sort = dsl["sort"].as_array().unwrap();
+        assert_eq!(sort[0]["timestamp"]["order"], "desc");
+        assert_eq!(sort[1]["status"]["order"], "asc");
+    }
+
+    #[test]
+    fn test_count_aggregation_with_group_by() {
+        let mut q = make_query();
+        q.aggregations = vec![AggregationExpr { function: AggFunction::Count, field: None, alias: "cnt".into() }];
+        q.group_by = vec!["service".into()];
+        let dsl = translate_to_query_dsl(&q);
+        assert_eq!(dsl["size"], 0);
+        assert_eq!(dsl["aggs"]["group_by"]["terms"]["field"], "service");
+    }
+
+    #[test]
+    fn test_avg_aggregation_no_group() {
+        let mut q = make_query();
+        q.aggregations = vec![AggregationExpr { function: AggFunction::Avg, field: Some("duration_ms".into()), alias: "avg_dur".into() }];
+        let dsl = translate_to_query_dsl(&q);
+        assert_eq!(dsl["size"], 0);
+        assert_eq!(dsl["aggs"]["avg_dur"]["avg"]["field"], "duration_ms");
+    }
+
+    #[test]
+    fn test_neq_filter() {
+        let mut q = make_query();
+        q.filter = Some(FilterExpr::Comparison {
+            field: "status".into(),
+            op: ComparisonOp::Neq,
+            value: ScalarValue::Int64(200),
+        });
+        let dsl = translate_to_query_dsl(&q);
+        assert!(dsl["query"]["bool"]["must_not"][0]["term"]["status"].as_i64() == Some(200));
+    }
+}
