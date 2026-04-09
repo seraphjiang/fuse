@@ -97,15 +97,12 @@ pub async fn stream_handler(
 
         // Execute via streaming
         let (tx, mut rx) = tokio::sync::mpsc::channel(32);
-        let sub_query = fuse_core::connector::SubQuery {
-            table,
-            projections: vec![],
-            filter: None,
-            aggregations: vec![],
-            group_by: vec![],
-            sort: vec![],
-            limit: None,
-            passthrough: None,
+        let sub_query = match crate::api::build_sub_query(&req.query, &format, &table) {
+            Ok(sq) => sq,
+            Err(e) => {
+                yield Ok(make_error_event(&e));
+                return;
+            }
         };
 
         let conn = connector.clone();

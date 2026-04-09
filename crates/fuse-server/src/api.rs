@@ -555,7 +555,7 @@ fn parse_sql_source(query: &str) -> Result<(String, String), String> {
 /// For PPL: parse PPL → translate to SQL → parse SQL into SubQuery.
 /// For SQL: parse SQL directly into SubQuery.
 /// Falls back to a minimal SubQuery if translation fails.
-fn build_sub_query(
+pub fn build_sub_query(
     query: &str,
     format: &str,
     table: &str,
