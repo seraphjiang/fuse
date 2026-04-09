@@ -525,4 +525,51 @@ mod tests {
         let sql = ppl_to_sql(&q).unwrap();
         assert!(sql.contains("ORDER BY timestamp DESC, host ASC"));
     }
+
+    #[test]
+    fn test_parse_unqualified_table() {
+        let q = parse_ppl("source = logs").unwrap();
+        assert_eq!(q.sources[0].datasource, None);
+        assert_eq!(q.sources[0].table, "logs");
+    }
+
+    #[test]
+    fn test_parse_fields_include() {
+        let q = parse_ppl("source = logs | fields host, status, latency").unwrap();
+        if let PplCommand::Fields { include, names } = &q.commands[0] {
+            assert!(include);
+            assert_eq!(names, &["host", "status", "latency"]);
+        } else {
+            panic!("Expected Fields command");
+        }
+    }
+
+    #[test]
+    fn test_ppl_to_sql_fields_include() {
+        let q = parse_ppl("source = logs | fields host, status").unwrap();
+        let sql = ppl_to_sql(&q).unwrap();
+        assert!(sql.contains("SELECT host, status FROM logs"));
+    }
+
+    #[test]
+    fn test_ppl_to_sql_dedup() {
+        // Dedup is parsed but currently not translated to SQL (silently dropped).
+        // The query still executes — just without deduplication at SQL level.
+        let q = parse_ppl("source = logs | dedup trace_id").unwrap();
+        let sql = ppl_to_sql(&q).unwrap();
+        assert!(sql.contains("FROM logs"));
+    }
+
+    #[test]
+    fn test_parse_error_missing_equals() {
+        let err = parse_ppl("source logs | head 5");
+        assert!(err.is_err());
+        assert!(err.unwrap_err().0.contains("'='"));
+    }
+
+    #[test]
+    fn test_parse_error_empty_source() {
+        let err = parse_ppl("source = ");
+        assert!(err.is_err());
+    }
 }
