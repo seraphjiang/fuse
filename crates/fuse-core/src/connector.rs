@@ -232,3 +232,27 @@ pub struct ResultSet {
     pub total_rows: u64,
     pub truncated: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_capabilities_full() {
+        let c = ConnectorCapabilities::full();
+        assert!(c.supports_filtering);
+        assert!(c.supports_projection);
+        assert!(c.supports_aggregation);
+        assert!(c.supports_sorting);
+        assert!(c.supports_limit);
+        assert!(c.supports_streaming);
+        assert!(!c.supports_join); // join is intentionally false for remote connectors
+        assert!(matches!(c.latency_class, LatencyClass::Low));
+    }
+
+    #[test]
+    fn test_health_status_variants() {
+        assert_ne!(HealthStatus::Healthy, HealthStatus::Unhealthy);
+        assert_ne!(HealthStatus::Healthy, HealthStatus::Degraded);
+    }
+}
