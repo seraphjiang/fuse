@@ -348,6 +348,52 @@ pub async fn query_handler(
     let cancel_token = CancellationToken::new();
     state.running_queries.insert(query_id.clone(), cancel_token.clone());
 
+    // Resolve IN (SELECT ...) subqueries by executing inner queries first
+    let mut resolved_query = query.clone();
+    let in_subqueries = extract_in_subqueries(&query);
+    for isq in &in_subqueries {
+        if let Some(connector) = state.registry.get(&isq.datasource) {
+            let sq = build_sub_query(&isq.inner_query, &format, &isq.table).unwrap_or_else(|_| {
+                fuse_core::connector::SubQuery {
+                    table: isq.table.clone(),
+                    projections: vec![isq.inner_column.clone()],
+                    filter: None, aggregations: vec![], group_by: vec![],
+                    sort: vec![], limit: None, having: None, passthrough: None,
+                }
+            });
+            if let Ok(batches) = connector.execute(&sq).await {
+                // Collect values from first column
+                let values: Vec<String> = batches.iter()
+                    .flat_map(|b| {
+                        let col = b.column(0);
+                        (0..b.num_rows()).filter_map(move |i| {
+                            if col.is_null(i) { return None; }
+                            arrow::util::display::array_value_to_string(col, i).ok()
+                        })
+                    })
+                    .collect();
+                if !values.is_empty() {
+                    let in_list = values.iter()
+                        .map(|v| format!("'{}'", v.replace('\'', "''")))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let replacement = format!(" IN ({})", in_list);
+                    resolved_query = resolved_query.replace(&isq.full_match, &replacement);
+                }
+            }
+        }
+    }
+    // Re-parse sources from resolved query (IN subquery sources removed)
+    let (query, refs) = if !in_subqueries.is_empty() {
+        let new_refs = match format.as_str() {
+            "ppl" => parse_ppl_sources(&resolved_query),
+            _ => parse_sql_sources(&resolved_query),
+        }.unwrap_or(refs.clone());
+        (resolved_query, new_refs)
+    } else {
+        (query, refs)
+    };
+
     let exec_future = async {
         let range = match (&req.start, &req.end, &req.step) {
             (Some(s), Some(e), Some(st)) => Some((s.as_str(), e.as_str(), st.as_str())),
@@ -1046,6 +1092,78 @@ fn add_datasource_column(
             arrow::record_batch::RecordBatch::try_new(schema, columns).ok()
         })
         .collect()
+}
+
+/// Detect IN (SELECT ...) subquery pattern and extract the inner query.
+/// Returns: Vec<(outer_column, inner_datasource, inner_table, inner_column, inner_filter)>
+fn extract_in_subqueries(query: &str) -> Vec<InSubquery> {
+    let stripped = strip_string_literals(query);
+    let lower = stripped.to_lowercase();
+    let mut results = Vec::new();
+
+    // Find "IN (SELECT" patterns
+    let mut pos = 0;
+    while let Some(in_pos) = lower[pos..].find(" in (select ") {
+        let abs_in = pos + in_pos;
+        // Extract the column before IN
+        let before = stripped[..abs_in].trim();
+        let col = before.rsplit(|c: char| c.is_whitespace() || c == '(')
+            .next().unwrap_or("").trim().to_string();
+
+        // Find matching closing paren
+        let select_start = abs_in + 5; // skip " IN ("
+        let inner_sql = &stripped[select_start..];
+        if let Some(close) = find_matching_paren(inner_sql) {
+            let inner = inner_sql[..close].trim().to_string();
+            // Parse inner query's source
+            if let Ok(refs) = parse_sql_sources(&inner) {
+                if let Some((ds, table)) = refs.into_iter().next() {
+                    // Extract the selected column from inner query
+                    let inner_lower = inner.to_lowercase();
+                    let inner_col = if let Some(sel_end) = inner_lower.find(" from ") {
+                        let sel = inner[7..sel_end].trim(); // skip "SELECT "
+                        sel.split(',').next().unwrap_or("*").trim().to_string()
+                    } else {
+                        "*".to_string()
+                    };
+                    results.push(InSubquery {
+                        outer_column: col,
+                        datasource: ds,
+                        table,
+                        inner_column: inner_col,
+                        inner_query: inner,
+                        full_match: stripped[abs_in..select_start + close + 1].to_string(),
+                    });
+                }
+            }
+        }
+        pos = abs_in + 4;
+    }
+    results
+}
+
+struct InSubquery {
+    outer_column: String,
+    datasource: String,
+    table: String,
+    inner_column: String,
+    inner_query: String,
+    full_match: String,
+}
+
+fn find_matching_paren(s: &str) -> Option<usize> {
+    let mut depth = 1;
+    for (i, c) in s.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 { return Some(i); }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Encode a cursor offset as a string token.

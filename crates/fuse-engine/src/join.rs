@@ -583,4 +583,70 @@ mod tests {
         assert_eq!(result[0].num_rows(), 2);
         assert_eq!(result[0].num_columns(), 2); // probe schema only
     }
+
+    // ── #341 Semi/anti-join verification (tester) ──
+
+    #[test]
+    fn test_semi_join_no_overlap() {
+        // No common keys → semi returns 0 rows
+        let build = build_batch(&["x", "y"], &[1, 2]);
+        let probe = probe_batch(&["a", "b"], &["alice", "bob"]);
+        let result = hash_join(&[build], "id", &[probe], "id", JoinType::Semi).unwrap();
+        let rows: usize = result.iter().map(|b| b.num_rows()).sum();
+        assert_eq!(rows, 0, "semi with no overlap should return 0 rows");
+    }
+
+    #[test]
+    fn test_anti_join_no_overlap() {
+        // No common keys → anti returns ALL probe rows
+        let build = build_batch(&["x", "y"], &[1, 2]);
+        let probe = probe_batch(&["a", "b"], &["alice", "bob"]);
+        let result = hash_join(&[build], "id", &[probe], "id", JoinType::Anti).unwrap();
+        let rows: usize = result.iter().map(|b| b.num_rows()).sum();
+        assert_eq!(rows, 2, "anti with no overlap should return all probe rows");
+    }
+
+    #[test]
+    fn test_semi_join_full_overlap() {
+        // All keys match → semi returns ALL probe rows
+        let build = build_batch(&["a", "b"], &[1, 2]);
+        let probe = probe_batch(&["a", "b"], &["alice", "bob"]);
+        let result = hash_join(&[build], "id", &[probe], "id", JoinType::Semi).unwrap();
+        let rows: usize = result.iter().map(|b| b.num_rows()).sum();
+        assert_eq!(rows, 2, "semi with full overlap should return all probe rows");
+    }
+
+    #[test]
+    fn test_anti_join_full_overlap() {
+        // All keys match → anti returns 0 rows
+        let build = build_batch(&["a", "b"], &[1, 2]);
+        let probe = probe_batch(&["a", "b"], &["alice", "bob"]);
+        let result = hash_join(&[build], "id", &[probe], "id", JoinType::Anti).unwrap();
+        let rows: usize = result.iter().map(|b| b.num_rows()).sum();
+        assert_eq!(rows, 0, "anti with full overlap should return 0 rows");
+    }
+
+    #[test]
+    fn test_semi_anti_complement() {
+        // Semi + Anti should equal total probe rows
+        let build = build_batch(&["a", "c"], &[1, 3]);
+        let probe = probe_batch(&["a", "b", "c", "d"], &["a1", "b1", "c1", "d1"]);
+        let semi: usize = hash_join(&[build.clone()], "id", &[probe.clone()], "id", JoinType::Semi)
+            .unwrap().iter().map(|b| b.num_rows()).sum();
+        let anti: usize = hash_join(&[build], "id", &[probe], "id", JoinType::Anti)
+            .unwrap().iter().map(|b| b.num_rows()).sum();
+        assert_eq!(semi + anti, 4, "semi ({}) + anti ({}) should equal probe rows (4)", semi, anti);
+    }
+
+    #[test]
+    fn test_semi_join_returns_probe_columns_only() {
+        let build = build_batch(&["a"], &[100]);
+        let probe = probe_batch(&["a"], &["alice"]);
+        let result = hash_join(&[build], "id", &[probe], "id", JoinType::Semi).unwrap();
+        let schema = result[0].schema();
+        let cols: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
+        // Should have probe columns (id, name), NOT build columns (id, value)
+        assert!(cols.contains(&"name"), "should have probe 'name' column: {:?}", cols);
+        assert!(!cols.contains(&"value"), "should NOT have build 'value' column: {:?}", cols);
+    }
 }
