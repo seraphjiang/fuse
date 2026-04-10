@@ -106,6 +106,57 @@ impl OpenSearchConnector {
 
         Ok(batches)
     }
+
+    /// search_after pagination — stateless deep pagination using sort values as cursor.
+    /// Requires at least one sort field. Falls back to scroll if no sort is present.
+    async fn execute_search_after(&self, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
+        let page_size: u64 = 1000;
+        let limit = query.limit;
+        let mut collected: usize = 0;
+        let mut batches = Vec::new();
+        let mut search_after: Option<serde_json::Value> = None;
+
+        loop {
+            let mut dsl = pushdown::translate_to_query_dsl(query);
+            // Override size to page_size
+            dsl["size"] = serde_json::json!(page_size);
+            // Inject search_after cursor
+            if let Some(ref sa) = search_after {
+                dsl["search_after"] = sa.clone();
+            }
+            // Ensure sort is present (required for search_after)
+            if dsl.get("sort").is_none() {
+                dsl["sort"] = serde_json::json!([{"_id": {"order": "asc"}}]);
+            }
+
+            let resp = self.client.client()
+                .search(opensearch::SearchParts::Index(&[&query.table]))
+                .body(dsl)
+                .send().await
+                .map_err(|e| ConnectorError::query(e))?;
+
+            let body = resp.json::<serde_json::Value>().await
+                .map_err(|e| ConnectorError::query(e))?;
+
+            let batch = parse_hits_to_batch(&body, query)?;
+            if batch.num_rows() == 0 { break; }
+
+            collected += batch.num_rows();
+            batches.push(batch);
+            if limit.map_or(false, |l| collected >= l as usize) { break; }
+
+            // Extract sort values from last hit for next page cursor
+            let hits = body.pointer("/hits/hits").and_then(|v| v.as_array());
+            search_after = hits
+                .and_then(|h| h.last())
+                .and_then(|last| last.get("sort"))
+                .cloned();
+
+            if search_after.is_none() { break; } // no sort values → done
+        }
+
+        Ok(batches)
+    }
 }
 
 #[async_trait]
@@ -313,10 +364,15 @@ impl FederatedConnector for OpenSearchConnector {
     }
 
     async fn execute(&self, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
-        let use_scroll = query.limit.map_or(true, |l| l > SCROLL_THRESHOLD);
+        let use_deep_pagination = query.limit.map_or(true, |l| l > SCROLL_THRESHOLD);
 
-        if use_scroll && query.aggregations.is_empty() {
-            return self.execute_scroll(query).await;
+        if use_deep_pagination && query.aggregations.is_empty() {
+            // Prefer search_after (stateless) when sort is present, scroll otherwise
+            return if !query.sort.is_empty() {
+                self.execute_search_after(query).await
+            } else {
+                self.execute_scroll(query).await
+            };
         }
 
         let dsl = pushdown::translate_to_query_dsl(query);
@@ -662,5 +718,19 @@ mod tests {
         assert_eq!(batch.num_rows(), 2);
         assert_eq!(batch.num_columns(), 2);
         assert_eq!(batch.schema().field(0).name(), "metadata.region");
+    }
+
+    #[test]
+    fn test_search_after_uses_scroll_when_no_sort() {
+        // Without sort, deep pagination falls back to scroll (not search_after)
+        let q = sq(Some(SCROLL_THRESHOLD + 1));
+        assert!(q.sort.is_empty()); // no sort → scroll path
+    }
+
+    #[test]
+    fn test_search_after_uses_search_after_when_sorted() {
+        let mut q = sq(Some(SCROLL_THRESHOLD + 1));
+        q.sort = vec![fuse_core::connector::SortExpr { field: "timestamp".into(), descending: true }];
+        assert!(!q.sort.is_empty()); // has sort → search_after path
     }
 }

@@ -55,6 +55,51 @@ pub fn read_batches(
         .map_err(|e| ConnectorError::query(e))
 }
 
+/// Returns the number of row groups in a Parquet file.
+pub fn row_group_count(data: &Bytes) -> Result<usize, ConnectorError> {
+    let builder = ParquetRecordBatchReaderBuilder::try_new(data.clone())
+        .map_err(|e| ConnectorError::query(e))?;
+    Ok(builder.metadata().num_row_groups())
+}
+
+/// Read a single row group from a Parquet file.
+/// Enables incremental/paginated reading without loading all row groups.
+pub fn read_row_group(
+    data: &Bytes,
+    row_group: usize,
+    projections: &[String],
+    batch_size: usize,
+) -> Result<Vec<RecordBatch>, ConnectorError> {
+    let mut builder = ParquetRecordBatchReaderBuilder::try_new(data.clone())
+        .map_err(|e| ConnectorError::query(e))?;
+
+    let total = builder.metadata().num_row_groups();
+    if row_group >= total {
+        return Err(ConnectorError::query(format!(
+            "row group {row_group} out of bounds (file has {total})"
+        )));
+    }
+
+    if !projections.is_empty() {
+        let parquet_schema = builder.parquet_schema().clone();
+        let indices: Vec<usize> = projections
+            .iter()
+            .filter_map(|name| parquet_schema.columns().iter().position(|c| c.name() == name))
+            .collect();
+        if !indices.is_empty() {
+            builder = builder.with_projection(ProjectionMask::leaves(&parquet_schema, indices));
+        }
+    }
+
+    let reader = builder
+        .with_row_groups(vec![row_group])
+        .with_batch_size(batch_size)
+        .build()
+        .map_err(|e| ConnectorError::query(e))?;
+
+    reader.collect::<Result<Vec<_>, _>>().map_err(|e| ConnectorError::query(e))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,5 +182,34 @@ mod tests {
     fn test_read_schema_invalid_bytes_returns_error() {
         let bad = Bytes::from(b"not parquet".to_vec());
         assert!(read_schema(&bad).is_err());
+    }
+
+    #[test]
+    fn test_row_group_count() {
+        let data = to_parquet_bytes(sample_batch());
+        // Single-batch write → 1 row group
+        assert_eq!(row_group_count(&data).unwrap(), 1);
+    }
+
+    #[test]
+    fn test_read_row_group_zero() {
+        let data = to_parquet_bytes(sample_batch());
+        let batches = read_row_group(&data, 0, &[], 1024).unwrap();
+        let total: usize = batches.iter().map(|b| b.num_rows()).sum();
+        assert_eq!(total, 3);
+    }
+
+    #[test]
+    fn test_read_row_group_with_projection() {
+        let data = to_parquet_bytes(sample_batch());
+        let batches = read_row_group(&data, 0, &["name".to_string()], 1024).unwrap();
+        assert_eq!(batches[0].num_columns(), 1);
+        assert_eq!(batches[0].schema().field(0).name(), "name");
+    }
+
+    #[test]
+    fn test_read_row_group_out_of_bounds_errors() {
+        let data = to_parquet_bytes(sample_batch());
+        assert!(read_row_group(&data, 99, &[], 1024).is_err());
     }
 }

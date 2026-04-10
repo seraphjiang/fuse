@@ -254,8 +254,12 @@ impl FederatedConnector for S3ParquetConnector {
         let mut all_batches = Vec::new();
         for key in &keys {
             let data = self.get_object_bytes(key).await?;
-            let batches = reader::read_batches(&data, &query.projections, DEFAULT_BATCH_SIZE)?;
-            all_batches.extend(batches);
+            // Paginated: read row-group by row-group for memory efficiency
+            let rg_count = reader::row_group_count(&data)?;
+            for rg in 0..rg_count {
+                let batches = reader::read_row_group(&data, rg, &query.projections, DEFAULT_BATCH_SIZE)?;
+                all_batches.extend(batches);
+            }
         }
 
         // Apply limit client-side
@@ -295,17 +299,21 @@ impl FederatedConnector for S3ParquetConnector {
 
         'outer: for key in &keys {
             let data = self.get_object_bytes(key).await?;
-            let batches = reader::read_batches(&data, &query.projections, DEFAULT_BATCH_SIZE)?;
+            let rg_count = reader::row_group_count(&data)?;
 
-            for batch in batches {
-                if let Some(lim) = limit {
-                    if sent >= lim { break 'outer; }
-                    let remaining = lim - sent;
-                    let batch = if batch.num_rows() > remaining { batch.slice(0, remaining) } else { batch };
-                    sent += batch.num_rows();
-                    tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
-                } else {
-                    tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+            'rg: for rg in 0..rg_count {
+                let batches = reader::read_row_group(&data, rg, &query.projections, DEFAULT_BATCH_SIZE)?;
+                for batch in batches {
+                    if let Some(lim) = limit {
+                        if sent >= lim { break 'outer; }
+                        let remaining = lim - sent;
+                        let batch = if batch.num_rows() > remaining { batch.slice(0, remaining) } else { batch };
+                        sent += batch.num_rows();
+                        tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+                        if sent >= lim { break 'rg; }
+                    } else {
+                        tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+                    }
                 }
             }
         }
