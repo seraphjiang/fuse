@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Fuse Query Playground</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e1e4e8;min-height:100vh;display:flex;flex-direction:column}
@@ -44,6 +45,13 @@ tr:hover td{background:#161b22}
 .meta{font-size:12px;color:#8b949e;padding:8px 0;display:flex;gap:16px}
 .plan{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:"SF Mono",Consolas,monospace;font-size:13px;white-space:pre-wrap;color:#79c0ff;max-height:200px;overflow:auto}
 .empty{padding:40px;text-align:center;color:#484f58;font-size:14px}
+.view-toggle{display:flex;gap:0;margin-left:auto}
+.view-toggle button{border-radius:0;border-right:none;padding:4px 10px;font-size:12px}
+.view-toggle button:first-child{border-radius:6px 0 0 6px}
+.view-toggle button:last-child{border-radius:0 6px 6px 0;border-right:1px solid #30363d}
+.view-toggle button.active{background:#238636;border-color:#238636;color:#fff}
+#chart-container{width:100%;height:400px;display:none;border:1px solid #21262d;border-radius:6px;background:#0d1117}
+.chart-hint{font-size:11px;color:#8b949e;padding:4px 0}
 .error{color:#f85149;padding:12px;background:#1c0d0d;border:1px solid #f8514933;border-radius:6px;font-size:13px}
 .provenance{display:none;font-size:12px;color:#8b949e;padding:6px 0;display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .provenance.visible{display:flex}
@@ -306,9 +314,15 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
     <span id="meta-cols"></span>
     <span id="meta-time"></span>
     <button id="csv-btn" onclick="downloadCSV()" style="display:none;margin-left:auto;padding:3px 10px;font-size:12px">⬇ CSV</button>
+    <div class="view-toggle" id="view-toggle" style="display:none">
+      <button class="active" onclick="setView('table')">Table</button>
+      <button onclick="setView('chart')">Chart</button>
+    </div>
   </div>
   <div class="provenance" id="provenance"></div>
   <div class="results" id="results"><div class="empty">Run a query to see results — or open <strong>Examples &amp; Help</strong> above</div></div>
+  <div id="chart-container"></div>
+  <div class="chart-hint" id="chart-hint"></div>
 </main>
 
 <script>
@@ -629,6 +643,138 @@ $('editor').addEventListener('keydown', e => {
 checkHealth();
 loadDatasources();
 setInterval(checkHealth, 30000);
+
+// === ECharts Integration (#440) + Auto-Visualization (#441) ===
+let fuseChart = null;
+let currentView = 'table';
+
+function setView(view) {
+  currentView = view;
+  document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.view-toggle button:${view === 'table' ? 'first' : 'last'}-child`).classList.add('active');
+  $('results').style.display = view === 'table' ? '' : 'none';
+  $('chart-container').style.display = view === 'chart' ? 'block' : 'none';
+  if (view === 'chart' && lastColumns.length) renderChart();
+}
+
+function detectColumnTypes(columns, rows) {
+  const types = {};
+  columns.forEach((col, i) => {
+    const sample = rows.slice(0, 50).map(r => r[i]).filter(v => v != null && v !== '');
+    if (!sample.length) { types[col] = 'unknown'; return; }
+    const allNum = sample.every(v => !isNaN(Number(v)));
+    const allTime = sample.every(v => !isNaN(Date.parse(String(v))));
+    const uniq = new Set(sample.map(String)).size;
+    if (col === '_datasource' || col === 'datasource') types[col] = 'datasource';
+    else if (/^(timestamp|time|date|created|updated)/i.test(col) || allTime) types[col] = 'time';
+    else if (allNum) types[col] = 'number';
+    else if (uniq <= 30) types[col] = 'category';
+    else types[col] = 'string';
+  });
+  return types;
+}
+
+function suggestChart(columns, rows) {
+  const types = detectColumnTypes(columns, rows);
+  const cats = columns.filter(c => types[c] === 'category' || types[c] === 'datasource');
+  const nums = columns.filter(c => types[c] === 'number');
+  const times = columns.filter(c => types[c] === 'time');
+
+  if (times.length && nums.length) return { type: 'line', x: times[0], y: nums[0], series: cats[0] || null };
+  if (cats.length && nums.length) {
+    if (nums.length === 1 && rows.length <= 12) return { type: 'pie', label: cats[0], value: nums[0] };
+    return { type: 'bar', x: cats[0], y: nums[0], series: cats[1] || null };
+  }
+  if (nums.length >= 2) return { type: 'scatter', x: nums[0], y: nums[1] };
+  if (cats.length >= 1 && rows.length) return { type: 'bar', x: cats[0], y: null };
+  return null;
+}
+
+function buildChartOption(suggestion, columns, rows) {
+  const ci = col => columns.indexOf(col);
+  const vals = col => rows.map(r => r[ci(col)]);
+  const numVals = col => rows.map(r => Number(r[ci(col)]));
+  const dark = { backgroundColor: '#0d1117', textStyle: { color: '#8b949e' } };
+  const tooltip = { trigger: 'axis', backgroundColor: '#161b22', borderColor: '#30363d', textStyle: { color: '#e1e4e8' } };
+
+  if (suggestion.type === 'pie') {
+    const data = [];
+    const map = {};
+    rows.forEach(r => {
+      const k = String(r[ci(suggestion.label)]);
+      map[k] = (map[k] || 0) + Number(r[ci(suggestion.value)]);
+    });
+    Object.entries(map).forEach(([name, value]) => data.push({ name, value }));
+    return { ...dark, tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: ['35%', '65%'], data, label: { color: '#8b949e' } }] };
+  }
+
+  const xData = [...new Set(vals(suggestion.x).map(String))];
+  if (!suggestion.series) {
+    const yData = suggestion.y ? numVals(suggestion.y) : (() => { const m = {}; vals(suggestion.x).forEach(v => m[String(v)] = (m[String(v)]||0)+1); return xData.map(x => m[x]||0); })();
+    return { ...dark, tooltip, xAxis: { type: 'category', data: suggestion.type === 'bar' ? xData : undefined, axisLabel: { color: '#8b949e', rotate: xData.length > 10 ? 30 : 0 } },
+      yAxis: { type: 'value', axisLabel: { color: '#8b949e' } },
+      series: [{ type: suggestion.type === 'scatter' ? 'scatter' : suggestion.type, data: suggestion.y ? xData.map((x, i) => yData[i]) : yData, smooth: suggestion.type === 'line' }],
+      grid: { left: 60, right: 20, bottom: 40, top: 20 } };
+  }
+
+  // Grouped series
+  const seriesCol = ci(suggestion.series);
+  const groups = {};
+  rows.forEach(r => {
+    const s = String(r[seriesCol]);
+    if (!groups[s]) groups[s] = {};
+    const x = String(r[ci(suggestion.x)]);
+    groups[s][x] = (groups[s][x] || 0) + Number(r[ci(suggestion.y)] || 1);
+  });
+  const series = Object.entries(groups).map(([name, map]) => ({
+    name, type: suggestion.type, data: xData.map(x => map[x] || 0), smooth: suggestion.type === 'line'
+  }));
+  return { ...dark, tooltip, legend: { textStyle: { color: '#8b949e' }, top: 0 },
+    xAxis: { type: 'category', data: xData, axisLabel: { color: '#8b949e', rotate: xData.length > 10 ? 30 : 0 } },
+    yAxis: { type: 'value', axisLabel: { color: '#8b949e' } }, series,
+    grid: { left: 60, right: 20, bottom: 40, top: 30 } };
+}
+
+function renderChart() {
+  const container = $('chart-container');
+  if (!lastColumns.length || !lastRows.length) {
+    container.style.display = 'none';
+    $('chart-hint').textContent = '';
+    return;
+  }
+  const suggestion = suggestChart(lastColumns, lastRows);
+  if (!suggestion) {
+    container.style.display = currentView === 'chart' ? 'block' : 'none';
+    container.innerHTML = '<div class="empty">Cannot auto-visualize these results — try a query with numeric or categorical columns</div>';
+    $('chart-hint').textContent = '';
+    if (fuseChart) { fuseChart.dispose(); fuseChart = null; }
+    return;
+  }
+  container.innerHTML = '';
+  container.style.display = currentView === 'chart' ? 'block' : 'none';
+  if (fuseChart) fuseChart.dispose();
+  fuseChart = echarts.init(container, 'dark');
+  fuseChart.setOption(buildChartOption(suggestion, lastColumns, lastRows));
+  $('chart-hint').textContent = `Auto-detected: ${suggestion.type} chart (x: ${suggestion.x}${suggestion.y ? ', y: ' + suggestion.y : ''}${suggestion.series ? ', series: ' + suggestion.series : ''})`;
+  $('view-toggle').style.display = 'flex';
+}
+
+// Resize chart on window resize
+window.addEventListener('resize', () => { if (fuseChart) fuseChart.resize(); });
+
+// Hook into renderTable to show view toggle and auto-render chart
+const _origRenderTable = renderTable;
+renderTable = function(columns, rows) {
+  _origRenderTable(columns, rows);
+  if (columns.length && rows.length) {
+    $('view-toggle').style.display = 'flex';
+    if (currentView === 'chart') renderChart();
+  } else {
+    $('view-toggle').style.display = 'none';
+    $('chart-container').style.display = 'none';
+    $('chart-hint').textContent = '';
+  }
+};
 </script>
 </body>
 </html>
