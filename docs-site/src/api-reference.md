@@ -128,6 +128,41 @@ data: {"type":"done","total_rows":42}
 data: {"type":"error","message":"..."}
 ```
 
+## Trace Reconstruction
+
+### GET /api/fuse/trace/{trace_id}
+
+Fan out to all datasources, search for a trace ID, and reconstruct the full trace timeline sorted by timestamp.
+
+```bash
+curl http://localhost:9400/api/fuse/trace/tr-abc123
+```
+
+**Response:**
+```json
+{
+  "trace_id": "tr-abc123",
+  "spans": [
+    {
+      "datasource": "cluster_a",
+      "timestamp": "2026-04-10T05:30:00Z",
+      "fields": {"service": "api-gateway", "status": 200, "message": "request received"}
+    },
+    {
+      "datasource": "dynamodb",
+      "timestamp": "2026-04-10T05:30:01Z",
+      "fields": {"user_id": "u-42", "action": "lookup"}
+    }
+  ],
+  "datasources_searched": ["cluster_a", "cluster_b", "dynamodb", "s3_o11y"],
+  "datasources_matched": ["cluster_a", "dynamodb"],
+  "total_spans": 2,
+  "search_ms": 187
+}
+```
+
+Searches all registered datasources for rows where `trace_id` matches. Spans are sorted by timestamp. Useful for cross-source distributed trace correlation.
+
 ## Discovery Endpoints
 
 ### GET /api/fuse/health
