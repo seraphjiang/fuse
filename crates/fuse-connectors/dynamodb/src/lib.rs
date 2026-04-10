@@ -415,9 +415,11 @@ mod tests {
 
     #[test]
     fn test_items_to_batch_empty() {
+        // In production, empty items are caught before items_to_batch (returns Ok(vec![])).
+        // With projections specified, empty items produce a valid zero-row batch.
         let query = SubQuery {
             table: "t".into(),
-            projections: vec![],
+            projections: vec!["id".into()],
             filter: None,
             aggregations: vec![],
             group_by: vec![],
@@ -426,10 +428,9 @@ mod tests {
             limit: None,
             passthrough: None,
         };
-        // Empty items → Ok(vec![]) before reaching items_to_batch
-        let result = items_to_batch(&[], &query);
-        // Empty items with no projections → empty cols → empty schema
-        assert!(result.is_ok());
+        let result = items_to_batch(&[], &query).unwrap();
+        assert_eq!(result[0].num_rows(), 0);
+        assert_eq!(result[0].num_columns(), 1);
     }
 
     #[test]
