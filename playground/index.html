@@ -62,16 +62,28 @@ tr:hover td{background:#161b22}
 .prov-chip{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500}
 .ds-tag{padding:1px 6px;border-radius:3px;font-size:11px;font-weight:600;display:inline-block}
 /* Plan tree */
-.plan-tree{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:"SF Mono",Consolas,monospace;font-size:12px;max-height:300px;overflow:auto;display:none}
+.plan-tree{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:"SF Mono",Consolas,monospace;font-size:12px;max-height:500px;overflow:auto;display:none}
 .plan-tree.visible{display:block}
-.plan-node{margin-left:20px;padding:2px 0}
+.plan-node{padding:3px 0;position:relative}
+.plan-node-row{display:flex;align-items:center;gap:6px;padding:2px 4px;border-radius:4px;cursor:pointer;transition:background .1s}
+.plan-node-row:hover{background:#161b22}
+.plan-toggle{width:14px;font-size:10px;color:#484f58;text-align:center;flex-shrink:0;cursor:pointer;user-select:none}
+.plan-toggle:hover{color:#58a6ff}
+.plan-children{margin-left:20px;border-left:1px solid #21262d;padding-left:4px}
+.plan-children.collapsed{display:none}
 .plan-op{font-weight:600;color:#e1e4e8}
-.plan-detail{color:#8b949e;margin-left:4px}
+.plan-detail{color:#8b949e;margin-left:4px;font-size:11px}
 .plan-stat{font-size:11px;margin-left:8px}
 .plan-fast{color:#3fb950}
 .plan-med{color:#d29922}
 .plan-slow{color:#f85149}
 .plan-badge{font-size:9px;padding:1px 4px;border-radius:2px;background:#1f3a5f;color:#58a6ff;margin-left:4px}
+.plan-bar{height:4px;border-radius:2px;margin-top:2px;min-width:2px;transition:width .3s}
+.plan-bar-fast{background:#3fb950}
+.plan-bar-med{background:#d29922}
+.plan-bar-slow{background:#f85149}
+.plan-tooltip{position:absolute;z-index:50;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:8px 12px;font-size:11px;color:#e1e4e8;box-shadow:0 4px 12px rgba(0,0,0,.4);pointer-events:none;white-space:nowrap;display:none}
+.plan-summary{display:flex;gap:16px;padding:8px 0;font-size:12px;color:#8b949e;border-bottom:1px solid #21262d;margin-bottom:8px}
 /* Analyze checkbox */
 .analyze-label{font-size:12px;color:#8b949e;display:flex;align-items:center;gap:4px;cursor:pointer}
 .analyze-label input{cursor:pointer}
@@ -261,7 +273,9 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
         <div class="troubleshoot"><strong>"degraded health"</strong> — A connector is slow or unreachable. Check config and network</div>
       </div>
       <div class="doc-section"><h4>Keyboard Shortcuts</h4>
-        <p><kbd>Ctrl</kbd>+<kbd>Enter</kbd> / <kbd>Cmd</kbd>+<kbd>Enter</kbd> — Run query</p>
+        <p><kbd>Ctrl</kbd>+<kbd>Enter</kbd> — Run query</p>
+        <p><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> — Explain query</p>
+        <p><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> — Validate query</p>
       </div>
     </div>
 
@@ -568,29 +582,91 @@ function renderProvenance(res) {
 
 function renderPlanTree(profile) {
   function timeClass(ms) { return ms < 50 ? 'plan-fast' : ms < 200 ? 'plan-med' : 'plan-slow'; }
-  function renderNode(node, depth) {
-    const indent = '  '.repeat(depth);
-    const tc = timeClass(node.actual_ms);
-    let line = indent + '<span class="plan-op">' + esc(node.op) + '</span>';
-    if (node.datasource) line += ' <span class="plan-detail">[' + esc(node.datasource) + ']</span>';
-    line += ' <span class="plan-stat ' + tc + '">' + node.actual_rows + ' rows, ' + node.actual_ms + 'ms</span>';
-    if (node.data_bytes) line += ' <span class="plan-stat plan-detail">' + formatBytes(node.data_bytes) + '</span>';
-    if (node.pushdown && node.pushdown.length) {
-      node.pushdown.forEach(p => { line += ' <span class="plan-badge">' + esc(p) + '</span>'; });
-    }
-    let html = '<div class="plan-node">' + line + '</div>';
-    if (node.children) node.children.forEach(c => { html += renderNode(c, depth + 1); });
-    return html;
-  }
+  function barClass(ms) { return ms < 50 ? 'plan-bar-fast' : ms < 200 ? 'plan-bar-med' : 'plan-bar-slow'; }
   function formatBytes(b) {
     if (b < 1024) return b + 'B';
     if (b < 1048576) return (b/1024).toFixed(1) + 'KB';
     return (b/1048576).toFixed(1) + 'MB';
   }
-  let html = '<div class="plan-node"><span class="plan-op">Total</span> <span class="plan-stat ' + timeClass(profile.total_ms) + '">' + profile.total_ms + 'ms</span></div>';
-  profile.nodes.forEach(n => { html += renderNode(n, 1); });
+  const maxMs = Math.max(profile.total_ms, 1);
+  let nodeId = 0;
+
+  function renderNode(node, depth) {
+    const id = 'pn' + (nodeId++);
+    const tc = timeClass(node.actual_ms);
+    const hasChildren = node.children && node.children.length > 0;
+    const barPct = Math.max((node.actual_ms / maxMs) * 100, 1);
+
+    let row = `<div class="plan-node-row" onclick="togglePlanNode('${id}')" onmouseenter="showPlanTip(event,'${id}')" onmouseleave="hidePlanTip('${id}')">`;
+    row += `<span class="plan-toggle">${hasChildren ? '▾' : '·'}</span>`;
+    row += `<span class="plan-op">${esc(node.op)}</span>`;
+    if (node.datasource) row += `<span class="plan-detail">[${esc(node.datasource)}]</span>`;
+    row += `<span class="plan-stat ${tc}">${node.actual_rows} rows</span>`;
+    row += `<span class="plan-stat ${tc}">${node.actual_ms}ms</span>`;
+    if (node.data_bytes) row += `<span class="plan-stat plan-detail">${formatBytes(node.data_bytes)}</span>`;
+    if (node.pushdown && node.pushdown.length) {
+      node.pushdown.forEach(p => { row += `<span class="plan-badge">${esc(p)}</span>`; });
+    }
+    row += '</div>';
+    row += `<div class="plan-bar ${barClass(node.actual_ms)}" style="width:${barPct}%"></div>`;
+
+    // Tooltip
+    row += `<div class="plan-tooltip" id="tip-${id}">`;
+    row += `<div><strong>${esc(node.op)}</strong></div>`;
+    if (node.datasource) row += `<div>Datasource: ${esc(node.datasource)}</div>`;
+    row += `<div>Rows: ${node.actual_rows} · Time: ${node.actual_ms}ms</div>`;
+    if (node.data_bytes) row += `<div>Data: ${formatBytes(node.data_bytes)}</div>`;
+    if (node.pushdown && node.pushdown.length) row += `<div>Pushdown: ${node.pushdown.join(', ')}</div>`;
+    row += '</div>';
+
+    let html = `<div class="plan-node">${row}`;
+    if (hasChildren) {
+      html += `<div class="plan-children" id="children-${id}">`;
+      node.children.forEach(c => { html += renderNode(c, depth + 1); });
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  // Summary bar
+  let totalRows = 0, totalNodes = 0;
+  function countNodes(n) { totalNodes++; totalRows += n.actual_rows || 0; if (n.children) n.children.forEach(countNodes); }
+  profile.nodes.forEach(countNodes);
+
+  let html = `<div class="plan-summary">`;
+  html += `<span>Total: <strong class="${timeClass(profile.total_ms)}">${profile.total_ms}ms</strong></span>`;
+  html += `<span>Nodes: ${totalNodes}</span>`;
+  html += `<span>Rows processed: ${totalRows.toLocaleString()}</span>`;
+  html += '</div>';
+
+  profile.nodes.forEach(n => { html += renderNode(n, 0); });
   $('plan-tree').innerHTML = html;
   $('plan-tree').classList.add('visible');
+}
+
+function togglePlanNode(id) {
+  const el = document.getElementById('children-' + id);
+  if (!el) return;
+  el.classList.toggle('collapsed');
+  const row = el.previousElementSibling?.previousElementSibling?.previousElementSibling;
+  if (row) {
+    const toggle = row.querySelector('.plan-toggle');
+    if (toggle) toggle.textContent = el.classList.contains('collapsed') ? '▸' : '▾';
+  }
+}
+
+function showPlanTip(event, id) {
+  const tip = document.getElementById('tip-' + id);
+  if (!tip) return;
+  tip.style.display = 'block';
+  tip.style.left = (event.offsetX + 16) + 'px';
+  tip.style.top = (event.offsetY - 10) + 'px';
+}
+
+function hidePlanTip(id) {
+  const tip = document.getElementById('tip-' + id);
+  if (tip) tip.style.display = 'none';
 }
 
 function esc(s) {
@@ -635,11 +711,41 @@ async function explainQuery() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-    $('plan-box').textContent = res.plan;
-    $('plan-box').style.display = 'block';
+    // Show structured tree if available, otherwise raw text
+    if (res.plan_tree) {
+      renderExplainTree(res.plan_tree);
+    } else {
+      $('plan-box').textContent = res.plan;
+      $('plan-box').style.display = 'block';
+    }
   } catch (e) {
     showError(e.message);
   }
+}
+
+function renderExplainTree(tree) {
+  let nodeId = 0;
+  function renderNode(node) {
+    const id = 'en' + (nodeId++);
+    const hasChildren = node.children && node.children.length > 0;
+    let row = `<div class="plan-node-row" onclick="togglePlanNode('${id}')">`;
+    row += `<span class="plan-toggle">${hasChildren ? '▾' : '·'}</span>`;
+    row += `<span class="plan-op">${esc(node.op)}</span>`;
+    if (node.detail) row += `<span class="plan-detail">${esc(node.detail)}</span>`;
+    if (node.estimated_rows) row += `<span class="plan-stat plan-detail">~${node.estimated_rows} rows</span>`;
+    if (node.estimated_cost) row += `<span class="plan-stat plan-detail">cost: ${node.estimated_cost}</span>`;
+    row += '</div>';
+    let html = `<div class="plan-node">${row}`;
+    if (hasChildren) {
+      html += `<div class="plan-children" id="children-${id}">`;
+      node.children.forEach(c => { html += renderNode(c); });
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+  $('plan-tree').innerHTML = renderNode(tree);
+  $('plan-tree').classList.add('visible');
 }
 
 async function validateQuery() {
@@ -662,8 +768,13 @@ async function validateQuery() {
   }
 }
 
-$('editor').addEventListener('keydown', e => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runQuery(); }
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && e.key === 'Enter') { e.preventDefault(); runQuery(); }
+  else if (mod && e.shiftKey && e.key === 'E') { e.preventDefault(); explainQuery(); }
+  else if (mod && e.key === 's') { e.preventDefault(); /* save — future */ }
+  else if (mod && e.shiftKey && e.key === 'V') { e.preventDefault(); validateQuery(); }
 });
 
 checkHealth();
