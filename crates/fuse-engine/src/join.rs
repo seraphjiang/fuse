@@ -394,8 +394,8 @@ fn merge_schemas(
         .fields()
         .iter()
         .map(|f| {
-            // Left join: build-side columns become nullable (unmatched probe rows)
-            if join_type == JoinType::Left {
+            // Left/Full join: build-side columns become nullable (unmatched probe rows)
+            if join_type == JoinType::Left || join_type == JoinType::Full {
                 Field::new(f.name(), f.data_type().clone(), true)
             } else {
                 f.as_ref().clone()
@@ -662,5 +662,25 @@ mod tests {
         // Should have probe columns (id, name), NOT build columns (id, value)
         assert!(cols.contains(&"name"), "should have probe 'name' column: {:?}", cols);
         assert!(!cols.contains(&"value"), "should NOT have build 'value' column: {:?}", cols);
+    }
+
+    #[test]
+    fn test_full_outer_join() {
+        let build = build_batch(&["a", "c"], &[100, 300]);
+        let probe = probe_batch(&["a", "b"], &["alice", "bob"]);
+        let result = hash_join(&[build], "id", &[probe], "id", JoinType::Full).unwrap();
+        assert_eq!(result.len(), 1);
+        // a matches → 1 row, b unmatched probe → 1 row, c unmatched build → 1 row = 3
+        assert_eq!(result[0].num_rows(), 3);
+    }
+
+    #[test]
+    fn test_full_outer_join_no_overlap() {
+        let build = build_batch(&["x", "y"], &[100, 200]);
+        let probe = probe_batch(&["a", "b"], &["alice", "bob"]);
+        let result = hash_join(&[build], "id", &[probe], "id", JoinType::Full).unwrap();
+        assert_eq!(result.len(), 1);
+        // No matches: 2 unmatched probe + 2 unmatched build = 4
+        assert_eq!(result[0].num_rows(), 4);
     }
 }

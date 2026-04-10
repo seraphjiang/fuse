@@ -39,7 +39,7 @@
 |----|------|-------|--------|-------|
 | 322 | OFFSET pushdown to connectors | planner | todo | Carried from S3. Skip rows at source, not post-fetch |
 | 323 | Pagination across UNION ALL (global cursor) | planner | todo | Carried from S3. Maintain per-source cursors, merge in order |
-| 324 | Large result streaming with backpressure | explorer | todo | Carried from S3. SSE with flow control, client-driven page size |
+| 324 | Large result streaming with backpressure | explorer | done | Bounded channel (4 slots), client batch_size, row buffering. 8 new tests |
 | 325 | OpenSearch search_after for deep pagination | general | done | Carried from S3. Replace from+size with search_after for >10k results |
 | 326 | S3 connector: paginated Parquet reading | general | done | Carried from S3. Read row groups incrementally, not full file |
 | 337 | Nested field access (JSON dot notation) | general | done | Carried from S3. Merged into #403 |
@@ -51,7 +51,7 @@
 | 440 | Chart library integration (Apache ECharts) | frontend | done | ECharts 5 via CDN, dark theme, responsive. Commit: fb92edc |
 | 441 | Auto-visualization: detect column types → suggest chart | frontend | done | time→line, category→bar, numbers→pie/scatter. Commit: fb92edc |
 | 442 | Core chart types (8): line, bar, stacked bar, pie, area, scatter, table, histogram | frontend | done | All 8 types + selector dropdown + auto-bins. Commit: 7775c88 |
-| 443 | Log-specific charts (4): heatmap, timeline/Gantt, flame chart, Sankey | explorer | todo | Error density, trace spans, execution plan viz, request flow |
+| 443 | Log-specific charts (4): heatmap, timeline/Gantt, flame chart, Sankey | frontend | done | All 4 types in playground + dashboard, auto-detect columns |
 | 444 | Dashboard builder: grid layout, save/load JSON, time range picker | frontend | done | 12-col grid, panel CRUD, localStorage + JSON export, auto-refresh. Commit: 3f5b498 |
 | 445 | Dashboard templates: pre-built for error analysis, trace correlation, capacity | explorer | todo | One-click dashboards for common o11y use cases |
 | 446 | Dashboard sharing: URL sharing, export PNG/PDF/CSV | explorer | todo | Share dashboards via link, export for reports |
@@ -72,6 +72,6 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 430 | Update docs-site for Sprint 3+4 features | docs | done | Architecture page, SQL/PPL reference, all features documented. Commit: 01d1d49 |
-| 431 | Update OpenAPI spec | explorer | todo | Cursor pagination params, new query features, CTE support |
+| 431 | Update OpenAPI spec | docs | done | v0.4.0: 19 paths, 22 schemas. Trace, saved queries, cursor pagination. Commit: 9341ece |
 | 432 | Demo video v2 (cross-datasource scenarios) | explorer | todo | Showcase JOIN/UNION/lookup/CTE across sources |
 | 433 | Architecture doc: federated query execution model | docs | done | Full query flow, connector trait, pushdown table, crate map. Commit: aa74eef |

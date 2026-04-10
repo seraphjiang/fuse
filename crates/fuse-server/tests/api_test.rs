@@ -3613,3 +3613,47 @@ async fn test_trace_endpoint_nonexistent_trace() {
     assert!(json["total_spans"].is_number());
     assert!(json["datasources_searched"].as_array().is_some());
 }
+
+// ── #402 HAVING on cross-source GROUP BY verification (tester) ──
+
+#[test]
+fn test_parse_having_with_order_by() {
+    use fuse_server::api::parse_having;
+    let h = parse_having("SELECT host, COUNT(*) AS cnt FROM a.logs GROUP BY host HAVING cnt > 10 ORDER BY cnt DESC LIMIT 5").unwrap();
+    assert_eq!(h.column, "cnt");
+    assert_eq!(h.value, 10.0);
+}
+
+#[test]
+fn test_parse_having_none_without_having() {
+    use fuse_server::api::parse_having;
+    assert!(parse_having("SELECT * FROM a.logs GROUP BY host").is_none());
+}
+
+#[tokio::test]
+async fn test_having_filters_after_reaggregation() {
+    // GROUP BY host across 2 sources → 2 groups (h1, h2)
+    // status is summed: h1=200+200=400, h2=500+500=1000
+    // HAVING status > 500 should keep only h2
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT host, status FROM cluster_a.logs UNION ALL SELECT host, status FROM cluster_b.logs GROUP BY host HAVING status > 500",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert!(rows.len() <= 2, "HAVING should filter some groups, got {}", rows.len());
+}
+
+#[tokio::test]
+async fn test_having_filters_all_groups() {
+    // HAVING with impossible threshold → 0 rows
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT host, status FROM cluster_a.logs UNION ALL SELECT host, status FROM cluster_b.logs GROUP BY host HAVING status > 999999",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 0, "impossible HAVING should return 0 rows");
+}

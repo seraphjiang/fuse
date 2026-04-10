@@ -58,6 +58,11 @@ textarea{width:100%;min-height:60px;background:#0d1117;color:#e1e4e8;border:1px 
 /* Nav link */
 .nav-link{color:#8b949e;font-size:13px;text-decoration:none}
 .nav-link:hover{color:#58a6ff}
+.tpl-card{padding:12px;border:1px solid #21262d;border-radius:6px;cursor:pointer;margin-bottom:8px;transition:border-color .15s}
+.tpl-card:hover{border-color:#58a6ff;background:#0d1117}
+.tpl-card h4{font-size:14px;color:#58a6ff;margin-bottom:4px}
+.tpl-card p{font-size:12px;color:#8b949e;margin:0}
+.tpl-card .tpl-meta{font-size:11px;color:#484f58;margin-top:4px}
 </style>
 </head>
 <body>
@@ -67,6 +72,7 @@ textarea{width:100%;min-height:60px;background:#0d1117;color:#e1e4e8;border:1px 
   <div class="header-actions">
     <a href="/playground" class="nav-link">← Playground</a>
     <button onclick="addPanel()">+ Add Panel</button>
+    <button onclick="showTemplates()">📋 Templates</button>
     <button onclick="showImport()">📂 Load</button>
     <button onclick="exportDashboard()">💾 Save</button>
     <select id="dashboard-list" onchange="loadDashboard(this.value)">
@@ -136,6 +142,16 @@ textarea{width:100%;min-height:60px;background:#0d1117;color:#e1e4e8;border:1px 
       <button onclick="closeImport()">Cancel</button>
       <button class="primary" onclick="doImport()">Load</button>
     </div>
+  </div>
+</div>
+
+<!-- Templates modal -->
+<div class="modal-overlay" id="templates-modal">
+  <div class="modal" style="width:600px">
+    <h3>Dashboard Templates</h3>
+    <p style="color:#8b949e;font-size:12px;margin-bottom:12px">Pre-built dashboards for common observability use cases. Click to load.</p>
+    <div id="template-list"></div>
+    <div class="form-actions"><button onclick="closeTemplates()">Close</button></div>
   </div>
 </div>
 
@@ -563,6 +579,73 @@ const resizeObs = new ResizeObserver(() => {
   Object.values(panelCharts).forEach(c => c.resize());
 });
 resizeObs.observe(document.body);
+
+// === Dashboard Templates (#445) ===
+const TEMPLATES = [
+  {
+    name: '🔴 Error Analysis',
+    desc: 'Error rates by service, status code distribution, error timeline, and error message heatmap across all datasources.',
+    panels: [
+      { id: 'e1', title: 'Errors by Service', query: "SELECT service, count(*) as errors FROM cluster_a.application_logs WHERE status >= 500 GROUP BY service ORDER BY errors DESC", format: 'sql', chartType: 'bar', width: 6 },
+      { id: 'e2', title: 'Status Code Distribution', query: "SELECT status, count(*) as cnt FROM cluster_a.application_logs GROUP BY status ORDER BY cnt DESC", format: 'sql', chartType: 'pie', width: 6 },
+      { id: 'e3', title: 'Error Timeline (Cross-Cluster)', query: "SELECT _datasource, service, count(*) as errors FROM cluster_a.application_logs WHERE status >= 500 GROUP BY _datasource, service UNION ALL SELECT _datasource, service, count(*) as errors FROM cluster_b.application_logs WHERE status >= 500 GROUP BY _datasource, service ORDER BY errors DESC", format: 'sql', chartType: 'bar', width: 12 },
+      { id: 'e4', title: 'Top Error Messages', query: "SELECT service, message, count(*) as cnt FROM cluster_a.application_logs WHERE status >= 500 GROUP BY service, message ORDER BY cnt DESC LIMIT 20", format: 'sql', chartType: 'table', width: 12 },
+      { id: 'e5', title: 'Error Heatmap (Service × Status)', query: "SELECT service, status, count(*) as cnt FROM cluster_a.application_logs WHERE status >= 400 GROUP BY service, status ORDER BY cnt DESC", format: 'sql', chartType: 'heatmap', width: 12 }
+    ],
+    timeRange: '1h', refreshInterval: 30
+  },
+  {
+    name: '🔗 Trace Correlation',
+    desc: 'Cross-cluster trace analysis, service-to-service flow, latency distribution, and correlated error traces.',
+    panels: [
+      { id: 't1', title: 'Cross-Cluster Trace Matches', query: "SELECT a.trace_id, a.service, a.status, b.service as b_service, b.status as b_status FROM cluster_a.application_logs a JOIN cluster_b.application_logs b ON a.trace_id = b.trace_id WHERE a.status >= 500 LIMIT 20", format: 'sql', chartType: 'table', width: 12 },
+      { id: 't2', title: 'Service Flow (Sankey)', query: "SELECT a.service as source, b.service as target, count(*) as requests FROM cluster_a.application_logs a JOIN cluster_b.application_logs b ON a.trace_id = b.trace_id GROUP BY a.service, b.service ORDER BY requests DESC LIMIT 30", format: 'sql', chartType: 'sankey', width: 12 },
+      { id: 't3', title: 'Latency by Service', query: "SELECT service, avg(response_time_ms) as avg_ms, max(response_time_ms) as max_ms FROM cluster_a.application_logs GROUP BY service ORDER BY avg_ms DESC", format: 'sql', chartType: 'bar', width: 6 },
+      { id: 't4', title: 'Latency Distribution', query: "SELECT service, response_time_ms FROM cluster_a.application_logs WHERE response_time_ms > 0 LIMIT 200", format: 'sql', chartType: 'histogram', width: 6 },
+      { id: 't5', title: 'Trace Span Timeline', query: "SELECT service, response_time_ms FROM cluster_a.application_logs WHERE response_time_ms > 100 ORDER BY response_time_ms DESC LIMIT 30", format: 'sql', chartType: 'flame', width: 12 }
+    ],
+    timeRange: '1h', refreshInterval: 60
+  },
+  {
+    name: '📈 Capacity & Performance',
+    desc: 'Request volume, throughput by service, response time trends, and resource utilization across clusters.',
+    panels: [
+      { id: 'c1', title: 'Request Volume by Service', query: "SELECT service, count(*) as requests FROM cluster_a.application_logs GROUP BY service ORDER BY requests DESC", format: 'sql', chartType: 'bar', width: 6 },
+      { id: 'c2', title: 'Cluster B Volume', query: "SELECT service, count(*) as requests FROM cluster_b.application_logs GROUP BY service ORDER BY requests DESC", format: 'sql', chartType: 'bar', width: 6 },
+      { id: 'c3', title: 'Method Distribution', query: "SELECT method, count(*) as cnt FROM cluster_a.application_logs GROUP BY method ORDER BY cnt DESC", format: 'sql', chartType: 'pie', width: 4 },
+      { id: 'c4', title: 'Top Endpoints', query: "SELECT method, path, count(*) as hits FROM cluster_a.application_logs GROUP BY method, path ORDER BY hits DESC LIMIT 15", format: 'sql', chartType: 'bar', width: 8 },
+      { id: 'c5', title: 'P99 Latency by Service', query: "SELECT service, max(response_time_ms) as p99_ms, avg(response_time_ms) as avg_ms FROM cluster_a.application_logs GROUP BY service ORDER BY p99_ms DESC", format: 'sql', chartType: 'bar', width: 6 },
+      { id: 'c6', title: 'Cross-Cluster Request Comparison', query: "SELECT _datasource, service, count(*) as total FROM cluster_a.application_logs GROUP BY _datasource, service UNION ALL SELECT _datasource, service, count(*) as total FROM cluster_b.application_logs GROUP BY _datasource, service ORDER BY total DESC LIMIT 20", format: 'sql', chartType: 'stacked-bar', width: 6 }
+    ],
+    timeRange: '6h', refreshInterval: 60
+  }
+];
+
+function showTemplates() {
+  const el = $('template-list');
+  el.innerHTML = TEMPLATES.map((t, i) => `<div class="tpl-card" onclick="loadTemplate(${i})">
+    <h4>${esc(t.name)}</h4>
+    <p>${esc(t.desc)}</p>
+    <div class="tpl-meta">${t.panels.length} panels · ${t.timeRange} range · ${t.refreshInterval}s refresh</div>
+  </div>`).join('');
+  $('templates-modal').classList.add('open');
+}
+
+function closeTemplates() { $('templates-modal').classList.remove('open'); }
+
+function loadTemplate(idx) {
+  const t = TEMPLATES[idx];
+  if (!t) return;
+  Object.values(panelCharts).forEach(c => c.dispose());
+  panelCharts = {};
+  dashboard = { title: t.name, panels: t.panels.map(p => ({ ...p, id: genId() })), timeRange: t.timeRange, refreshInterval: t.refreshInterval };
+  $('time-range').value = dashboard.timeRange;
+  $('refresh-interval').value = String(dashboard.refreshInterval);
+  onRefreshChange();
+  closeTemplates();
+  saveDashboardLocal();
+  renderGrid();
+}
 
 // === Init ===
 refreshDashboardList();
