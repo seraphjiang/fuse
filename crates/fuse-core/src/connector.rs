@@ -223,6 +223,10 @@ pub enum AggFunction {
     Avg,
     Min,
     Max,
+    /// Approximate count distinct via HyperLogLog (pushdown to OpenSearch cardinality).
+    ApproxCountDistinct,
+    /// Approximate percentile via t-digest. `percentile` is 0.0–1.0.
+    ApproxPercentile(f64),
 }
 
 #[derive(Debug, Clone)]
