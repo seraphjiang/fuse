@@ -68,13 +68,14 @@ fn extract_label_matchers(expr: &FilterExpr) -> Vec<String> {
         }
         FilterExpr::Comparison { field, op, value } => {
             if let Some(val_str) = scalar_to_string(value) {
+                let safe_field = sanitize_label_name(field);
                 let op_str = match op {
                     ComparisonOp::Eq => "=",
                     ComparisonOp::Neq => "!=",
                     ComparisonOp::Like => "=~",
-                    _ => return vec![], // PromQL only supports =, !=, =~, !~
+                    _ => return vec![],
                 };
-                vec![format!("{field}{op_str}\"{val_str}\"")]
+                vec![format!("{safe_field}{op_str}\"{val_str}\"")]
             } else {
                 vec![]
             }
@@ -100,12 +101,27 @@ fn extract_label_matchers(expr: &FilterExpr) -> Vec<String> {
 
 fn scalar_to_string(value: &ScalarValue) -> Option<String> {
     match value {
-        ScalarValue::Utf8(s) => Some(s.clone()),
+        ScalarValue::Utf8(s) => Some(sanitize_promql_value(s)),
         ScalarValue::Int64(n) => Some(n.to_string()),
         ScalarValue::Float64(f) => Some(f.to_string()),
         ScalarValue::Boolean(b) => Some(b.to_string()),
         ScalarValue::Null => None,
     }
+}
+
+/// Sanitize a string for PromQL label values (double-quoted).
+fn sanitize_promql_value(s: &str) -> String {
+    s.replace('\\', "\\\\")
+     .replace('"', "\\\"")
+     .replace('\n', "\\n")
+     .replace('\r', "\\r")
+     .replace('\0', "")
+}
+
+/// Sanitize a PromQL label name — allow only alphanumeric + underscore.
+fn sanitize_label_name(s: &str) -> String {
+    let clean: String = s.chars().filter(|c| c.is_alphanumeric() || *c == '_').collect();
+    if clean.is_empty() { "_".to_string() } else { clean }
 }
 
 #[cfg(test)]
@@ -251,5 +267,57 @@ mod tests {
         );
         let matchers = extract_label_matchers(&f);
         assert_eq!(matchers.len(), 2);
+    }
+
+    // ── #601 Prometheus injection fix verification (tester) ──
+
+    #[test]
+    fn test_scalar_escapes_double_quotes() {
+        let val = scalar_to_string(&ScalarValue::Utf8("test\"inject".into()));
+        assert!(val.as_ref().unwrap().contains("\\\""), "should escape double quotes: {:?}", val);
+    }
+
+    #[test]
+    fn test_scalar_escapes_backslash() {
+        let val = scalar_to_string(&ScalarValue::Utf8("test\\path".into()));
+        assert!(val.unwrap().contains("\\\\"), "should escape backslash");
+    }
+
+    #[test]
+    fn test_scalar_preserves_single_quotes() {
+        // PromQL uses double-quoted label values — single quotes are safe
+        let val = scalar_to_string(&ScalarValue::Utf8("it's fine".into()));
+        assert!(val.unwrap().contains("it's fine"));
+    }
+
+    #[test]
+    fn test_sanitize_promql_newline_injection() {
+        let result = sanitize_promql_value("val\n}[5m])\nup{");
+        assert!(!result.contains('\n'), "should escape newlines: {}", result);
+        assert!(result.contains("\\n"));
+    }
+
+    #[test]
+    fn test_sanitize_promql_null_byte() {
+        let result = sanitize_promql_value("val\0bad");
+        assert!(!result.contains('\0'));
+    }
+
+    #[test]
+    fn test_sanitize_label_name() {
+        assert_eq!(sanitize_label_name("host"), "host");
+        assert_eq!(sanitize_label_name("host}[5m])"), "host5m");
+        assert_eq!(sanitize_label_name(""), "_");
+    }
+
+    #[test]
+    fn test_promql_matcher_uses_sanitized_label() {
+        let f = FilterExpr::Comparison {
+            field: "job\"}[5m])".into(),
+            op: ComparisonOp::Eq,
+            value: ScalarValue::Utf8("api".into()),
+        };
+        let matchers = extract_label_matchers(&f);
+        assert!(!matchers[0].contains('}'), "should sanitize label name: {}", matchers[0]);
     }
 }

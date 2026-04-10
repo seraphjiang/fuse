@@ -235,6 +235,21 @@ fn subquery_to_influxql(q: &SubQuery) -> String {
     sql
 }
 
+/// Sanitize a string value for InfluxQL single-quoted literals.
+fn sanitize_influxql(s: &str) -> String {
+    s.replace('\\', "\\\\")
+     .replace('\'', "\\'")
+     .replace('\n', "\\n")
+     .replace('\r', "\\r")
+     .replace('\0', "")
+}
+
+/// Sanitize an identifier (field/measurement name) — allow only alphanumeric + underscore + dot.
+fn sanitize_identifier(s: &str) -> String {
+    let clean: String = s.chars().filter(|c| c.is_alphanumeric() || *c == '_' || *c == '.').collect();
+    if clean.is_empty() { "_".to_string() } else { clean }
+}
+
 fn filter_to_influxql(f: &FilterExpr) -> String {
     match f {
         FilterExpr::And(l, r) => format!("({} AND {})", filter_to_influxql(l), filter_to_influxql(r)),
@@ -248,13 +263,13 @@ fn filter_to_influxql(f: &FilterExpr) -> String {
                 ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => "=~",
             };
             let val = match value {
-                ScalarValue::Utf8(s) => format!("'{s}'"),
+                ScalarValue::Utf8(s) => format!("'{}'", sanitize_influxql(s)),
                 ScalarValue::Int64(n) => n.to_string(),
                 ScalarValue::Float64(f) => f.to_string(),
                 ScalarValue::Boolean(b) => b.to_string(),
                 ScalarValue::Null => "null".to_string(),
             };
-            format!("{field} {op_str} {val}")
+            format!("{} {op_str} {val}", sanitize_identifier(field))
         }
         FilterExpr::In { field, values } => {
             let parts: Vec<String> = values.iter().map(|v| {
@@ -262,8 +277,8 @@ fn filter_to_influxql(f: &FilterExpr) -> String {
             }).collect();
             format!("({})", parts.join(" OR "))
         }
-        FilterExpr::IsNull(field) => format!("{field} = ''"),
-        FilterExpr::IsNotNull(field) => format!("{field} != ''"),
+        FilterExpr::IsNull(field) => format!("{} = ''", sanitize_identifier(field)),
+        FilterExpr::IsNotNull(field) => format!("{} != ''", sanitize_identifier(field)),
     }
 }
 
@@ -291,13 +306,13 @@ fn filter_to_flux(f: &FilterExpr) -> String {
                 ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => "=~",
             };
             let val = match value {
-                ScalarValue::Utf8(s) => format!("\"{s}\""),
+                ScalarValue::Utf8(s) => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
                 ScalarValue::Int64(n) => n.to_string(),
                 ScalarValue::Float64(f) => f.to_string(),
                 ScalarValue::Boolean(b) => b.to_string(),
                 ScalarValue::Null => "null".to_string(),
             };
-            format!("r.{field} {op_str} {val}")
+            format!("r.{} {op_str} {val}", sanitize_identifier(field))
         }
         FilterExpr::In { field, values } => {
             let parts: Vec<String> = values.iter().map(|v| {
@@ -305,8 +320,8 @@ fn filter_to_flux(f: &FilterExpr) -> String {
             }).collect();
             format!("({})", parts.join(" or "))
         }
-        FilterExpr::IsNull(field) => format!("not exists r.{field}"),
-        FilterExpr::IsNotNull(field) => format!("exists r.{field}"),
+        FilterExpr::IsNull(field) => format!("not exists r.{}", sanitize_identifier(field)),
+        FilterExpr::IsNotNull(field) => format!("exists r.{}", sanitize_identifier(field)),
     }
 }
 
@@ -520,5 +535,64 @@ mod tests {
         let batches = parse_v1_response(&body).unwrap();
         assert_eq!(batches[0].num_rows(), 1);
         assert_eq!(batches[0].num_columns(), 2);
+    }
+}
+
+    // ── #600 InfluxDB injection fix verification (tester) ──
+
+    #[test]
+    fn test_influxql_escapes_single_quotes() {
+        let q = SubQuery {
+            table: "cpu".into(), projections: vec![],
+            filter: Some(FilterExpr::Comparison {
+                field: "host".into(), op: ComparisonOp::Eq,
+                value: ScalarValue::Utf8("test'inject".into()),
+            }),
+            aggregations: vec![], group_by: vec![], having: None,
+            sort: vec![], limit: None, passthrough: None, offset: None,
+        };
+        let sql = subquery_to_influxql(&q);
+        // The raw unescaped pattern "test'inject" should NOT appear — it should be "test\'inject"
+        assert!(sql.contains("test\\'inject"), "InfluxQL should escape quote: {}", sql);
+    }
+
+    #[test]
+    fn test_flux_escapes_double_quotes() {
+        let f = FilterExpr::Comparison {
+            field: "host".into(), op: ComparisonOp::Eq,
+            value: ScalarValue::Utf8("test\"inject".into()),
+        };
+        let flux = filter_to_flux(&f);
+        assert!(flux.contains("test\\\"inject"), "Flux should escape double quote: {}", flux);
+    }
+
+    #[test]
+    fn test_sanitize_influxql_injection() {
+        // Single quote injection attempt
+        assert_eq!(sanitize_influxql("val'; DROP MEASUREMENT m; --"), "val\\'; DROP MEASUREMENT m; --");
+        // Newline injection
+        assert_eq!(sanitize_influxql("val\ninjected"), "val\\ninjected");
+        // Null byte
+        assert!(!sanitize_influxql("val\0bad").contains('\0'));
+    }
+
+    #[test]
+    fn test_sanitize_identifier_strips_special() {
+        assert_eq!(sanitize_identifier("host"), "host");
+        assert_eq!(sanitize_identifier("host; DROP"), "hostDROP");
+        assert_eq!(sanitize_identifier(""), "_");
+        assert_eq!(sanitize_identifier("a.b_c"), "a.b_c");
+    }
+
+    #[test]
+    fn test_influxql_filter_uses_sanitized_field() {
+        let f = FilterExpr::Comparison {
+            field: "host; DROP".into(),
+            op: ComparisonOp::Eq,
+            value: ScalarValue::Utf8("web01".into()),
+        };
+        let sql = filter_to_influxql(&f);
+        assert!(!sql.contains(';'), "should strip semicolons from field: {}", sql);
+        assert!(sql.contains("hostDROP"), "field should be sanitized: {}", sql);
     }
 }

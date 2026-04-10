@@ -44,6 +44,11 @@ impl QueryHistory {
         q.iter().cloned().rev().collect()
     }
 
+    pub fn recent(&self, max: usize) -> Vec<HistoryEntry> {
+        let q = self.entries.lock().unwrap();
+        q.iter().rev().take(max).cloned().collect()
+    }
+
     pub fn len(&self) -> usize {
         self.entries.lock().unwrap().len()
     }
@@ -169,5 +174,136 @@ mod tests {
         let t = now_secs();
         // Should be after 2024-01-01 (unix 1704067200)
         assert!(t > 1_704_067_200);
+    }
+}
+
+// ── Query Advisor: learn from history ──
+
+/// Optimization suggestion from query history analysis.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct QueryAdvice {
+    pub category: String,
+    pub message: String,
+    pub affected_queries: usize,
+}
+
+/// Analyze query history and produce optimization suggestions.
+pub struct QueryAdvisor;
+
+impl QueryAdvisor {
+    /// Analyze history entries and return suggestions.
+    pub fn analyze(entries: &[HistoryEntry]) -> Vec<QueryAdvice> {
+        let mut advice = Vec::new();
+        if entries.is_empty() { return advice; }
+
+        // 1. Identify slow queries (above p95 latency)
+        let mut latencies: Vec<u64> = entries.iter().map(|e| e.latency_ms).collect();
+        latencies.sort_unstable();
+        let p95_idx = (latencies.len() as f64 * 0.95) as usize;
+        let p95 = latencies.get(p95_idx.min(latencies.len() - 1)).copied().unwrap_or(0);
+        let slow: Vec<&HistoryEntry> = entries.iter().filter(|e| e.latency_ms > p95 && e.error.is_none()).collect();
+        if !slow.is_empty() && p95 > 100 {
+            let no_limit = slow.iter().filter(|e| {
+                let lower = e.query.to_lowercase();
+                !lower.contains("limit ")
+            }).count();
+            if no_limit > 0 {
+                advice.push(QueryAdvice {
+                    category: "missing_limit".into(),
+                    message: format!("{} slow queries (>{}ms) have no LIMIT clause. Add LIMIT to reduce data transfer.", no_limit, p95),
+                    affected_queries: no_limit,
+                });
+            }
+        }
+
+        // 2. Identify high-error-rate patterns
+        let total = entries.len();
+        let errors = entries.iter().filter(|e| e.error.is_some()).count();
+        let error_rate = errors as f64 / total as f64;
+        if error_rate > 0.1 && errors > 2 {
+            advice.push(QueryAdvice {
+                category: "high_error_rate".into(),
+                message: format!("{:.0}% error rate ({}/{} queries). Check connector health and query syntax.", error_rate * 100.0, errors, total),
+                affected_queries: errors,
+            });
+        }
+
+        // 3. Identify repeated queries (caching opportunity)
+        let mut query_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        for e in entries {
+            *query_counts.entry(&e.query).or_default() += 1;
+        }
+        let repeated: usize = query_counts.values().filter(|&&c| c > 3).sum();
+        if repeated > 0 {
+            let unique_repeated = query_counts.values().filter(|&&c| c > 3).count();
+            advice.push(QueryAdvice {
+                category: "cache_opportunity".into(),
+                message: format!("{} queries repeated >3 times ({} unique patterns). Consider CREATE VIEW or increasing result cache TTL.", repeated, unique_repeated),
+                affected_queries: repeated,
+            });
+        }
+
+        // 4. Identify queries without filters (full table scans)
+        let no_filter = entries.iter().filter(|e| {
+            let lower = e.query.to_lowercase();
+            e.error.is_none() && !lower.contains("where ") && !lower.contains("| where") && e.row_count > 1000
+        }).count();
+        if no_filter > 0 {
+            advice.push(QueryAdvice {
+                category: "missing_filter".into(),
+                message: format!("{} queries return >1000 rows without WHERE clause. Add filters to reduce scan size.", no_filter),
+                affected_queries: no_filter,
+            });
+        }
+
+        advice
+    }
+}
+
+#[cfg(test)]
+mod advisor_tests {
+    use super::*;
+
+    fn entry(query: &str, latency_ms: u64, row_count: u64, error: Option<&str>) -> HistoryEntry {
+        HistoryEntry {
+            query: query.into(), format: "sql".into(), timestamp: now_secs(),
+            latency_ms, row_count, error: error.map(|s| s.into()),
+        }
+    }
+
+    #[test]
+    fn test_missing_limit_advice() {
+        let mut entries: Vec<HistoryEntry> = (0..20).map(|_| {
+            entry("SELECT * FROM a.t LIMIT 10", 50, 10, None)
+        }).collect();
+        // Add outliers well above p95
+        entries.push(entry("SELECT * FROM a.t", 2000, 10000, None));
+        entries.push(entry("SELECT * FROM a.t", 3000, 10000, None));
+        let advice = QueryAdvisor::analyze(&entries);
+        assert!(advice.iter().any(|a| a.category == "missing_limit"), "advice: {:?}", advice);
+    }
+
+    #[test]
+    fn test_high_error_rate_advice() {
+        let mut entries: Vec<HistoryEntry> = (0..8).map(|_| entry("SELECT 1", 10, 1, None)).collect();
+        entries.extend((0..3).map(|_| entry("SELECT bad", 10, 0, Some("parse error"))));
+        let advice = QueryAdvisor::analyze(&entries);
+        assert!(advice.iter().any(|a| a.category == "high_error_rate"));
+    }
+
+    #[test]
+    fn test_cache_opportunity_advice() {
+        let entries: Vec<HistoryEntry> = (0..5).map(|_| entry("SELECT * FROM a.t WHERE x = 1", 50, 10, None)).collect();
+        let advice = QueryAdvisor::analyze(&entries);
+        assert!(advice.iter().any(|a| a.category == "cache_opportunity"));
+    }
+
+    #[test]
+    fn test_no_advice_for_healthy_history() {
+        let entries: Vec<HistoryEntry> = (0..5).map(|i| {
+            entry(&format!("SELECT * FROM a.t WHERE id = {} LIMIT 10", i), 30, 10, None)
+        }).collect();
+        let advice = QueryAdvisor::analyze(&entries);
+        assert!(advice.is_empty(), "expected no advice, got: {:?}", advice);
     }
 }

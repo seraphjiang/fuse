@@ -8,7 +8,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 412 | Approximate aggregations (HyperLogLog, t-digest) | explorer | todo | Pushdown to OpenSearch native approximate aggs |
+| 412 | Approximate aggregations (HyperLogLog, t-digest) | explorer | done | Shipped in Sprint 5 (commit e4b25bf) |
 | 510 | Amazon Redshift connector | general | todo | AWS native warehouse. SQL pushdown, IAM auth |
 | 511 | DuckDB connector (local compute engine) | general | todo | In-process analytics, Arrow-native |
 | 512 | SQLite connector | general | todo | File-based, embedded |
@@ -25,7 +25,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 610 | Natural language to SQL (LLM-powered) | planner | todo | Schema-aware NL→SQL translation via Bedrock/OpenAI |
+| 610 | Natural language to SQL (LLM-powered) | planner | done | POST /api/fuse/nl, provider-agnostic, rule-based fallback, execute mode. Commit: f79ed1f |
 | 611 | Auto-suggest queries based on schema | frontend | done | Contextual suggestions based on column types. Commit: 6f19619 |
 | 612 | Intelligent query optimization (learn from history) | planner | todo | Analyze past queries to suggest index/pushdown improvements |
 

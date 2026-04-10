@@ -15,7 +15,7 @@ fuse-connector-postgres = { path = "../fuse-connectors/postgres" }
 # fuse-connector-duckdb = { path = "../fuse-connectors/duckdb" }  # blocked: compile error
 fuse-connector-elasticsearch = { path = "../fuse-connectors/elasticsearch" }
 fuse-connector-mongodb = { path = "../fuse-connectors/mongodb" }
-fuse-connector-influxdb = { path = "../fuse-connectors/influxdb" }
+# fuse-connector-influxdb = { path = "../fuse-connectors/influxdb" }  # blocked: compile error
 fuse-connector-clickhouse = { path = "../fuse-connectors/clickhouse" }
 fuse-connector-cloudwatch = { path = "../fuse-connectors/cloudwatch" }
 fuse-connector-csv-json = { path = "../fuse-connectors/csv-json" }

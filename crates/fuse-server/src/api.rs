@@ -441,7 +441,9 @@ pub async fn query_handler(
     let timeout = std::time::Duration::from_millis(req.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS));
 
     // Register cancellable query
-    let query_id = format!("q-{:016x}", t0.elapsed().as_nanos() ^ (std::process::id() as u128));
+    let query_id = format!("q-{:016x}", std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()
+        ^ (std::process::id() as u128));
     let cancel_token = CancellationToken::new();
     state.running_queries.insert(query_id.clone(), cancel_token.clone());
 
@@ -2447,6 +2449,18 @@ fn extract_keyword_after(text: &str, keyword: &str) -> Option<String> {
 fn extract_number(text: &str) -> Option<u64> {
     text.split_whitespace()
         .find_map(|w| w.parse::<u64>().ok())
+}
+
+/// GET /api/fuse/advisor — query optimization suggestions from history
+pub async fn query_advisor_handler(
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let entries = state.history.recent(1000);
+    let advice = crate::history::QueryAdvisor::analyze(&entries);
+    (StatusCode::OK, Json(serde_json::json!({
+        "advice": advice,
+        "analyzed_queries": entries.len(),
+    }))).into_response()
 }
 
 pub async fn list_views(State(state): State<Arc<AppState>>) -> impl IntoResponse {

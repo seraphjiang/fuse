@@ -3074,7 +3074,6 @@ dependencies = [
  "fuse-connector-csv-json",
  "fuse-connector-dynamodb",
  "fuse-connector-elasticsearch",
- "fuse-connector-influxdb",
  "fuse-connector-mongodb",
  "fuse-connector-opensearch",
  "fuse-connector-postgres",
