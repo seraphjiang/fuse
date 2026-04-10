@@ -66,6 +66,7 @@ pub struct AppState {
     pub running_queries: Arc<RunningQueries>,
     pub saved_queries: Arc<SavedQueryRegistry>,
     pub plan_cache: Arc<PlanCache>,
+    pub result_cache: Arc<crate::plan_cache::ResultCache>,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.
@@ -362,6 +363,12 @@ pub async fn query_handler(
     // Rewrite CONTAINS 'term' → LIKE '%term%' for full-text search
     let query = rewrite_contains(&query);
 
+    // Check result cache
+    let result_cache_key = format!("{}:{}", format, query);
+    if let Some(cached_result) = state.result_cache.get(&result_cache_key) {
+        return (StatusCode::OK, Json(cached_result.response_json)).into_response();
+    }
+
     // Handle CREATE VIEW name AS query
     if let Some((view_name, view_query)) = parse_create_view(&query) {
         let def = fuse_engine::materialized::MaterializedViewDef {
@@ -627,7 +634,7 @@ pub async fn query_handler(
                     csv,
                 ).into_response()
             } else {
-                Json(QueryResponse {
+                let resp = QueryResponse {
                     columns,
                     rows,
                     metadata: QueryMetadata {
@@ -655,8 +662,12 @@ pub async fn query_handler(
                     } else {
                         None
                     },
-                })
-                .into_response()
+                };
+                // Cache result
+                if let Ok(json_val) = serde_json::to_value(&resp) {
+                    state.result_cache.insert(result_cache_key, json_val);
+                }
+                Json(resp).into_response()
             }
         }
         Err(e) => {
@@ -1350,7 +1361,69 @@ impl fuse_core::connector::FederatedConnector for MemoryConnector {
     }
 }
 
+/// Execute a recursive CTE: base UNION ALL recursive.
+/// Iterates until no new rows or max 100 iterations (safety limit).
+async fn execute_recursive_cte(
+    state: &AppState,
+    cte_name: &str,
+    inner_sql: &str,
+    format: &str,
+) -> Option<Vec<arrow::record_batch::RecordBatch>> {
+    const MAX_ITERATIONS: usize = 100;
+
+    // Split at UNION ALL (case-insensitive)
+    let lower = inner_sql.to_lowercase();
+    let union_pos = lower.find(" union all ")?;
+    let base_sql = inner_sql[..union_pos].trim();
+    let recursive_sql = inner_sql[union_pos + 11..].trim();
+
+    // Execute base case
+    let base_refs = parse_sql_sources(base_sql).ok()?;
+    let base_result = if base_refs.len() == 1 {
+        execute_single(state, base_sql, format, &base_refs[0], None).await.ok()?
+    } else {
+        return None;
+    };
+
+    let mut all_batches = base_result.batches.clone();
+    let mut working_set = base_result.batches;
+
+    for _iteration in 0..MAX_ITERATIONS {
+        if working_set.is_empty() || working_set.iter().all(|b| b.num_rows() == 0) {
+            break;
+        }
+
+        // Register current working set as the CTE name for self-reference
+        let temp_conn: Arc<dyn fuse_core::connector::FederatedConnector> = Arc::new(MemoryConnector {
+            name: cte_name.to_string(),
+            batches: working_set,
+        });
+        let _ = state.registry.register(temp_conn);
+
+        // Execute recursive step
+        let rec_refs = parse_sql_sources(recursive_sql).ok()?;
+        let rec_result = if rec_refs.len() == 1 {
+            execute_single(state, recursive_sql, format, &rec_refs[0], None).await
+        } else if rec_refs.len() == 2 {
+            execute_join(state, recursive_sql, &rec_refs).await
+        } else {
+            break;
+        };
+
+        match rec_result {
+            Ok(fed) if !fed.batches.is_empty() && fed.batches.iter().any(|b| b.num_rows() > 0) => {
+                all_batches.extend(fed.batches.clone());
+                working_set = fed.batches;
+            }
+            _ => break,
+        }
+    }
+
+    Some(all_batches)
+}
+
 /// Parse WITH clauses, execute each CTE, register results as temp connectors.
+/// Supports both regular and RECURSIVE CTEs.
 /// Returns (rewritten_query, updated_refs, temp_connectors_to_keep_alive).
 async fn resolve_ctes(
     state: &AppState,
@@ -1364,12 +1437,18 @@ async fn resolve_ctes(
         return (query.to_string(), refs.to_vec(), vec![]);
     }
 
+    let is_recursive = trimmed.starts_with("with recursive ");
+
     let mut cte_connectors = Vec::new();
     let mut cte_defs: Vec<(String, String)> = Vec::new();
 
     // Work on original query to preserve offsets
     let with_start = lower.find("with ").unwrap();
     let mut pos = with_start + 5;
+    // Skip "RECURSIVE " keyword if present
+    if is_recursive {
+        pos += 10; // "recursive ".len()
+    }
 
     loop {
         // Skip whitespace
@@ -1421,21 +1500,31 @@ async fn resolve_ctes(
 
     // Execute each CTE and register as temp connector
     for (name, inner_sql) in &cte_defs {
-        let inner_refs = match parse_sql_sources(inner_sql) {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
-        let result = if inner_refs.len() == 1 {
-            execute_single(state, inner_sql, format, &inner_refs[0], None).await
-        } else if is_union_query(inner_sql) {
-            execute_union(state, inner_sql, format, &inner_refs).await
+        if is_recursive && inner_sql.to_lowercase().contains(" union all ") {
+            // Recursive CTE: split into base + recursive parts at UNION ALL
+            if let Some(batches) = execute_recursive_cte(state, name, inner_sql, format).await {
+                let conn: Arc<dyn fuse_core::connector::FederatedConnector> = Arc::new(MemoryConnector { name: name.clone(), batches });
+                let _ = state.registry.register(conn.clone());
+                cte_connectors.push((name.clone(), conn));
+            }
         } else {
-            execute_join(state, inner_sql, &inner_refs).await
-        };
-        if let Ok(fed) = result {
-            let conn: Arc<dyn fuse_core::connector::FederatedConnector> = Arc::new(MemoryConnector { name: name.clone(), batches: fed.batches });
-            let _ = state.registry.register(conn.clone());
-            cte_connectors.push((name.clone(), conn));
+            // Regular CTE
+            let inner_refs = match parse_sql_sources(inner_sql) {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
+            let result = if inner_refs.len() == 1 {
+                execute_single(state, inner_sql, format, &inner_refs[0], None).await
+            } else if is_union_query(inner_sql) {
+                execute_union(state, inner_sql, format, &inner_refs).await
+            } else {
+                execute_join(state, inner_sql, &inner_refs).await
+            };
+            if let Ok(fed) = result {
+                let conn: Arc<dyn fuse_core::connector::FederatedConnector> = Arc::new(MemoryConnector { name: name.clone(), batches: fed.batches });
+                let _ = state.registry.register(conn.clone());
+                cte_connectors.push((name.clone(), conn));
+            }
         }
     }
 
@@ -2637,6 +2726,21 @@ mod tests {
     #[test]
     fn test_decode_simple_cursor_rejects_union() {
         assert!(decode_cursor("fuse_u_ds1:10|10").is_none());
+    }
+
+    #[test]
+    fn test_recursive_cte_detection() {
+        let q = "WITH RECURSIVE chain AS (SELECT * FROM ds.t UNION ALL SELECT * FROM chain JOIN ds.t ON chain.id = ds.t.parent_id) SELECT * FROM chain";
+        let lower = q.to_lowercase();
+        assert!(lower.trim_start().starts_with("with recursive "));
+    }
+
+    #[test]
+    fn test_non_recursive_cte_not_detected() {
+        let q = "WITH temp AS (SELECT * FROM ds.t) SELECT * FROM temp";
+        let lower = q.to_lowercase();
+        assert!(!lower.trim_start().starts_with("with recursive "));
+        assert!(lower.trim_start().starts_with("with "));
     }
 
     #[test]
