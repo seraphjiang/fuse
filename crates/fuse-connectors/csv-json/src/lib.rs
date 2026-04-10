@@ -115,17 +115,14 @@ impl CsvJsonConnector {
     }
 
     fn parse_csv(&self, data: &[u8]) -> Result<Vec<RecordBatch>, ConnectorError> {
-        // Infer schema using a temporary builder
-        let builder = arrow_csv::ReaderBuilder::new_with_delimiter(b',').with_header(true);
-        let (schema, _) = builder.infer_schema(Cursor::new(data), Some(100))
+        let format = arrow_csv::reader::Format::default().with_header(true);
+        let (schema, _) = format.infer_schema(Cursor::new(data), Some(100))
             .map_err(|e| ConnectorError::QueryFailed(format!("CSV schema infer: {e}")))?;
-        let schema = Arc::new(schema);
 
-        let cursor = Cursor::new(data);
-        let reader = arrow_csv::ReaderBuilder::new(schema)
+        let reader = arrow_csv::ReaderBuilder::new(Arc::new(schema))
             .with_header(true)
             .with_batch_size(8192)
-            .build(cursor)
+            .build(Cursor::new(data))
             .map_err(|e| ConnectorError::QueryFailed(format!("CSV parse: {e}")))?;
 
         let batches: Result<Vec<_>, _> = reader.collect();
