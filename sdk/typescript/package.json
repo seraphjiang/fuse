@@ -1,21 +1,36 @@
 {
-  "name": "fuse-client",
-  "version": "0.2.0",
-  "description": "TypeScript/JavaScript SDK for the Fuse federated query engine",
+  "name": "@fuse-query/client",
+  "version": "0.5.0",
+  "description": "TypeScript/JavaScript SDK for the Fuse federated query engine — cross-datasource SQL/PPL queries",
   "license": "Apache-2.0",
+  "author": "Fuse Contributors",
   "main": "dist/index.js",
+  "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
   "files": ["dist/", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc",
-    "test": "node --experimental-vm-modules tests/test_client.mjs"
+    "test": "node tests/test_client.mjs",
+    "prepublishOnly": "npm run build"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/seraphjiang/fuse.git",
     "directory": "sdk/typescript"
   },
-  "keywords": ["fuse", "federated-query", "opensearch", "sql", "observability"],
+  "homepage": "https://seraphjiang.github.io/fuse/",
+  "bugs": "https://github.com/seraphjiang/fuse/issues",
+  "keywords": [
+    "fuse", "federated-query", "opensearch", "sql", "ppl",
+    "observability", "analytics", "cross-datasource", "query-engine"
+  ],
   "engines": { "node": ">=18.0.0" },
   "devDependencies": {
     "typescript": "^5.0.0"
