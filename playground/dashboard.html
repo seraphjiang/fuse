@@ -37,8 +37,11 @@ textarea{width:100%;min-height:60px;background:#0d1117;color:#e1e4e8;border:1px 
 .panel-actions button{padding:2px 6px;font-size:11px;background:none;border:1px solid transparent}
 .panel-actions button:hover{border-color:#30363d}
 .panel-chart{flex:1;min-height:180px}
-.panel-error{color:#f85149;padding:12px;font-size:12px}
-.panel-loading{color:#8b949e;padding:12px;font-size:12px;text-align:center}
+.panel-error{color:#f85149;padding:12px;font-size:12px;background:#1c0d0d;border-radius:4px;margin:8px}
+.panel-error .suggestion{color:#d29922;font-size:11px;margin-top:4px}
+.panel-loading{color:#8b949e;padding:24px;font-size:12px;text-align:center}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
 /* Panel sizes */
 .col-3{grid-column:span 3}.col-4{grid-column:span 4}.col-6{grid-column:span 6}.col-8{grid-column:span 8}.col-12{grid-column:span 12}
 .row-1{grid-row:span 1}.row-2{grid-row:span 2}
@@ -413,6 +416,16 @@ function buildChartOption(suggestion, columns, rows) {
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+function getSuggestionHtml(msg) {
+  const m = msg.toLowerCase();
+  let tip = null;
+  if (m.includes('not found')) tip = 'Check datasource/table name. Available: cluster_a, cluster_b, s3_o11y.';
+  else if (m.includes('timeout')) tip = 'Try adding LIMIT or narrowing the WHERE clause.';
+  else if (m.includes('parse') || m.includes('syntax')) tip = 'Check SQL syntax in the query field.';
+  else if (m.includes('connection') || m.includes('unreachable')) tip = 'Connector may be down. Check the Status page.';
+  return tip ? '<div class="suggestion">💡 ' + tip + '</div>' : '';
+}
+
 // === Panel rendering ===
 function renderPanelTable(el, columns, rows) {
   let html = '<div style="overflow:auto;max-height:100%;font-size:12px"><table style="width:100%;border-collapse:collapse">';
@@ -427,7 +440,7 @@ function renderPanelTable(el, columns, rows) {
 async function executePanel(panel) {
   const el = document.getElementById('panel-chart-' + panel.id);
   if (!el) return;
-  el.innerHTML = '<div class="panel-loading">Loading…</div>';
+  el.innerHTML = '<div class="panel-loading"><span class="spinner"></span>Executing query…</div>';
   try {
     const res = await apiQuery(substituteVars(panel.query), panel.format || 'sql');
     if (panel.chartType === 'table') {
@@ -462,7 +475,7 @@ async function executePanel(panel) {
       applyDrillDown(drillValue, res.columns, params);
     });
   } catch (e) {
-    el.innerHTML = '<div class="panel-error">' + esc(e.message) + '</div>';
+    el.innerHTML = '<div class="panel-error">' + esc(e.message) + getSuggestionHtml(e.message) + '</div>';
   }
 }
 
@@ -470,7 +483,7 @@ async function executePanel(panel) {
 function renderGrid() {
   const grid = $('grid');
   if (!dashboard.panels.length) {
-    grid.innerHTML = '<div class="empty-dashboard"><h2>No panels yet</h2><p>Click "+ Add Panel" to create your first visualization</p></div>';
+    grid.innerHTML = '<div class="empty-dashboard"><div style="font-size:48px;margin-bottom:12px">📊</div><h2>No panels yet</h2><p>Click "+ Add Panel" to create your first visualization, or try 📋 Templates for pre-built dashboards</p></div>';
     return;
   }
   grid.innerHTML = dashboard.panels.map((p, idx) => {

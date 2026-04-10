@@ -110,6 +110,16 @@ body.light .ac-item .ac-label{color:#1f2328}
 .ac-item .ac-label{color:#e1e4e8}
 .ac-item .ac-type{font-size:10px;color:#8b949e;margin-left:8px}
 .error{color:#f85149;padding:12px;background:#1c0d0d;border:1px solid #f8514933;border-radius:6px;font-size:13px}
+.error .suggestion{color:#d29922;font-size:12px;margin-top:6px;padding-top:6px;border-top:1px solid #f8514922}
+/* Spinner */
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-overlay{display:flex;align-items:center;justify-content:center;padding:40px;color:#8b949e;font-size:13px}
+/* Empty states */
+.empty-state{padding:40px 20px;text-align:center;color:#484f58}
+.empty-state .es-icon{font-size:32px;margin-bottom:8px}
+.empty-state .es-title{font-size:15px;color:#8b949e;margin-bottom:4px}
+.empty-state .es-hint{font-size:12px;color:#484f58}
 .provenance{display:none;font-size:12px;color:#8b949e;padding:6px 0;display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .provenance.visible{display:flex}
 .prov-chip{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500}
@@ -426,7 +436,7 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
     </select>
   </div>
   <div class="provenance" id="provenance"></div>
-  <div class="results" id="results"><div class="empty">Run a query to see results — or open <strong>Examples &amp; Help</strong> above</div></div>
+  <div class="results" id="results"><div class="empty-state"><div class="es-icon">🔍</div><div class="es-title">Run a query to see results</div><div class="es-hint">Type a SQL or PPL query above, or try 🎲 Feeling Lucky</div></div></div>
   <div id="chart-container"></div>
   <div class="chart-hint" id="chart-hint"></div>
 </main>
@@ -564,8 +574,26 @@ function clearOutput() {
 
 function showError(msg) {
   clearOutput();
-  $('error-box').textContent = msg;
+  const suggestion = getErrorSuggestion(msg);
+  $('error-box').innerHTML = esc(msg) + (suggestion ? '<div class="suggestion">💡 ' + suggestion + '</div>' : '');
   $('error-box').style.display = 'block';
+}
+
+function getErrorSuggestion(msg) {
+  const m = msg.toLowerCase();
+  if (m.includes('datasource not found') || m.includes('table not found') || m.includes('not found'))
+    return 'Check datasource/table name. Available: cluster_a, cluster_b, s3_o11y. Use the autocomplete (type 2+ chars) to see options.';
+  if (m.includes('timeout') || m.includes('timed out'))
+    return 'Query took too long. Try adding LIMIT, narrowing the WHERE clause, or reducing the time range.';
+  if (m.includes('parse error') || m.includes('syntax') || m.includes('unexpected'))
+    return 'Check SQL syntax. Click ✨ Format to auto-fix indentation, or try the Validate button first.';
+  if (m.includes('column') && m.includes('not found'))
+    return 'Column not found. Open the autocomplete or check Help → SQL Reference for available fields.';
+  if (m.includes('connection') || m.includes('unreachable'))
+    return 'Connector is unreachable. Check Status page for connector health.';
+  if (m.includes('empty'))
+    return 'No results returned. Try broadening your WHERE clause or checking a different time range.';
+  return null;
 }
 
 const DS_COLORS = [
@@ -767,6 +795,8 @@ function esc(s) {
 async function runQuery() {
   clearOutput();
   $('run-btn').disabled = true;
+  $('run-btn').innerHTML = '<span class="spinner"></span>Running…';
+  $('results').innerHTML = '<div class="loading-overlay"><span class="spinner"></span>Executing query…</div>';
   const t0 = performance.now();
   try {
     const analyze = $('analyze-cb').checked;
@@ -790,6 +820,7 @@ async function runQuery() {
     showError(e.message);
   } finally {
     $('run-btn').disabled = false;
+    $('run-btn').innerHTML = '▶ Run';
   }
 }
 
