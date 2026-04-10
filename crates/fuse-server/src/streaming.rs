@@ -21,6 +21,11 @@ use serde::Serialize;
 
 use crate::api::{AppState, QueryRequest};
 
+/// Default rows per SSE batch event.
+const DEFAULT_BATCH_SIZE: usize = 500;
+/// Channel buffer size — bounded for backpressure. Producer blocks when full.
+const CHANNEL_BUFFER: usize = 4;
+
 #[derive(Serialize)]
 struct MetadataEvent {
     r#type: &'static str,
@@ -31,24 +36,39 @@ struct MetadataEvent {
 struct BatchEvent {
     r#type: &'static str,
     rows: Vec<Vec<serde_json::Value>>,
+    batch_num: u64,
+    batch_rows: usize,
 }
 
 #[derive(Serialize)]
 struct ProgressEvent {
     r#type: &'static str,
     batches_sent: u64,
+    total_rows: u64,
+    total_bytes: u64,
 }
 
 #[derive(Serialize)]
 struct DoneEvent {
     r#type: &'static str,
     total_rows: u64,
+    total_bytes: u64,
+    batches_sent: u64,
 }
 
 #[derive(Serialize)]
 struct ErrorEvent {
     r#type: &'static str,
     message: String,
+}
+
+/// Streaming-specific request. Wraps QueryRequest with flow control params.
+#[derive(serde::Deserialize)]
+pub struct StreamRequest {
+    #[serde(flatten)]
+    pub query: QueryRequest,
+    /// Rows per SSE batch event. Default: 500.
+    pub batch_size: Option<usize>,
 }
 
 /// POST /api/fuse/query/stream

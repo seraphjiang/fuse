@@ -449,6 +449,13 @@ pub async fn query_handler(
                 fed.batches
             };
 
+            // Apply HAVING filter after reaggregation
+            let batches = if let Some(having) = parse_having(&query) {
+                apply_having_filter(&batches, &having)
+            } else {
+                batches
+            };
+
             // Apply global ORDER BY if present
             let batches = if !order_by.is_empty() {
                 if let Ok(schema) = batches.first().map(|b| b.schema()).ok_or(()) {
@@ -1548,6 +1555,83 @@ fn parse_group_by(query: &str) -> Vec<String> {
         .map(|c| c.trim().to_string())
         .filter(|c| !c.is_empty())
         .collect()
+}
+
+/// A parsed HAVING condition: column op value.
+pub struct HavingCondition {
+    pub column: String,
+    pub op: String,   // ">", ">=", "<", "<=", "=", "!="
+    pub value: f64,
+}
+
+/// Parse HAVING clause from query. E.g. HAVING COUNT(*) > 5 or HAVING cnt >= 10
+pub fn parse_having(query: &str) -> Option<HavingCondition> {
+    let stripped = strip_string_literals(query);
+    let lower = stripped.to_lowercase();
+    let pos = lower.rfind(" having ")?;
+    let after = stripped[pos + 8..].trim();
+    // Stop at ORDER BY, LIMIT, or end
+    let clause = after
+        .split_once(" order").map(|(c, _)| c)
+        .unwrap_or(after)
+        .split_once(" limit").map(|(c, _)| c)
+        .unwrap_or(after)
+        .trim();
+
+    // Parse: column/expr op value
+    // Find comparison operator
+    let ops = [">=", "<=", "!=", ">", "<", "="];
+    for op in &ops {
+        if let Some(op_pos) = clause.find(op) {
+            let col = clause[..op_pos].trim();
+            let val_str = clause[op_pos + op.len()..].trim();
+            // Extract column name — could be alias like "cnt" or expression like "COUNT(*)"
+            let column = col.to_string();
+            let value: f64 = val_str.split_whitespace().next()?.parse().ok()?;
+            return Some(HavingCondition { column, op: op.to_string(), value });
+        }
+    }
+    None
+}
+
+/// Apply HAVING filter to batches.
+fn apply_having_filter(
+    batches: &[arrow::record_batch::RecordBatch],
+    having: &HavingCondition,
+) -> Vec<arrow::record_batch::RecordBatch> {
+    batches.iter().filter_map(|batch| {
+        let schema = batch.schema();
+        // Find column by name (case-insensitive)
+        let col_name_lower = having.column.to_lowercase();
+        let idx = schema.fields().iter().position(|f| f.name().to_lowercase() == col_name_lower)?;
+        let col = batch.column(idx);
+
+        let mut keep = Vec::with_capacity(batch.num_rows());
+        for i in 0..batch.num_rows() {
+            if col.is_null(i) {
+                keep.push(false);
+                continue;
+            }
+            let val_str = arrow::util::display::array_value_to_string(col, i).unwrap_or_default();
+            let val: f64 = match val_str.parse() {
+                Ok(v) => v,
+                Err(_) => { keep.push(false); continue; }
+            };
+            let pass = match having.op.as_str() {
+                ">" => val > having.value,
+                ">=" => val >= having.value,
+                "<" => val < having.value,
+                "<=" => val <= having.value,
+                "=" => (val - having.value).abs() < f64::EPSILON,
+                "!=" => (val - having.value).abs() >= f64::EPSILON,
+                _ => true,
+            };
+            keep.push(pass);
+        }
+
+        let mask = arrow::array::BooleanArray::from(keep);
+        arrow::compute::filter_record_batch(batch, &mask).ok()
+    }).collect()
 }
 
 /// Re-aggregate merged batches by GROUP BY columns.

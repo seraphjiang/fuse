@@ -2,9 +2,9 @@
 
 ## Prerequisites
 
-- Rust 1.75+ (for building from source)
-- Access to at least one OpenSearch cluster or S3 bucket
-- Docker (optional, for local dev environment)
+- Rust stable (1.85+) — `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+- OpenSSL dev — `apt install libssl-dev pkg-config` or `yum install openssl-devel`
+- Docker (optional, for local OpenSearch)
 
 ## Installation
 
@@ -16,27 +16,30 @@ cargo build --release
 
 ## Configuration
 
-Create a `fuse.toml` file:
+Create a `fuse.toml` file with your datasources. Here's a minimal example with two OpenSearch clusters:
 
 ```toml
-[server]
-host = "0.0.0.0"
-port = 9400
+[engine]
+bind = "0.0.0.0:9400"
+max_concurrent_queries = 64
 
 [[connector]]
 id = "cluster_a"
-connector_type = "opensearch"
-endpoint = "https://your-opensearch-endpoint"
-auth = "sigv4"
+type = "opensearch"
+url = "https://your-opensearch-endpoint"
+[connector.auth]
+type = "sigv4"
 region = "us-west-2"
+service = "aoss"
 
 [[connector]]
-id = "cluster_b"
-connector_type = "opensearch"
-endpoint = "https://your-other-endpoint"
-auth = "sigv4"
+id = "my_ddb"
+type = "dynamodb"
 region = "us-west-2"
+table_names = ["users", "orders"]
 ```
+
+See [Connectors](./connectors.md) for all 14 connector types and their configuration.
 
 ## Running
 
@@ -74,25 +77,51 @@ curl -X POST http://localhost:9400/api/fuse/query \
   -d '{"query": "SELECT service, status, message FROM cluster_a.application_logs WHERE status >= 500 LIMIT 10"}'
 ```
 
-### 5. Cross-cluster federation
+### 5. Cross-datasource JOIN
 
 ```bash
 curl -X POST http://localhost:9400/api/fuse/query \
   -H 'Content-Type: application/json' \
-  -d '{"query": "SELECT service, status FROM cluster_a.application_logs UNION ALL SELECT service, status FROM cluster_b.application_logs LIMIT 20"}'
+  -d '{
+    "query": "SELECT l.service, u.name FROM cluster_a.application_logs l JOIN dynamodb.users u ON l.user_id = u.user_id WHERE l.status >= 500",
+    "format": "sql"
+  }'
 ```
 
-## Available Datasources (Playground)
+### 6. UNION ALL across sources
 
-| ID | Type | Services |
-|----|------|----------|
-| `cluster_a` | OpenSearch (AOSS) | api-gateway, auth-service, user-service |
-| `cluster_b` | OpenSearch (AOSS) | order-service, payment-service, notification-service |
-| `s3_o11y` | S3 NDJSON | Fuse server logs |
+```bash
+curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "SELECT service, status FROM cluster_a.application_logs UNION ALL SELECT service, status FROM cluster_b.application_logs LIMIT 20",
+    "format": "sql"
+  }'
+```
 
-**Index:** `application_logs`
+### 7. Cursor pagination
 
-**Fields:** `timestamp`, `service`, `status`, `message`, `trace_id`, `user_id`, `response_time_ms`, `method`, `path`
+```bash
+# First page
+curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT * FROM cluster_a.application_logs ORDER BY timestamp DESC", "format": "sql", "page_size": 20}'
+
+# Next page (use next_cursor from previous response)
+curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT * FROM cluster_a.application_logs ORDER BY timestamp DESC", "format": "sql", "page_size": 20, "cursor": "<next_cursor>"}'
+```
+
+### 8. EXPLAIN a query plan
+
+```bash
+curl -X POST http://localhost:9400/api/fuse/query/explain \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT l.service, count(*) FROM cluster_a.application_logs l JOIN dynamodb.users u ON l.user_id = u.user_id GROUP BY l.service"}'
+```
+
+See [EXPLAIN / ANALYZE](./explain-analyze.md) for reading query plans.
 
 ## Docker Development
 
@@ -106,3 +135,10 @@ docker compose up -d
 # Run tests
 ./scripts/test-local.sh
 ```
+
+## Next Steps
+
+- [Architecture](./architecture.md) — how federated query execution works
+- [SQL Reference](./sql-reference.md) — JOINs, UNION, window functions, subqueries
+- [PPL Reference](./ppl-reference.md) — pipe-delimited queries with `lookup`
+- [Connectors](./connectors.md) — configure all 14 datasource types

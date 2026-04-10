@@ -1,77 +1,81 @@
 # Fuse — Federated Query Engine
 
-Fuse is a cross-datasource federated query engine for [OpenSearch Dashboards](https://opensearch.org/docs/latest/dashboards/). Write a single SQL or PPL query that spans multiple OpenSearch clusters, S3 data lakes, and Prometheus — Fuse fans out, executes, and merges results automatically.
+Fuse is a federated query engine that lets you query any datasource with SQL or PPL. Join OpenSearch logs with DynamoDB profiles, union CloudWatch and S3 events, correlate Prometheus metrics with Elasticsearch alerts — all in one statement. Built on [Apache DataFusion](https://datafusion.apache.org/) and [datafusion-federation](https://github.com/datafusion-contrib/datafusion-federation).
 
 **[🎮 Live Playground](https://fuse.huanji.profile.aws.dev)** *(Amazon VPN required)*
 
 ## Architecture
 
 ```
-                    ┌─────────────────────┐
-                    │  OpenSearch          │
-                    │  Dashboards / REST   │
-                    └─────────┬───────────┘
-                              │
-                    ┌─────────▼───────────┐
-                    │    Fuse Server       │
-                    │  (Axum REST API)     │
-                    └─────────┬───────────┘
-                              │
-                    ┌─────────▼───────────┐
-                    │   Fuse Engine        │
-                    │  (DataFusion-based   │
-                    │   planner/optimizer) │
-                    └──┬──────┬───────┬───┘
-                       │      │       │
-              ┌────────▼┐ ┌──▼─────┐ ┌▼────────┐
-              │ OS (a)   │ │ OS (b) │ │ S3 O11y │
-              │ SigV4    │ │ SigV4  │ │ NDJSON  │
-              └──────────┘ └────────┘ └─────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Client (Playground UI / curl / OpenSearch Dashboards)      │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ REST API (:9400)
+┌──────────────────────▼──────────────────────────────────────┐
+│  Fuse Server (axum)                                         │
+│                                                             │
+│  SQL / PPL Parser ──→ Logical Plan                          │
+│  + Cost-Based Join Planner (build-side selection)           │
+│       ┌──────┬──────┬──────┬──────┬──────┬──────┐           │
+│       ▼      ▼      ▼      ▼      ▼      ▼      ▼          │
+│     OS    ES   PG/MySQL DDB  S3  Prom  CW  Redis ...       │
+│     Mongo  InfluxDB  ClickHouse  CSV/JSON                   │
+│       └──────┴──────┴──────┴──────┴──────┴──────┘           │
+│            Result Merger + Re-Aggregator                    │
+│  Cursor Pagination · Query Cache · Cost Estimator           │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+See [Architecture](./architecture.md) for the full query execution model.
 
 ## Key Features
 
-- **Same-type federation** — Query across multiple OpenSearch clusters with UNION ALL
-- **Cross-type federation** — JOIN OpenSearch data with S3 or Prometheus
-- **SQL + PPL** — Full support for both query languages
-- **Query pushdown** — Filters, projections, and limits pushed to connectors
+- **14 connectors** — OpenSearch, Elasticsearch, PostgreSQL, MySQL, DynamoDB, S3 (Parquet), S3 O11y (NDJSON), Prometheus, CloudWatch, Redis, CSV/JSON, MongoDB, InfluxDB, ClickHouse
+- **Cross-datasource JOINs** — hash join with build-side selection, semi-join (EXISTS), anti-join (NOT EXISTS)
+- **Correlated subqueries** — `WHERE col IN (SELECT ... FROM other_source)`
+- **Federated UNION / UNION ALL** — combine any mix of sources, with deduplication
+- **Window functions** — ROW_NUMBER, RANK, LAG, LEAD over federated results
+- **Cross-datasource GROUP BY** — federated re-aggregation across sources
+- **Cursor pagination** — keyset-based server-side cursors for efficient paging
+- **Cost estimator** — pre-execution cost estimates per plan node
+- **SQL + PPL** — full support for both query languages, including PPL `lookup`
+- **EXPLAIN / ANALYZE** — inspect federated query plans and execution stats
 - **Data provenance** — `_datasource` column shows where each row came from
-- **Execution profiling** — EXPLAIN and ANALYZE with visual plan tree
-- **5 connectors** — OpenSearch, S3 Parquet, S3 O11y (NDJSON), Prometheus, custom via SDK
 - **Caching** — TTL-based query result cache per connector type
-- **Alerting** — Rule-based alerting on federated queries
-- **Materialized views** — Pre-computed cross-datasource views
-- **Saved queries** — Named query templates with parameter binding
-- **CSV export** — Download results as CSV
-- **Query cancellation** — Cancel long-running queries by ID
-- **Per-query timeout** — Configurable timeout_ms per request
+- **Materialized views** — pre-computed cross-datasource views with scheduled refresh
+- **Saved queries** — named query templates with parameter binding
+- **Query cancellation** — cancel long-running queries by ID
 - **Partial failure resilience** — UNION ALL continues if one datasource fails
-- **OSD plugin** — Native OpenSearch Dashboards integration
+- **845+ tests** — unit, integration, E2E, and performance regression suite
 
 ## Quick Start
 
 ```bash
-# Clone and build
 git clone https://github.com/seraphjiang/fuse.git
 cd fuse
 cargo build --release
-
-# Run with sample config
 ./target/release/fuse-server --config fuse.toml
-
-# Query
-curl -X POST http://localhost:9400/api/fuse/query \
-  -H 'Content-Type: application/json' \
-  -d '{"query": "SELECT * FROM cluster_a.application_logs LIMIT 5"}'
 ```
+
+Open `http://localhost:9400` for the playground UI. See [Getting Started](./getting-started.md) for full setup instructions.
 
 ## Connectors
 
-| Connector | Type | Auth | Status |
-|-----------|------|------|--------|
-| OpenSearch | `opensearch` | SigV4, Basic, None | ✅ Production |
-| S3 Parquet | `s3` | IAM | ✅ Production |
-| S3 O11y | `s3-o11y` | IAM | ✅ Production |
-| Prometheus | `prometheus` | Bearer, None | ✅ Production |
-| Custom | SDK | Any | ✅ Via fuse-connector-sdk |
+| Connector | Type | Push-down |
+|-----------|------|-----------|
+| OpenSearch | `opensearch` | Filter, projection, aggregation, sort, limit, search_after |
+| Elasticsearch | `elasticsearch` | Filter, projection, aggregation, sort, limit |
+| PostgreSQL | `postgres` | Full SQL pushdown |
+| MySQL | `mysql` | Full SQL pushdown |
+| DynamoDB | `dynamodb` | Filter (Scan/Query), projection, limit |
+| S3 (Parquet) | `s3` | Column pruning, row-group pagination, limit |
+| S3 O11y (NDJSON) | `s3-o11y` | Projection, limit |
+| Prometheus | `prometheus` | Time range, label filters |
+| CloudWatch | `cloudwatch` | Log group, time range, filter pattern |
+| Redis | `redis` | Key pattern (SCAN), hash/string types |
+| CSV/JSON | `csv-json` | Schema inference, auto-detect format |
+| MongoDB | `mongodb` | Filter (BSON), projection, limit |
+| InfluxDB | `influxdb` | InfluxQL WHERE, time range |
+| ClickHouse | `clickhouse` | Full SQL pushdown |
 
+See [Connectors](./connectors.md) for configuration details.

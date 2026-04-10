@@ -3506,3 +3506,30 @@ async fn test_dot_notation_query_accepted() {
     ).await;
     assert_eq!(status, StatusCode::OK);
 }
+
+// ── HAVING tests ──
+
+#[test]
+fn test_parse_having_gt() {
+    let h = fuse_server::api::parse_having("SELECT host, COUNT(*) AS cnt FROM a.logs GROUP BY host HAVING cnt > 5");
+    assert!(h.is_some());
+    let h = h.unwrap();
+    assert_eq!(h.column, "cnt");
+    assert_eq!(h.op, ">");
+    assert_eq!(h.value, 5.0);
+}
+
+#[test]
+fn test_parse_having_gte() {
+    let h = fuse_server::api::parse_having("SELECT x FROM a.t GROUP BY x HAVING total >= 100");
+    assert!(h.is_some());
+    let h = h.unwrap();
+    assert_eq!(h.op, ">=");
+    assert_eq!(h.value, 100.0);
+}
+
+#[test]
+fn test_parse_having_none() {
+    let h = fuse_server::api::parse_having("SELECT * FROM a.logs GROUP BY host");
+    assert!(h.is_none());
+}

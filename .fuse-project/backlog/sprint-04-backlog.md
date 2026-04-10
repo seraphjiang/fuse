@@ -52,7 +52,7 @@
 | 441 | Auto-visualization: detect column types → suggest chart | frontend | done | time→line, category→bar, numbers→pie/scatter. Commit: fb92edc |
 | 442 | Core chart types (8): line, bar, stacked bar, pie, area, scatter, table, histogram | frontend | done | All 8 types + selector dropdown + auto-bins. Commit: 7775c88 |
 | 443 | Log-specific charts (4): heatmap, timeline/Gantt, flame chart, Sankey | explorer | todo | Error density, trace spans, execution plan viz, request flow |
-| 444 | Dashboard builder: grid layout, save/load JSON, time range picker | explorer | todo | Drag-and-drop panels, global time filter, auto-refresh |
+| 444 | Dashboard builder: grid layout, save/load JSON, time range picker | frontend | done | 12-col grid, panel CRUD, localStorage + JSON export, auto-refresh. Commit: 3f5b498 |
 | 445 | Dashboard templates: pre-built for error analysis, trace correlation, capacity | explorer | todo | One-click dashboards for common o11y use cases |
 | 446 | Dashboard sharing: URL sharing, export PNG/PDF/CSV | explorer | todo | Share dashboards via link, export for reports |
 | 447 | Variables/parameters: dropdown filters that update all panels | explorer | todo | Service picker, time range, environment selector |
