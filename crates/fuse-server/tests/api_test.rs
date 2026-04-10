@@ -3915,3 +3915,31 @@ async fn test_all_sources_fail_returns_error() {
     assert_ne!(status, StatusCode::OK, "all-fail should not return 200");
     assert!(json["error"].is_string(), "should have error message");
 }
+
+// ── Virtual views tests ──
+
+#[test]
+fn test_parse_create_view() {
+    let (name, query) = fuse_server::api::parse_create_view(
+        "CREATE VIEW error_summary AS SELECT host, COUNT(*) FROM os.logs WHERE status >= 500 GROUP BY host"
+    ).unwrap();
+    assert_eq!(name, "error_summary");
+    assert!(query.contains("SELECT host"));
+}
+
+#[test]
+fn test_parse_create_view_none_for_regular() {
+    assert!(fuse_server::api::parse_create_view("SELECT * FROM os.logs").is_none());
+}
+
+#[tokio::test]
+async fn test_create_view_via_sql() {
+    let app = build_federation_app();
+    let (status, json) = post_query(
+        app,
+        "CREATE VIEW test_view AS SELECT * FROM cluster_a.logs WHERE status = '200'",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(json["name"], "test_view");
+}

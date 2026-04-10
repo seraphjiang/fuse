@@ -264,6 +264,20 @@ fn error_json(status: StatusCode, msg: impl ToString) -> impl IntoResponse {
 /// String values are single-quoted and escaped. Numbers/bools are inlined.
 /// Rewrite CONTAINS 'term' → LIKE '%term%' for full-text search syntax.
 /// Also handles MATCH(field, 'term') → field LIKE '%term%'.
+/// Parse CREATE VIEW name AS query.
+pub fn parse_create_view(query: &str) -> Option<(String, String)> {
+    let lower = query.trim().to_lowercase();
+    if !lower.starts_with("create view ") {
+        return None;
+    }
+    let after = query.trim()[12..].trim(); // skip "CREATE VIEW "
+    let as_pos = after.to_lowercase().find(" as ")?;
+    let name = after[..as_pos].trim().to_string();
+    let view_query = after[as_pos + 4..].trim().to_string();
+    if name.is_empty() || view_query.is_empty() { return None; }
+    Some((name, view_query))
+}
+
 pub fn rewrite_contains(query: &str) -> String {
     let lower = query.to_lowercase();
     if !lower.contains(" contains '") {
@@ -347,6 +361,21 @@ pub async fn query_handler(
 
     // Rewrite CONTAINS 'term' → LIKE '%term%' for full-text search
     let query = rewrite_contains(&query);
+
+    // Handle CREATE VIEW name AS query
+    if let Some((view_name, view_query)) = parse_create_view(&query) {
+        let def = fuse_engine::materialized::MaterializedViewDef {
+            name: view_name.clone(),
+            query: view_query.clone(),
+            refresh_interval: std::time::Duration::from_secs(300),
+        };
+        state.view_registry.register(def);
+        return (StatusCode::CREATED, Json(serde_json::json!({
+            "message": format!("view '{}' created", view_name),
+            "name": view_name,
+            "query": view_query,
+        }))).into_response();
+    }
 
     // Parse all datasource.table references from the query (with plan cache)
     let cache_key = format!("{}:{}", format, query);
@@ -2081,6 +2110,47 @@ pub async fn evaluate_alerts(State(state): State<Arc<AppState>>) -> impl IntoRes
 // ── Materialized view handlers ──
 
 /// GET /api/fuse/views — list registered materialized views.
+/// POST /api/fuse/views — create a virtual view
+pub async fn create_view(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CreateViewRequest>,
+) -> impl IntoResponse {
+    if req.name.is_empty() || req.query.is_empty() {
+        return error_json(StatusCode::BAD_REQUEST, "name and query are required").into_response();
+    }
+    let refresh_secs = req.refresh_interval_secs.unwrap_or(300);
+    let def = fuse_engine::materialized::MaterializedViewDef {
+        name: req.name.clone(),
+        query: req.query.clone(),
+        refresh_interval: std::time::Duration::from_secs(refresh_secs),
+    };
+    state.view_registry.register(def);
+    (StatusCode::CREATED, Json(serde_json::json!({
+        "name": req.name,
+        "query": req.query,
+        "refresh_interval_secs": refresh_secs,
+    }))).into_response()
+}
+
+#[derive(Deserialize)]
+pub struct CreateViewRequest {
+    pub name: String,
+    pub query: String,
+    pub refresh_interval_secs: Option<u64>,
+}
+
+/// DELETE /api/fuse/views/:name — delete a virtual view
+pub async fn delete_view(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    if state.view_registry.remove(&name) {
+        (StatusCode::OK, Json(serde_json::json!({"deleted": name}))).into_response()
+    } else {
+        error_json(StatusCode::NOT_FOUND, format!("view '{}' not found", name)).into_response()
+    }
+}
+
 pub async fn list_views(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     #[derive(Serialize)]
     struct ViewInfo { name: String, stale: bool }
