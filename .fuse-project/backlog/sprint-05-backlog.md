@@ -12,14 +12,14 @@
 | 501 | Auth/RBAC: API key authentication | explorer | done | x-api-key + Bearer, Role enum, public path bypass, 401 JSON. Commit: 50669df |
 | 502 | Rate limiting per API key | explorer | done | PerKeyLimiter, 200 req/min default, global→IP→key chain. Commit: 84e6f33 |
 | 503 | Query timeout enforcement | planner | done | Per-connector 25s timeout on UNION ALL + JOIN tasks. Commit: 5ebf648 |
-| 504 | Connection pooling for all connectors | general | todo | Reuse connections, health checks, pool size config |
+| 504 | Connection pooling for all connectors | general | done | bb8 pool for Redis, pool config helpers, SDK-pooled connectors noted. Commit: 09052fc |
 | 505 | Graceful error handling for connector failures | planner | done | Already implemented — partial_errors + merge successful results |
 
 ## P0: Carried from Sprint 4
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 411 | Top-N / Bottom-N with pushdown | planner | todo | ORDER BY count DESC LIMIT 10 pushed to connectors |
+| 411 | Top-N / Bottom-N with pushdown | planner | done | ORDER BY + LIMIT pushed to sources, min(base, existing). Commit: 62b87c0 |
 | 412 | Approximate aggregations (HyperLogLog, t-digest) | planner | todo | Pushdown to OpenSearch native approximate aggs |
 | 423 | Saved queries / virtual views | planner | todo | CREATE VIEW unified_logs AS SELECT ... Virtual tables |
 | 323 | Pagination across UNION ALL (global cursor) | explorer | done | Per-source cursor encoding, backward compatible. Commit: 9ae3506 |

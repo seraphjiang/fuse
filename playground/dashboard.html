@@ -151,6 +151,9 @@ textarea{width:100%;min-height:60px;background:#0d1117;color:#e1e4e8;border:1px 
     <div class="form-row"><label>Width</label>
       <select id="p-width"><option value="3">3 cols (¼)</option><option value="4">4 cols (⅓)</option><option value="6" selected>6 cols (½)</option><option value="8">8 cols (⅔)</option><option value="12">12 cols (full)</option></select>
     </div>
+    <div class="form-row"><label>Alert Threshold (optional — draws line on chart)</label>
+      <input type="number" id="p-threshold" placeholder="e.g. 100" step="any">
+    </div>
     <div class="form-actions">
       <button onclick="closeModal()">Cancel</button>
       <button class="primary" onclick="savePanel()">Save</button>
@@ -481,6 +484,7 @@ function addPanel() {
   $('p-format').value = 'sql';
   $('p-chart').value = 'auto';
   $('p-width').value = '6';
+  $('p-threshold').value = '';
   $('panel-modal').classList.add('open');
 }
 
@@ -494,16 +498,19 @@ function editPanel(id) {
   $('p-format').value = p.format || 'sql';
   $('p-chart').value = p.chartType || 'auto';
   $('p-width').value = String(p.width || 6);
+  $('p-threshold').value = p.threshold != null ? p.threshold : '';
   $('panel-modal').classList.add('open');
 }
 
 function savePanel() {
+  const threshVal = $('p-threshold').value;
   const data = {
     title: $('p-title').value || 'Untitled',
     query: $('p-query').value,
     format: $('p-format').value,
     chartType: $('p-chart').value,
-    width: parseInt($('p-width').value) || 6
+    width: parseInt($('p-width').value) || 6,
+    threshold: threshVal !== '' ? parseFloat(threshVal) : null
   };
   if (editingPanelId) {
     const p = dashboard.panels.find(x => x.id === editingPanelId);

@@ -80,6 +80,28 @@ textarea#editor{background:transparent;color:#e1e4e8;caret-color:#e1e4e8;positio
   .results{max-height:50vh}
   #chart-container{height:300px}
 }
+/* Light theme */
+body.light{background:#fff;color:#1f2328}
+body.light header{background:#f6f8fa;border-color:#d1d9e0}
+body.light textarea{background:#fff;color:#1f2328;border-color:#d1d9e0}
+body.light .editor-highlight .kw{color:#cf222e}
+body.light .editor-highlight .fn{color:#8250df}
+body.light .editor-highlight .str{color:#0a3069}
+body.light .editor-highlight .num{color:#0550ae}
+body.light .editor-highlight .cm{color:#6e7781}
+body.light .editor-highlight .tbl{color:#116329}
+body.light select,body.light button{background:#f6f8fa;color:#1f2328;border-color:#d1d9e0}
+body.light .results{border-color:#d1d9e0}
+body.light th{background:#f6f8fa;color:#656d76;border-color:#d1d9e0}
+body.light td{border-color:#d1d9e0;color:#1f2328}
+body.light tr:hover td{background:#f6f8fa}
+body.light .plan-tree,body.light .plan,body.light #chart-container{background:#fff;border-color:#d1d9e0}
+body.light .error{background:#ffebe9;border-color:#cf222e33;color:#cf222e}
+body.light .empty{color:#656d76}
+body.light .meta{color:#656d76}
+body.light .ac-dropdown{background:#fff;border-color:#d1d9e0}
+body.light .ac-item:hover,body.light .ac-item.selected{background:#f6f8fa}
+body.light .ac-item .ac-label{color:#1f2328}
 .ac-wrap{position:relative}
 .ac-dropdown{display:none;position:absolute;z-index:60;background:#161b22;border:1px solid #30363d;border-radius:6px;max-height:200px;overflow-y:auto;min-width:220px;box-shadow:0 8px 24px rgba(0,0,0,.4);font-size:12px}
 .ac-dropdown.open{display:block}
@@ -176,6 +198,7 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
   <div style="display:flex;align-items:center;gap:16px">
     <a href="https://seraphjiang.github.io/fuse/" target="_blank" rel="noopener" style="color:#8b949e;font-size:13px;text-decoration:none" onmouseover="this.style.color='#58a6ff'" onmouseout="this.style.color='#8b949e'">📖 Docs</a>
     <a href="https://github.com/seraphjiang/fuse" target="_blank" rel="noopener" style="color:#8b949e;font-size:13px;text-decoration:none" onmouseover="this.style.color='#58a6ff'" onmouseout="this.style.color='#8b949e'">⭐ GitHub</a>
+    <button onclick="toggleTheme()" id="theme-btn" style="background:none;border:1px solid #30363d;padding:4px 8px;font-size:13px;cursor:pointer" title="Toggle theme">🌙</button>
     <div class="health" id="health">
       <span class="health-dot" id="health-dot"></span>
       <span id="health-text">connecting…</span>
@@ -840,6 +863,19 @@ document.addEventListener('keydown', e => {
   else if (mod && e.key === 's') { e.preventDefault(); /* save — future */ }
   else if (mod && e.shiftKey && e.key === 'V') { e.preventDefault(); validateQuery(); }
 });
+
+// === Theme Toggle ===
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('light');
+  localStorage.setItem('fuse-theme', isLight ? 'light' : 'dark');
+  $('theme-btn').textContent = isLight ? '☀️' : '🌙';
+}
+(function initTheme() {
+  if (localStorage.getItem('fuse-theme') === 'light') {
+    document.body.classList.add('light');
+    $('theme-btn').textContent = '☀️';
+  }
+})();
 
 checkHealth();
 loadDatasources();

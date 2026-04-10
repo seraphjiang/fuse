@@ -272,6 +272,18 @@ impl ConnectorFactory for MysqlConnectorFactory {
     }
 }
 
+/// Redshift is PostgreSQL-compatible — reuses SqlConnector with redshift connector_type.
+#[derive(Debug, Default)]
+pub struct RedshiftConnectorFactory;
+
+#[async_trait]
+impl ConnectorFactory for RedshiftConnectorFactory {
+    fn connector_type(&self) -> &str { "redshift" }
+    async fn create(&self, config: &ConnectorConfig) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
+        Ok(Arc::new(SqlConnector::from_config(config).await?))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
