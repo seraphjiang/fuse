@@ -30,7 +30,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 320 | Server-side cursor pagination (keyset-based) | planner | todo | Return cursor token, accept cursor in next request |
+| 320 | Server-side cursor pagination (keyset-based) | planner | done | cursor + page_size on request, next_cursor in response. Commit: 0965c50. 3 tests |
 | 321 | Multi-column ORDER BY with mixed ASC/DESC | planner | done | Vec<(String, bool)> parsing. Commit: 39ab5c5 |
 | 322 | OFFSET pushdown to connectors | planner | todo | Skip rows at source, not post-fetch |
 | 323 | Pagination across UNION ALL (global cursor) | planner | todo | Maintain per-source cursors, merge in order |
