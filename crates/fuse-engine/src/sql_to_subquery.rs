@@ -162,6 +162,11 @@ fn try_extract_agg(expr: &SqlExpr, alias: Option<String>) -> Option<AggregationE
         _ => return None,
     };
 
+    // Window functions (OVER clause) are not aggregations — pass through as projections
+    if f.over.is_some() {
+        return None;
+    }
+
     let func_name = f.name.to_string().to_lowercase();
     let is_distinct = matches!(
         &f.args,
@@ -1074,5 +1079,39 @@ mod tests {
         if let Some(f) = &sq.filter {
             assert!(matches!(f, FilterExpr::Comparison { field, .. } if field == "status"));
         }
+    }
+
+    #[test]
+    fn test_window_function_row_number() {
+        let sq = sql_to_subquery(
+            "SELECT host, status, ROW_NUMBER() OVER (PARTITION BY host ORDER BY status) AS rn FROM logs",
+        ).unwrap();
+        assert!(sq.projections.iter().any(|p| p.contains("ROW_NUMBER")));
+    }
+
+    #[test]
+    fn test_window_function_rank() {
+        let sq = sql_to_subquery(
+            "SELECT host, RANK() OVER (ORDER BY status DESC) AS rnk FROM logs",
+        ).unwrap();
+        assert!(sq.projections.iter().any(|p| p.contains("RANK")));
+    }
+
+    #[test]
+    fn test_window_function_lag_lead() {
+        let sq = sql_to_subquery(
+            "SELECT host, LAG(status, 1) OVER (ORDER BY timestamp) AS prev_status, LEAD(status, 1) OVER (ORDER BY timestamp) AS next_status FROM logs",
+        ).unwrap();
+        assert!(sq.projections.iter().any(|p| p.contains("LAG")));
+        assert!(sq.projections.iter().any(|p| p.contains("LEAD")));
+    }
+
+    #[test]
+    fn test_window_function_with_plain_columns() {
+        let sq = sql_to_subquery(
+            "SELECT host, status, SUM(bytes) OVER (PARTITION BY host) AS total_bytes FROM logs",
+        ).unwrap();
+        assert!(sq.projections.iter().any(|p| p == "host"));
+        assert!(sq.projections.iter().any(|p| p.contains("SUM")));
     }
 }

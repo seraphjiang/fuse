@@ -2846,3 +2846,62 @@ async fn test_cross_type_join_logs_profiles() {
     // Both have h1 and h2 — inner join should produce matches
     assert!(!rows.is_empty());
 }
+
+// ── #343 Cross-datasource GROUP BY verification (tester) ──
+
+#[tokio::test]
+async fn test_reaggregate_sums_counts_across_sources() {
+    // Each source has 2 rows → COUNT(*) per source = 2
+    // After reaggregation, each group should have count = 2+2 = 4 (or 2 if grouped by host)
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT host, COUNT(*) AS cnt FROM cluster_a.logs UNION ALL SELECT host, COUNT(*) AS cnt FROM cluster_b.logs GROUP BY host",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    let columns = json["columns"].as_array().unwrap();
+    let cnt_idx = columns.iter().position(|c| c == "cnt").unwrap();
+    // Each group's count should be > 1 (merged from 2 sources)
+    for row in rows {
+        let cnt: f64 = row[cnt_idx].as_f64().unwrap();
+        assert!(cnt >= 2.0, "merged count should be >= 2, got {}", cnt);
+    }
+}
+
+#[tokio::test]
+async fn test_reaggregate_produces_correct_group_count() {
+    // Mock has h1 and h2 → GROUP BY host should produce exactly 2 groups
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT host, COUNT(*) AS cnt FROM cluster_a.logs UNION ALL SELECT host, COUNT(*) AS cnt FROM cluster_b.logs GROUP BY host",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2, "should have exactly 2 groups (h1, h2)");
+    let columns = json["columns"].as_array().unwrap();
+    let host_idx = columns.iter().position(|c| c == "host").unwrap();
+    let hosts: Vec<&str> = rows.iter().filter_map(|r| r[host_idx].as_str()).collect();
+    assert!(hosts.contains(&"h1"));
+    assert!(hosts.contains(&"h2"));
+}
+
+#[tokio::test]
+async fn test_reaggregate_three_sources() {
+    let (status, json) = post_query(
+        build_three_source_app(),
+        "SELECT host, COUNT(*) AS cnt FROM opensearch_logs.logs UNION ALL SELECT host, COUNT(*) AS cnt FROM s3_logs.logs UNION ALL SELECT host, COUNT(*) AS cnt FROM cloudwatch_logs.logs GROUP BY host",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    // Should merge across 3 sources, not 6 rows
+    assert_eq!(rows.len(), 2, "3-source GROUP BY should still produce 2 groups");
+    let columns = json["columns"].as_array().unwrap();
+    let cnt_idx = columns.iter().position(|c| c == "cnt").unwrap();
+    for row in rows {
+        let cnt: f64 = row[cnt_idx].as_f64().unwrap();
+        assert!(cnt >= 3.0, "3-source merged count should be >= 3, got {}", cnt);
+    }
+}
