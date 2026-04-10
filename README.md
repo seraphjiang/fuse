@@ -19,7 +19,7 @@ Fuse federates queries across 14 connectors from a single SQL or PPL query. Join
 - **Cost estimator** — pre-execution estimated_rows and estimated_cost per plan node
 - **PPL support** — pipe-delimited query language with `lookup` for cross-source enrichment
 - **EXPLAIN / EXPLAIN ANALYZE** — inspect federated query plans and execution stats
-- **845+ tests** — unit, integration, E2E, and performance regression suite
+- **980+ tests** — unit, integration, E2E, and performance regression suite
 
 ## Architecture
 

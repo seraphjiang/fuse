@@ -8,6 +8,22 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-04-10
+
+### Added
+
+**Docs & Community**
+- Connector development guide: end-to-end tutorial with FilterExpr translation, SDK testing, MockConnector
+- Dashboard user guide: 12 chart types, auto-detection, variables, drill-down, templates, save/share/export
+- Performance tuning guide: pushdown tables, JOIN optimization, caching TTLs, server config, cost estimator
+- Migration guide: OpenSearch Query DSL → Fuse SQL/PPL translation tables, dashboard migration
+- API reference guide: all 19 endpoints with curl examples and request/response JSON
+- CONTRIBUTING.md rewrite: dev setup, naming conventions, commit format, PR process, chart/connector contribution
+- Docs-site: 5 new pages with organized navigation (User Guide, API, Developer sections)
+
+### Tests
+- 983 tests (up from 904 in v0.4.0), 0 failures
+
 ## [0.4.0] — 2026-04-10
 
 ### Added
@@ -226,6 +242,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+[0.5.0]: https://github.com/seraphjiang/fuse/releases/tag/v0.5.0
 [0.4.0]: https://github.com/seraphjiang/fuse/releases/tag/v0.4.0
 [0.3.0]: https://github.com/seraphjiang/fuse/releases/tag/v0.3.0
 [0.2.0]: https://github.com/seraphjiang/fuse/releases/tag/v0.2.0
