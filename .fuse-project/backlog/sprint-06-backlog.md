@@ -18,8 +18,8 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 600 | Fix InfluxDB injection vulnerability | general | todo | Add quote escaping to InfluxQL + Flux filter paths |
-| 601 | Fix Prometheus injection vulnerability | general | todo | Escape single quotes in PromQL label values |
+| 600 | Fix InfluxDB injection vulnerability | tester | done | InfluxQL + Flux escaping added. 2 verification tests. Commit: 7299482 |
+| 601 | Fix Prometheus injection vulnerability | tester | done | Already had sanitize_promql_value(). 3 verification tests. Commit: 7299482 |
 
 ## P1: AI Integration
 
