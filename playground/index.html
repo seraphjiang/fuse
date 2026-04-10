@@ -192,9 +192,93 @@ body.light .ac-item .ac-label{color:#1f2328}
 .help-item code{color:#e1e4e8;background:#21262d;padding:1px 4px;border-radius:3px;font-size:12px}
 .help-item strong{color:#e1e4e8;font-weight:500}
 kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5px;font-size:11px;color:#e1e4e8;font-family:inherit}
+/* Onboarding */
+.onboard-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:flex;align-items:center;justify-content:center}
+.onboard-overlay.hidden{display:none}
+.onboard{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:32px;max-width:520px;width:90%;text-align:center;box-shadow:0 16px 48px rgba(0,0,0,.5)}
+.onboard h2{font-size:24px;color:#58a6ff;margin-bottom:4px}
+.onboard .subtitle{color:#8b949e;font-size:14px;margin-bottom:20px}
+.onboard .features{text-align:left;margin:0 auto 20px;max-width:400px}
+.onboard .feat{display:flex;gap:10px;padding:8px 0;font-size:13px;color:#e1e4e8}
+.onboard .feat-icon{font-size:20px;flex-shrink:0}
+.onboard .feat-text span{display:block;font-size:11px;color:#8b949e;margin-top:2px}
+.onboard .step-content{min-height:80px;padding:12px 0;font-size:13px;color:#8b949e;text-align:left}
+.onboard .step-content h3{color:#e1e4e8;font-size:14px;margin-bottom:6px}
+.onboard .steps{display:flex;gap:0;margin-bottom:16px;justify-content:center}
+.onboard .step{padding:6px 14px;font-size:12px;color:#8b949e;border-bottom:2px solid transparent;cursor:pointer}
+.onboard .step.active{color:#58a6ff;border-bottom-color:#58a6ff}
+.onboard .actions{display:flex;gap:8px;justify-content:center;margin-top:16px}
+.onboard .actions button{padding:8px 20px;font-size:13px;border-radius:6px}
 </style>
 </head>
 <body>
+
+<!-- Onboarding overlay -->
+<div class="onboard-overlay" id="onboarding">
+  <div class="onboard">
+    <div id="ob-page-0">
+      <h2>Welcome to Fuse</h2>
+      <div class="subtitle">Federated query engine for all your data</div>
+      <div class="features">
+        <div class="feat"><span class="feat-icon">🔗</span><div class="feat-text"><strong>Query across datasources</strong><span>SQL and PPL across OpenSearch, S3, DynamoDB, PostgreSQL, and 10+ connectors</span></div></div>
+        <div class="feat"><span class="feat-icon">📊</span><div class="feat-text"><strong>Instant visualization</strong><span>12 chart types with auto-detection — line, bar, pie, heatmap, Sankey, and more</span></div></div>
+        <div class="feat"><span class="feat-icon">🖥️</span><div class="feat-text"><strong>Dashboard builder</strong><span>Build, save, and share multi-panel dashboards with templates and variables</span></div></div>
+      </div>
+      <div class="actions">
+        <button onclick="obNext()" class="primary">Take a Quick Tour →</button>
+        <button onclick="obTryNow()">Try It Now</button>
+        <button onclick="obDismiss()" style="color:#8b949e">Skip</button>
+      </div>
+    </div>
+    <div id="ob-page-1" style="display:none">
+      <div class="steps">
+        <span class="step active" onclick="obGo(1)">1. Playground</span>
+        <span class="step" onclick="obGo(2)">2. Dashboard</span>
+        <span class="step" onclick="obGo(3)">3. Explore</span>
+      </div>
+      <div class="step-content">
+        <h3>🔬 Playground</h3>
+        <p>Write SQL or PPL queries with syntax highlighting and autocomplete. Results appear as tables or charts — the engine auto-detects the best visualization.</p>
+        <p>Try <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to run, or click 🎲 Feeling Lucky for a random query.</p>
+      </div>
+      <div class="actions">
+        <button onclick="obGo(2)" class="primary">Next →</button>
+        <button onclick="obDismiss()" style="color:#8b949e">Skip tour</button>
+      </div>
+    </div>
+    <div id="ob-page-2" style="display:none">
+      <div class="steps">
+        <span class="step" onclick="obGo(1)">1. Playground</span>
+        <span class="step active" onclick="obGo(2)">2. Dashboard</span>
+        <span class="step" onclick="obGo(3)">3. Explore</span>
+      </div>
+      <div class="step-content">
+        <h3>📊 Dashboard</h3>
+        <p>Build multi-panel dashboards with any query. Resize, reorder, and drag panels. Set alert thresholds, use variables for dynamic filtering, and share via URL.</p>
+        <p>Start with a pre-built template: Error Analysis, Trace Correlation, or Capacity.</p>
+      </div>
+      <div class="actions">
+        <button onclick="obGo(3)" class="primary">Next →</button>
+        <button onclick="obDismiss()" style="color:#8b949e">Skip tour</button>
+      </div>
+    </div>
+    <div id="ob-page-3" style="display:none">
+      <div class="steps">
+        <span class="step" onclick="obGo(1)">1. Playground</span>
+        <span class="step" onclick="obGo(2)">2. Dashboard</span>
+        <span class="step active" onclick="obGo(3)">3. Explore</span>
+      </div>
+      <div class="step-content">
+        <h3>🔍 Explore</h3>
+        <p>Quick visualization from any query. See column types, pick a chart, preview data — then send it straight to a dashboard panel with one click.</p>
+      </div>
+      <div class="actions">
+        <button onclick="obTryNow()" class="primary">🚀 Try It Now</button>
+        <button onclick="obDismiss()">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <header>
   <div style="display:flex;align-items:center;gap:16px">
@@ -919,6 +1003,23 @@ document.addEventListener('keydown', e => {
   else if (mod && e.key === 's') { e.preventDefault(); /* save — future */ }
   else if (mod && e.shiftKey && e.key === 'V') { e.preventDefault(); validateQuery(); }
 });
+
+// === Onboarding ===
+const OB_KEY = 'fuse-onboarded';
+function obShow() { if (!localStorage.getItem(OB_KEY)) $('onboarding').classList.remove('hidden'); else $('onboarding').classList.add('hidden'); }
+function obDismiss() { localStorage.setItem(OB_KEY, '1'); $('onboarding').classList.add('hidden'); }
+function obNext() { obGo(1); }
+function obGo(page) {
+  for (let i = 0; i <= 3; i++) { const el = document.getElementById('ob-page-' + i); if (el) el.style.display = i === page ? '' : 'none'; }
+}
+function obTryNow() {
+  obDismiss();
+  $('editor').value = "SELECT service, count(*) as errors\nFROM cluster_a.application_logs\nWHERE status >= 500\nGROUP BY service\nORDER BY errors DESC";
+  $('format').value = 'sql';
+  syncHighlight();
+  runQuery();
+}
+obShow();
 
 // === Theme Toggle ===
 function toggleTheme() {
