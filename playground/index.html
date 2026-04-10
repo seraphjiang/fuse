@@ -146,7 +146,7 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
           <div class="demo-title">🔗 Cross-Cluster Trace Correlation</div>
           <div class="demo-desc">JOIN logs from two OpenSearch clusters on trace_id to find correlated errors</div>
         </div>
-        <div class="demo-item" onclick="loadDemo('sql','SELECT _datasource, service, count(*) as errors FROM cluster_a.application_logs UNION ALL SELECT _datasource, service, count(*) as errors FROM cluster_b.application_logs UNION ALL SELECT _datasource, service, count(*) as errors FROM s3_o11y.fuse_logs GROUP BY _datasource, service ORDER BY errors DESC LIMIT 30','Unified Log View')">
+        <div class="demo-item" onclick="loadDemo('sql','SELECT _datasource, service, count(*) as errors FROM cluster_a.application_logs UNION ALL SELECT _datasource, service, count(*) as errors FROM cluster_b.application_logs UNION ALL SELECT _datasource, service, count(*) as errors FROM s3_o11y.logs GROUP BY _datasource, service ORDER BY errors DESC LIMIT 30','Unified Log View')">
           <div class="demo-title">📊 Unified Log View (OS + S3)</div>
           <div class="demo-desc">UNION ALL across OpenSearch clusters and S3 O11y logs with provenance</div>
         </div>
@@ -154,7 +154,7 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
           <div class="demo-title">🔥 Error Hotspots (PPL)</div>
           <div class="demo-desc">Aggregate errors by service across both clusters using PPL multi-source</div>
         </div>
-        <div class="demo-item" onclick="loadDemo('sql','SELECT l.trace_id, l.service, l.status, s.message as s3_msg FROM cluster_a.application_logs l JOIN s3_o11y.fuse_logs s ON l.trace_id = s.trace_id WHERE l.status >= 500 LIMIT 20','OS + S3 Enrichment')">
+        <div class="demo-item" onclick="loadDemo('sql','SELECT l.trace_id, l.service, l.status, s.message as s3_msg FROM cluster_a.application_logs l JOIN s3_o11y.logs s ON l.trace_id = s.trace_id WHERE l.status >= 500 LIMIT 20','OS + S3 Enrichment')">
           <div class="demo-title">🔍 Log Enrichment (OpenSearch + S3)</div>
           <div class="demo-desc">JOIN OpenSearch errors with S3 O11y logs to enrich with additional context</div>
         </div>
@@ -196,8 +196,8 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
         <div class="example" onclick="loadExample('sql','SELECT service, status, message FROM cluster_a.application_logs UNION ALL SELECT service, status, message FROM cluster_b.application_logs LIMIT 20')"><span class="example-badge badge-sql">SQL</span><span class="example-label">Federated UNION ALL</span><span class="example-query">SELECT ... UNION ALL SELECT ... LIMIT 20</span></div>
       </div>
       <div class="doc-section"><h4>Cross-Datasource (OS + S3)</h4>
-        <div class="example" onclick="loadExample('sql','SELECT * FROM s3_o11y.fuse_logs LIMIT 20')"><span class="example-badge badge-sql">SQL</span><span class="example-label">Browse S3 O11y logs</span><span class="example-query">SELECT * FROM s3_o11y.fuse_logs LIMIT 20</span></div>
-        <div class="example" onclick="loadExample('sql',`SELECT l.trace_id, l.service, l.status, s.level, s.message FROM cluster_a.application_logs l JOIN s3_o11y.fuse_logs s ON l.trace_id = s.trace_id WHERE l.status >= 500`)"><span class="example-badge badge-sql">SQL</span><span class="example-label">Trace correlation JOIN</span><span class="example-query">... JOIN s3_o11y.fuse_logs ON trace_id WHERE status >= 500</span></div>
+        <div class="example" onclick="loadExample('sql','SELECT * FROM s3_o11y.logs LIMIT 20')"><span class="example-badge badge-sql">SQL</span><span class="example-label">Browse S3 O11y logs</span><span class="example-query">SELECT * FROM s3_o11y.logs LIMIT 20</span></div>
+        <div class="example" onclick="loadExample('sql',`SELECT l.trace_id, l.service, l.status, s.level, s.message FROM cluster_a.application_logs l JOIN s3_o11y.logs s ON l.trace_id = s.trace_id WHERE l.status >= 500`)"><span class="example-badge badge-sql">SQL</span><span class="example-label">Trace correlation JOIN</span><span class="example-query">... JOIN s3_o11y.logs ON trace_id WHERE status >= 500</span></div>
       </div>
     </div>
 
@@ -318,6 +318,16 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
       <button class="active" onclick="setView('table')">Table</button>
       <button onclick="setView('chart')">Chart</button>
     </div>
+    <select id="chart-type" style="display:none" onchange="onChartTypeChange()">
+      <option value="auto">Auto</option>
+      <option value="line">Line</option>
+      <option value="bar">Bar</option>
+      <option value="stacked-bar">Stacked Bar</option>
+      <option value="pie">Pie</option>
+      <option value="area">Area</option>
+      <option value="scatter">Scatter</option>
+      <option value="histogram">Histogram</option>
+    </select>
   </div>
   <div class="provenance" id="provenance"></div>
   <div class="results" id="results"><div class="empty">Run a query to see results — or open <strong>Examples &amp; Help</strong> above</div></div>
