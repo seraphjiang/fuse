@@ -2609,3 +2609,118 @@ async fn test_cost_estimate_single_source_no_parent() {
     assert_eq!(nodes[0]["op"], "RemoteScan");
     assert!(nodes[0]["children"].as_array().map_or(true, |c| c.is_empty()));
 }
+
+// ── #340 Hash join optimization verification (tester) ──
+
+/// Mock connector with configurable row count for asymmetric join testing.
+#[derive(Debug)]
+struct SizedMockConnector { id: String, rows: usize }
+
+#[async_trait]
+impl FederatedConnector for SizedMockConnector {
+    fn id(&self) -> &str { &self.id }
+    fn connector_type(&self) -> &str { "mock" }
+    fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+    async fn health_check(&self) -> ConnectorHealth {
+        ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(1), message: None }
+    }
+    async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
+        Ok(vec![SchemaInfo { name: "logs".into(), schema_type: SchemaType::Index, estimated_row_count: Some(self.rows as u64) }])
+    }
+    async fn get_schema(&self, _: &str) -> Result<Schema, ConnectorError> {
+        Ok(Schema::new(vec![
+            Field::new("host", DataType::Utf8, false),
+            Field::new("status", DataType::Int64, false),
+        ]))
+    }
+    async fn execute(&self, _: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("host", DataType::Utf8, false),
+            Field::new("status", DataType::Int64, false),
+        ]));
+        let hosts: Vec<String> = (0..self.rows).map(|i| format!("h{}", i % 3)).collect();
+        let statuses: Vec<i64> = (0..self.rows).map(|i| if i % 2 == 0 { 200 } else { 500 }).collect();
+        let batch = RecordBatch::try_new(schema, vec![
+            Arc::new(StringArray::from(hosts.iter().map(|s| s.as_str()).collect::<Vec<_>>())),
+            Arc::new(Int64Array::from(statuses)),
+        ]).map_err(ConnectorError::query)?;
+        Ok(vec![batch])
+    }
+    async fn execute_streaming(&self, q: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>) -> Result<(), ConnectorError> {
+        for b in self.execute(q).await? { tx.send(Ok(b)).await.map_err(|_| ConnectorError::ChannelClosed)?; }
+        Ok(())
+    }
+}
+
+fn build_asymmetric_app() -> axum::Router {
+    use fuse_server::api::{AppState, RunningQueries};
+    use fuse_core::registry::ConnectorRegistry;
+    let registry = ConnectorRegistry::new();
+    // big_ds: 10 rows, small_ds: 2 rows
+    registry.register(Arc::new(SizedMockConnector { id: "big_ds".into(), rows: 10 })).unwrap();
+    registry.register(Arc::new(SizedMockConnector { id: "small_ds".into(), rows: 2 })).unwrap();
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(fuse_server::history::QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+    });
+    fuse_server::build_router(state)
+}
+
+#[tokio::test]
+async fn test_join_smaller_table_is_build_side() {
+    let (status, json) = post_query_analyze(
+        build_asymmetric_app(),
+        "SELECT * FROM big_ds.logs JOIN small_ds.logs ON big_ds.logs.host = small_ds.logs.host",
+        "sql",
+        true,
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let join_node = &json["execution_profile"]["nodes"][0];
+    assert_eq!(join_node["op"], "HashJoin");
+    let children = join_node["children"].as_array().unwrap();
+    // Find which child is build side
+    let build_child = children.iter().find(|c| {
+        c["pushdown"].as_array().map_or(false, |p| p.iter().any(|v| v.as_str().unwrap_or("").contains("build side")))
+    }).expect("no build side found");
+    let probe_child = children.iter().find(|c| {
+        c["pushdown"].as_array().map_or(false, |p| p.iter().any(|v| v.as_str().unwrap_or("").contains("probe side")))
+    }).expect("no probe side found");
+    // Build side should have fewer rows than probe side
+    let build_rows = build_child["actual_rows"].as_u64().unwrap();
+    let probe_rows = probe_child["actual_rows"].as_u64().unwrap();
+    assert!(build_rows <= probe_rows, "build side ({}) should be <= probe side ({})", build_rows, probe_rows);
+}
+
+#[tokio::test]
+async fn test_join_build_side_is_small_ds() {
+    let (status, json) = post_query_analyze(
+        build_asymmetric_app(),
+        "SELECT * FROM big_ds.logs JOIN small_ds.logs ON big_ds.logs.host = small_ds.logs.host",
+        "sql",
+        true,
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let children = json["execution_profile"]["nodes"][0]["children"].as_array().unwrap();
+    let build_child = children.iter().find(|c| {
+        c["pushdown"].as_array().map_or(false, |p| p.iter().any(|v| v.as_str().unwrap_or("").contains("build side")))
+    }).unwrap();
+    assert_eq!(build_child["datasource"], "small_ds", "smaller table should be build side");
+}
+
+#[tokio::test]
+async fn test_join_produces_rows() {
+    let (status, json) = post_query_analyze(
+        build_asymmetric_app(),
+        "SELECT * FROM big_ds.logs JOIN small_ds.logs ON big_ds.logs.host = small_ds.logs.host",
+        "sql",
+        true,
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let join_node = &json["execution_profile"]["nodes"][0];
+    assert!(join_node["actual_rows"].as_u64().unwrap() > 0, "join should produce rows");
+}

@@ -34,6 +34,10 @@ use crate::cost::{estimate_remote_cost, CostEstimate, QueryWorkload, TableStats}
 pub enum JoinType {
     Inner,
     Left,
+    /// Semi-join: return left rows that have a match in right (EXISTS)
+    Semi,
+    /// Anti-join: return left rows that have NO match in right (NOT EXISTS)
+    Anti,
 }
 
 /// Strategy chosen by the planner.
@@ -193,7 +197,7 @@ pub fn hash_join(
 
     for probe_row in 0..probe_merged.num_rows() {
         if probe_col.is_null(probe_row) {
-            if join_type == JoinType::Left {
+            if join_type == JoinType::Left || join_type == JoinType::Anti {
                 build_indices.push(None);
                 probe_indices.push(probe_row as u32);
             }
@@ -203,18 +207,42 @@ pub fn hash_join(
             .unwrap_or_default();
         match hash_table.get(&key) {
             Some(build_rows) => {
-                for &br in build_rows {
-                    build_indices.push(Some(br));
-                    probe_indices.push(probe_row as u32);
+                match join_type {
+                    JoinType::Semi => {
+                        // Emit probe row once (no build columns)
+                        probe_indices.push(probe_row as u32);
+                    }
+                    JoinType::Anti => {
+                        // Has match — skip (anti-join excludes matches)
+                    }
+                    _ => {
+                        for &br in build_rows {
+                            build_indices.push(Some(br));
+                            probe_indices.push(probe_row as u32);
+                        }
+                    }
                 }
             }
             None => {
-                if join_type == JoinType::Left {
+                if join_type == JoinType::Left || join_type == JoinType::Anti {
                     build_indices.push(None);
                     probe_indices.push(probe_row as u32);
                 }
             }
         }
+    }
+
+    // Semi/Anti joins return only probe-side columns
+    if join_type == JoinType::Semi || join_type == JoinType::Anti {
+        let probe_idx_array = UInt32Array::from(probe_indices);
+        let mut output_columns: Vec<ArrayRef> = Vec::new();
+        for col_idx in 0..probe_merged.num_columns() {
+            let col = probe_merged.column(col_idx);
+            let gathered = take(col.as_ref(), &probe_idx_array, None)?;
+            output_columns.push(gathered);
+        }
+        let result = RecordBatch::try_new(probe_schema.clone(), output_columns)?;
+        return Ok(vec![result]);
     }
 
     // Assemble output: build columns (with nulls for unmatched left joins) + probe columns
@@ -532,5 +560,27 @@ mod tests {
         let probe = probe_batch(&["a", "b"], &["alice", "bob"]);
         let result = hash_join(&[], "id", &[probe], "id", JoinType::Left).unwrap();
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_semi_join() {
+        let build = build_batch(&["a", "c"], &[100, 300]);
+        let probe = probe_batch(&["a", "b", "d"], &["alice", "bob", "dave"]);
+        let result = hash_join(&[build], "id", &[probe], "id", JoinType::Semi).unwrap();
+        assert_eq!(result.len(), 1);
+        // Only probe row "a" matches — should return 1 row with probe columns only
+        assert_eq!(result[0].num_rows(), 1);
+        assert_eq!(result[0].num_columns(), 2); // id + name (probe schema)
+    }
+
+    #[test]
+    fn test_anti_join() {
+        let build = build_batch(&["a", "c"], &[100, 300]);
+        let probe = probe_batch(&["a", "b", "d"], &["alice", "bob", "dave"]);
+        let result = hash_join(&[build], "id", &[probe], "id", JoinType::Anti).unwrap();
+        assert_eq!(result.len(), 1);
+        // Probe rows "b" and "d" have no match — should return 2 rows
+        assert_eq!(result[0].num_rows(), 2);
+        assert_eq!(result[0].num_columns(), 2); // probe schema only
     }
 }
