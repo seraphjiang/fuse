@@ -10,6 +10,7 @@ members = [
     "crates/fuse-connectors/cloudwatch",
     "crates/fuse-connectors/csv-json",
     "crates/fuse-connectors/redis",
+    "crates/fuse-connectors/dynamodb",
     "crates/fuse-connector-sdk",
     "crates/fuse-server",
 ]

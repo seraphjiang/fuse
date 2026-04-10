@@ -2724,3 +2724,31 @@ async fn test_join_produces_rows() {
     let join_node = &json["execution_profile"]["nodes"][0];
     assert!(join_node["actual_rows"].as_u64().unwrap() > 0, "join should produce rows");
 }
+
+// ── Correlated subquery tests ──
+
+#[tokio::test]
+async fn test_in_subquery_resolves() {
+    // WHERE host IN (SELECT host FROM cluster_b.logs) should resolve the inner query
+    // and substitute with literal values
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs WHERE host IN (SELECT host FROM cluster_b.logs)",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    // Both sources have same hosts (h1, h2), so all cluster_a rows should match
+    assert!(!rows.is_empty());
+}
+
+#[tokio::test]
+async fn test_query_without_in_subquery_unchanged() {
+    // Regular query should work as before
+    let (status, _) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs WHERE host IN ('h1', 'h2')",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+}

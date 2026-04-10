@@ -1142,6 +1142,7 @@ fn extract_in_subqueries(query: &str) -> Vec<InSubquery> {
     results
 }
 
+#[allow(dead_code)]
 struct InSubquery {
     outer_column: String,
     datasource: String,

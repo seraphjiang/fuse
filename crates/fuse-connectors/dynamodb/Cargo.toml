@@ -1,0 +1,18 @@
+[package]
+name = "fuse-connector-dynamodb"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "DynamoDB connector for the Fuse federated query engine"
+
+[dependencies]
+fuse-core = { path = "../../fuse-core" }
+arrow = { workspace = true }
+aws-sdk-dynamodb = { workspace = true }
+aws-config = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
