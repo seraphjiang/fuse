@@ -66,6 +66,6 @@ region = "us-west-2"
 [[connector]]
 id = "s3_demo"
 type = "csv-json"
-bucket = "fuse-demo-data-544277935543"
+bucket = "fuse-demo-544277935543"
 prefix = ""
 region = "us-west-2"
