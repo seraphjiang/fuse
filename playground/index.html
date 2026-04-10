@@ -23,6 +23,16 @@ button.primary{background:#238636;border-color:#238636;font-weight:600}
 button.primary:hover{background:#2ea043}
 button.lucky{background:#6e40c9;border-color:#6e40c9;font-weight:600}
 button.lucky:hover{background:#8957e5}
+.demo-dropdown{position:relative;display:inline-block}
+.demo-btn{background:#1a5c2a;border-color:#1a5c2a;color:#fff;font-weight:600;padding:6px 12px;font-size:13px;border-radius:6px;cursor:pointer}
+.demo-btn:hover{background:#238636}
+.demo-menu{display:none;position:absolute;top:100%;left:0;z-index:10;background:#161b22;border:1px solid #30363d;border-radius:6px;min-width:360px;max-height:320px;overflow-y:auto;margin-top:4px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.demo-menu.open{display:block}
+.demo-item{padding:8px 12px;cursor:pointer;border-bottom:1px solid #21262d}
+.demo-item:hover{background:#21262d}
+.demo-item:last-child{border-bottom:none}
+.demo-title{font-size:12px;font-weight:600;color:#58a6ff}
+.demo-desc{font-size:11px;color:#8b949e;margin-top:2px}
 button:disabled{opacity:.5;cursor:not-allowed}
 textarea{width:100%;min-height:120px;background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:"SF Mono",Consolas,monospace;font-size:14px;resize:vertical;line-height:1.5}
 textarea:focus{outline:none;border-color:#58a6ff}
@@ -121,6 +131,35 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
     <button class="primary" id="run-btn" onclick="runQuery()">▶ Run</button>
     <label class="analyze-label"><input type="checkbox" id="analyze-cb"> Analyze</label>
     <button class="lucky" id="lucky-btn" onclick="feelingLucky()">🎲 Feeling Lucky</button>
+    <div class="demo-dropdown">
+      <button class="demo-btn" onclick="toggleDemos()">🎬 Demos ▾</button>
+      <div class="demo-menu" id="demo-menu">
+        <div class="demo-item" onclick="loadDemo('sql','SELECT a.service, a.status, a.message, b.service as b_service, b.status as b_status FROM cluster_a.application_logs a JOIN cluster_b.application_logs b ON a.trace_id = b.trace_id WHERE a.status >= 500 LIMIT 20','Cross-Cluster Trace Correlation')">
+          <div class="demo-title">🔗 Cross-Cluster Trace Correlation</div>
+          <div class="demo-desc">JOIN logs from two OpenSearch clusters on trace_id to find correlated errors</div>
+        </div>
+        <div class="demo-item" onclick="loadDemo('sql','SELECT _datasource, service, count(*) as errors FROM cluster_a.application_logs UNION ALL SELECT _datasource, service, count(*) as errors FROM cluster_b.application_logs UNION ALL SELECT _datasource, service, count(*) as errors FROM s3_o11y.fuse_logs GROUP BY _datasource, service ORDER BY errors DESC LIMIT 30','Unified Log View')">
+          <div class="demo-title">📊 Unified Log View (OS + S3)</div>
+          <div class="demo-desc">UNION ALL across OpenSearch clusters and S3 O11y logs with provenance</div>
+        </div>
+        <div class="demo-item" onclick="loadDemo('ppl','source = cluster_a.application_logs, cluster_b.application_logs | where status >= 500 | stats count() as errors by service | sort - errors | head 10','Error Hotspots')">
+          <div class="demo-title">🔥 Error Hotspots (PPL)</div>
+          <div class="demo-desc">Aggregate errors by service across both clusters using PPL multi-source</div>
+        </div>
+        <div class="demo-item" onclick="loadDemo('sql','SELECT l.trace_id, l.service, l.status, s.message as s3_msg FROM cluster_a.application_logs l JOIN s3_o11y.fuse_logs s ON l.trace_id = s.trace_id WHERE l.status >= 500 LIMIT 20','OS + S3 Enrichment')">
+          <div class="demo-title">🔍 Log Enrichment (OpenSearch + S3)</div>
+          <div class="demo-desc">JOIN OpenSearch errors with S3 O11y logs to enrich with additional context</div>
+        </div>
+        <div class="demo-item" onclick="loadDemo('ppl','source = cluster_a.application_logs | stats avg(response_time_ms) as avg_ms, max(response_time_ms) as max_ms, count() as total by service | sort - avg_ms | head 10','Latency Analysis')">
+          <div class="demo-title">⏱️ Latency Analysis</div>
+          <div class="demo-desc">Average and max response times by service with PPL aggregation</div>
+        </div>
+        <div class="demo-item" onclick="loadDemo('sql','SELECT service, COUNT(DISTINCT trace_id) as unique_traces, COUNT(*) as total_events, AVG(response_time_ms) as avg_latency FROM cluster_a.application_logs WHERE status >= 400 GROUP BY service ORDER BY unique_traces DESC','Trace Cardinality')">
+          <div class="demo-title">📈 Trace Cardinality</div>
+          <div class="demo-desc">COUNT(DISTINCT) traces per service with average latency — uses cardinality pushdown</div>
+        </div>
+      </div>
+    </div>
     <button id="explain-btn" onclick="explainQuery()">Explain</button>
     <button id="validate-btn" onclick="validateQuery()">Validate</button>
     <button class="help-toggle" onclick="toggleHelp()">📖 Docs &amp; Examples ▾</button>
@@ -324,6 +363,17 @@ function switchTab(name) {
   event.target.classList.add('active');
   $('tab-' + name).classList.add('active');
 }
+
+function toggleDemos() { $('demo-menu').classList.toggle('open'); }
+function loadDemo(fmt, query) {
+  $('format').value = fmt;
+  $('editor').value = query;
+  $('demo-menu').classList.remove('open');
+  runQuery();
+}
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.demo-dropdown')) { var m = $('demo-menu'); if (m) m.classList.remove('open'); }
+});
 
 async function loadHistory() {
   const el = $('history-list');
