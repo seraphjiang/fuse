@@ -75,6 +75,13 @@ textarea{width:100%;min-height:60px;background:#0d1117;color:#e1e4e8;border:1px 
     <button onclick="showTemplates()">📋 Templates</button>
     <button onclick="showImport()">📂 Load</button>
     <button onclick="exportDashboard()">💾 Save</button>
+    <button onclick="shareDashboard()">🔗 Share</button>
+    <button onclick="showExportMenu(event)">⬇ Export ▾</button>
+    <div id="export-menu" style="display:none;position:absolute;right:24px;top:48px;background:#161b22;border:1px solid #30363d;border-radius:6px;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,.4)">
+      <div style="padding:6px 12px;cursor:pointer;font-size:13px;color:#e1e4e8" onmouseover="this.style.background='#21262d'" onmouseout="this.style.background=''" onclick="exportPNG()">📷 Export PNG</div>
+      <div style="padding:6px 12px;cursor:pointer;font-size:13px;color:#e1e4e8" onmouseover="this.style.background='#21262d'" onmouseout="this.style.background=''" onclick="exportCSV()">📄 Export CSV</div>
+      <div style="padding:6px 12px;cursor:pointer;font-size:13px;color:#e1e4e8" onmouseover="this.style.background='#21262d'" onmouseout="this.style.background=''" onclick="exportPDF()">🖨 Print / PDF</div>
+    </div>
     <select id="dashboard-list" onchange="loadDashboard(this.value)">
       <option value="">— Saved Dashboards —</option>
     </select>
@@ -647,9 +654,97 @@ function loadTemplate(idx) {
   renderGrid();
 }
 
+// === Sharing & Export (#446) ===
+function shareDashboard() {
+  const compressed = btoa(JSON.stringify(dashboard));
+  const url = window.location.origin + '/dashboard#d=' + encodeURIComponent(compressed);
+  navigator.clipboard.writeText(url).then(() => alert('Dashboard URL copied to clipboard!')).catch(() => {
+    prompt('Copy this URL:', url);
+  });
+}
+
+function loadFromURL() {
+  const hash = window.location.hash;
+  if (!hash.startsWith('#d=')) return false;
+  try {
+    const json = atob(decodeURIComponent(hash.slice(3)));
+    const d = JSON.parse(json);
+    if (d.panels && Array.isArray(d.panels)) {
+      dashboard = d;
+      dashboard.panels.forEach(p => { if (!p.id) p.id = genId(); });
+      $('time-range').value = dashboard.timeRange || '1h';
+      $('refresh-interval').value = String(dashboard.refreshInterval || 0);
+      onRefreshChange();
+      return true;
+    }
+  } catch { /* ignore bad hash */ }
+  return false;
+}
+
+function showExportMenu(e) {
+  e.stopPropagation();
+  const m = $('export-menu');
+  m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', () => { $('export-menu').style.display = 'none'; });
+
+function exportPNG() {
+  $('export-menu').style.display = 'none';
+  // Combine all chart canvases into one image
+  const charts = Object.values(panelCharts).filter(c => c);
+  if (!charts.length) { alert('No charts to export'); return; }
+  const canvas = document.createElement('canvas');
+  const gap = 20, padding = 20;
+  const images = charts.map(c => { const url = c.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#0d1117' }); const img = new Image(); img.src = url; return img; });
+  // Wait for images to load then composite
+  Promise.all(images.map(img => new Promise(r => { if (img.complete) r(); else img.onload = r; }))).then(() => {
+    const totalH = images.reduce((h, img) => h + img.height + gap, 0) - gap + padding * 2;
+    const maxW = Math.max(...images.map(img => img.width)) + padding * 2;
+    canvas.width = maxW; canvas.height = totalH;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, maxW, totalH);
+    let y = padding;
+    images.forEach(img => { ctx.drawImage(img, padding, y); y += img.height + gap; });
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = (dashboard.title || 'dashboard') + '.png';
+    a.click();
+  });
+}
+
+function exportCSV() {
+  $('export-menu').style.display = 'none';
+  // Re-execute all panels and export combined CSV
+  const csvParts = [];
+  let pending = dashboard.panels.length;
+  if (!pending) { alert('No panels to export'); return; }
+  dashboard.panels.forEach(async (p) => {
+    try {
+      const res = await apiQuery(p.query, p.format || 'sql');
+      const esc = v => { const s = String(v ?? ''); return s.includes(',') || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g, '""') + '"' : s; };
+      csvParts.push('# ' + (p.title || 'Panel'));
+      csvParts.push(res.columns.map(esc).join(','));
+      res.rows.forEach(row => csvParts.push(row.map(esc).join(',')));
+      csvParts.push('');
+    } catch (e) { csvParts.push('# ' + (p.title || 'Panel') + ' — ERROR: ' + e.message); csvParts.push(''); }
+    if (--pending === 0) {
+      const blob = new Blob([csvParts.join('\n')], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = (dashboard.title || 'dashboard') + '.csv'; a.click();
+      URL.revokeObjectURL(a.href);
+    }
+  });
+}
+
+function exportPDF() {
+  $('export-menu').style.display = 'none';
+  window.print();
+}
+
 // === Init ===
 refreshDashboardList();
-renderGrid();
+if (!loadFromURL()) renderGrid();
+else renderGrid();
 </script>
 </body>
 </html>
