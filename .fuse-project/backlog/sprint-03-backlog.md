@@ -42,7 +42,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 330 | Window functions (ROW_NUMBER, RANK, LAG, LEAD) | planner | todo | Post-fetch compute, DataFusion integration |
+| 330 | Window functions (ROW_NUMBER, RANK, LAG, LEAD) | planner | done | Via passthrough, OVER clause skip fix. Commit: fdd3073. Tests: 500→505 |
 | 331 | PERCENTILE / PERCENTILE_APPROX aggregation | planner | todo | OpenSearch → percentiles agg, others → post-compute |
 | 332 | Computed columns (expressions in SELECT) | planner | done | Pass-through SQL expressions. Commit: 0631c5b |
 | 333 | CASE WHEN expressions | planner | done | Via passthrough + partial WHERE translation. Commit: f14f517. 3 tests |

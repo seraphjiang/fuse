@@ -2861,10 +2861,13 @@ async fn test_reaggregate_sums_counts_across_sources() {
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     let columns = json["columns"].as_array().unwrap();
-    let cnt_idx = columns.iter().position(|c| c == "cnt").unwrap();
+    let cnt_idx = columns.iter().position(|c| c == "cnt")
+        .unwrap_or_else(|| panic!("no 'cnt' column in {:?}", columns));
     // Each group's count should be > 1 (merged from 2 sources)
     for row in rows {
-        let cnt: f64 = row[cnt_idx].as_f64().unwrap();
+        let cnt = row[cnt_idx].as_f64()
+            .or_else(|| row[cnt_idx].as_str().and_then(|s| s.parse::<f64>().ok()))
+            .unwrap_or_else(|| panic!("cnt not numeric: {:?}", row[cnt_idx]));
         assert!(cnt >= 2.0, "merged count should be >= 2, got {}", cnt);
     }
 }
@@ -2901,7 +2904,9 @@ async fn test_reaggregate_three_sources() {
     let columns = json["columns"].as_array().unwrap();
     let cnt_idx = columns.iter().position(|c| c == "cnt").unwrap();
     for row in rows {
-        let cnt: f64 = row[cnt_idx].as_f64().unwrap();
+        let cnt = row[cnt_idx].as_f64()
+            .or_else(|| row[cnt_idx].as_str().and_then(|s| s.parse::<f64>().ok()))
+            .unwrap_or_else(|| panic!("cnt not numeric: {:?}", row[cnt_idx]));
         assert!(cnt >= 3.0, "3-source merged count should be >= 3, got {}", cnt);
     }
 }

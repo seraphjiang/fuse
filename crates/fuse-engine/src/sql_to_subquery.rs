@@ -1114,4 +1114,21 @@ mod tests {
         assert!(sq.projections.iter().any(|p| p == "host"));
         assert!(sq.projections.iter().any(|p| p.contains("SUM")));
     }
+
+    #[test]
+    fn test_percentile_cont() {
+        let sq = sql_to_subquery(
+            "SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency) AS p95 FROM logs",
+        ).unwrap();
+        assert!(sq.projections.iter().any(|p| p.contains("PERCENTILE_CONT") || p.contains("p95")));
+    }
+
+    #[test]
+    fn test_percentile_approx() {
+        let sq = sql_to_subquery(
+            "SELECT PERCENTILE_APPROX(latency, 0.99) AS p99 FROM logs",
+        ).unwrap();
+        // Should be captured as projection (not a known agg function)
+        assert!(sq.projections.iter().any(|p| p.contains("PERCENTILE_APPROX") || p.contains("p99")));
+    }
 }
