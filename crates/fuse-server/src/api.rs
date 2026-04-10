@@ -1107,6 +1107,12 @@ fn add_datasource_column(
 fn extract_in_subqueries(query: &str) -> Vec<InSubquery> {
     let stripped = strip_string_literals(query);
     let lower = stripped.to_lowercase();
+
+    // Early return if no IN (SELECT pattern
+    if !lower.contains(" in (select ") {
+        return vec![];
+    }
+
     let mut results = Vec::new();
 
     // Find "IN (SELECT" patterns
