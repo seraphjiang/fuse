@@ -158,6 +158,10 @@ pub struct DatasourceStat {
 pub struct ExecutionProfile {
     pub total_ms: u64,
     pub nodes: Vec<ProfileNode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_hit: Option<bool>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub optimizer_rules_applied: Vec<String>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -177,16 +181,22 @@ pub struct ProfileNode {
     pub detail: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub pushdown: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimate_accuracy: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<ProfileNode>,
 }
 
 impl ProfileNode {
     fn scan(ds: &str, rows: u64, ms: u64, bytes: u64, pushdown: Vec<String>) -> Self {
-        // Use default table stats for pre-execution estimate
         let default_estimate = 10_000u64;
-        // Cost estimate: bytes transferred + latency penalty
         let est_cost = bytes as f64 + ms as f64 * 10.0;
+        let accuracy = if rows > 0 {
+            let ratio = default_estimate as f64 / rows as f64;
+            Some(format!("{:.1}x (est {} vs actual {})", ratio, default_estimate, rows))
+        } else {
+            None
+        };
         Self {
             op: "RemoteScan".into(),
             datasource: Some(ds.into()),
@@ -197,6 +207,7 @@ impl ProfileNode {
             estimated_cost: Some(est_cost),
             detail: Some(format!("Scan {}", ds)),
             pushdown,
+            estimate_accuracy: accuracy,
             children: vec![],
         }
     }
@@ -204,6 +215,12 @@ impl ProfileNode {
     fn parent(op: &str, rows: u64, ms: u64, children: Vec<ProfileNode>) -> Self {
         let cost: f64 = children.iter().map(|c| c.actual_ms as f64).sum::<f64>() + ms as f64;
         let est_rows: u64 = children.iter().filter_map(|c| c.estimated_rows).sum();
+        let accuracy = if est_rows > 0 && rows > 0 {
+            let ratio = est_rows as f64 / rows as f64;
+            Some(format!("{:.1}x (est {} vs actual {})", ratio, est_rows, rows))
+        } else {
+            None
+        };
         Self {
             op: op.into(),
             datasource: None,
@@ -214,6 +231,7 @@ impl ProfileNode {
             estimated_cost: Some(cost),
             detail: None,
             pushdown: vec![],
+            estimate_accuracy: accuracy,
             children,
         }
     }
@@ -652,6 +670,8 @@ pub async fn query_handler(
                         Some(ExecutionProfile {
                             total_ms: t0.elapsed().as_millis() as u64,
                             nodes: fed.profile_nodes,
+                            cache_hit: Some(false),
+                            optimizer_rules_applied: vec![],
                         })
                     } else {
                         None
