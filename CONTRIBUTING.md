@@ -1,122 +1,231 @@
 # Contributing to Fuse
 
-Thank you for your interest in Fuse! This document explains how to get
-involved — whether you're fixing a bug, adding a feature, or building a new
-connector.
+Thank you for your interest in Fuse! Whether you're fixing a bug, adding a connector, or improving docs — this guide covers everything you need.
 
-## Getting Started
+## Development Setup
 
-1. Fork the repository and clone your fork.
-2. Create a feature branch from `main`:
+### Prerequisites
+
+- Rust stable (1.85+): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+- OpenSSL dev: `apt install libssl-dev pkg-config` (Debian/Ubuntu) or `yum install openssl-devel` (RHEL)
+- Docker (optional, for local OpenSearch)
+
+### Build and Test
+
+```bash
+git clone https://github.com/seraphjiang/fuse
+cd fuse
+
+# Verify prerequisites
+./scripts/setup-dev.sh
+
+# Build
+cargo build --release
+
+# Run all tests (unit + integration)
+cargo test --all-targets
+
+# Lint
+cargo clippy --all-targets -- -D warnings
+
+# Format check
+cargo fmt --all -- --check
+```
+
+### Run Locally
+
+```bash
+# Option 1: With Docker (starts OpenSearch + sample data)
+docker compose up -d
+cargo run -p fuse-server
+
+# Option 2: With your own datasources
+# Edit fuse.toml, then:
+cargo run -p fuse-server -- --config fuse.toml
+```
+
+Open [http://localhost:9400](http://localhost:9400) for the playground, [http://localhost:9400/dashboard](http://localhost:9400/dashboard) for dashboards.
+
+## Code Style
+
+### Formatting and Linting
+
+- `cargo fmt --all` before every commit. CI enforces this.
+- `cargo clippy --all-targets -- -D warnings` — zero warnings required.
+- No `unwrap()` in handler/execution paths. Use `?` or explicit error handling.
+
+### Naming Conventions
+
+| Item | Convention | Example |
+|------|-----------|---------|
+| Crates | `fuse-connector-{name}` | `fuse-connector-mongodb` |
+| Structs | PascalCase | `MongoDbConnector` |
+| Traits | PascalCase | `FederatedConnector` |
+| Functions | snake_case | `translate_filter` |
+| Constants | SCREAMING_SNAKE | `DEFAULT_TIMEOUT_MS` |
+| Config keys | snake_case | `max_concurrent_queries` |
+| Connector type strings | lowercase kebab | `"csv-json"`, `"s3-o11y"` |
+
+### Inclusive Language
+
+| Don't use | Use instead |
+|-----------|-------------|
+| master | primary, main |
+| slave | replica, secondary |
+| whitelist | allowlist |
+| blacklist | denylist |
+
+## Commit Messages
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+**Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, `ci`
+
+**Rules:**
+- Imperative mood: "Add" not "Added" or "Adds"
+- No period at end of subject
+- Subject ≤ 50 characters
+- Body wrapped at 72 characters
+- Explain what and why, not how
+
+**Example:**
+```
+feat(connector): Add MongoDB connector with BSON filter pushdown
+
+Implement FederatedConnector for MongoDB with filter translation to
+BSON query documents, projection pushdown, and limit support.
+Connection pooling via the official mongodb driver.
+```
+
+## Pull Request Process
+
+1. **Branch** from `main`:
    ```bash
    git checkout -b feat/my-change
    ```
-3. Make your changes, commit, and push to your fork.
-4. Open a Pull Request against `main`.
 
-## Developer Certificate of Origin (DCO)
+2. **Build and test** before committing:
+   ```bash
+   cargo fmt --all
+   cargo clippy --all-targets -- -D warnings
+   cargo test --all-targets
+   ```
 
-All commits **must** include a `Signed-off-by` line certifying that you wrote
-or have the right to submit the code under the project's license. Add it with
-the `-s` flag:
+3. **Commit** with DCO sign-off:
+   ```bash
+   git commit -s -m "feat: description"
+   ```
+
+4. **Push** and open a PR against `main`.
+
+### PR Checklist
+
+- [ ] `cargo fmt --all -- --check` passes
+- [ ] `cargo clippy --all-targets -- -D warnings` passes
+- [ ] `cargo test --all-targets` passes with 0 failures
+- [ ] New code has tests (at least one per public function)
+- [ ] New public APIs have doc comments
+- [ ] Documentation updated if applicable
+- [ ] Commit messages follow Conventional Commits with DCO sign-off
+
+### Developer Certificate of Origin (DCO)
+
+All commits must include `Signed-off-by` certifying you have the right to submit the code. Add with `-s`:
 
 ```bash
 git commit -s -m "feat: add Prometheus connector"
 ```
 
-This produces:
+## How to Add a Connector
 
-```
-feat: add Prometheus connector
+We welcome connectors for any datasource. Full tutorial:
 
-Signed-off-by: Your Name <your.email@example.com>
-```
+📖 **[Connector Development Guide](docs/guides/connector-development-guide.md)**
 
-PRs without DCO sign-off will not be merged.
+Quick summary:
+1. Copy `crates/fuse-connectors/example/` as a template
+2. Implement `FederatedConnector` (8 methods) and `ConnectorFactory`
+3. Register in `crates/fuse-server/src/main.rs`
+4. Add tests (unit + SDK `smoke_test`)
+5. Add sample config block for `fuse.toml`
 
-## Code Style
+Reference implementations: OpenSearch (full pushdown), DynamoDB (filter translation), PostgreSQL (SQL passthrough), MongoDB (BSON).
 
-- **Format**: Run `cargo fmt --all` before committing. CI enforces this.
-- **Lint**: Run `cargo clippy --all-targets -- -D warnings`. Zero warnings required.
-- **Commit messages**: Follow [Conventional Commits](https://www.conventionalcommits.org/)
-  (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`).
+## How to Add a Chart Type
 
-## Pull Request Checklist
+The visualization platform uses [Apache ECharts](https://echarts.apache.org/). To add a new chart type:
 
-Before submitting your PR, verify:
+1. Edit `playground/index.html` — add an `<option>` to the `#chart-type` select
+2. Add a case in `buildChartOption()` that returns an ECharts option object
+3. Optionally update `suggestChart()` auto-detection rules
+4. Test in the playground with representative data
 
-- [ ] `cargo fmt --all -- --check` passes
-- [ ] `cargo clippy --all-targets -- -D warnings` passes
-- [ ] `cargo test --all-targets` passes
-- [ ] No new compiler warnings
-- [ ] Documentation updated (README, doc comments, guides) if applicable
-- [ ] New public APIs have doc comments
-- [ ] Commit messages follow Conventional Commits with DCO sign-off
+For dashboard panels, the same chart types are available in `playground/dashboard.html`.
 
-## What to Contribute
-
-### Bug Fixes & Features
-
-1. Check [existing issues](https://github.com/seraphjiang/fuse/issues) first.
-2. For large changes, open an issue to discuss the approach before coding.
-3. Include tests for new functionality.
-
-### New Connectors
-
-We welcome connectors for any datasource. Follow the step-by-step guide:
-
-📖 **[Writing a Fuse Connector](docs/guides/writing-a-connector.md)**
-
-The fastest way to start: copy `crates/fuse-connectors/example/` — a minimal
-working connector with inline comments explaining every method.
-
-The guide covers the `FederatedConnector` trait, factory registration, config,
-and testing patterns. The OpenSearch connector is the reference implementation.
-
-When submitting a connector PR, also include:
-- A sample `[[connector]]` block for `fuse.toml`
-- Integration tests with a mock connector
-- A brief section in the README or a standalone doc
-
-### Documentation
-
-Docs improvements are always welcome — typo fixes, better examples, new guides.
-No issue required for small doc changes.
+See the [Dashboard User Guide](docs/guides/dashboard-user-guide.md) for chart type descriptions and data patterns.
 
 ## Reporting Issues
 
-Use the GitHub issue templates:
+Use [GitHub Issues](https://github.com/seraphjiang/fuse/issues) with these templates:
 
-- **Bug Report** — Include steps to reproduce, expected vs actual behavior, and
-  your environment (OS, Rust version, OpenSearch version).
-- **Feature Request** — Describe the problem, your proposed solution, and
-  alternatives you've considered.
-- **Connector Request** — Describe the datasource, your use case, auth method,
-  and example queries.
+### Bug Report
 
-## Development Setup
+Include:
+- Steps to reproduce (query, config, curl command)
+- Expected vs actual behavior
+- Error message or response body
+- Environment: OS, Rust version, connector type and version
+- Output of `curl http://localhost:9400/api/fuse/health`
 
-```bash
-# Prerequisites: Rust stable, libssl-dev, Docker (optional)
-./scripts/setup-dev.sh
+### Feature Request
 
-# Build & test
-cargo check
-cargo test --all-targets
+Include:
+- Problem description (what you're trying to do)
+- Proposed solution
+- Alternatives considered
+- Example query or API call showing desired behavior
 
-# Local dev with OpenSearch
-docker compose up -d
-FUSE_CONFIG=fuse.toml cargo run -p fuse-server
-# Open http://localhost:9400/ for the query playground
+### Connector Request
+
+Include:
+- Datasource name and version
+- Your use case (what queries you'd run)
+- Auth method (API key, IAM, password, etc.)
+- Link to the datasource's query API docs
+
+## Project Structure
+
 ```
+crates/
+├── fuse-core/           # Connector trait, SubQuery, config, errors
+├── fuse-engine/         # DataFusion planner, PPL parser, JOINs, caching
+├── fuse-connectors/     # 14 connector implementations + example template
+├── fuse-connector-sdk/  # MockConnector, smoke_test, assertion helpers
+└── fuse-server/         # REST API (axum), streaming, rate limiting
+playground/              # Query playground + dashboard UI
+docs/                    # Guides, API spec, architecture, RFCs
+```
+
+## Useful Links
+
+- [Architecture](docs/architecture.md) — how federated query execution works
+- [API Reference](docs/guides/api-reference-guide.md) — all endpoints with examples
+- [Performance Tuning](docs/guides/performance-tuning-guide.md) — optimization guide
+- [Migration Guide](docs/guides/migration-guide.md) — OpenSearch → Fuse
+- [OpenAPI Spec](docs/api/openapi.yaml) — machine-readable API definition
 
 ## Code of Conduct
 
-This project follows the
-[Amazon Open Source Code of Conduct](https://aws.github.io/code-of-conduct).
-Please report unacceptable behavior to the project maintainers.
+This project follows the [Amazon Open Source Code of Conduct](https://aws.github.io/code-of-conduct). Report unacceptable behavior to the project maintainers.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the
-Apache License 2.0.
+By contributing, you agree that your contributions will be licensed under the Apache License 2.0.
