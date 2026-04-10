@@ -4222,3 +4222,103 @@ async fn test_tenant_isolation_blocks_unauthorized() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
+
+// ── #710-712 Enterprise wiring verification (tester) ──
+
+fn build_enterprise_app() -> axum::Router {
+    use fuse_server::tenant::{TenantConfig, TenantRegistry};
+    use fuse_server::audit::AuditLog;
+
+    let registry = ConnectorRegistry::new();
+    registry.register(Arc::new(MockConnector::new("allowed_ds"))).unwrap();
+    registry.register(Arc::new(MockConnector::new("forbidden_ds"))).unwrap();
+
+    let tenant_registry = TenantRegistry::new(vec![
+        TenantConfig::with_datasources("team-a", vec!["allowed_ds".into()]),
+        TenantConfig {
+            tenant_id: "limited".into(),
+            allowed_datasources: ["allowed_ds".into()].into_iter().collect(),
+            max_concurrent_queries: None,
+            max_rows: Some(1), // very low limit
+            max_time_ms: None,
+            max_result_bytes: None,
+        },
+    ]);
+
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(fuse_server::history::QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 100)),
+        audit_log: Arc::new(AuditLog::new(100)),
+        tenant_registry: Arc::new(tenant_registry),
+    });
+    fuse_server::build_router(state)
+}
+
+fn post_query_with_tenant(app: axum::Router, query: &str, tenant_id: &str) -> impl std::future::Future<Output = (StatusCode, serde_json::Value)> {
+    let body = serde_json::json!({
+        "query": query,
+        "format": "sql",
+        "params": { "_tenant_id": tenant_id }
+    });
+    let req = Request::builder()
+        .method("POST").uri("/api/fuse/query")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_string(&body).unwrap())).unwrap();
+    async move {
+        let resp = app.oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), 10_000_000).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or_default();
+        (status, json)
+    }
+}
+
+#[tokio::test]
+async fn test_enterprise_tenant_forbidden_datasource() {
+    let (status, json) = post_query_with_tenant(
+        build_enterprise_app(),
+        "SELECT * FROM forbidden_ds.logs",
+        "team-a",
+    ).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "should deny access: {:?}", json);
+    assert!(json["error"].as_str().unwrap_or("").contains("does not have access"));
+}
+
+#[tokio::test]
+async fn test_enterprise_tenant_allowed_datasource() {
+    let (status, _) = post_query_with_tenant(
+        build_enterprise_app(),
+        "SELECT * FROM allowed_ds.logs",
+        "team-a",
+    ).await;
+    assert_eq!(status, StatusCode::OK, "should allow access to allowed_ds");
+}
+
+#[tokio::test]
+async fn test_enterprise_governor_limits_trigger_429() {
+    // "limited" tenant has max_rows=1, mock returns 2 rows → governor should reject
+    let (status, json) = post_query_with_tenant(
+        build_enterprise_app(),
+        "SELECT * FROM allowed_ds.logs",
+        "limited",
+    ).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "governor should reject: {:?}", json);
+    assert!(json["error"].as_str().unwrap_or("").contains("max_rows"));
+}
+
+#[tokio::test]
+async fn test_enterprise_no_tenant_passes_through() {
+    // No tenant_id → no tenant checks, query executes normally
+    let (status, _) = post_query(
+        build_enterprise_app(),
+        "SELECT * FROM allowed_ds.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+}

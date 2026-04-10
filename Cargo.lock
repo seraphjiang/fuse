@@ -3100,6 +3100,7 @@ dependencies = [
  "fuse-connector-clickhouse",
  "fuse-connector-cloudwatch",
  "fuse-connector-csv-json",
+ "fuse-connector-duckdb",
  "fuse-connector-dynamodb",
  "fuse-connector-elasticsearch",
  "fuse-connector-mongodb",
