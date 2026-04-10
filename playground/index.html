@@ -377,6 +377,7 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
     <span id="meta-time"></span>
     <button id="csv-btn" onclick="downloadCSV()" style="display:none;margin-left:auto;padding:3px 10px;font-size:12px">⬇ CSV</button>
     <button id="json-btn" onclick="downloadJSON()" style="display:none;padding:3px 10px;font-size:12px">⬇ JSON</button>
+    <button id="copy-btn" onclick="copyResults()" style="display:none;padding:3px 10px;font-size:12px">📋 Copy</button>
     <div class="view-toggle" id="view-toggle" style="display:none">
       <button class="active" onclick="setView('table')">Table</button>
       <button onclick="setView('chart')">Chart</button>
@@ -528,6 +529,8 @@ function clearOutput() {
   $('plan-box').style.display = 'none';
   $('meta').style.display = 'none';
   $('csv-btn').style.display = 'none';
+  $('json-btn').style.display = 'none';
+  $('copy-btn').style.display = 'none';
   $('provenance').classList.remove('visible');
   $('plan-tree').classList.remove('visible');
 }
@@ -553,6 +556,8 @@ function renderTable(columns, rows) {
   lastColumns = columns;
   lastRows = rows;
   $('csv-btn').style.display = columns.length ? 'inline-block' : 'none';
+  $('json-btn').style.display = columns.length ? 'inline-block' : 'none';
+  $('copy-btn').style.display = columns.length ? 'inline-block' : 'none';
   if (!columns.length) {
     $('results').innerHTML = '<div class="empty">No results</div>';
     return;
@@ -617,6 +622,13 @@ function downloadJSON() {
   a.download = 'fuse-results.json';
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+function copyResults() {
+  const tsv = [lastColumns.join('\t')].concat(lastRows.map(r => r.map(v => String(v ?? '')).join('\t'))).join('\n');
+  navigator.clipboard.writeText(tsv).then(() => {
+    const btn = $('copy-btn'); btn.textContent = '✓ Copied'; setTimeout(() => { btn.textContent = '📋 Copy'; }, 1500);
+  }).catch(() => {});
 }
 
 function renderProvenance(res) {

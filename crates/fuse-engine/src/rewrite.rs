@@ -232,4 +232,40 @@ mod tests {
             _ => panic!("expected existing having with value 10"),
         }
     }
+
+    #[test]
+    fn test_top_n_pushdown_uses_min_limit() {
+        // Source has default 10k limit, base has LIMIT 10 → should push 10
+        let base = SubQuery {
+            table: "t".into(), projections: vec![], filter: None,
+            aggregations: vec![], group_by: vec![],
+            sort: vec![SortExpr { field: "count".into(), descending: true }],
+            limit: Some(10), having: None, offset: None, passthrough: None,
+        };
+        let mut sources = vec![SubQuery {
+            table: "t".into(), projections: vec![], filter: None,
+            aggregations: vec![], group_by: vec![], sort: vec![],
+            limit: Some(10_000), having: None, offset: None, passthrough: None,
+        }];
+        push_down_to_sources(&base, &mut sources);
+        assert_eq!(sources[0].limit, Some(10));
+        assert_eq!(sources[0].sort.len(), 1);
+    }
+
+    #[test]
+    fn test_pushdown_limit_no_existing() {
+        // Source has no limit, base has LIMIT 50 → should push 50
+        let base = SubQuery {
+            table: "t".into(), projections: vec![], filter: None,
+            aggregations: vec![], group_by: vec![], sort: vec![],
+            limit: Some(50), having: None, offset: None, passthrough: None,
+        };
+        let mut sources = vec![SubQuery {
+            table: "t".into(), projections: vec![], filter: None,
+            aggregations: vec![], group_by: vec![], sort: vec![],
+            limit: None, having: None, offset: None, passthrough: None,
+        }];
+        push_down_to_sources(&base, &mut sources);
+        assert_eq!(sources[0].limit, Some(50));
+    }
 }

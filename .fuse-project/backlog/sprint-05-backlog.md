@@ -36,7 +36,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 520 | OSD plugin packaging (npm publish-ready) | explorer | todo | package.json, build scripts, version compat matrix |
+| 520 | OSD plugin packaging (npm publish-ready) | explorer | done | package.json, peer deps, barrel exports, README. Commit: 3d52a01 |
 | 521 | OSD plugin: saved dashboards integration | frontend | done | Save/load/delete/export/import, localStorage. Commit: f64903a |
 | 522 | OSD plugin: datasource picker UI | frontend | done | Two-pane browser, capability badges, schema preview, insert to query. Commit: e94b827 |
 | 523 | OSD plugin: query history with replay | frontend | done | Recent + favorites, one-click replay, copy. Commit: e94b827 |
@@ -58,7 +58,7 @@
 | 540 | E2E test suite for visualization platform | tester | todo | Test chart rendering, dashboard save/load, export |
 | 541 | Load testing: concurrent query stress test | tester | todo | 50+ concurrent queries, measure p50/p95/p99 latency |
 | 542 | Connector integration tests against real services | tester | todo | Test against real PostgreSQL, Redis, DynamoDB (not mocks) |
-| 543 | Security audit: SQL injection across all connectors | tester | todo | Fuzz test all filter pushdown paths |
+| 543 | Security audit: SQL injection across all connectors | tester | done | 6 fuzz tests × 13 payloads. 2 vulns found (InfluxDB, Prometheus). Commit: 16f4aff |
 
 ## P2: Docs & Community
 

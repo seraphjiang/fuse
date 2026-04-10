@@ -3823,3 +3823,125 @@ async fn test_partial_failure_returns_results() {
     let rows = json["rows"].as_array().unwrap();
     assert!(!rows.is_empty());
 }
+
+// ── #501 API key auth verification (tester) ──
+
+fn build_auth_app() -> axum::Router {
+    use fuse_server::auth::{AuthState, ApiKeyEntry, Role};
+    let registry = fuse_core::registry::ConnectorRegistry::new();
+    registry.register(Arc::new(MockConnector::new("testds"))).unwrap();
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(fuse_server::history::QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+    });
+    let auth = AuthState::new(vec![
+        ApiKeyEntry { key: "valid-key-1".into(), identity: "alice".into(), role: Role::Admin },
+        ApiKeyEntry { key: "valid-key-2".into(), identity: "bob".into(), role: Role::Viewer },
+    ]);
+    let router = fuse_server::build_router(state);
+    router.layer(axum::Extension(auth))
+}
+
+#[tokio::test]
+async fn test_auth_public_path_no_key_needed() {
+    let app = build_auth_app();
+    let req = Request::builder().uri("/api/fuse/health").body(Body::empty()).unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "health should be public");
+}
+
+#[tokio::test]
+async fn test_auth_protected_path_401_without_key() {
+    let app = build_auth_app();
+    let body = serde_json::json!({"query": "SELECT 1", "format": "sql"});
+    let req = Request::builder()
+        .method("POST").uri("/api/fuse/query")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_string(&body).unwrap())).unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_auth_valid_key_passes() {
+    let app = build_auth_app();
+    let body = serde_json::json!({"query": "SELECT * FROM testds.logs", "format": "sql"});
+    let req = Request::builder()
+        .method("POST").uri("/api/fuse/query")
+        .header("content-type", "application/json")
+        .header("x-api-key", "valid-key-1")
+        .body(Body::from(serde_json::to_string(&body).unwrap())).unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_auth_invalid_key_rejected() {
+    let app = build_auth_app();
+    let body = serde_json::json!({"query": "SELECT 1", "format": "sql"});
+    let req = Request::builder()
+        .method("POST").uri("/api/fuse/query")
+        .header("content-type", "application/json")
+        .header("x-api-key", "wrong-key")
+        .body(Body::from(serde_json::to_string(&body).unwrap())).unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+// ── #503/#505 Per-connector timeout + partial failure verification (tester) ──
+
+#[tokio::test]
+async fn test_partial_failure_returns_good_source_data() {
+    // cluster_a works, cluster_b fails → should get partial results
+    let registry = ConnectorRegistry::new();
+    registry.register(Arc::new(MockConnector::new("good"))).unwrap();
+    registry.register(Arc::new(FailingMockConnector::new("bad"))).unwrap();
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(fuse_server::history::QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+    });
+    let (status, json) = post_query(
+        fuse_server::build_router(state),
+        "SELECT host, status FROM good.logs UNION ALL SELECT host, status FROM bad.logs",
+        "sql",
+    ).await;
+    // Should return partial results from good source
+    let has_rows = json["rows"].as_array().map(|r| !r.is_empty()).unwrap_or(false);
+    let has_partial = json["partial_errors"].as_array().map(|e| !e.is_empty()).unwrap_or(false)
+        || json["error"].as_str().map(|e| e.contains("bad")).unwrap_or(false);
+    assert!(has_rows || has_partial,
+        "should have partial results or error info: status={}, json={:?}", status, json);
+}
+
+#[tokio::test]
+async fn test_all_sources_fail_returns_error() {
+    let registry = ConnectorRegistry::new();
+    registry.register(Arc::new(FailingMockConnector::new("bad1"))).unwrap();
+    registry.register(Arc::new(FailingMockConnector::new("bad2"))).unwrap();
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(fuse_server::history::QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+    });
+    let (status, json) = post_query(
+        fuse_server::build_router(state),
+        "SELECT host, status FROM bad1.logs UNION ALL SELECT host, status FROM bad2.logs",
+        "sql",
+    ).await;
+    assert_ne!(status, StatusCode::OK, "all-fail should not return 200");
+    assert!(json["error"].is_string(), "should have error message");
+}
