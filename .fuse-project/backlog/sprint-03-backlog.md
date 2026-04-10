@@ -56,7 +56,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 340 | Hash join optimization (build side selection) | planner | todo | Smaller table as build side, cost-based |
+| 340 | Hash join optimization (build side selection) | planner | done | Smaller table as build side, profile annotated. Commit: ee30ee7 |
 | 341 | Semi-join / anti-join (EXISTS, NOT EXISTS) | planner | todo | Efficient existence checks across datasources |
 | 342 | Correlated subqueries | planner | todo | WHERE col IN (SELECT ... FROM other_source) |
 | 343 | Cross-datasource GROUP BY (federated aggregation) | planner | todo | Partial agg at source, merge at engine |

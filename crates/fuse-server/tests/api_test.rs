@@ -2553,3 +2553,59 @@ async fn test_join_profile_shows_build_side() {
     assert!(pushdowns.iter().any(|p| p.contains("build side")));
     assert!(pushdowns.iter().any(|p| p.contains("probe side")));
 }
+
+// ── #344 Cost estimator verification (tester) ──
+
+#[tokio::test]
+async fn test_cost_estimate_parent_rows_sum_children() {
+    let (_, json) = post_query_analyze(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "sql",
+        true,
+    ).await;
+    let union = &json["execution_profile"]["nodes"][0];
+    let parent_est = union["estimated_rows"].as_u64().unwrap();
+    let children = union["children"].as_array().unwrap();
+    let child_sum: u64 = children.iter().filter_map(|c| c["estimated_rows"].as_u64()).sum();
+    assert_eq!(parent_est, child_sum, "parent estimated_rows should equal sum of children");
+}
+
+#[tokio::test]
+async fn test_cost_estimate_scan_has_bytes() {
+    let (_, json) = post_query_analyze(
+        build_test_app(),
+        "SELECT * FROM testds.logs",
+        "sql",
+        true,
+    ).await;
+    let node = &json["execution_profile"]["nodes"][0];
+    assert!(node["data_bytes"].as_u64().is_some(), "scan node should have data_bytes");
+    assert!(node["estimated_cost"].as_f64().unwrap() >= 0.0, "cost should be non-negative");
+}
+
+#[tokio::test]
+async fn test_cost_estimate_not_in_non_analyze() {
+    // analyze=false should not include execution_profile at all
+    let (_, json) = post_query_analyze(
+        build_test_app(),
+        "SELECT * FROM testds.logs",
+        "sql",
+        false,
+    ).await;
+    assert!(json.get("execution_profile").is_none() || json["execution_profile"].is_null());
+}
+
+#[tokio::test]
+async fn test_cost_estimate_single_source_no_parent() {
+    // Single source → scan node directly, no parent wrapper
+    let (_, json) = post_query_analyze(
+        build_test_app(),
+        "SELECT * FROM testds.logs",
+        "sql",
+        true,
+    ).await;
+    let nodes = json["execution_profile"]["nodes"].as_array().unwrap();
+    assert_eq!(nodes[0]["op"], "RemoteScan");
+    assert!(nodes[0]["children"].as_array().map_or(true, |c| c.is_empty()));
+}
