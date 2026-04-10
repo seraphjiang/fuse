@@ -2,6 +2,8 @@
 
 Fuse is a federated query engine that lets you query any datasource with SQL or PPL. Join OpenSearch logs with DynamoDB profiles, union CloudWatch and S3 events, correlate Prometheus metrics with Elasticsearch alerts — all in one statement. Built on [Apache DataFusion](https://datafusion.apache.org/) and [datafusion-federation](https://github.com/datafusion-contrib/datafusion-federation).
 
+> **New to Fuse?** Start with [What is Fuse?](./what-is-fuse.md) — a one-page overview with comparison to alternatives.
+
 **[🎮 Live Playground](https://fuse.huanji.profile.aws.dev)** *(Amazon VPN required)*
 
 ## Architecture
