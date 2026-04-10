@@ -58,7 +58,7 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 650 | Chaos testing (connector failures, network partitions) | tester | done | 7 chaos tests: connection refused, partial/total failure, timeout, isolation. Commit: 5637292 |
-| 651 | Performance regression CI (automated benchmark on every commit) | tester | todo | Catch perf regressions before deploy |
+| 651 | Performance regression CI (automated benchmark on every commit) | tester | done | 4 load tests, 20% threshold, CI gate ready. Commit: e62d5d5 |
 | 652 | Accessibility audit (WCAG 2.1 AA) | frontend | done | ARIA landmarks, skip-to-content, focus-visible, aria-live, role=alert. Commit: a572da1 |
 
 ## P2: Docs & Community

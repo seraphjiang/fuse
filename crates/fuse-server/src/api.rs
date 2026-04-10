@@ -16,6 +16,7 @@ use fuse_engine::materialized::MaterializedViewRegistry;
 use crate::history::QueryHistory;
 use crate::saved_queries::SavedQueryRegistry;
 use crate::plan_cache::{PlanCache, CachedPlan};
+use crate::tenant::{TenantRegistry, QueryGovernor};
 
 use crate::health;
 
@@ -68,6 +69,7 @@ pub struct AppState {
     pub saved_queries: Arc<SavedQueryRegistry>,
     pub plan_cache: Arc<PlanCache>,
     pub result_cache: Arc<crate::plan_cache::ResultCache>,
+    pub tenant_registry: Arc<TenantRegistry>,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.
@@ -439,7 +441,34 @@ pub async fn query_handler(
         }
     }
 
-    let timeout = std::time::Duration::from_millis(req.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS));
+    // Tenant isolation: filter datasources by tenant access
+    let tenant_id = req.params.get("_tenant_id").and_then(|v| v.as_str().map(|s| s.to_string()));
+    if let Some(ref tid) = tenant_id {
+        if state.tenant_registry.is_enabled() {
+            let ds_ids: Vec<String> = refs.iter().map(|(ds, _)| ds.clone()).collect();
+            let allowed = state.tenant_registry.filter_datasources(tid, &ds_ids);
+            for (ds_id, _) in &refs {
+                if !allowed.contains(ds_id) {
+                    return error_json(
+                        StatusCode::FORBIDDEN,
+                        format!("tenant '{}' does not have access to datasource '{}'", tid, ds_id),
+                    )
+                    .into_response();
+                }
+            }
+        }
+    }
+
+    // Apply tenant timeout limit
+    let base_timeout_ms = req.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS);
+    let effective_timeout_ms = if let Some(ref tid) = tenant_id {
+        state.tenant_registry.get(tid)
+            .map(|c| QueryGovernor::effective_timeout_ms(c, base_timeout_ms))
+            .unwrap_or(base_timeout_ms)
+    } else {
+        base_timeout_ms
+    };
+    let timeout = std::time::Duration::from_millis(effective_timeout_ms);
 
     // Register cancellable query
     let query_id = format!("q-{:016x}", QUERY_COUNTER.fetch_add(1, Ordering::Relaxed));
@@ -628,6 +657,17 @@ pub async fn query_handler(
             let (columns, rows) = batches_to_json(&batches);
             let row_count = rows.len();
             let total_rows = row_count as u64;
+            let result_bytes: u64 = batches.iter().map(|b| b.get_array_memory_size() as u64).sum();
+            let elapsed_ms = t0.elapsed().as_millis() as u64;
+
+            // Query governor: enforce tenant resource limits
+            if let Some(ref tid) = tenant_id {
+                if let Some(config) = state.tenant_registry.get(tid) {
+                    if let Err(e) = QueryGovernor::check_limits(config, total_rows, result_bytes, elapsed_ms) {
+                        return error_json(StatusCode::TOO_MANY_REQUESTS, e).into_response();
+                    }
+                }
+            }
             state.history.push(crate::history::HistoryEntry {
                 query: req.query.clone(),
                 format: req.format.clone(),

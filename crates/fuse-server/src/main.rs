@@ -109,6 +109,7 @@ async fn main() -> anyhow::Result<()> {
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
         plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
         result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
     });
 
     // Initialize metrics
