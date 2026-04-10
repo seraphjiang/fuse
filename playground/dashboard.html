@@ -29,6 +29,8 @@ textarea{width:100%;min-height:60px;background:#0d1117;color:#e1e4e8;border:1px 
 .dashboard-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:12px;padding:16px 24px;flex:1;align-content:start}
 .panel{background:#161b22;border:1px solid #21262d;border-radius:8px;overflow:hidden;min-height:200px;display:flex;flex-direction:column;position:relative}
 .panel:hover{border-color:#30363d}
+.panel[draggable]{cursor:grab}
+.panel[draggable]:active{cursor:grabbing;opacity:.7}
 .panel-header{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #21262d;background:#0d1117;cursor:move;user-select:none}
 .panel-title{font-size:13px;font-weight:600;color:#e1e4e8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .panel-actions{display:flex;gap:4px}
@@ -468,12 +470,16 @@ function renderGrid() {
     grid.innerHTML = '<div class="empty-dashboard"><h2>No panels yet</h2><p>Click "+ Add Panel" to create your first visualization</p></div>';
     return;
   }
-  grid.innerHTML = dashboard.panels.map(p => {
+  grid.innerHTML = dashboard.panels.map((p, idx) => {
     const w = p.width || 6;
-    return `<div class="panel col-${w}" id="panel-${p.id}">
+    return `<div class="panel col-${w}" id="panel-${p.id}" draggable="true" ondragstart="dragStart(event,'${p.id}')" ondragover="dragOver(event)" ondrop="dropPanel(event,'${p.id}')">
       <div class="panel-header">
         <span class="panel-title">${esc(p.title || 'Untitled')}</span>
         <div class="panel-actions">
+          <button onclick="resizePanel('${p.id}',-3)" title="Narrower">◀</button>
+          <button onclick="resizePanel('${p.id}',3)" title="Wider">▶</button>
+          <button onclick="movePanel('${p.id}',-1)" title="Move left" ${idx===0?'disabled':''}>⬆</button>
+          <button onclick="movePanel('${p.id}',1)" title="Move right" ${idx===dashboard.panels.length-1?'disabled':''}>⬇</button>
           <button onclick="editPanel('${p.id}')" title="Edit">✏️</button>
           <button onclick="removePanel('${p.id}')" title="Remove">✕</button>
         </div>
@@ -542,6 +548,46 @@ function removePanel(id) {
 }
 
 function closeModal() { $('panel-modal').classList.remove('open'); }
+
+// Panel resize
+function resizePanel(id, delta) {
+  const p = dashboard.panels.find(x => x.id === id);
+  if (!p) return;
+  const sizes = [3, 4, 6, 8, 12];
+  const cur = sizes.indexOf(p.width || 6);
+  const next = Math.max(0, Math.min(sizes.length - 1, cur + (delta > 0 ? 1 : -1)));
+  p.width = sizes[next];
+  saveDashboardLocal();
+  renderGrid();
+}
+
+// Panel reorder (button)
+function movePanel(id, dir) {
+  const idx = dashboard.panels.findIndex(x => x.id === id);
+  if (idx < 0) return;
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= dashboard.panels.length) return;
+  [dashboard.panels[idx], dashboard.panels[newIdx]] = [dashboard.panels[newIdx], dashboard.panels[idx]];
+  saveDashboardLocal();
+  renderGrid();
+}
+
+// Drag-and-drop reorder
+let draggedPanelId = null;
+function dragStart(e, id) { draggedPanelId = id; e.dataTransfer.effectAllowed = 'move'; }
+function dragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+function dropPanel(e, targetId) {
+  e.preventDefault();
+  if (!draggedPanelId || draggedPanelId === targetId) return;
+  const from = dashboard.panels.findIndex(x => x.id === draggedPanelId);
+  const to = dashboard.panels.findIndex(x => x.id === targetId);
+  if (from < 0 || to < 0) return;
+  const [moved] = dashboard.panels.splice(from, 1);
+  dashboard.panels.splice(to, 0, moved);
+  draggedPanelId = null;
+  saveDashboardLocal();
+  renderGrid();
+}
 
 // === Time range ===
 function onTimeRangeChange() {

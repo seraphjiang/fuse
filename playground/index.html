@@ -247,6 +247,7 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
     </div>
     <button id="explain-btn" onclick="explainQuery()">Explain</button>
     <button id="validate-btn" onclick="validateQuery()">Validate</button>
+    <button onclick="prettifyQuery()">✨ Format</button>
     <button class="help-toggle" onclick="toggleHelp()">📖 Docs &amp; Examples ▾</button>
   </div>
 
@@ -853,6 +854,27 @@ async function validateQuery() {
   } catch (e) {
     showError(e.message);
   }
+}
+
+function prettifyQuery() {
+  const q = $('editor').value.trim();
+  if (!q) return;
+  // Simple SQL formatter: uppercase keywords, newlines before major clauses, indent subparts
+  const majorClauses = /\b(SELECT|FROM|WHERE|AND|OR|JOIN|LEFT JOIN|RIGHT JOIN|INNER JOIN|CROSS JOIN|FULL OUTER JOIN|ON|GROUP BY|ORDER BY|HAVING|LIMIT|OFFSET|UNION ALL|UNION|WITH|SET|VALUES|INSERT INTO|UPDATE|DELETE FROM)\b/gi;
+  let formatted = q.replace(/\s+/g, ' '); // normalize whitespace
+  // Uppercase keywords
+  formatted = formatted.replace(majorClauses, match => match.toUpperCase());
+  // Newline before major clauses
+  formatted = formatted.replace(/\b(FROM|WHERE|AND|OR|JOIN|LEFT JOIN|RIGHT JOIN|INNER JOIN|CROSS JOIN|ON|GROUP BY|ORDER BY|HAVING|LIMIT|OFFSET|UNION ALL|UNION)\b/gi, '\n$1');
+  // Indent after SELECT, FROM
+  const lines = formatted.split('\n').map(l => l.trim()).filter(Boolean);
+  const indentKw = new Set(['AND', 'OR', 'ON']);
+  const result = lines.map(line => {
+    const first = line.split(/\s/)[0].toUpperCase();
+    return indentKw.has(first) ? '  ' + line : line;
+  });
+  $('editor').value = result.join('\n');
+  syncHighlight();
 }
 
 // Keyboard shortcuts
