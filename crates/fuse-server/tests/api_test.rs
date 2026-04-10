@@ -3094,3 +3094,74 @@ async fn test_three_source_union_without_limit() {
     // 2 rows × 3 sources = 6, all within default limit
     assert_eq!(rows.len(), 6);
 }
+
+// ── AOSS scroll regression tests (tester, P0) ──
+
+#[tokio::test]
+async fn test_union_all_no_limit_applies_default() {
+    // UNION ALL without LIMIT should still work (default 10k limit per source)
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert!(!rows.is_empty(), "UNION ALL without LIMIT should return rows");
+}
+
+#[tokio::test]
+async fn test_union_all_concurrent_fanout_no_error() {
+    // Both sources should return data without scroll/concurrency errors
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT host, status FROM cluster_a.logs UNION ALL SELECT host, status FROM cluster_b.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let columns = json["columns"].as_array().unwrap();
+    let ds_idx = columns.iter().position(|c| c == "_datasource").unwrap();
+    let rows = json["rows"].as_array().unwrap();
+    let sources: std::collections::HashSet<&str> = rows.iter()
+        .filter_map(|r| r[ds_idx].as_str())
+        .collect();
+    assert_eq!(sources.len(), 2, "both sources should contribute: {:?}", sources);
+}
+
+#[tokio::test]
+async fn test_join_no_limit_still_works() {
+    // JOIN without LIMIT should apply default limit to avoid scroll
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs JOIN cluster_b.logs ON cluster_a.logs.host = cluster_b.logs.host",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert!(!rows.is_empty(), "JOIN without LIMIT should return rows");
+}
+
+#[tokio::test]
+async fn test_single_source_no_limit_works() {
+    // Single source without LIMIT should still work (scroll OK for single)
+    let (status, json) = post_query(
+        build_test_app(),
+        "SELECT * FROM testds.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert!(!rows.is_empty());
+}
+
+#[tokio::test]
+async fn test_union_all_with_explicit_limit() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs LIMIT 3",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert!(rows.len() <= 3, "explicit LIMIT 3 should be respected, got {}", rows.len());
+}

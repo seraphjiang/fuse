@@ -756,7 +756,7 @@ async fn execute_join(
         aggregations: vec![],
         group_by: vec![],
         sort: vec![],
-        limit: None,
+        limit: Some(10_000), // Default limit to avoid scroll for JOIN fan-out
         having: None, passthrough: None,
     };
     let mut sq_b = sq_a.clone();
