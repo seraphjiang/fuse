@@ -434,6 +434,17 @@ async function executePanel(panel) {
     if (!suggestion) { el.innerHTML = '<div class="panel-error">Cannot visualize — no numeric/categorical columns</div>'; return; }
     const option = buildChartOption(suggestion, res.columns, res.rows);
     if (!option) { el.innerHTML = '<div class="panel-error">Not enough data for this chart type</div>'; return; }
+    // Apply threshold markLine if configured
+    if (panel.threshold != null && option.series && option.series.length) {
+      const threshLine = { silent: true, symbol: 'none', lineStyle: { color: '#f85149', type: 'dashed', width: 2 },
+        label: { formatter: 'Threshold: ' + panel.threshold, color: '#f85149', fontSize: 10, position: 'insideEndTop' },
+        data: [{ yAxis: panel.threshold }] };
+      option.series[0].markLine = threshLine;
+      // Check if any value exceeds threshold — add visual alert to panel header
+      const exceeded = res.rows.some(r => r.some(v => typeof v === 'number' ? v > panel.threshold : Number(v) > panel.threshold));
+      const header = document.querySelector('#panel-' + panel.id + ' .panel-title');
+      if (header && exceeded) header.innerHTML = '🔴 ' + esc(panel.title || 'Untitled');
+    }
     el.innerHTML = '';
     if (panelCharts[panel.id]) panelCharts[panel.id].dispose();
     const chart = echarts.init(el, 'dark');
