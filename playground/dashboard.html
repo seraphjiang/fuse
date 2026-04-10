@@ -411,7 +411,7 @@ async function executePanel(panel) {
   if (!el) return;
   el.innerHTML = '<div class="panel-loading">Loading…</div>';
   try {
-    const res = await apiQuery(panel.query, panel.format || 'sql');
+    const res = await apiQuery(substituteVars(panel.query), panel.format || 'sql');
     if (panel.chartType === 'table') {
       renderPanelTable(el, res.columns, res.rows);
       return;
@@ -569,6 +569,7 @@ function loadDashboard(name) {
   $('time-range').value = dashboard.timeRange || '1h';
   $('refresh-interval').value = String(dashboard.refreshInterval || 0);
   onRefreshChange();
+  resolveQueryVars();
   renderGrid();
 }
 
@@ -608,6 +609,99 @@ const resizeObs = new ResizeObserver(() => {
   Object.values(panelCharts).forEach(c => c.resize());
 });
 resizeObs.observe(document.body);
+
+// === Variables / Parameters (#447) ===
+// Variable format: { name: 'service', label: 'Service', type: 'custom'|'query', values: ['api-gw','auth'], query: 'SELECT DISTINCT service FROM ...', current: 'api-gw' }
+
+function getVariables() { return dashboard.variables || []; }
+
+function substituteVars(query) {
+  let q = query;
+  (dashboard.variables || []).forEach(v => {
+    const re = new RegExp('\\$' + v.name + '\\b', 'g');
+    q = q.replace(re, v.current || '');
+  });
+  return q;
+}
+
+function renderVarBar() {
+  const vars = getVariables();
+  const bar = $('var-bar');
+  if (!vars.length) { bar.innerHTML = ''; return; }
+  bar.innerHTML = vars.map((v, i) => `<div class="var-group">
+    <label>${esc(v.label || v.name)}:</label>
+    <select onchange="onVarChange(${i}, this.value)">
+      ${(v.values || []).map(val => `<option value="${esc(val)}" ${val === v.current ? 'selected' : ''}>${esc(val)}</option>`).join('')}
+    </select>
+  </div>`).join('');
+}
+
+function onVarChange(idx, value) {
+  if (!dashboard.variables || !dashboard.variables[idx]) return;
+  dashboard.variables[idx].current = value;
+  saveDashboardLocal();
+  refreshAll();
+}
+
+async function resolveQueryVars() {
+  const vars = dashboard.variables || [];
+  for (const v of vars) {
+    if (v.type === 'query' && v.query) {
+      try {
+        const res = await apiQuery(v.query, 'sql');
+        v.values = res.rows.map(r => String(r[0])).filter(Boolean);
+        if (!v.current || !v.values.includes(v.current)) v.current = v.values[0] || '';
+      } catch { /* keep existing values */ }
+    }
+    if (!v.current && v.values && v.values.length) v.current = v.values[0];
+  }
+  renderVarBar();
+}
+
+let varEditorState = [];
+
+function showVarEditor() {
+  varEditorState = JSON.parse(JSON.stringify(dashboard.variables || []));
+  renderVarEditorList();
+  $('var-modal').classList.add('open');
+}
+
+function closeVarEditor() { $('var-modal').classList.remove('open'); }
+
+function addVariable() {
+  varEditorState.push({ name: '', label: '', type: 'custom', values: [], query: '', current: '' });
+  renderVarEditorList();
+}
+
+function removeVariable(idx) {
+  varEditorState.splice(idx, 1);
+  renderVarEditorList();
+}
+
+function renderVarEditorList() {
+  $('var-list').innerHTML = varEditorState.map((v, i) => `<div style="border:1px solid #21262d;border-radius:6px;padding:10px;margin-bottom:8px;background:#0d1117">
+    <div style="display:flex;gap:8px;margin-bottom:6px">
+      <div style="flex:1"><label style="font-size:11px;color:#8b949e">Name</label><input type="text" value="${esc(v.name)}" onchange="varEditorState[${i}].name=this.value" style="width:100%;font-size:12px;padding:4px 8px" placeholder="service"></div>
+      <div style="flex:1"><label style="font-size:11px;color:#8b949e">Label</label><input type="text" value="${esc(v.label||'')}" onchange="varEditorState[${i}].label=this.value" style="width:100%;font-size:12px;padding:4px 8px" placeholder="Service"></div>
+      <div><label style="font-size:11px;color:#8b949e">Type</label><select onchange="varEditorState[${i}].type=this.value;renderVarEditorList()" style="font-size:12px;padding:4px 8px">
+        <option value="custom" ${v.type==='custom'?'selected':''}>Custom</option>
+        <option value="query" ${v.type==='query'?'selected':''}>Query</option>
+      </select></div>
+      <button onclick="removeVariable(${i})" style="align-self:flex-end;padding:4px 8px;font-size:11px;color:#f85149;background:none;border:1px solid #f8514933">✕</button>
+    </div>
+    ${v.type === 'custom'
+      ? `<div><label style="font-size:11px;color:#8b949e">Values (comma-separated)</label><input type="text" value="${esc((v.values||[]).join(', '))}" onchange="varEditorState[${i}].values=this.value.split(',').map(s=>s.trim()).filter(Boolean)" style="width:100%;font-size:12px;padding:4px 8px" placeholder="api-gw, auth-service, user-service"></div>`
+      : `<div><label style="font-size:11px;color:#8b949e">Query (must return single column)</label><input type="text" value="${esc(v.query||'')}" onchange="varEditorState[${i}].query=this.value" style="width:100%;font-size:12px;padding:4px 8px" placeholder="SELECT DISTINCT service FROM cluster_a.application_logs"></div>`}
+  </div>`).join('') || '<div style="color:#484f58;padding:12px;text-align:center">No variables defined. Click "+ Add Variable" to create one.</div>';
+}
+
+async function saveVariables() {
+  dashboard.variables = varEditorState.filter(v => v.name);
+  await resolveQueryVars();
+  saveDashboardLocal();
+  closeVarEditor();
+  refreshAll();
+}
 
 // === Dashboard Templates (#445) ===
 const TEMPLATES = [
@@ -767,6 +861,7 @@ function exportPDF() {
 refreshDashboardList();
 if (!loadFromURL()) renderGrid();
 else renderGrid();
+resolveQueryVars();
 </script>
 </body>
 </html>
