@@ -201,6 +201,10 @@ body.light .ac-item .ac-label{color:#1f2328}
 .help-item strong{color:#e1e4e8;font-weight:500}
 kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5px;font-size:11px;color:#e1e4e8;font-family:inherit}
 /* Onboarding */
+/* Focus styles for keyboard navigation */
+:focus-visible{outline:2px solid #58a6ff;outline-offset:2px}
+button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #58a6ff;outline-offset:2px}
+/* Onboarding */
 .onboard-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:flex;align-items:center;justify-content:center}
 .onboard-overlay.hidden{display:none}
 .onboard{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:32px;max-width:520px;width:90%;text-align:center;box-shadow:0 16px 48px rgba(0,0,0,.5)}
@@ -220,6 +224,9 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
 </style>
 </head>
 <body>
+
+<!-- Onboarding overlay -->
+<a href="#editor" class="skip-link" style="position:absolute;left:-9999px;top:0;z-index:999;background:#238636;color:#fff;padding:8px 16px;font-size:13px;border-radius:0 0 6px 0" onfocus="this.style.left='0'" onblur="this.style.left='-9999px'">Skip to query editor</a>
 
 <!-- Onboarding overlay -->
 <div class="onboard-overlay" id="onboarding">
@@ -313,7 +320,7 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
 
 <main role="main" aria-label="Query playground">
   <div class="toolbar">
-    <select id="format">
+    <select id="format" aria-label="Query format">
       <option value="sql">SQL</option>
       <option value="ppl">PPL</option>
     </select>
@@ -361,9 +368,9 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
   <div class="ac-wrap">
     <div class="editor-wrap">
       <div class="editor-highlight" id="editor-highlight"></div>
-      <textarea id="editor" placeholder="SELECT * FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20" spellcheck="false">SELECT service, status, message FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20</textarea>
+      <textarea id="editor" aria-label="SQL query editor" placeholder="SELECT * FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20" spellcheck="false">SELECT service, status, message FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20</textarea>
     </div>
-    <div class="ac-dropdown" id="ac-dropdown"></div>
+    <div class="ac-dropdown" id="ac-dropdown" role="listbox" aria-label="Autocomplete suggestions"></div>
   </div>
 
   <div class="help-panel" id="help-panel">
@@ -501,7 +508,7 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
 
   <div id="plan-tree" class="plan-tree"></div>
   <div id="plan-box" class="plan" style="display:none"></div>
-  <div id="error-box" class="error" style="display:none"></div>
+  <div id="error-box" class="error" style="display:none" role="alert"></div>
   <div class="meta" id="meta" style="display:none">
     <span id="meta-rows"></span>
     <span id="meta-cols"></span>
@@ -530,8 +537,8 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
     </select>
   </div>
   <div class="provenance" id="provenance"></div>
-  <div class="results" id="results"><div class="empty-state"><div class="es-icon">🔍</div><div class="es-title">Run a query to see results</div><div class="es-hint">Type a SQL or PPL query above, or try 🎲 Feeling Lucky</div></div></div>
-  <div id="chart-container"></div>
+  <div class="results" id="results" role="region" aria-label="Query results" aria-live="polite"><div class="empty-state"><div class="es-icon">🔍</div><div class="es-title">Run a query to see results</div><div class="es-hint">Type a SQL or PPL query above, or try 🎲 Feeling Lucky</div></div></div>
+  <div id="chart-container" role="img" aria-label="Query results chart"></div>
   <div class="chart-hint" id="chart-hint"></div>
 </main>
 
