@@ -15,7 +15,8 @@ pub fn subquery_to_sql(q: &SubQuery) -> String {
                 AggFunction::Avg => format!("avg({field})"),
                 AggFunction::Min => format!("min({field})"),
                 AggFunction::Max => format!("max({field})"),
-                AggFunction::CountDistinct => format!("uniq({field})"), // ClickHouse uses uniq()
+                AggFunction::CountDistinct | AggFunction::ApproxCountDistinct => format!("uniq({field})"),
+                AggFunction::ApproxPercentile(p) => format!("quantile({p})({field})"), // ClickHouse uses uniq()
             };
             format!("{expr} AS {}", a.alias)
         }).collect();

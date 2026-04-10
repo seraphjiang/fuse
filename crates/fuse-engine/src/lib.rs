@@ -7,6 +7,7 @@
 //! via the [`SQLExecutor`] trait.
 
 pub mod anomaly;
+pub mod approx_agg;
 pub mod cache;
 pub mod cache_middleware;
 pub mod cost;

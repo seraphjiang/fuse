@@ -14,6 +14,8 @@ pub fn subquery_to_sql(q: &SubQuery) -> String {
                 AggFunction::Avg => format!("avg({field})"),
                 AggFunction::Min => format!("min({field})"),
                 AggFunction::Max => format!("max({field})"),
+                AggFunction::ApproxCountDistinct => format!("approx_count_distinct({field})"),
+                AggFunction::ApproxPercentile(p) => format!("approx_quantile({field}, {p})"),
                 AggFunction::CountDistinct => format!("count(DISTINCT {field})"),
             };
             format!("{expr} AS {}", a.alias)

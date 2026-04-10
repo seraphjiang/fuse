@@ -4031,3 +4031,47 @@ async fn test_root_redirects_to_playground() {
     // Root should serve playground or redirect
     assert!(resp.status() == StatusCode::OK || resp.status() == StatusCode::TEMPORARY_REDIRECT);
 }
+
+// ── #413 Recursive CTE verification (tester) ──
+
+#[tokio::test]
+async fn test_recursive_cte_basic() {
+    // Base case from real datasource, recursive step references CTE name
+    let (status, json) = post_query(
+        build_federation_app(),
+        "WITH RECURSIVE chain AS (SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM chain.data) SELECT * FROM chain.data",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    // Should have at least the base case rows
+    assert!(!rows.is_empty(), "recursive CTE should produce rows");
+}
+
+#[tokio::test]
+async fn test_recursive_cte_terminates() {
+    // Mock returns same rows each iteration → should hit 100 iteration limit and stop
+    let (status, json) = post_query(
+        build_federation_app(),
+        "WITH RECURSIVE chain AS (SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM chain.data) SELECT * FROM chain.data",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    // With 100 max iterations × 2 rows per iteration + 2 base = max 202
+    // Safety limit should prevent infinite growth
+    assert!(rows.len() <= 250, "recursive CTE should terminate, got {} rows", rows.len());
+}
+
+#[tokio::test]
+async fn test_non_recursive_with_still_works() {
+    // Regular WITH (not RECURSIVE) should still work
+    let (status, json) = post_query(
+        build_federation_app(),
+        "WITH src AS (SELECT * FROM cluster_a.logs) SELECT * FROM src.data",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert!(!rows.is_empty());
+}

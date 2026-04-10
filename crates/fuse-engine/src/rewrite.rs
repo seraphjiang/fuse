@@ -60,6 +60,79 @@ pub fn prune_projections(projections: &[String], available_fields: &[String]) ->
         .collect()
 }
 
+// ── Query Plan Optimizer Rules ──
+
+/// Apply all optimizer rules to a SubQuery in place.
+pub fn optimize(sq: &mut SubQuery) {
+    eliminate_redundant_sort(sq);
+    merge_adjacent_limits(sq);
+}
+
+/// Rule 1: Eliminate redundant sorts — if no LIMIT and no explicit ORDER BY need,
+/// remove sort to avoid unnecessary work at the connector.
+/// Keeps sort if there's a limit (Top-N) or if sort is explicitly requested.
+pub fn eliminate_redundant_sort(sq: &mut SubQuery) {
+    // Sort is only useful with LIMIT (Top-N) or when results need ordering.
+    // If there's a GROUP BY with aggregations but no LIMIT, sort is redundant
+    // because reaggregation will reorder anyway.
+    if !sq.sort.is_empty() && sq.limit.is_none() && !sq.group_by.is_empty() {
+        sq.sort.clear();
+    }
+}
+
+/// Rule 2: Merge adjacent limits — if both the query and a subquery specify limits,
+/// use the smaller one.
+pub fn merge_adjacent_limits(sq: &mut SubQuery) {
+    // Already handled in push_down_to_sources via min(base, existing).
+    // This rule handles the case where offset + limit can be tightened:
+    // LIMIT 10 OFFSET 5 → connector needs at most 15 rows.
+    if let (Some(limit), Some(offset)) = (sq.limit, sq.offset) {
+        let needed = limit.saturating_add(offset);
+        sq.limit = Some(needed);
+        // Offset applied post-fetch, not at connector
+        sq.offset = None;
+    }
+}
+
+/// Rule 3: Extract join-side filters from a WHERE clause.
+/// Given a filter and two table aliases, split into left-only, right-only, and shared filters.
+pub fn split_join_filters(
+    filter: &fuse_core::connector::FilterExpr,
+    left_columns: &[String],
+    right_columns: &[String],
+) -> (Option<fuse_core::connector::FilterExpr>, Option<fuse_core::connector::FilterExpr>) {
+    use fuse_core::connector::FilterExpr;
+    match filter {
+        FilterExpr::And(l, r) => {
+            let (ll, lr) = split_join_filters(l, left_columns, right_columns);
+            let (rl, rr) = split_join_filters(r, left_columns, right_columns);
+            let left = match (ll, rl) {
+                (Some(a), Some(b)) => Some(FilterExpr::And(Box::new(a), Box::new(b))),
+                (Some(a), None) | (None, Some(a)) => Some(a),
+                (None, None) => None,
+            };
+            let right = match (lr, rr) {
+                (Some(a), Some(b)) => Some(FilterExpr::And(Box::new(a), Box::new(b))),
+                (Some(a), None) | (None, Some(a)) => Some(a),
+                (None, None) => None,
+            };
+            (left, right)
+        }
+        FilterExpr::Comparison { field, .. } => {
+            let bare = field.rsplit('.').next().unwrap_or(field);
+            if left_columns.iter().any(|c| c == bare) {
+                (Some(filter.clone()), None)
+            } else if right_columns.iter().any(|c| c == bare) {
+                (None, Some(filter.clone()))
+            } else {
+                // Shared — push to both sides
+                (Some(filter.clone()), Some(filter.clone()))
+            }
+        }
+        _ => (Some(filter.clone()), Some(filter.clone())),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -267,5 +340,62 @@ mod tests {
         }];
         push_down_to_sources(&base, &mut sources);
         assert_eq!(sources[0].limit, Some(50));
+    }
+
+    #[test]
+    fn test_eliminate_redundant_sort_with_group_by() {
+        let mut sq = SubQuery {
+            table: "t".into(), projections: vec![], filter: None,
+            aggregations: vec![], group_by: vec!["host".into()],
+            sort: vec![SortExpr { field: "host".into(), descending: false }],
+            limit: None, having: None, offset: None, passthrough: None,
+        };
+        eliminate_redundant_sort(&mut sq);
+        assert!(sq.sort.is_empty(), "sort should be removed when GROUP BY + no LIMIT");
+    }
+
+    #[test]
+    fn test_keep_sort_with_limit() {
+        let mut sq = SubQuery {
+            table: "t".into(), projections: vec![], filter: None,
+            aggregations: vec![], group_by: vec!["host".into()],
+            sort: vec![SortExpr { field: "host".into(), descending: true }],
+            limit: Some(10), having: None, offset: None, passthrough: None,
+        };
+        eliminate_redundant_sort(&mut sq);
+        assert_eq!(sq.sort.len(), 1, "sort should be kept for Top-N");
+    }
+
+    #[test]
+    fn test_merge_limit_offset() {
+        let mut sq = SubQuery {
+            table: "t".into(), projections: vec![], filter: None,
+            aggregations: vec![], group_by: vec![], sort: vec![],
+            limit: Some(10), having: None, offset: Some(5), passthrough: None,
+        };
+        merge_adjacent_limits(&mut sq);
+        assert_eq!(sq.limit, Some(15), "limit should be limit+offset");
+        assert_eq!(sq.offset, None, "offset cleared — applied post-fetch");
+    }
+
+    #[test]
+    fn test_split_join_filters() {
+        let filter = FilterExpr::And(
+            Box::new(FilterExpr::Comparison {
+                field: "status".into(),
+                op: ComparisonOp::Gte,
+                value: ScalarValue::Int64(500),
+            }),
+            Box::new(FilterExpr::Comparison {
+                field: "region".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Utf8("us-east-1".into()),
+            }),
+        );
+        let left_cols = vec!["status".into()];
+        let right_cols = vec!["region".into()];
+        let (left, right) = split_join_filters(&filter, &left_cols, &right_cols);
+        assert!(left.is_some(), "status filter should go to left");
+        assert!(right.is_some(), "region filter should go to right");
     }
 }

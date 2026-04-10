@@ -249,7 +249,7 @@ mod tests {
             having: None,
             sort: vec![],
             limit: None,
-            passthrough: None,
+            passthrough: None, offset: None,
         };
         let batches = c.execute(&q).await.unwrap();
         assert_eq!(batches[0].num_rows(), 1);

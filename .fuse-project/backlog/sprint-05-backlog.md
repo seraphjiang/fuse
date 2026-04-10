@@ -47,7 +47,7 @@
 |----|------|-------|--------|-------|
 | 413 | Recursive CTEs | explorer | done | WITH RECURSIVE, base+recursive step, 100 iteration safety. Commit: c307ec9 |
 | 422 | Anomaly detection primitives | explorer | done | moving_avg, stddev, z_scores, detect_anomalies, annotate_batch. Commit: 5dfa8f3 |
-| 530 | Query result caching with TTL | planner | todo | Cache frequent queries, invalidate on TTL or schema change |
+| 530 | Query result caching with TTL | planner | done | 60s TTL, 500 entries, format:query key. Commit: fccc544 |
 | 531 | Parallel connector health checks | infra | done | 5s per-connector timeout, unhealthy on hang. Commit: 4d55226 |
 | 532 | RIGHT JOIN support | planner | done | Swap sides + delegate to LEFT. 6 join types complete. Commit: cfda8ea |
 
@@ -55,7 +55,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 540 | E2E test suite for visualization platform | tester | todo | Test chart rendering, dashboard save/load, export |
+| 540 | E2E test suite for visualization platform | tester | done | 6 E2E tests: playground, dashboard, explore, chart format, saved queries. Commit: fec077f |
 | 541 | Load testing: concurrent query stress test | tester | done | 100 concurrent, p99 <100ms, 0% errors. Commit: 2563560 |
 | 542 | Connector integration tests against real services | tester | todo | Test against real PostgreSQL, Redis, DynamoDB (not mocks) |
 | 543 | Security audit: SQL injection across all connectors | tester | done | 6 fuzz tests × 13 payloads. 2 vulns found (InfluxDB, Prometheus). Commit: 16f4aff |
@@ -67,4 +67,4 @@
 | 550 | Connector development guide (how to add a new connector) | docs | done | 6-step tutorial with checklist and reference table. Commit: 01b8f49 |
 | 551 | Dashboard user guide with screenshots | docs | done | 12 chart types, auto-detection, variables, drill-down, templates, export. Commit: 8fea9d1 |
 | 552 | Performance tuning guide | docs | done | 6 sections: pushdown, JOINs, caching, config, cost estimator, monitoring. Commit: 93277e7 |
-| 553 | GitHub release v0.5.0 | infra | todo | Tag, release notes, binary artifacts |
+| 553 | GitHub release v0.5.0 | infra | done | Tag pushed to GitHub + CodeCommit. release.yml triggered |
