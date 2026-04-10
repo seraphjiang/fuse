@@ -33,7 +33,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 620 | Multi-tenant isolation | explorer | todo | Per-tenant datasource visibility, query isolation |
+| 620 | Multi-tenant isolation | explorer | done | TenantConfig, TenantRegistry, datasource filtering, secure default. Commit: 2026634 |
 | 621 | Query governor (max rows, max time, max memory) | planner | todo | Per-tenant resource limits |
 | 622 | Audit logging (who queried what, when) | explorer | todo | Structured audit log with identity, query, duration, result count |
 
@@ -67,4 +67,4 @@
 |----|------|-------|--------|-------|
 | 660 | Video recording of demo script | docs | todo | Record the v2 demo script as actual video |
 | 661 | Community Discord/Slack setup | docs | todo | Community channel for users and contributors |
-| 662 | Roadmap page on docs-site | docs | todo | Public roadmap with planned features |
+| 662 | Roadmap page on docs-site | docs | done | Shipped/In Progress/Planned/Community sections. Commit: 05a46d9 |

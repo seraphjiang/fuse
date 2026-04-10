@@ -87,7 +87,7 @@ pub struct PartialError {
 
 // ── Request / Response types ──
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct QueryRequest {
     pub query: String,
     #[serde(default = "default_format")]
@@ -2258,6 +2258,62 @@ pub async fn delete_view(
     } else {
         error_json(StatusCode::NOT_FOUND, format!("view '{}' not found", name)).into_response()
     }
+}
+
+/// Split SQL on semicolons, respecting string literals.
+pub fn split_statements(query: &str) -> Vec<String> {
+    let mut stmts = Vec::new();
+    let mut current = String::new();
+    let mut in_quote = false;
+
+    for c in query.chars() {
+        if c == '\'' {
+            in_quote = !in_quote;
+            current.push(c);
+        } else if c == ';' && !in_quote {
+            let trimmed = current.trim().to_string();
+            if !trimmed.is_empty() {
+                stmts.push(trimmed);
+            }
+            current.clear();
+        } else {
+            current.push(c);
+        }
+    }
+    let trimmed = current.trim().to_string();
+    if !trimmed.is_empty() {
+        stmts.push(trimmed);
+    }
+    stmts
+}
+
+/// POST /api/fuse/multi — execute multiple semicolon-separated statements
+pub async fn multi_query_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<QueryRequest>,
+) -> impl IntoResponse {
+    let statements = split_statements(&req.query);
+    if statements.len() <= 1 {
+        // Single statement — delegate to normal handler
+        return query_handler(State(state), Json(req)).await.into_response();
+    }
+
+    let mut results = Vec::new();
+    for stmt in &statements {
+        let mut sub_req = req.clone();
+        sub_req.query = stmt.clone();
+        let resp = query_handler(State(state.clone()), Json(sub_req)).await;
+        // Extract JSON body from response
+        let (parts, body) = resp.into_response().into_parts();
+        let bytes = axum::body::to_bytes(body, 10_000_000).await.unwrap_or_default();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or(serde_json::json!({"error": "parse error"}));
+        results.push(serde_json::json!({
+            "status": parts.status.as_u16(),
+            "data": json,
+        }));
+    }
+
+    (StatusCode::OK, Json(serde_json::json!({ "results": results, "count": results.len() }))).into_response()
 }
 
 pub async fn list_views(State(state): State<Arc<AppState>>) -> impl IntoResponse {

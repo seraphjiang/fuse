@@ -65,6 +65,7 @@ fn build_load_app() -> axum::Router {
         running_queries: Arc::new(RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
         plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
     });
     fuse_server::build_router(state)
 }

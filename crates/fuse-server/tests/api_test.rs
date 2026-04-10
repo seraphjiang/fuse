@@ -4075,3 +4075,25 @@ async fn test_non_recursive_with_still_works() {
     let rows = json["rows"].as_array().unwrap();
     assert!(!rows.is_empty());
 }
+
+// ── Multi-statement tests ──
+
+#[test]
+fn test_split_statements_basic() {
+    let stmts = fuse_server::api::split_statements("SELECT 1; SELECT 2; SELECT 3");
+    assert_eq!(stmts.len(), 3);
+    assert_eq!(stmts[0], "SELECT 1");
+}
+
+#[test]
+fn test_split_statements_respects_quotes() {
+    let stmts = fuse_server::api::split_statements("SELECT * FROM t WHERE msg = 'a;b'; SELECT 2");
+    assert_eq!(stmts.len(), 2);
+    assert!(stmts[0].contains("'a;b'"));
+}
+
+#[test]
+fn test_split_statements_single() {
+    let stmts = fuse_server::api::split_statements("SELECT * FROM t");
+    assert_eq!(stmts.len(), 1);
+}
