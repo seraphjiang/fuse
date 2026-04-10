@@ -731,8 +731,17 @@ async fn execute_union(
         let ds = ds_id.clone();
         handles.push(tokio::spawn(async move {
             let start = std::time::Instant::now();
-            let result = conn.execute(&sub_query).await;
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(25), // per-connector timeout (< global 30s)
+                conn.execute(&sub_query),
+            ).await;
             let latency_ms = start.elapsed().as_millis() as u64;
+            let result = match result {
+                Ok(r) => r,
+                Err(_) => Err(fuse_core::error::ConnectorError::QueryFailed(
+                    format!("connector '{}' timed out", ds),
+                )),
+            };
             (ds, result, latency_ms)
         }));
     }
@@ -815,12 +824,19 @@ async fn execute_join(
 
     let start_a = std::time::Instant::now();
     let start_b = start_a;
-    let (res_a, res_b) = tokio::join!(conn_a.execute(&sq_a), conn_b.execute(&sq_b));
+    let per_conn_timeout = std::time::Duration::from_secs(25);
+    let (res_a, res_b) = tokio::join!(
+        tokio::time::timeout(per_conn_timeout, conn_a.execute(&sq_a)),
+        tokio::time::timeout(per_conn_timeout, conn_b.execute(&sq_b)),
+    );
     let latency_a = start_a.elapsed().as_millis() as u64;
     let latency_b = start_b.elapsed().as_millis() as u64;
 
-    let batches_a = res_a.map_err(|e| e.to_string())?;
-    let batches_b = res_b.map_err(|e| e.to_string())?;
+    let res_a = res_a.map_err(|_| format!("connector '{}' timed out", ds_a))?.map_err(|e| e.to_string());
+    let res_b = res_b.map_err(|_| format!("connector '{}' timed out", ds_b))?.map_err(|e| e.to_string());
+
+    let batches_a = res_a?;
+    let batches_b = res_b?;
 
     let rows_a: u64 = batches_a.iter().map(|b| b.num_rows() as u64).sum();
     let rows_b: u64 = batches_b.iter().map(|b| b.num_rows() as u64).sum();
@@ -1485,6 +1501,27 @@ fn encode_cursor(offset: usize) -> String {
 /// Decode a cursor string back to an offset.
 fn decode_cursor(cursor: &str) -> Option<usize> {
     cursor.strip_prefix("fuse_c_")?.parse().ok()
+}
+
+/// Encode a UNION ALL cursor with per-source offsets.
+/// Format: fuse_u_<ds1>:<offset1>,<ds2>:<offset2>,...|<global_offset>
+fn encode_union_cursor(per_source: &[(String, usize)], global_offset: usize) -> String {
+    let parts: Vec<String> = per_source.iter().map(|(ds, off)| format!("{}:{}", ds, off)).collect();
+    format!("fuse_u_{}|{}", parts.join(","), global_offset)
+}
+
+/// Decode a UNION ALL cursor. Returns (per-source offsets, global offset).
+fn decode_union_cursor(cursor: &str) -> Option<(Vec<(String, usize)>, usize)> {
+    let rest = cursor.strip_prefix("fuse_u_")?;
+    let (sources_part, global_part) = rest.rsplit_once('|')?;
+    let global: usize = global_part.parse().ok()?;
+    let per_source: Vec<(String, usize)> = sources_part.split(',')
+        .filter_map(|s| {
+            let (ds, off) = s.rsplit_once(':')?;
+            Some((ds.to_string(), off.parse().ok()?))
+        })
+        .collect();
+    Some((per_source, global))
 }
 
 /// Describe pushdown operations from a SubQuery for profile display.
@@ -2493,6 +2530,43 @@ mod tests {
         assert_eq!(spans[0].datasource, "c");
         assert_eq!(spans[1].datasource, "a");
         assert_eq!(spans[2].datasource, "b");
+    }
+
+    #[test]
+    fn test_encode_decode_cursor_roundtrip() {
+        let encoded = encode_cursor(42);
+        assert_eq!(decode_cursor(&encoded), Some(42));
+    }
+
+    #[test]
+    fn test_union_cursor_roundtrip() {
+        let sources = vec![("cluster_a".into(), 100), ("cluster_b".into(), 50)];
+        let encoded = encode_union_cursor(&sources, 150);
+        let (decoded_sources, global) = decode_union_cursor(&encoded).unwrap();
+        assert_eq!(global, 150);
+        assert_eq!(decoded_sources.len(), 2);
+        assert_eq!(decoded_sources[0], ("cluster_a".into(), 100));
+        assert_eq!(decoded_sources[1], ("cluster_b".into(), 50));
+    }
+
+    #[test]
+    fn test_union_cursor_single_source() {
+        let sources = vec![("ds1".into(), 25)];
+        let encoded = encode_union_cursor(&sources, 25);
+        let (decoded, global) = decode_union_cursor(&encoded).unwrap();
+        assert_eq!(global, 25);
+        assert_eq!(decoded, vec![("ds1".into(), 25)]);
+    }
+
+    #[test]
+    fn test_decode_invalid_union_cursor() {
+        assert!(decode_union_cursor("not_a_cursor").is_none());
+        assert!(decode_union_cursor("fuse_c_42").is_none());
+    }
+
+    #[test]
+    fn test_decode_simple_cursor_rejects_union() {
+        assert!(decode_cursor("fuse_u_ds1:10|10").is_none());
     }
 
     #[test]
