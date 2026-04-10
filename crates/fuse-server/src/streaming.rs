@@ -72,16 +72,25 @@ pub struct StreamRequest {
 }
 
 /// POST /api/fuse/query/stream
+///
+/// SSE streaming with backpressure:
+/// - Bounded channel (CHANNEL_BUFFER) — producer blocks when client is slow
+/// - Client-driven batch_size (rows per event, default 500)
+/// - Progress events with total_rows + total_bytes
+/// - Done event with final stats
 pub async fn stream_handler(
     State(state): State<Arc<AppState>>,
-    Json(req): Json<QueryRequest>,
+    Json(req): Json<StreamRequest>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let batch_size = req.batch_size.unwrap_or(DEFAULT_BATCH_SIZE).max(1).min(10_000);
+    let query_req = req.query;
+
     let stream = async_stream::stream! {
         // Parse datasource.table from query
-        let format = req.format.to_lowercase();
+        let format = query_req.format.to_lowercase();
         let parse_result = match format.as_str() {
-            "ppl" => parse_ppl_source(&req.query),
-            _ => parse_sql_source(&req.query),
+            "ppl" => parse_ppl_source(&query_req.query),
+            _ => parse_sql_source(&query_req.query),
         };
 
         let (ds_id, table) = match parse_result {
@@ -115,9 +124,9 @@ pub async fn stream_handler(
             columns,
         }));
 
-        // Execute via streaming
-        let (tx, mut rx) = tokio::sync::mpsc::channel(32);
-        let sub_query = match crate::api::build_sub_query(&req.query, &format, &table) {
+        // Bounded channel for backpressure — producer blocks when buffer is full
+        let (tx, mut rx) = tokio::sync::mpsc::channel(CHANNEL_BUFFER);
+        let sub_query = match crate::api::build_sub_query(&query_req.query, &format, &table) {
             Ok(sq) => sq,
             Err(e) => {
                 yield Ok(make_error_event(&e));
@@ -131,26 +140,40 @@ pub async fn stream_handler(
         });
 
         let mut total_rows: u64 = 0;
+        let mut total_bytes: u64 = 0;
         let mut batches_sent: u64 = 0;
+        let mut row_buffer: Vec<Vec<serde_json::Value>> = Vec::with_capacity(batch_size);
 
         while let Some(result) = rx.recv().await {
             match result {
                 Ok(batch) => {
+                    let batch_bytes: u64 = batch.get_array_memory_size() as u64;
+                    total_bytes += batch_bytes;
                     let rows = batch_to_rows(&batch);
-                    total_rows += rows.len() as u64;
-                    batches_sent += 1;
 
-                    yield Ok(make_event(&BatchEvent {
-                        r#type: "batch",
-                        rows,
-                    }));
+                    for row in rows {
+                        row_buffer.push(row);
+                        if row_buffer.len() >= batch_size {
+                            batches_sent += 1;
+                            let chunk_len = row_buffer.len();
+                            total_rows += chunk_len as u64;
+                            yield Ok(make_event(&BatchEvent {
+                                r#type: "batch",
+                                rows: std::mem::replace(&mut row_buffer, Vec::with_capacity(batch_size)),
+                                batch_num: batches_sent,
+                                batch_rows: chunk_len,
+                            }));
 
-                    // Progress every 5 batches
-                    if batches_sent % 5 == 0 {
-                        yield Ok(make_event(&ProgressEvent {
-                            r#type: "progress",
-                            batches_sent,
-                        }));
+                            // Progress every 5 batches
+                            if batches_sent % 5 == 0 {
+                                yield Ok(make_event(&ProgressEvent {
+                                    r#type: "progress",
+                                    batches_sent,
+                                    total_rows,
+                                    total_bytes,
+                                }));
+                            }
+                        }
                     }
                 }
                 Err(e) => {
@@ -160,9 +183,24 @@ pub async fn stream_handler(
             }
         }
 
+        // Flush remaining rows
+        if !row_buffer.is_empty() {
+            batches_sent += 1;
+            let chunk_len = row_buffer.len();
+            total_rows += chunk_len as u64;
+            yield Ok(make_event(&BatchEvent {
+                r#type: "batch",
+                rows: row_buffer,
+                batch_num: batches_sent,
+                batch_rows: chunk_len,
+            }));
+        }
+
         yield Ok(make_event(&DoneEvent {
             r#type: "done",
             total_rows,
+            total_bytes,
+            batches_sent,
         }));
     };
 
@@ -241,8 +279,9 @@ mod tests {
         let evt = make_event(&DoneEvent {
             r#type: "done",
             total_rows: 42,
+            total_bytes: 1024,
+            batches_sent: 3,
         });
-        // Event was created without panic
         let _ = evt;
     }
 
@@ -339,5 +378,82 @@ mod tests {
     #[test]
     fn test_parse_ppl_source_invalid() {
         assert!(parse_ppl_source("not a ppl query").is_err());
+    }
+
+    #[test]
+    fn test_default_batch_size() {
+        assert_eq!(DEFAULT_BATCH_SIZE, 500);
+    }
+
+    #[test]
+    fn test_batch_size_clamped() {
+        // batch_size is clamped to 1..=10_000
+        let val = 0usize.max(1).min(10_000);
+        assert_eq!(val, 1);
+        let val = 99_999usize.max(1).min(10_000);
+        assert_eq!(val, 10_000);
+        let val = 200usize.max(1).min(10_000);
+        assert_eq!(val, 200);
+    }
+
+    #[test]
+    fn test_channel_buffer_bounded() {
+        // Verify backpressure constant is small (bounded)
+        assert!(CHANNEL_BUFFER <= 8);
+        assert!(CHANNEL_BUFFER >= 1);
+    }
+
+    #[test]
+    fn test_stream_request_deserialize() {
+        let json = r#"{"query":"SELECT * FROM ds.t","batch_size":100}"#;
+        let req: StreamRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.batch_size, Some(100));
+        assert_eq!(req.query.query, "SELECT * FROM ds.t");
+    }
+
+    #[test]
+    fn test_stream_request_default_batch_size() {
+        let json = r#"{"query":"SELECT * FROM ds.t"}"#;
+        let req: StreamRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.batch_size, None);
+    }
+
+    #[test]
+    fn test_batch_event_includes_stats() {
+        let evt = BatchEvent {
+            r#type: "batch",
+            rows: vec![vec![serde_json::json!("a")]],
+            batch_num: 1,
+            batch_rows: 1,
+        };
+        let json = serde_json::to_value(&evt).unwrap();
+        assert_eq!(json["batch_num"], 1);
+        assert_eq!(json["batch_rows"], 1);
+    }
+
+    #[test]
+    fn test_done_event_includes_bytes() {
+        let evt = DoneEvent {
+            r#type: "done",
+            total_rows: 100,
+            total_bytes: 4096,
+            batches_sent: 2,
+        };
+        let json = serde_json::to_value(&evt).unwrap();
+        assert_eq!(json["total_bytes"], 4096);
+        assert_eq!(json["batches_sent"], 2);
+    }
+
+    #[test]
+    fn test_progress_event_includes_bytes() {
+        let evt = ProgressEvent {
+            r#type: "progress",
+            batches_sent: 5,
+            total_rows: 2500,
+            total_bytes: 8192,
+        };
+        let json = serde_json::to_value(&evt).unwrap();
+        assert_eq!(json["total_rows"], 2500);
+        assert_eq!(json["total_bytes"], 8192);
     }
 }

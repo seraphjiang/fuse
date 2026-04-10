@@ -28,6 +28,8 @@ Execute a SQL or PPL query.
 | `timeout_ms` | int | `30000` | Per-query timeout in milliseconds |
 | `result_format` | string | `"json"` | `"json"` or `"csv"` |
 | `params` | object | `{}` | Named parameters for `$name` placeholders |
+| `page_size` | int | none | Rows per page (enables cursor pagination) |
+| `cursor` | string | none | Cursor from previous response's `next_cursor` |
 
 **Response:**
 ```json
@@ -65,7 +67,7 @@ Execute a SQL or PPL query.
 }
 ```
 
-`datasource_stats` and `datasources_queried` appear for cross-datasource queries. `execution_profile` appears when `analyze: true`.
+`datasource_stats` and `datasources_queried` appear for cross-datasource queries. `execution_profile` appears when `analyze: true`. `next_cursor` appears when `page_size` is set and more rows exist.
 
 **curl:**
 ```bash

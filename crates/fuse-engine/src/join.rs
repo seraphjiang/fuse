@@ -34,6 +34,8 @@ use crate::cost::{estimate_remote_cost, CostEstimate, QueryWorkload, TableStats}
 pub enum JoinType {
     Inner,
     Left,
+    /// Full outer join: all rows from both sides, NULLs where no match
+    Full,
     /// Semi-join: return left rows that have a match in right (EXISTS)
     Semi,
     /// Anti-join: return left rows that have NO match in right (NOT EXISTS)
@@ -194,12 +196,13 @@ pub fn hash_join(
     let probe_col = probe_merged.column(probe_key_idx);
     let mut build_indices = Vec::new();
     let mut probe_indices = Vec::new();
+    let mut build_matched = vec![false; build_merged.num_rows()];
 
     for probe_row in 0..probe_merged.num_rows() {
         if probe_col.is_null(probe_row) {
-            if join_type == JoinType::Left || join_type == JoinType::Anti {
+            if join_type == JoinType::Left || join_type == JoinType::Anti || join_type == JoinType::Full {
                 build_indices.push(None);
-                probe_indices.push(probe_row as u32);
+                probe_indices.push(Some(probe_row as u32));
             }
             continue;
         }
@@ -210,7 +213,7 @@ pub fn hash_join(
                 match join_type {
                     JoinType::Semi => {
                         // Emit probe row once (no build columns)
-                        probe_indices.push(probe_row as u32);
+                        probe_indices.push(Some(probe_row as u32));
                     }
                     JoinType::Anti => {
                         // Has match — skip (anti-join excludes matches)
@@ -218,23 +221,35 @@ pub fn hash_join(
                     _ => {
                         for &br in build_rows {
                             build_indices.push(Some(br));
-                            probe_indices.push(probe_row as u32);
+                            probe_indices.push(Some(probe_row as u32));
+                            build_matched[br as usize] = true;
                         }
                     }
                 }
             }
             None => {
-                if join_type == JoinType::Left || join_type == JoinType::Anti {
+                if join_type == JoinType::Left || join_type == JoinType::Anti || join_type == JoinType::Full {
                     build_indices.push(None);
-                    probe_indices.push(probe_row as u32);
+                    probe_indices.push(Some(probe_row as u32));
                 }
+            }
+        }
+    }
+
+    // Full outer join: emit unmatched build rows with NULL probe columns
+    if join_type == JoinType::Full {
+        for (row, matched) in build_matched.iter().enumerate() {
+            if !matched {
+                build_indices.push(Some(row as u32));
+                probe_indices.push(None);
             }
         }
     }
 
     // Semi/Anti joins return only probe-side columns
     if join_type == JoinType::Semi || join_type == JoinType::Anti {
-        let probe_idx_array = UInt32Array::from(probe_indices);
+        let pi: Vec<u32> = probe_indices.iter().filter_map(|p| *p).collect();
+        let probe_idx_array = UInt32Array::from(pi);
         let mut output_columns: Vec<ArrayRef> = Vec::new();
         for col_idx in 0..probe_merged.num_columns() {
             let col = probe_merged.column(col_idx);
@@ -245,9 +260,8 @@ pub fn hash_join(
         return Ok(vec![result]);
     }
 
-    // Assemble output: build columns (with nulls for unmatched left joins) + probe columns
+    // Assemble output: build columns (with nulls for unmatched) + probe columns (with nulls for unmatched)
     let output_schema = merge_schemas(&build_schema, &probe_schema, build_key, probe_key, join_type);
-    let probe_idx_array = UInt32Array::from(probe_indices.clone());
 
     let mut output_columns: Vec<ArrayRef> = Vec::new();
 
@@ -264,7 +278,7 @@ pub fn hash_join(
             continue;
         }
         let col = probe_merged.column(col_idx);
-        let gathered = take(col.as_ref(), &probe_idx_array, None)?;
+        let gathered = gather_with_nulls(col, &probe_indices)?;
         output_columns.push(gathered);
     }
 

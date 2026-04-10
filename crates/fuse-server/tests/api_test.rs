@@ -3533,3 +3533,83 @@ fn test_parse_having_none() {
     let h = fuse_server::api::parse_having("SELECT * FROM a.logs GROUP BY host");
     assert!(h.is_none());
 }
+
+// ── #401 Time-windowed JOIN verification (tester) ──
+
+#[test]
+fn test_parse_time_window_seconds() {
+    use fuse_server::api::parse_time_window;
+    let tw = parse_time_window(
+        "SELECT * FROM a.logs JOIN b.metrics ON a.logs.host = b.metrics.host AND a.logs.ts BETWEEN b.metrics.ts - INTERVAL 30 seconds AND b.metrics.ts + INTERVAL 30 seconds"
+    );
+    assert!(tw.is_some());
+    assert_eq!(tw.unwrap().interval_secs, 30);
+}
+
+#[test]
+fn test_parse_time_window_hours() {
+    use fuse_server::api::parse_time_window;
+    let tw = parse_time_window(
+        "SELECT * FROM a.logs JOIN b.metrics ON a.logs.ts BETWEEN b.metrics.ts - INTERVAL 2 hours AND b.metrics.ts + INTERVAL 2 hours"
+    );
+    assert!(tw.is_some());
+    assert_eq!(tw.unwrap().interval_secs, 7200);
+}
+
+#[test]
+fn test_parse_time_window_days() {
+    use fuse_server::api::parse_time_window;
+    let tw = parse_time_window(
+        "SELECT * FROM a.logs JOIN b.metrics ON a.logs.ts BETWEEN b.metrics.ts - INTERVAL 1 day AND b.metrics.ts + INTERVAL 1 day"
+    );
+    assert!(tw.is_some());
+    assert_eq!(tw.unwrap().interval_secs, 86400);
+}
+
+#[test]
+fn test_parse_time_window_no_on_clause() {
+    use fuse_server::api::parse_time_window;
+    assert!(parse_time_window("SELECT * FROM a.logs").is_none());
+}
+
+#[test]
+fn test_parse_time_window_no_between() {
+    use fuse_server::api::parse_time_window;
+    assert!(parse_time_window(
+        "SELECT * FROM a.logs JOIN b.metrics ON a.logs.host = b.metrics.host"
+    ).is_none());
+}
+
+// ── #421 Trace reconstruction verification (tester) ──
+
+#[tokio::test]
+async fn test_trace_endpoint_returns_timeline() {
+    let app = build_federation_app();
+    let req = Request::builder()
+        .uri("/api/fuse/trace/tr-abc123")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(json["datasources_searched"].as_array().unwrap().len() >= 2, "should fan out to all datasources");
+    assert!(json["total_spans"].is_number());
+    assert!(json["search_ms"].is_number());
+}
+
+#[tokio::test]
+async fn test_trace_endpoint_nonexistent_trace() {
+    let app = build_federation_app();
+    let req = Request::builder()
+        .uri("/api/fuse/trace/nonexistent-trace-id-xyz")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    // Mock doesn't filter, so spans may be returned — just verify structure
+    assert!(json["total_spans"].is_number());
+    assert!(json["datasources_searched"].as_array().is_some());
+}

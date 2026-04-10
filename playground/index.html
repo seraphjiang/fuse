@@ -714,13 +714,10 @@ function suggestChart(columns, rows) {
 
 function resolveChartType(autoSuggestion) {
   if (userChartType === 'auto' || !autoSuggestion) return autoSuggestion;
-  // Override the auto type with user selection, keeping axis assignments
   const s = { ...autoSuggestion };
   const t = userChartType;
   if (t === 'pie') { s.type = 'pie'; s.label = s.label || s.x; s.value = s.value || s.y; }
-  else if (t === 'histogram') { s.type = 'histogram'; }
-  else if (t === 'stacked-bar') { s.type = 'stacked-bar'; }
-  else if (t === 'area') { s.type = 'area'; }
+  else if (['histogram','stacked-bar','area','heatmap','timeline','flame','sankey'].includes(t)) { s.type = t; }
   else { s.type = t; }
   return s;
 }
@@ -748,6 +745,131 @@ function buildChartOption(suggestion, columns, rows) {
     const labels = bins.map((_, i) => { const lo = min + i * binSize; return `${lo.toFixed(1)}-${(lo + binSize).toFixed(1)}`; });
     return { ...dark, tooltip, grid, xAxis: { type: 'category', data: labels, axisLabel: { ...axisLabel, rotate: 30 } },
       yAxis: { type: 'value', axisLabel }, series: [{ type: 'bar', data: bins, barWidth: '90%', itemStyle: { color: '#58a6ff' } }] };
+  }
+
+  // Heatmap: x=first cat/time, y=second cat, value=first num (or count)
+  if (suggestion.type === 'heatmap') {
+    const types = detectColumnTypes(columns, rows);
+    const cats = columns.filter(c => types[c] === 'category' || types[c] === 'datasource' || types[c] === 'time');
+    const nums = columns.filter(c => types[c] === 'number');
+    const xCol = suggestion.x || cats[0], yCol = cats.find(c => c !== xCol) || cats[1];
+    const vCol = nums[0];
+    if (!xCol || !yCol) return null;
+    const xLabels = [...new Set(vals(xCol).map(String))];
+    const yLabels = [...new Set(vals(yCol).map(String))];
+    const data = []; let maxVal = 0;
+    const agg = {};
+    rows.forEach(r => {
+      const x = String(r[ci(xCol)]), y = String(r[ci(yCol)]);
+      const k = x + '|' + y;
+      agg[k] = (agg[k] || 0) + (vCol ? Number(r[ci(vCol)]) : 1);
+    });
+    xLabels.forEach((x, xi) => yLabels.forEach((y, yi) => {
+      const v = agg[x + '|' + y] || 0;
+      data.push([xi, yi, v]);
+      if (v > maxVal) maxVal = v;
+    }));
+    return { ...dark, tooltip: { trigger: 'item', formatter: p => `${xLabels[p.data[0]]} × ${yLabels[p.data[1]]}: ${p.data[2]}` },
+      grid: { left: 80, right: 40, bottom: 40, top: 16 },
+      xAxis: { type: 'category', data: xLabels, axisLabel: { ...axisLabel, rotate: 30 }, splitArea: { show: true } },
+      yAxis: { type: 'category', data: yLabels, axisLabel },
+      visualMap: { min: 0, max: maxVal || 1, calculable: true, orient: 'horizontal', left: 'center', bottom: 0, inRange: { color: ['#0d1117', '#1f3a5f', '#58a6ff', '#f0883e', '#f85149'] }, textStyle: { color: '#8b949e' } },
+      series: [{ type: 'heatmap', data, label: { show: data.length < 200, color: '#e1e4e8', fontSize: 10 }, emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,.5)' } } }] };
+  }
+
+  // Timeline / Gantt: rows as horizontal bars with start→end
+  if (suggestion.type === 'timeline') {
+    const types = detectColumnTypes(columns, rows);
+    const timeCols = columns.filter(c => types[c] === 'time');
+    const catCols = columns.filter(c => types[c] === 'category' || types[c] === 'string' || types[c] === 'datasource');
+    const numCols = columns.filter(c => types[c] === 'number');
+    // Try to find start/end time columns, or use timestamp + duration
+    let startCol = timeCols.find(c => /start|begin/i.test(c)) || timeCols[0];
+    let endCol = timeCols.find(c => /end|finish/i.test(c)) || timeCols[1];
+    const durCol = numCols.find(c => /dur|elapsed|ms|latency|response_time/i.test(c));
+    const labelCol = catCols.find(c => /service|name|op|span|label/i.test(c)) || catCols[0] || columns[0];
+    if (!startCol && !durCol) return null;
+    // Build Gantt-style data using custom rendering via bar chart
+    const categories = [...new Set(vals(labelCol).map(String))];
+    const data = [];
+    rows.forEach((r, i) => {
+      const label = String(r[ci(labelCol)]);
+      const catIdx = categories.indexOf(label);
+      let s, e;
+      if (startCol && endCol) { s = new Date(r[ci(startCol)]).getTime(); e = new Date(r[ci(endCol)]).getTime(); }
+      else if (startCol && durCol) { s = new Date(r[ci(startCol)]).getTime(); e = s + Number(r[ci(durCol)]); }
+      else if (durCol) { s = i * 100; e = s + Number(r[ci(durCol)]); }
+      else return;
+      if (!isNaN(s) && !isNaN(e)) data.push({ value: [catIdx, s, e, label], itemStyle: { color: ['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff','#79c0ff'][catIdx % 6] } });
+    });
+    if (!data.length) return null;
+    const allTimes = data.flatMap(d => [d.value[1], d.value[2]]);
+    const minT = Math.min(...allTimes), maxT = Math.max(...allTimes);
+    return { ...dark, tooltip: { trigger: 'item', formatter: p => { const d = p.data.value; return `${d[3]}<br/>${new Date(d[1]).toISOString().slice(11,23)} → ${new Date(d[2]).toISOString().slice(11,23)}<br/>Duration: ${d[2]-d[1]}ms`; } },
+      grid: { left: 120, right: 20, bottom: 30, top: 16 },
+      xAxis: { type: 'value', min: minT, max: maxT, axisLabel: { ...axisLabel, formatter: v => new Date(v).toISOString().slice(11,19) } },
+      yAxis: { type: 'category', data: categories, axisLabel, inverse: true },
+      series: [{ type: 'custom', renderItem: (params, api) => {
+        const catIdx = api.value(0), start = api.coord([api.value(1), catIdx]), end = api.coord([api.value(2), catIdx]);
+        const h = api.size([0, 1])[1] * 0.6;
+        return { type: 'rect', shape: { x: start[0], y: start[1] - h/2, width: Math.max(end[0] - start[0], 2), height: h }, style: api.style() };
+      }, encode: { x: [1, 2], y: 0 }, data }] };
+  }
+
+  // Flame chart: nested spans visualized as stacked horizontal bars by depth
+  if (suggestion.type === 'flame') {
+    const types = detectColumnTypes(columns, rows);
+    const numCols = columns.filter(c => types[c] === 'number');
+    const catCols = columns.filter(c => types[c] === 'category' || types[c] === 'string' || types[c] === 'datasource');
+    const labelCol = catCols.find(c => /op|name|func|service|span/i.test(c)) || catCols[0] || columns[0];
+    const valCol = numCols.find(c => /dur|ms|time|latency|count|value/i.test(c)) || numCols[0];
+    if (!labelCol || !valCol) return null;
+    // Build flame-style: sort by value desc, stack as layers
+    const sorted = rows.map(r => ({ label: String(r[ci(labelCol)]), value: Number(r[ci(valCol)]) }))
+      .filter(d => !isNaN(d.value)).sort((a, b) => b.value - a.value);
+    if (!sorted.length) return null;
+    const maxVal = sorted[0].value;
+    // Simple flame: each row is a level, wider = more time
+    const data = sorted.map((d, i) => ({
+      value: [0, i, d.value, d.label],
+      itemStyle: { color: ['#f85149','#f0883e','#d29922','#3fb950','#58a6ff','#bc8cff'][i % 6] }
+    }));
+    const categories = sorted.map(d => d.label);
+    return { ...dark, tooltip: { trigger: 'item', formatter: p => `${p.data.value[3]}: ${p.data.value[2]}` },
+      grid: { left: 120, right: 20, bottom: 30, top: 16 },
+      xAxis: { type: 'value', max: maxVal, axisLabel },
+      yAxis: { type: 'category', data: categories, axisLabel, inverse: true },
+      series: [{ type: 'bar', data: sorted.map(d => d.value), barWidth: '80%', itemStyle: { color: (p) => ['#f85149','#f0883e','#d29922','#3fb950','#58a6ff','#bc8cff'][p.dataIndex % 6] },
+        label: { show: true, position: 'insideLeft', color: '#fff', fontSize: 10, formatter: p => sorted[p.dataIndex].label } }] };
+  }
+
+  // Sankey: flow between two categorical columns, weighted by numeric column
+  if (suggestion.type === 'sankey') {
+    const types = detectColumnTypes(columns, rows);
+    const cats = columns.filter(c => types[c] === 'category' || types[c] === 'datasource' || types[c] === 'string');
+    const nums = columns.filter(c => types[c] === 'number');
+    const srcCol = cats.find(c => /source|src|from|service/i.test(c)) || cats[0];
+    const tgtCol = cats.find(c => c !== srcCol && (/target|tgt|to|dest/i.test(c))) || cats[1];
+    const valCol = nums[0];
+    if (!srcCol || !tgtCol) return null;
+    const linkMap = {};
+    rows.forEach(r => {
+      const s = String(r[ci(srcCol)]), t = String(r[ci(tgtCol)]);
+      if (s === t) return; // skip self-links
+      const k = s + '→' + t;
+      linkMap[k] = (linkMap[k] || { source: s, target: t, value: 0 });
+      linkMap[k].value += valCol ? Number(r[ci(valCol)]) : 1;
+    });
+    const links = Object.values(linkMap);
+    const nodeSet = new Set();
+    links.forEach(l => { nodeSet.add(l.source); nodeSet.add(l.target); });
+    const nodes = [...nodeSet].map(name => ({ name }));
+    if (!links.length) return null;
+    return { ...dark, tooltip: { trigger: 'item' },
+      series: [{ type: 'sankey', data: nodes, links, emphasis: { focus: 'adjacency' },
+        lineStyle: { color: 'gradient', curveness: 0.5 },
+        label: { color: '#e1e4e8', fontSize: 11 },
+        itemStyle: { borderWidth: 0 } }] };
   }
 
   // Pie
