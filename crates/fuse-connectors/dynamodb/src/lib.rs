@@ -76,11 +76,12 @@ impl DynamoDbConnector {
     /// Discover the partition key name for a table (used to decide Scan vs Query).
     async fn partition_key(&self, table: &str) -> Option<String> {
         let resp = self.client.describe_table().table_name(table).send().await.ok()?;
-        resp.table()?
-            .key_schema()?
+        let table_desc = resp.table()?;
+        table_desc
+            .key_schema()
             .iter()
             .find(|k| k.key_type() == &aws_sdk_dynamodb::types::KeyType::Hash)
-            .and_then(|k| k.attribute_name().map(|s| s.to_string()))
+            .map(|k| k.attribute_name().to_string())
     }
 }
 

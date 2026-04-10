@@ -2617,6 +2617,7 @@ dependencies = [
  "async-stream",
  "async-trait",
  "axum",
+ "fuse-connector-dynamodb",
  "fuse-connector-opensearch",
  "fuse-connector-s3-o11y",
  "fuse-core",

@@ -10,6 +10,7 @@ fuse-core = { path = "../fuse-core" }
 fuse-engine = { path = "../fuse-engine" }
 fuse-connector-opensearch = { path = "../fuse-connectors/opensearch" }
 fuse-connector-s3-o11y = { path = "../fuse-connectors/s3-o11y" }
+fuse-connector-dynamodb = { path = "../fuse-connectors/dynamodb" }
 arrow = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }

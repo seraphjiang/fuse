@@ -437,9 +437,17 @@ pub async fn query_handler(
                 (ob, lim, dist, off)
             };
 
+            // Re-aggregate for cross-datasource GROUP BY
+            let group_by_cols = parse_group_by(&query);
+            let batches = if !group_by_cols.is_empty() && fed.datasources.len() > 1 {
+                reaggregate_batches(fed.batches, &group_by_cols)
+            } else {
+                fed.batches
+            };
+
             // Apply global ORDER BY if present
             let batches = if !order_by.is_empty() {
-                if let Ok(schema) = fed.batches.first().map(|b| b.schema()).ok_or(()) {
+                if let Ok(schema) = batches.first().map(|b| b.schema()).ok_or(()) {
                     let indices: Vec<usize> = order_by.iter()
                         .filter_map(|(col, _)| schema.index_of(col).ok())
                         .collect();
@@ -448,16 +456,16 @@ pub async fn query_handler(
                         .map(|(_, d)| *d)
                         .collect();
                     if !indices.is_empty() {
-                        fuse_engine::sort_batches(fed.batches, &indices, &descs, None)
+                        fuse_engine::sort_batches(batches, &indices, &descs, None)
                             .unwrap_or_default()
                     } else {
-                        fed.batches
+                        batches
                     }
                 } else {
-                    fed.batches
+                    batches
                 }
             } else {
-                fed.batches
+                batches
             };
 
             // Apply DISTINCT — dedup on all non-_datasource columns
@@ -1260,6 +1268,105 @@ fn parse_offset(query: &str) -> Option<usize> {
         .split(|c: char| !c.is_ascii_digit())
         .next()?;
     num_str.parse().ok()
+}
+
+/// Extract GROUP BY columns from query.
+fn parse_group_by(query: &str) -> Vec<String> {
+    let stripped = strip_string_literals(query);
+    let lower = stripped.to_lowercase();
+    let pos = match lower.rfind("group by ") {
+        Some(p) => p,
+        None => return vec![],
+    };
+    let after = stripped[pos + 9..].trim();
+    // Stop at HAVING, ORDER BY, LIMIT, or end
+    let clause = after
+        .split_once("having").map(|(c, _)| c)
+        .unwrap_or(after)
+        .split_once("order").map(|(c, _)| c)
+        .unwrap_or(after)
+        .split_once("limit").map(|(c, _)| c)
+        .unwrap_or(after)
+        .trim();
+    clause.split(',')
+        .map(|c| c.trim().to_string())
+        .filter(|c| !c.is_empty())
+        .collect()
+}
+
+/// Re-aggregate merged batches by GROUP BY columns.
+/// For multi-source queries, partial aggregates (COUNT, SUM) need to be
+/// summed across sources. This does a simple in-memory group-and-sum.
+fn reaggregate_batches(
+    batches: Vec<arrow::record_batch::RecordBatch>,
+    group_cols: &[String],
+) -> Vec<arrow::record_batch::RecordBatch> {
+    if batches.is_empty() || group_cols.is_empty() {
+        return batches;
+    }
+    let schema = batches[0].schema();
+
+    // Find group column indices and numeric (aggregate) column indices
+    let group_indices: Vec<usize> = group_cols.iter()
+        .filter_map(|c| schema.index_of(c).ok())
+        .collect();
+    let agg_indices: Vec<usize> = (0..schema.fields().len())
+        .filter(|i| !group_indices.contains(i) && schema.field(*i).name() != "_datasource")
+        .collect();
+
+    if group_indices.is_empty() {
+        return batches;
+    }
+
+    // Build groups: key = group column values, value = summed agg values
+    let mut groups: std::collections::HashMap<Vec<String>, Vec<f64>> = std::collections::HashMap::new();
+
+    for batch in &batches {
+        for row in 0..batch.num_rows() {
+            let key: Vec<String> = group_indices.iter()
+                .map(|&i| arrow::util::display::array_value_to_string(batch.column(i), row).unwrap_or_default())
+                .collect();
+            let entry = groups.entry(key).or_insert_with(|| vec![0.0; agg_indices.len()]);
+            for (j, &col_idx) in agg_indices.iter().enumerate() {
+                let col = batch.column(col_idx);
+                if !col.is_null(row) {
+                    let val_str = arrow::util::display::array_value_to_string(col, row).unwrap_or_default();
+                    if let Ok(v) = val_str.parse::<f64>() {
+                        entry[j] += v;
+                    }
+                }
+            }
+        }
+    }
+
+    // Build output batch
+    use arrow::array::{StringArray, Float64Array};
+    use arrow::datatypes::{DataType, Field};
+
+    let mut fields: Vec<Arc<Field>> = group_indices.iter()
+        .map(|&i| Arc::new(Field::new(schema.field(i).name(), DataType::Utf8, true)))
+        .collect();
+    for &i in &agg_indices {
+        fields.push(Arc::new(Field::new(schema.field(i).name(), DataType::Float64, true)));
+    }
+    let out_schema = Arc::new(arrow::datatypes::Schema::new(fields));
+
+    let mut columns: Vec<Arc<dyn arrow::array::Array>> = Vec::new();
+    let keys: Vec<&Vec<String>> = groups.keys().collect();
+
+    for (gi, _) in group_indices.iter().enumerate() {
+        let arr: StringArray = keys.iter().map(|k| Some(k[gi].as_str())).collect();
+        columns.push(Arc::new(arr));
+    }
+    for (ai, _) in agg_indices.iter().enumerate() {
+        let arr: Float64Array = keys.iter().map(|k| groups[*k][ai]).collect();
+        columns.push(Arc::new(arr));
+    }
+
+    match arrow::record_batch::RecordBatch::try_new(out_schema, columns) {
+        Ok(batch) => vec![batch],
+        Err(_) => batches,
+    }
 }
 
 /// Extract ORDER BY column name and direction from query.

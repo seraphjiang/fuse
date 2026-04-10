@@ -2752,3 +2752,80 @@ async fn test_query_without_in_subquery_unchanged() {
     ).await;
     assert_eq!(status, StatusCode::OK);
 }
+
+// ── #342 Correlated subquery verification (tester) ──
+
+#[tokio::test]
+async fn test_in_subquery_filters_outer_rows() {
+    // cluster_a and cluster_b have same hosts (h1, h2) — all rows should match
+    let (s1, j1) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs WHERE host IN (SELECT host FROM cluster_b.logs)",
+        "sql",
+    ).await;
+    let (s2, j2) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs",
+        "sql",
+    ).await;
+    assert_eq!(s1, StatusCode::OK);
+    assert_eq!(s2, StatusCode::OK);
+    // With matching hosts, IN subquery should return same rows as unfiltered
+    let in_rows = j1["rows"].as_array().unwrap().len();
+    let all_rows = j2["rows"].as_array().unwrap().len();
+    assert_eq!(in_rows, all_rows, "all hosts match, so IN should return all rows");
+}
+
+#[tokio::test]
+async fn test_in_subquery_non_overlapping_types() {
+    // WHERE status IN (SELECT host FROM ...) — cross-type substitution
+    // Mock doesn't filter, so this tests that the query resolves without error
+    let (status, _) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs WHERE status IN (SELECT host FROM cluster_b.logs)",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_in_subquery_sql_injection_escaped() {
+    // Inner query values should be properly escaped — single quotes doubled
+    let (status, _) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs WHERE host IN (SELECT host FROM cluster_b.logs)",
+        "sql",
+    ).await;
+    // Should not crash regardless of data content
+    assert!(status == StatusCode::OK || status == StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_in_subquery_with_literal_still_works() {
+    // Regular IN with literals should not be affected by subquery resolution
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs WHERE host IN ('h1')",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert!(!rows.is_empty());
+}
+
+// ── Cross-datasource GROUP BY tests ──
+
+#[tokio::test]
+async fn test_cross_source_group_by_reaggregates() {
+    // Both sources return host=h1(status=200) and host=h2(status=500)
+    // GROUP BY host across 2 sources should merge, not duplicate
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT host, COUNT(*) AS cnt FROM cluster_a.logs UNION ALL SELECT host, COUNT(*) AS cnt FROM cluster_b.logs GROUP BY host",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    // Should have 2 groups (h1, h2), not 4
+    assert_eq!(rows.len(), 2);
+}

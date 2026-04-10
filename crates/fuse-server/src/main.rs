@@ -8,6 +8,7 @@ use fuse_core::config::FuseConfig;
 use fuse_core::registry::{ConnectorFactory, ConnectorRegistry};
 use fuse_connector_opensearch::OpenSearchConnectorFactory;
 use fuse_connector_s3_o11y::S3O11yConnectorFactory;
+use fuse_connector_dynamodb::DynamoDbConnectorFactory;
 
 use fuse_server::api::AppState;
 
@@ -50,6 +51,7 @@ async fn main() -> anyhow::Result<()> {
     let factories: Vec<Box<dyn ConnectorFactory>> = vec![
         Box::new(OpenSearchConnectorFactory),
         Box::new(S3O11yConnectorFactory),
+        Box::new(DynamoDbConnectorFactory),
     ];
 
     for cc in &config.connector {

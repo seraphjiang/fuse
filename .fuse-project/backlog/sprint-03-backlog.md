@@ -58,7 +58,7 @@
 |----|------|-------|--------|-------|
 | 340 | Hash join optimization (build side selection) | planner | done | Smaller table as build side, profile annotated. Commit: ee30ee7 |
 | 341 | Semi-join / anti-join (EXISTS, NOT EXISTS) | planner | done | Semi + Anti JoinType variants. Commit: 4fed418. 2 tests |
-| 342 | Correlated subqueries | planner | todo | WHERE col IN (SELECT ... FROM other_source) |
+| 342 | Correlated subqueries | planner | done | WHERE col IN (SELECT ... FROM other_source). Commit: c7382e6. Tests: 487→495 |
 | 343 | Cross-datasource GROUP BY (federated aggregation) | planner | todo | Partial agg at source, merge at engine |
 | 344 | Query cost estimator (pre-execution) | planner | done | estimated_rows + estimated_cost on scan/parent nodes. Commit: 7d25e71. Tests: 470→477 |
 
