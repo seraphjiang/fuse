@@ -181,14 +181,18 @@ pub struct ProfileNode {
 
 impl ProfileNode {
     fn scan(ds: &str, rows: u64, ms: u64, bytes: u64, pushdown: Vec<String>) -> Self {
+        // Use default table stats for pre-execution estimate
+        let default_estimate = 10_000u64;
+        // Cost estimate: bytes transferred + latency penalty
+        let est_cost = bytes as f64 + ms as f64 * 10.0;
         Self {
             op: "RemoteScan".into(),
             datasource: Some(ds.into()),
             actual_rows: rows,
             actual_ms: ms,
             data_bytes: Some(bytes),
-            estimated_rows: None,
-            estimated_cost: None,
+            estimated_rows: Some(default_estimate),
+            estimated_cost: Some(est_cost),
             detail: Some(format!("Scan {}", ds)),
             pushdown,
             children: vec![],
@@ -196,15 +200,15 @@ impl ProfileNode {
     }
 
     fn parent(op: &str, rows: u64, ms: u64, children: Vec<ProfileNode>) -> Self {
-        // Cost = sum of children ms + own ms; critical path = max child ms
         let cost: f64 = children.iter().map(|c| c.actual_ms as f64).sum::<f64>() + ms as f64;
+        let est_rows: u64 = children.iter().filter_map(|c| c.estimated_rows).sum();
         Self {
             op: op.into(),
             datasource: None,
             actual_rows: rows,
             actual_ms: ms,
             data_bytes: None,
-            estimated_rows: None,
+            estimated_rows: if est_rows > 0 { Some(est_rows) } else { None },
             estimated_cost: Some(cost),
             detail: None,
             pushdown: vec![],

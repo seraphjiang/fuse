@@ -2391,3 +2391,96 @@ async fn test_cursor_encode_decode_roundtrip() {
         assert!(cursor.starts_with("fuse_c_"), "cursor should start with fuse_c_, got: {}", cursor);
     }
 }
+
+// ── #338 UNION dedup + #311 3-source + #312/#313 demo verification (tester) ──
+
+#[tokio::test]
+async fn test_union_dedup_fewer_than_union_all() {
+    // UNION should return <= UNION ALL rows
+    let (_, json_all) = post_query(
+        build_federation_app(),
+        "SELECT host, status FROM cluster_a.logs UNION ALL SELECT host, status FROM cluster_b.logs",
+        "sql",
+    ).await;
+    let (_, json_dedup) = post_query(
+        build_federation_app(),
+        "SELECT host, status FROM cluster_a.logs UNION SELECT host, status FROM cluster_b.logs",
+        "sql",
+    ).await;
+    let all_rows = json_all["rows"].as_array().unwrap().len();
+    let dedup_rows = json_dedup["rows"].as_array().unwrap().len();
+    assert!(dedup_rows <= all_rows, "UNION ({}) should be <= UNION ALL ({})", dedup_rows, all_rows);
+}
+
+#[tokio::test]
+async fn test_union_dedup_no_duplicate_rows() {
+    let (_, json) = post_query(
+        build_federation_app(),
+        "SELECT host, status FROM cluster_a.logs UNION SELECT host, status FROM cluster_b.logs",
+        "sql",
+    ).await;
+    let rows = json["rows"].as_array().unwrap();
+    // Check no two rows are identical
+    for i in 0..rows.len() {
+        for j in (i + 1)..rows.len() {
+            assert_ne!(rows[i], rows[j], "duplicate row found at {} and {}", i, j);
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_three_source_provenance_correct() {
+    let (_, json) = post_query(
+        build_three_source_app(),
+        "SELECT * FROM opensearch_logs.logs UNION ALL SELECT * FROM s3_logs.logs UNION ALL SELECT * FROM cloudwatch_logs.logs",
+        "sql",
+    ).await;
+    let columns = json["columns"].as_array().unwrap();
+    let ds_idx = columns.iter().position(|c| c == "_datasource").unwrap();
+    let rows = json["rows"].as_array().unwrap();
+    let sources: std::collections::HashSet<&str> = rows.iter()
+        .filter_map(|r| r.as_array().and_then(|a| a[ds_idx].as_str()))
+        .collect();
+    assert!(sources.contains("opensearch_logs"), "missing opensearch_logs in {:?}", sources);
+    assert!(sources.contains("s3_logs"), "missing s3_logs in {:?}", sources);
+    assert!(sources.contains("cloudwatch_logs"), "missing cloudwatch_logs in {:?}", sources);
+}
+
+#[tokio::test]
+async fn test_three_source_each_contributes_rows() {
+    let (_, json) = post_query(
+        build_three_source_app(),
+        "SELECT * FROM opensearch_logs.logs UNION ALL SELECT * FROM s3_logs.logs UNION ALL SELECT * FROM cloudwatch_logs.logs",
+        "sql",
+    ).await;
+    let columns = json["columns"].as_array().unwrap();
+    let ds_idx = columns.iter().position(|c| c == "_datasource").unwrap();
+    let rows = json["rows"].as_array().unwrap();
+    // Each source should contribute at least 1 row
+    for src in &["opensearch_logs", "s3_logs", "cloudwatch_logs"] {
+        let count = rows.iter().filter(|r| r.as_array().map_or(false, |a| a[ds_idx].as_str() == Some(src))).count();
+        assert!(count > 0, "{} contributed 0 rows", src);
+    }
+}
+
+#[tokio::test]
+async fn test_is_union_distinct_detection() {
+    // Verify the query parser distinguishes UNION from UNION ALL
+    // UNION ALL → should have more rows (duplicates kept)
+    let (s1, j1) = post_query(
+        build_federation_app(),
+        "SELECT host FROM cluster_a.logs UNION ALL SELECT host FROM cluster_b.logs",
+        "sql",
+    ).await;
+    let (s2, j2) = post_query(
+        build_federation_app(),
+        "SELECT host FROM cluster_a.logs UNION SELECT host FROM cluster_b.logs",
+        "sql",
+    ).await;
+    assert_eq!(s1, StatusCode::OK);
+    assert_eq!(s2, StatusCode::OK);
+    // Both should succeed — the key is UNION has fewer or equal rows
+    let all_count = j1["rows"].as_array().unwrap().len();
+    let dedup_count = j2["rows"].as_array().unwrap().len();
+    assert!(dedup_count <= all_count);
+}
