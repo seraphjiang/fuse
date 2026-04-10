@@ -10,6 +10,7 @@ import {
   ValidateResponse,
   ExplainResponse,
   HistoryEntry,
+  TraceResponse,
 } from '../../common';
 
 export class FuseApiService {
@@ -48,5 +49,9 @@ export class FuseApiService {
 
   async history(): Promise<HistoryEntry[]> {
     return this.http.get(`${API_BASE}/history`);
+  }
+
+  async trace(traceId: string): Promise<TraceResponse> {
+    return this.http.get(`${API_BASE}/trace/${encodeURIComponent(traceId)}`);
   }
 }
