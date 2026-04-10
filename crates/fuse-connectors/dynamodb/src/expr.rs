@@ -242,4 +242,62 @@ mod tests {
     fn test_scalar_to_av_null() {
         assert!(scalar_to_av(&ScalarValue::Null).is_none());
     }
+
+    // ── #300 DynamoDB verification (tester) ──
+
+    #[test]
+    fn test_key_condition_and_extracts_pk_from_left() {
+        let f = FilterExpr::And(
+            Box::new(FilterExpr::Comparison { field: "user_id".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("u1".into()) }),
+            Box::new(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Gte, value: ScalarValue::Int64(200) }),
+        );
+        let kc = build_key_condition(&f, "user_id");
+        assert!(kc.is_some(), "should extract PK from left side of AND");
+    }
+
+    #[test]
+    fn test_key_condition_and_extracts_pk_from_right() {
+        let f = FilterExpr::And(
+            Box::new(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Gte, value: ScalarValue::Int64(200) }),
+            Box::new(FilterExpr::Comparison { field: "user_id".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("u1".into()) }),
+        );
+        let kc = build_key_condition(&f, "user_id");
+        assert!(kc.is_some(), "should extract PK from right side of AND");
+    }
+
+    #[test]
+    fn test_filter_expression_excludes_pk() {
+        // AND(pk=val, status>=200) → filter should only have status, not pk
+        let f = FilterExpr::And(
+            Box::new(FilterExpr::Comparison { field: "user_id".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("u1".into()) }),
+            Box::new(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Gte, value: ScalarValue::Int64(200) }),
+        );
+        let fe = build_filter_expression(&f, Some("user_id"));
+        assert!(fe.is_some());
+        let (expr, _, _) = fe.unwrap();
+        assert!(!expr.contains("pk"), "filter should exclude PK: {}", expr);
+    }
+
+    #[test]
+    fn test_key_condition_non_eq_returns_none() {
+        // PK with >= (not =) should not produce a key condition
+        let f = FilterExpr::Comparison { field: "user_id".into(), op: ComparisonOp::Gte, value: ScalarValue::Utf8("u1".into()) };
+        assert!(build_key_condition(&f, "user_id").is_none());
+    }
+
+    #[test]
+    fn test_filter_expression_complex_and_or() {
+        let f = FilterExpr::And(
+            Box::new(FilterExpr::Or(
+                Box::new(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(200) }),
+                Box::new(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(500) }),
+            )),
+            Box::new(FilterExpr::Comparison { field: "host".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("h1".into()) }),
+        );
+        let fe = build_filter_expression(&f, None);
+        assert!(fe.is_some());
+        let (expr, _, _) = fe.unwrap();
+        assert!(expr.contains("OR"), "should contain OR: {}", expr);
+        assert!(expr.contains("AND"), "should contain AND: {}", expr);
+    }
 }

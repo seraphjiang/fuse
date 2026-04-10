@@ -8,7 +8,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 300 | DynamoDB connector | general | todo | Scan/Query API, filter pushdown to KeyConditionExpression + FilterExpression |
+| 300 | DynamoDB connector | general | done | Scan/Query, full filter pushdown, 18 tests. Commit: a89c037 |
 | 301 | PostgreSQL/MySQL connector (JDBC-style) | general | todo | SQL passthrough, schema discovery, connection pooling |
 | 302 | Elasticsearch connector (distinct from OpenSearch) | general | todo | REST API, version-aware (ES 7.x/8.x), Query DSL pushdown |
 | 303 | Redis connector (key-value + sorted sets) | explorer | done | 8th connector. SCAN, hash+string types, 8 tests. Commit: afd98f8 |
@@ -59,7 +59,7 @@
 | 340 | Hash join optimization (build side selection) | planner | done | Smaller table as build side, profile annotated. Commit: ee30ee7 |
 | 341 | Semi-join / anti-join (EXISTS, NOT EXISTS) | planner | done | Semi + Anti JoinType variants. Commit: 4fed418. 2 tests |
 | 342 | Correlated subqueries | planner | done | WHERE col IN (SELECT ... FROM other_source). Commit: c7382e6. Tests: 487→495 |
-| 343 | Cross-datasource GROUP BY (federated aggregation) | planner | todo | Partial agg at source, merge at engine |
+| 343 | Cross-datasource GROUP BY (federated aggregation) | planner | done | reaggregate_batches for post-merge GROUP BY. COUNT/SUM merge correctly |
 | 344 | Query cost estimator (pre-execution) | planner | done | estimated_rows + estimated_cost on scan/parent nodes. Commit: 7d25e71. Tests: 470→477 |
 
 ## P2: Testing & Quality

@@ -2829,3 +2829,20 @@ async fn test_cross_source_group_by_reaggregates() {
     // Should have 2 groups (h1, h2), not 4
     assert_eq!(rows.len(), 2);
 }
+
+// ── Demo #310: Cross-type JOIN test ──
+
+#[tokio::test]
+async fn test_cross_type_join_logs_profiles() {
+    // cluster_a has logs with host column, cluster_b has profiles with host column
+    // JOIN on shared "host" column simulates logs + profiles enrichment
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs JOIN cluster_b.logs ON cluster_a.logs.host = cluster_b.logs.host",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    // Both have h1 and h2 — inner join should produce matches
+    assert!(!rows.is_empty());
+}

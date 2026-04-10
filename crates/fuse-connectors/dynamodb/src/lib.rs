@@ -456,4 +456,48 @@ mod tests {
         assert_eq!(batches[0].num_columns(), 1);
         assert_eq!(batches[0].schema().field(0).name(), "name");
     }
+
+    // ── #300 DynamoDB verification (tester) ──
+
+    #[test]
+    fn test_projection_expr_empty() {
+        let (expr, names) = projection_expr(&[]);
+        assert!(expr.is_empty());
+        assert!(names.is_empty());
+    }
+
+    #[test]
+    fn test_attr_to_string_number() {
+        let av = AttributeValue::N("42".into());
+        assert_eq!(attr_to_string(&av), "42");
+    }
+
+    #[test]
+    fn test_attr_to_string_bool() {
+        assert_eq!(attr_to_string(&AttributeValue::Bool(true)), "true");
+        assert_eq!(attr_to_string(&AttributeValue::Bool(false)), "false");
+    }
+
+    #[test]
+    fn test_attr_to_string_null() {
+        assert_eq!(attr_to_string(&AttributeValue::Null(true)), "null");
+    }
+
+    #[test]
+    fn test_items_to_batch_mixed_types() {
+        let item = HashMap::from([
+            ("id".to_string(), AttributeValue::S("u1".into())),
+            ("count".to_string(), AttributeValue::N("42".into())),
+            ("active".to_string(), AttributeValue::Bool(true)),
+        ]);
+        let query = SubQuery {
+            table: "users".into(),
+            projections: vec!["id".into(), "count".into(), "active".into()],
+            filter: None, aggregations: vec![], group_by: vec![],
+            having: None, sort: vec![], limit: None, passthrough: None,
+        };
+        let batches = items_to_batch(&[item], &query).unwrap();
+        assert_eq!(batches[0].num_rows(), 1);
+        assert_eq!(batches[0].num_columns(), 3);
+    }
 }
