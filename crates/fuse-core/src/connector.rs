@@ -193,6 +193,9 @@ pub enum ComparisonOp {
     Gte,
     Like,
     ILike,
+    /// Full-text search: CONTAINS or MATCH. Maps to LIKE '%term%' for generic connectors,
+    /// native full-text query for OpenSearch/Elasticsearch.
+    Contains,
 }
 
 #[derive(Debug, Clone)]

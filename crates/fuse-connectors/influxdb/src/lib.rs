@@ -243,7 +243,7 @@ fn filter_to_influxql(f: &FilterExpr) -> String {
                 ComparisonOp::Eq => "=", ComparisonOp::Neq => "!=",
                 ComparisonOp::Lt => "<", ComparisonOp::Lte => "<=",
                 ComparisonOp::Gt => ">", ComparisonOp::Gte => ">=",
-                ComparisonOp::Like | ComparisonOp::ILike => "=~",
+                ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => "=~",
             };
             let val = match value {
                 ScalarValue::Utf8(s) => format!("'{s}'"),
@@ -286,7 +286,7 @@ fn filter_to_flux(f: &FilterExpr) -> String {
                 ComparisonOp::Eq => "==", ComparisonOp::Neq => "!=",
                 ComparisonOp::Lt => "<", ComparisonOp::Lte => "<=",
                 ComparisonOp::Gt => ">", ComparisonOp::Gte => ">=",
-                ComparisonOp::Like | ComparisonOp::ILike => "=~",
+                ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => "=~",
             };
             let val = match value {
                 ScalarValue::Utf8(s) => format!("\"{s}\""),

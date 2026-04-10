@@ -178,7 +178,7 @@ fn filter_to_bson(f: &FilterExpr) -> Document {
                 ComparisonOp::Lte => doc! { field: { "$lte": v } },
                 ComparisonOp::Gt => doc! { field: { "$gt": v } },
                 ComparisonOp::Gte => doc! { field: { "$gte": v } },
-                ComparisonOp::Like | ComparisonOp::ILike => {
+                ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => {
                     // Convert SQL LIKE pattern to regex
                     let pattern = match value {
                         ScalarValue::Utf8(s) => s.replace('%', ".*").replace('_', "."),

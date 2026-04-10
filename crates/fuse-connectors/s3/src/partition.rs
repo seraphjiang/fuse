@@ -87,7 +87,7 @@ fn compare_str(partition_val: &str, op: &ComparisonOp, filter_val: &str) -> bool
         ComparisonOp::Lte => partition_val <= filter_val,
         ComparisonOp::Gt => partition_val > filter_val,
         ComparisonOp::Gte => partition_val >= filter_val,
-        ComparisonOp::Like | ComparisonOp::ILike => true, // conservative
+        ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => true, // conservative
     }
 }
 

@@ -108,6 +108,10 @@ fn translate_comparison(field: &str, op: ComparisonOp, value: &ScalarValue) -> s
                 serde_json::json!({"match_all": {}})
             }
         }
+        ComparisonOp::Contains => {
+            // Native full-text match query
+            serde_json::json!({"match": {field: {"query": val}}})
+        }
     }
 }
 

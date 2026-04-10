@@ -63,6 +63,11 @@ textarea{width:100%;min-height:60px;background:#0d1117;color:#e1e4e8;border:1px 
 .tpl-card h4{font-size:14px;color:#58a6ff;margin-bottom:4px}
 .tpl-card p{font-size:12px;color:#8b949e;margin:0}
 .tpl-card .tpl-meta{font-size:11px;color:#484f58;margin-top:4px}
+.var-bar{display:flex;align-items:center;gap:8px;padding:6px 24px;border-bottom:1px solid #21262d;background:#161b22;font-size:12px;color:#8b949e;flex-wrap:wrap}
+.var-bar:empty{display:none}
+.var-group{display:flex;align-items:center;gap:4px}
+.var-group label{font-size:11px;color:#8b949e;font-weight:600}
+.var-group select{font-size:12px;padding:3px 8px}
 </style>
 </head>
 <body>
@@ -108,7 +113,10 @@ textarea{width:100%;min-height:60px;background:#0d1117;color:#e1e4e8;border:1px 
   </select>
   <span class="refresh-indicator" id="refresh-dot"></span>
   <button onclick="refreshAll()" style="margin-left:auto">↻ Refresh All</button>
+  <button onclick="showVarEditor()" style="font-size:12px;padding:4px 8px">⚙ Variables</button>
 </div>
+
+<div class="var-bar" id="var-bar"></div>
 
 <div class="dashboard-grid" id="grid"></div>
 
@@ -148,6 +156,20 @@ textarea{width:100%;min-height:60px;background:#0d1117;color:#e1e4e8;border:1px 
     <div class="form-actions">
       <button onclick="closeImport()">Cancel</button>
       <button class="primary" onclick="doImport()">Load</button>
+    </div>
+  </div>
+</div>
+
+<!-- Variables editor modal -->
+<div class="modal-overlay" id="var-modal">
+  <div class="modal" style="width:560px">
+    <h3>Dashboard Variables</h3>
+    <p style="color:#8b949e;font-size:12px;margin-bottom:12px">Variables are substituted into panel queries as <code style="background:#21262d;padding:1px 4px;border-radius:3px">$varname</code>. Use type "query" to populate options from a SQL query.</p>
+    <div id="var-list"></div>
+    <button onclick="addVariable()" style="margin-top:8px;font-size:12px">+ Add Variable</button>
+    <div class="form-actions">
+      <button onclick="closeVarEditor()">Cancel</button>
+      <button class="primary" onclick="saveVariables()">Save & Apply</button>
     </div>
   </div>
 </div>

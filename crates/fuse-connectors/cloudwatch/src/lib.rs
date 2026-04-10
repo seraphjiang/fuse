@@ -112,7 +112,7 @@ fn filter_to_insights(expr: &FilterExpr) -> Option<String> {
                 ComparisonOp::Lte => "<=",
                 ComparisonOp::Gt => ">",
                 ComparisonOp::Gte => ">=",
-                ComparisonOp::Like | ComparisonOp::ILike => "like",
+                ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => "like",
             };
             Some(format!("{} {} {}", field, op_str, scalar_to_insights(value)))
         }

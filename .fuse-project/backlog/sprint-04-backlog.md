@@ -53,8 +53,8 @@
 | 442 | Core chart types (8): line, bar, stacked bar, pie, area, scatter, table, histogram | frontend | done | All 8 types + selector dropdown + auto-bins. Commit: 7775c88 |
 | 443 | Log-specific charts (4): heatmap, timeline/Gantt, flame chart, Sankey | frontend | done | All 4 types in playground + dashboard, auto-detect columns |
 | 444 | Dashboard builder: grid layout, save/load JSON, time range picker | frontend | done | 12-col grid, panel CRUD, localStorage + JSON export, auto-refresh. Commit: 3f5b498 |
-| 445 | Dashboard templates: pre-built for error analysis, trace correlation, capacity | explorer | todo | One-click dashboards for common o11y use cases |
-| 446 | Dashboard sharing: URL sharing, export PNG/PDF/CSV | explorer | todo | Share dashboards via link, export for reports |
+| 445 | Dashboard templates: pre-built for error analysis, trace correlation, capacity | frontend | done | 3 templates (16 panels), one-click load via Templates button |
+| 446 | Dashboard sharing: URL sharing, export PNG/PDF/CSV | frontend | done | Base64 URL sharing, PNG 2x retina, CSV re-query, print/PDF. Commit: 5a41f6b |
 | 447 | Variables/parameters: dropdown filters that update all panels | explorer | todo | Service picker, time range, environment selector |
 | 448 | Drill-down: click chart element → filter to that value | explorer | todo | Click bar → filter all panels to that service/status |
 | 449 | One-stop-shop: expand playground into /playground + /dashboards + /explore | infra | todo | Single URL, single auth, tabbed navigation |
@@ -73,5 +73,5 @@
 |----|------|-------|--------|-------|
 | 430 | Update docs-site for Sprint 3+4 features | docs | done | Architecture page, SQL/PPL reference, all features documented. Commit: 01d1d49 |
 | 431 | Update OpenAPI spec | docs | done | v0.4.0: 19 paths, 22 schemas. Trace, saved queries, cursor pagination. Commit: 9341ece |
-| 432 | Demo video v2 (cross-datasource scenarios) | explorer | todo | Showcase JOIN/UNION/lookup/CTE across sources |
+| 432 | Demo video v2 (cross-datasource scenarios) | docs | done | 8-scene script, ~4 min, exact runnable queries. Commit: 0e4a349 |
 | 433 | Architecture doc: federated query execution model | docs | done | Full query flow, connector trait, pushdown table, crate map. Commit: aa74eef |

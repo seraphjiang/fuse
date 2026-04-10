@@ -31,7 +31,7 @@ pub fn filter_to_s3_select_where(filter: &FilterExpr) -> Option<String> {
                 ComparisonOp::Gt => ">",
                 ComparisonOp::Gte => ">=",
                 ComparisonOp::Like => "LIKE",
-                ComparisonOp::ILike => "LIKE",  // S3 Select is case-insensitive by default
+                ComparisonOp::ILike | ComparisonOp::Contains => "LIKE",  // S3 Select is case-insensitive by default
             };
             let val = scalar_to_sql(value);
             Some(format!("s.\"{field}\" {op_str} {val}"))

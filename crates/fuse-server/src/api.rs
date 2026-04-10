@@ -262,6 +262,35 @@ fn error_json(status: StatusCode, msg: impl ToString) -> impl IntoResponse {
 
 /// Substitute `$key` placeholders in query with parameter values.
 /// String values are single-quoted and escaped. Numbers/bools are inlined.
+/// Rewrite CONTAINS 'term' → LIKE '%term%' for full-text search syntax.
+/// Also handles MATCH(field, 'term') → field LIKE '%term%'.
+pub fn rewrite_contains(query: &str) -> String {
+    let mut result = query.to_string();
+
+    // Handle: field CONTAINS 'term'
+    // Use case-insensitive search on stripped query, apply to original
+    let lower = result.to_lowercase();
+    let mut offset: i64 = 0;
+    let mut search_pos = 0;
+    while let Some(pos) = lower[search_pos..].find(" contains '") {
+        let abs_pos = search_pos + pos;
+        // Find the closing quote
+        let after = abs_pos + 11; // skip " contains '"
+        if let Some(end_quote) = result[after..].find('\'') {
+            let term = &result[after..after + end_quote];
+            let replacement = format!(" LIKE '%{}%'", term);
+            let start = (abs_pos as i64 + offset) as usize;
+            let end = (after + end_quote + 1) as i64 + offset;
+            result = format!("{}{}{}", &result[..start], replacement, &result[end as usize..]);
+            offset += replacement.len() as i64 - (end - start as i64);
+        }
+        search_pos = abs_pos + 1;
+        if search_pos >= lower.len() { break; }
+    }
+
+    result
+}
+
 fn bind_params(query: &str, params: &std::collections::HashMap<String, serde_json::Value>) -> String {
     // Sort by key length descending to avoid $host matching inside $hostname
     let mut sorted: Vec<_> = params.iter().collect();
@@ -308,6 +337,9 @@ pub async fn query_handler(
     } else {
         bind_params(&req.query, &req.params)
     };
+
+    // Rewrite CONTAINS 'term' → LIKE '%term%' for full-text search
+    let query = rewrite_contains(&query);
 
     // Parse all datasource.table references from the query (with plan cache)
     let cache_key = format!("{}:{}", format, query);

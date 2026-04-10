@@ -61,7 +61,7 @@ fn filter_to_sql(f: &FilterExpr) -> String {
                 ComparisonOp::Eq => "=", ComparisonOp::Neq => "!=",
                 ComparisonOp::Lt => "<", ComparisonOp::Lte => "<=",
                 ComparisonOp::Gt => ">", ComparisonOp::Gte => ">=",
-                ComparisonOp::Like | ComparisonOp::ILike => "LIKE",
+                ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => "LIKE",
             };
             format!("{field} {op_str} {}", scalar_to_sql(value))
         }

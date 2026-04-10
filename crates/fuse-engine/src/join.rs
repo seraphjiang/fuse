@@ -683,4 +683,39 @@ mod tests {
         // No matches: 2 unmatched probe + 2 unmatched build = 4
         assert_eq!(result[0].num_rows(), 4);
     }
+
+    // ── #405 FULL OUTER JOIN verification (tester) ──
+
+    #[test]
+    fn test_full_outer_join_all_match() {
+        let build = build_batch(&["a", "b"], &[100, 200]);
+        let probe = probe_batch(&["a", "b"], &["alice", "bob"]);
+        let result = hash_join(&[build], "id", &[probe], "id", JoinType::Full).unwrap();
+        assert_eq!(result[0].num_rows(), 2, "all match → no extra NULL rows");
+    }
+
+    #[test]
+    fn test_full_outer_join_nulls_present() {
+        let build = build_batch(&["a", "c"], &[100, 300]);
+        let probe = probe_batch(&["a", "b"], &["alice", "bob"]);
+        let result = hash_join(&[build], "id", &[probe], "id", JoinType::Full).unwrap();
+        let batch = &result[0];
+        // Unmatched rows should have nulls
+        let mut has_null = false;
+        for col_idx in 0..batch.num_columns() {
+            let col = batch.column(col_idx);
+            if col.null_count() > 0 { has_null = true; break; }
+        }
+        assert!(has_null, "FULL OUTER JOIN should produce NULL values for unmatched rows");
+    }
+
+    #[test]
+    fn test_full_outer_join_superset_of_inner() {
+        let build = build_batch(&["a", "c"], &[100, 300]);
+        let probe = probe_batch(&["a", "b"], &["alice", "bob"]);
+        let inner = hash_join(&[build.clone()], "id", &[probe.clone()], "id", JoinType::Inner).unwrap();
+        let full = hash_join(&[build], "id", &[probe], "id", JoinType::Full).unwrap();
+        assert!(full[0].num_rows() >= inner[0].num_rows(),
+            "FULL should have >= INNER rows: {} vs {}", full[0].num_rows(), inner[0].num_rows());
+    }
 }

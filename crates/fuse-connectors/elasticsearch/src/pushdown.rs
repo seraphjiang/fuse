@@ -51,7 +51,7 @@ fn translate_filter(expr: &FilterExpr) -> serde_json::Value {
                 ComparisonOp::Lte => serde_json::json!({"range": {field: {"lte": v}}}),
                 ComparisonOp::Gt => serde_json::json!({"range": {field: {"gt": v}}}),
                 ComparisonOp::Gte => serde_json::json!({"range": {field: {"gte": v}}}),
-                ComparisonOp::Like | ComparisonOp::ILike => {
+                ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => {
                     let pattern = scalar_to_wildcard(value);
                     serde_json::json!({"wildcard": {field: {"value": pattern, "case_insensitive": true}}})
                 }

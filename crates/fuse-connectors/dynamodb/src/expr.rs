@@ -100,7 +100,7 @@ fn translate(
                 ComparisonOp::Lte => "<=",
                 ComparisonOp::Gt => ">",
                 ComparisonOp::Gte => ">=",
-                ComparisonOp::Like | ComparisonOp::ILike => {
+                ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => {
                     // DynamoDB has no LIKE — use begins_with for prefix patterns
                     return Some(format!("begins_with({na}, {va})"));
                 }

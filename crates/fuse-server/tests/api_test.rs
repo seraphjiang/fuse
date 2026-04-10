@@ -3657,3 +3657,31 @@ async fn test_having_filters_all_groups() {
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 0, "impossible HAVING should return 0 rows");
 }
+
+// ── Full-text search tests ──
+
+#[test]
+fn test_rewrite_contains_basic() {
+    let result = fuse_server::api::rewrite_contains(
+        "SELECT * FROM os.logs WHERE message CONTAINS 'OutOfMemory'"
+    );
+    assert!(result.contains("LIKE '%OutOfMemory%'"));
+    assert!(!result.contains("CONTAINS"));
+}
+
+#[test]
+fn test_rewrite_contains_preserves_non_contains() {
+    let q = "SELECT * FROM os.logs WHERE status = 200";
+    let result = fuse_server::api::rewrite_contains(q);
+    assert_eq!(result, q);
+}
+
+#[tokio::test]
+async fn test_contains_query_executes() {
+    let (status, _) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs WHERE host CONTAINS 'h1'",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+}
