@@ -189,7 +189,7 @@ const API = window.location.origin;
 const $ = id => document.getElementById(id);
 
 // === Dashboard State ===
-let dashboard = { title: 'Untitled Dashboard', panels: [], timeRange: '1h', refreshInterval: 0 };
+let dashboard = { title: 'Untitled Dashboard', panels: [], timeRange: '1h', refreshInterval: 0, variables: [] };
 let editingPanelId = null;
 let refreshTimer = null;
 let panelCharts = {}; // panelId -> echarts instance
@@ -715,7 +715,8 @@ const TEMPLATES = [
       { id: 'e4', title: 'Top Error Messages', query: "SELECT service, message, count(*) as cnt FROM cluster_a.application_logs WHERE status >= 500 GROUP BY service, message ORDER BY cnt DESC LIMIT 20", format: 'sql', chartType: 'table', width: 12 },
       { id: 'e5', title: 'Error Heatmap (Service × Status)', query: "SELECT service, status, count(*) as cnt FROM cluster_a.application_logs WHERE status >= 400 GROUP BY service, status ORDER BY cnt DESC", format: 'sql', chartType: 'heatmap', width: 12 }
     ],
-    timeRange: '1h', refreshInterval: 30
+    timeRange: '1h', refreshInterval: 30,
+    variables: [{ name: 'service', label: 'Service', type: 'query', query: 'SELECT DISTINCT service FROM cluster_a.application_logs', values: [], current: '' }]
   },
   {
     name: '🔗 Trace Correlation',
@@ -727,7 +728,8 @@ const TEMPLATES = [
       { id: 't4', title: 'Latency Distribution', query: "SELECT service, response_time_ms FROM cluster_a.application_logs WHERE response_time_ms > 0 LIMIT 200", format: 'sql', chartType: 'histogram', width: 6 },
       { id: 't5', title: 'Trace Span Timeline', query: "SELECT service, response_time_ms FROM cluster_a.application_logs WHERE response_time_ms > 100 ORDER BY response_time_ms DESC LIMIT 30", format: 'sql', chartType: 'flame', width: 12 }
     ],
-    timeRange: '1h', refreshInterval: 60
+    timeRange: '1h', refreshInterval: 60,
+    variables: [{ name: 'service', label: 'Service', type: 'query', query: 'SELECT DISTINCT service FROM cluster_a.application_logs', values: [], current: '' }]
   },
   {
     name: '📈 Capacity & Performance',
@@ -740,7 +742,11 @@ const TEMPLATES = [
       { id: 'c5', title: 'P99 Latency by Service', query: "SELECT service, max(response_time_ms) as p99_ms, avg(response_time_ms) as avg_ms FROM cluster_a.application_logs GROUP BY service ORDER BY p99_ms DESC", format: 'sql', chartType: 'bar', width: 6 },
       { id: 'c6', title: 'Cross-Cluster Request Comparison', query: "SELECT _datasource, service, count(*) as total FROM cluster_a.application_logs GROUP BY _datasource, service UNION ALL SELECT _datasource, service, count(*) as total FROM cluster_b.application_logs GROUP BY _datasource, service ORDER BY total DESC LIMIT 20", format: 'sql', chartType: 'stacked-bar', width: 6 }
     ],
-    timeRange: '6h', refreshInterval: 60
+    timeRange: '6h', refreshInterval: 60,
+    variables: [
+      { name: 'service', label: 'Service', type: 'query', query: 'SELECT DISTINCT service FROM cluster_a.application_logs', values: [], current: '' },
+      { name: 'cluster', label: 'Cluster', type: 'custom', values: ['cluster_a', 'cluster_b'], current: 'cluster_a' }
+    ]
   }
 ];
 
@@ -761,10 +767,11 @@ function loadTemplate(idx) {
   if (!t) return;
   Object.values(panelCharts).forEach(c => c.dispose());
   panelCharts = {};
-  dashboard = { title: t.name, panels: t.panels.map(p => ({ ...p, id: genId() })), timeRange: t.timeRange, refreshInterval: t.refreshInterval };
+  dashboard = { title: t.name, panels: t.panels.map(p => ({ ...p, id: genId() })), timeRange: t.timeRange, refreshInterval: t.refreshInterval, variables: t.variables || [] };
   $('time-range').value = dashboard.timeRange;
   $('refresh-interval').value = String(dashboard.refreshInterval);
   onRefreshChange();
+  resolveQueryVars();
   closeTemplates();
   saveDashboardLocal();
   renderGrid();
