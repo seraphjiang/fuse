@@ -44,5 +44,6 @@
 # Blog & Roadmap
 
 - [Roadmap](./roadmap.md)
+- [v0.6.0: Enterprise, AI & SDKs](./blog-v060-release.md)
 - [v0.5.0 Release](./blog-sprint-5-release.md)
 - [Introducing Fuse](./blog-introducing-fuse.md)
