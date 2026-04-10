@@ -88,7 +88,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="sql-reference.html"><strong aria-hidden="true">2.</strong> SQL Reference</a></li><li class="chapter-item expanded "><a href="ppl-reference.html"><strong aria-hidden="true">3.</strong> PPL Reference</a></li><li class="chapter-item expanded "><a href="api-reference.html" class="active"><strong aria-hidden="true">4.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="connectors.html"><strong aria-hidden="true">5.</strong> Connectors</a></li><li class="chapter-item expanded "><a href="data-provenance.html"><strong aria-hidden="true">6.</strong> Data Provenance</a></li><li class="chapter-item expanded "><a href="explain-analyze.html"><strong aria-hidden="true">7.</strong> EXPLAIN / ANALYZE</a></li><li class="chapter-item expanded "><a href="troubleshooting.html"><strong aria-hidden="true">8.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">9.</strong> Contributing</a></li><li class="chapter-item expanded "><a href="blog-introducing-fuse.html"><strong aria-hidden="true">10.</strong> Blog: Introducing Fuse</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">2.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="sql-reference.html"><strong aria-hidden="true">3.</strong> SQL Reference</a></li><li class="chapter-item expanded "><a href="ppl-reference.html"><strong aria-hidden="true">4.</strong> PPL Reference</a></li><li class="chapter-item expanded "><a href="api-reference.html" class="active"><strong aria-hidden="true">5.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="connectors.html"><strong aria-hidden="true">6.</strong> Connectors</a></li><li class="chapter-item expanded "><a href="data-provenance.html"><strong aria-hidden="true">7.</strong> Data Provenance</a></li><li class="chapter-item expanded "><a href="explain-analyze.html"><strong aria-hidden="true">8.</strong> EXPLAIN / ANALYZE</a></li><li class="chapter-item expanded "><a href="troubleshooting.html"><strong aria-hidden="true">9.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">10.</strong> Contributing</a></li><li class="chapter-item expanded "><a href="blog-introducing-fuse.html"><strong aria-hidden="true">11.</strong> Blog: Introducing Fuse</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -201,6 +201,8 @@
 <tr><td><code>timeout_ms</code></td><td>int</td><td><code>30000</code></td><td>Per-query timeout in milliseconds</td></tr>
 <tr><td><code>result_format</code></td><td>string</td><td><code>"json"</code></td><td><code>"json"</code> or <code>"csv"</code></td></tr>
 <tr><td><code>params</code></td><td>object</td><td><code>{}</code></td><td>Named parameters for <code>$name</code> placeholders</td></tr>
+<tr><td><code>page_size</code></td><td>int</td><td>none</td><td>Rows per page (enables cursor pagination)</td></tr>
+<tr><td><code>cursor</code></td><td>string</td><td>none</td><td>Cursor from previous response's <code>next_cursor</code></td></tr>
 </tbody></table>
 </div>
 <p><strong>Response:</strong></p>
@@ -237,7 +239,7 @@
   }
 }
 </code></pre>
-<p><code>datasource_stats</code> and <code>datasources_queried</code> appear for cross-datasource queries. <code>execution_profile</code> appears when <code>analyze: true</code>.</p>
+<p><code>datasource_stats</code> and <code>datasources_queried</code> appear for cross-datasource queries. <code>execution_profile</code> appears when <code>analyze: true</code>. <code>next_cursor</code> appears when <code>page_size</code> is set and more rows exist.</p>
 <p><strong>curl:</strong></p>
 <pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/query \
   -H 'Content-Type: application/json' \
@@ -279,6 +281,33 @@ data: {"type":"progress","batches_sent":5}
 data: {"type":"done","total_rows":42}
 data: {"type":"error","message":"..."}
 </code></pre>
+<h2 id="trace-reconstruction"><a class="header" href="#trace-reconstruction">Trace Reconstruction</a></h2>
+<h3 trace_id="">GET /api/fuse/trace/</h3>
+<p>Fan out to all datasources, search for a trace ID, and reconstruct the full trace timeline sorted by timestamp.</p>
+<pre><code class="language-bash">curl http://localhost:9400/api/fuse/trace/tr-abc123
+</code></pre>
+<p><strong>Response:</strong></p>
+<pre><code class="language-json">{
+  "trace_id": "tr-abc123",
+  "spans": [
+    {
+      "datasource": "cluster_a",
+      "timestamp": "2026-04-10T05:30:00Z",
+      "fields": {"service": "api-gateway", "status": 200, "message": "request received"}
+    },
+    {
+      "datasource": "dynamodb",
+      "timestamp": "2026-04-10T05:30:01Z",
+      "fields": {"user_id": "u-42", "action": "lookup"}
+    }
+  ],
+  "datasources_searched": ["cluster_a", "cluster_b", "dynamodb", "s3_o11y"],
+  "datasources_matched": ["cluster_a", "dynamodb"],
+  "total_spans": 2,
+  "search_ms": 187
+}
+</code></pre>
+<p>Searches all registered datasources for rows where <code>trace_id</code> matches. Spans are sorted by timestamp. Useful for cross-source distributed trace correlation.</p>
 <h2 id="discovery-endpoints"><a class="header" href="#discovery-endpoints">Discovery Endpoints</a></h2>
 <h3 id="get-apifusehealth"><a class="header" href="#get-apifusehealth">GET /api/fuse/health</a></h3>
 <p>Engine and per-connector health status.</p>

@@ -88,7 +88,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="getting-started.html" class="active"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="sql-reference.html"><strong aria-hidden="true">2.</strong> SQL Reference</a></li><li class="chapter-item expanded "><a href="ppl-reference.html"><strong aria-hidden="true">3.</strong> PPL Reference</a></li><li class="chapter-item expanded "><a href="api-reference.html"><strong aria-hidden="true">4.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="connectors.html"><strong aria-hidden="true">5.</strong> Connectors</a></li><li class="chapter-item expanded "><a href="data-provenance.html"><strong aria-hidden="true">6.</strong> Data Provenance</a></li><li class="chapter-item expanded "><a href="explain-analyze.html"><strong aria-hidden="true">7.</strong> EXPLAIN / ANALYZE</a></li><li class="chapter-item expanded "><a href="troubleshooting.html"><strong aria-hidden="true">8.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">9.</strong> Contributing</a></li><li class="chapter-item expanded "><a href="blog-introducing-fuse.html"><strong aria-hidden="true">10.</strong> Blog: Introducing Fuse</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="getting-started.html" class="active"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">2.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="sql-reference.html"><strong aria-hidden="true">3.</strong> SQL Reference</a></li><li class="chapter-item expanded "><a href="ppl-reference.html"><strong aria-hidden="true">4.</strong> PPL Reference</a></li><li class="chapter-item expanded "><a href="api-reference.html"><strong aria-hidden="true">5.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="connectors.html"><strong aria-hidden="true">6.</strong> Connectors</a></li><li class="chapter-item expanded "><a href="data-provenance.html"><strong aria-hidden="true">7.</strong> Data Provenance</a></li><li class="chapter-item expanded "><a href="explain-analyze.html"><strong aria-hidden="true">8.</strong> EXPLAIN / ANALYZE</a></li><li class="chapter-item expanded "><a href="troubleshooting.html"><strong aria-hidden="true">9.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">10.</strong> Contributing</a></li><li class="chapter-item expanded "><a href="blog-introducing-fuse.html"><strong aria-hidden="true">11.</strong> Blog: Introducing Fuse</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -182,9 +182,9 @@
                         <h1 id="getting-started"><a class="header" href="#getting-started">Getting Started</a></h1>
 <h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
 <ul>
-<li>Rust 1.75+ (for building from source)</li>
-<li>Access to at least one OpenSearch cluster or S3 bucket</li>
-<li>Docker (optional, for local dev environment)</li>
+<li>Rust stable (1.85+) — <code>curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh</code></li>
+<li>OpenSSL dev — <code>apt install libssl-dev pkg-config</code> or <code>yum install openssl-devel</code></li>
+<li>Docker (optional, for local OpenSearch)</li>
 </ul>
 <h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
 <pre><code class="language-bash">git clone https://github.com/seraphjiang/fuse.git
@@ -192,25 +192,27 @@ cd fuse
 cargo build --release
 </code></pre>
 <h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
-<p>Create a <code>fuse.toml</code> file:</p>
-<pre><code class="language-toml">[server]
-host = "0.0.0.0"
-port = 9400
+<p>Create a <code>fuse.toml</code> file with your datasources. Here's a minimal example with two OpenSearch clusters:</p>
+<pre><code class="language-toml">[engine]
+bind = "0.0.0.0:9400"
+max_concurrent_queries = 64
 
 [[connector]]
 id = "cluster_a"
-connector_type = "opensearch"
-endpoint = "https://your-opensearch-endpoint"
-auth = "sigv4"
+type = "opensearch"
+url = "https://your-opensearch-endpoint"
+[connector.auth]
+type = "sigv4"
 region = "us-west-2"
+service = "aoss"
 
 [[connector]]
-id = "cluster_b"
-connector_type = "opensearch"
-endpoint = "https://your-other-endpoint"
-auth = "sigv4"
+id = "my_ddb"
+type = "dynamodb"
 region = "us-west-2"
+table_names = ["users", "orders"]
 </code></pre>
+<p>See <a href="./connectors.html">Connectors</a> for all 14 connector types and their configuration.</p>
 <h2 id="running"><a class="header" href="#running">Running</a></h2>
 <pre><code class="language-bash">./target/release/fuse-server --config fuse.toml
 </code></pre>
@@ -230,20 +232,39 @@ region = "us-west-2"
   -H 'Content-Type: application/json' \
   -d '{"query": "SELECT service, status, message FROM cluster_a.application_logs WHERE status &gt;= 500 LIMIT 10"}'
 </code></pre>
-<h3 id="5-cross-cluster-federation"><a class="header" href="#5-cross-cluster-federation">5. Cross-cluster federation</a></h3>
+<h3 id="5-cross-datasource-join"><a class="header" href="#5-cross-datasource-join">5. Cross-datasource JOIN</a></h3>
 <pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/query \
   -H 'Content-Type: application/json' \
-  -d '{"query": "SELECT service, status FROM cluster_a.application_logs UNION ALL SELECT service, status FROM cluster_b.application_logs LIMIT 20"}'
+  -d '{
+    "query": "SELECT l.service, u.name FROM cluster_a.application_logs l JOIN dynamodb.users u ON l.user_id = u.user_id WHERE l.status &gt;= 500",
+    "format": "sql"
+  }'
 </code></pre>
-<h2 id="available-datasources-playground"><a class="header" href="#available-datasources-playground">Available Datasources (Playground)</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>ID</th><th>Type</th><th>Services</th></tr></thead><tbody>
-<tr><td><code>cluster_a</code></td><td>OpenSearch (AOSS)</td><td>api-gateway, auth-service, user-service</td></tr>
-<tr><td><code>cluster_b</code></td><td>OpenSearch (AOSS)</td><td>order-service, payment-service, notification-service</td></tr>
-<tr><td><code>s3_o11y</code></td><td>S3 NDJSON</td><td>Fuse server logs</td></tr>
-</tbody></table>
-</div>
-<p><strong>Index:</strong> <code>application_logs</code></p>
-<p><strong>Fields:</strong> <code>timestamp</code>, <code>service</code>, <code>status</code>, <code>message</code>, <code>trace_id</code>, <code>user_id</code>, <code>response_time_ms</code>, <code>method</code>, <code>path</code></p>
+<h3 id="6-union-all-across-sources"><a class="header" href="#6-union-all-across-sources">6. UNION ALL across sources</a></h3>
+<pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "SELECT service, status FROM cluster_a.application_logs UNION ALL SELECT service, status FROM cluster_b.application_logs LIMIT 20",
+    "format": "sql"
+  }'
+</code></pre>
+<h3 id="7-cursor-pagination"><a class="header" href="#7-cursor-pagination">7. Cursor pagination</a></h3>
+<pre><code class="language-bash"># First page
+curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT * FROM cluster_a.application_logs ORDER BY timestamp DESC", "format": "sql", "page_size": 20}'
+
+# Next page (use next_cursor from previous response)
+curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT * FROM cluster_a.application_logs ORDER BY timestamp DESC", "format": "sql", "page_size": 20, "cursor": "&lt;next_cursor&gt;"}'
+</code></pre>
+<h3 id="8-explain-a-query-plan"><a class="header" href="#8-explain-a-query-plan">8. EXPLAIN a query plan</a></h3>
+<pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/query/explain \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT l.service, count(*) FROM cluster_a.application_logs l JOIN dynamodb.users u ON l.user_id = u.user_id GROUP BY l.service"}'
+</code></pre>
+<p>See <a href="./explain-analyze.html">EXPLAIN / ANALYZE</a> for reading query plans.</p>
 <h2 id="docker-development"><a class="header" href="#docker-development">Docker Development</a></h2>
 <pre><code class="language-bash"># Start OpenSearch + Dashboards + Fuse
 docker compose up -d
@@ -254,6 +275,13 @@ docker compose up -d
 # Run tests
 ./scripts/test-local.sh
 </code></pre>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<ul>
+<li><a href="./architecture.html">Architecture</a> — how federated query execution works</li>
+<li><a href="./sql-reference.html">SQL Reference</a> — JOINs, UNION, window functions, subqueries</li>
+<li><a href="./ppl-reference.html">PPL Reference</a> — pipe-delimited queries with <code>lookup</code></li>
+<li><a href="./connectors.html">Connectors</a> — configure all 14 datasource types</li>
+</ul>
 
                     </main>
 
@@ -263,7 +291,7 @@ docker compose up -d
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="sql-reference.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="architecture.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -277,7 +305,7 @@ docker compose up -d
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="sql-reference.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="architecture.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

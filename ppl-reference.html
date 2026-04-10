@@ -88,7 +88,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="sql-reference.html"><strong aria-hidden="true">2.</strong> SQL Reference</a></li><li class="chapter-item expanded "><a href="ppl-reference.html" class="active"><strong aria-hidden="true">3.</strong> PPL Reference</a></li><li class="chapter-item expanded "><a href="api-reference.html"><strong aria-hidden="true">4.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="connectors.html"><strong aria-hidden="true">5.</strong> Connectors</a></li><li class="chapter-item expanded "><a href="data-provenance.html"><strong aria-hidden="true">6.</strong> Data Provenance</a></li><li class="chapter-item expanded "><a href="explain-analyze.html"><strong aria-hidden="true">7.</strong> EXPLAIN / ANALYZE</a></li><li class="chapter-item expanded "><a href="troubleshooting.html"><strong aria-hidden="true">8.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">9.</strong> Contributing</a></li><li class="chapter-item expanded "><a href="blog-introducing-fuse.html"><strong aria-hidden="true">10.</strong> Blog: Introducing Fuse</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">2.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="sql-reference.html"><strong aria-hidden="true">3.</strong> SQL Reference</a></li><li class="chapter-item expanded "><a href="ppl-reference.html" class="active"><strong aria-hidden="true">4.</strong> PPL Reference</a></li><li class="chapter-item expanded "><a href="api-reference.html"><strong aria-hidden="true">5.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="connectors.html"><strong aria-hidden="true">6.</strong> Connectors</a></li><li class="chapter-item expanded "><a href="data-provenance.html"><strong aria-hidden="true">7.</strong> Data Provenance</a></li><li class="chapter-item expanded "><a href="explain-analyze.html"><strong aria-hidden="true">8.</strong> EXPLAIN / ANALYZE</a></li><li class="chapter-item expanded "><a href="troubleshooting.html"><strong aria-hidden="true">9.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">10.</strong> Contributing</a></li><li class="chapter-item expanded "><a href="blog-introducing-fuse.html"><strong aria-hidden="true">11.</strong> Blog: Introducing Fuse</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -251,6 +251,14 @@
 <pre><code>source = cluster_a.application_logs
 | rare 5 service
 </code></pre>
+<h2 id="lookup-cross-source-enrichment"><a class="header" href="#lookup-cross-source-enrichment">lookup (Cross-Source Enrichment)</a></h2>
+<p>Enrich results by looking up fields from another datasource:</p>
+<pre><code>source = cluster_a.application_logs
+| where status &gt;= 500
+| lookup dynamodb.users user_id AS user_id REPLACE name, role
+| stats count() by role
+</code></pre>
+<p>This joins each row from <code>cluster_a.application_logs</code> with matching rows from <code>dynamodb.users</code> on <code>user_id</code>, adding the <code>name</code> and <code>role</code> fields. It's the PPL equivalent of a SQL JOIN.</p>
 <h2 id="multi-source-queries"><a class="header" href="#multi-source-queries">Multi-Source Queries</a></h2>
 <p>Query across clusters in a single PPL statement:</p>
 <pre><code>source = cluster_a.application_logs, cluster_b.application_logs

@@ -88,7 +88,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="sql-reference.html" class="active"><strong aria-hidden="true">2.</strong> SQL Reference</a></li><li class="chapter-item expanded "><a href="ppl-reference.html"><strong aria-hidden="true">3.</strong> PPL Reference</a></li><li class="chapter-item expanded "><a href="api-reference.html"><strong aria-hidden="true">4.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="connectors.html"><strong aria-hidden="true">5.</strong> Connectors</a></li><li class="chapter-item expanded "><a href="data-provenance.html"><strong aria-hidden="true">6.</strong> Data Provenance</a></li><li class="chapter-item expanded "><a href="explain-analyze.html"><strong aria-hidden="true">7.</strong> EXPLAIN / ANALYZE</a></li><li class="chapter-item expanded "><a href="troubleshooting.html"><strong aria-hidden="true">8.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">9.</strong> Contributing</a></li><li class="chapter-item expanded "><a href="blog-introducing-fuse.html"><strong aria-hidden="true">10.</strong> Blog: Introducing Fuse</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">2.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="sql-reference.html" class="active"><strong aria-hidden="true">3.</strong> SQL Reference</a></li><li class="chapter-item expanded "><a href="ppl-reference.html"><strong aria-hidden="true">4.</strong> PPL Reference</a></li><li class="chapter-item expanded "><a href="api-reference.html"><strong aria-hidden="true">5.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="connectors.html"><strong aria-hidden="true">6.</strong> Connectors</a></li><li class="chapter-item expanded "><a href="data-provenance.html"><strong aria-hidden="true">7.</strong> Data Provenance</a></li><li class="chapter-item expanded "><a href="explain-analyze.html"><strong aria-hidden="true">8.</strong> EXPLAIN / ANALYZE</a></li><li class="chapter-item expanded "><a href="troubleshooting.html"><strong aria-hidden="true">9.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">10.</strong> Contributing</a></li><li class="chapter-item expanded "><a href="blog-introducing-fuse.html"><strong aria-hidden="true">11.</strong> Blog: Introducing Fuse</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -201,41 +201,113 @@ WHERE status &gt;= 500
 GROUP BY service
 ORDER BY errors DESC
 </code></pre>
-<p>Supported functions: <code>COUNT</code>, <code>SUM</code>, <code>AVG</code>, <code>MIN</code>, <code>MAX</code>.</p>
+<p>Supported functions: <code>COUNT</code>, <code>SUM</code>, <code>AVG</code>, <code>MIN</code>, <code>MAX</code>, <code>PERCENTILE</code>, <code>PERCENTILE_APPROX</code>.</p>
+<h3 id="cross-datasource-group-by"><a class="header" href="#cross-datasource-group-by">Cross-Datasource GROUP BY</a></h3>
+<p>GROUP BY works across multiple datasources. Fuse executes partial aggregation at each source, then re-aggregates after merge:</p>
+<pre><code class="language-sql">SELECT service, count(*) as total
+FROM cluster_a.application_logs
+UNION ALL
+SELECT service, count(*) as total
+FROM cluster_b.application_logs
+GROUP BY service
+</code></pre>
 <h2 id="order-by--limit"><a class="header" href="#order-by--limit">ORDER BY + LIMIT</a></h2>
 <pre><code class="language-sql">SELECT service, response_time_ms
 FROM cluster_a.application_logs
 ORDER BY response_time_ms DESC
 LIMIT 10
 </code></pre>
-<h2 id="union-all-cross-cluster"><a class="header" href="#union-all-cross-cluster">UNION ALL (Cross-Cluster)</a></h2>
-<p>Combine results from multiple datasources:</p>
-<pre><code class="language-sql">SELECT service, status, message
+<p>Multi-column ORDER BY with mixed directions:</p>
+<pre><code class="language-sql">SELECT service, status, response_time_ms
 FROM cluster_a.application_logs
-UNION ALL
-SELECT service, status, message
-FROM cluster_b.application_logs
+ORDER BY service ASC, response_time_ms DESC
 LIMIT 20
 </code></pre>
+<h2 id="union--union-all"><a class="header" href="#union--union-all">UNION / UNION ALL</a></h2>
+<p>Combine results from multiple datasources:</p>
+<pre><code class="language-sql">-- UNION ALL (keep duplicates)
+SELECT service, status, message FROM cluster_a.application_logs
+UNION ALL
+SELECT service, status, message FROM cluster_b.application_logs
+LIMIT 20
+
+-- UNION (deduplicate)
+SELECT service FROM cluster_a.application_logs
+UNION
+SELECT service FROM cluster_b.application_logs
+</code></pre>
 <p>Cross-cluster queries add a <code>_datasource</code> column automatically. See <a href="./data-provenance.html">Data Provenance</a>.</p>
+<p>Three or more sources:</p>
+<pre><code class="language-sql">SELECT source, service, message FROM cluster_a.application_logs
+UNION ALL
+SELECT source, service, message FROM cloudwatch.events
+UNION ALL
+SELECT source, service, message FROM s3_o11y.logs
+LIMIT 50
+</code></pre>
 <h2 id="join-cross-datasource"><a class="header" href="#join-cross-datasource">JOIN (Cross-Datasource)</a></h2>
-<p>Join data across different datasource types:</p>
-<pre><code class="language-sql">SELECT l.trace_id, l.service, l.status, s.level, s.message
+<p>Join data across different datasource types. Fuse fetches both sides in parallel, then performs a local hash join with the smaller table as the build side:</p>
+<pre><code class="language-sql">SELECT l.trace_id, l.service, u.name, u.role
 FROM cluster_a.application_logs l
-JOIN s3_o11y.fuse_logs s ON l.trace_id = s.trace_id
+JOIN dynamodb.users u ON l.user_id = u.user_id
 WHERE l.status &gt;= 500
 </code></pre>
-<p>Fuse uses hash-join for cross-datasource JOINs. Both sides are fetched in parallel, then joined locally.</p>
-<h2 id="subqueries"><a class="header" href="#subqueries">Subqueries</a></h2>
-<pre><code class="language-sql">SELECT service, cnt
-FROM (
-  SELECT service, count(*) as cnt
-  FROM cluster_a.application_logs
-  GROUP BY service
-) sub
-WHERE cnt &gt; 10
-ORDER BY cnt DESC
+<h3 id="semi-join-exists"><a class="header" href="#semi-join-exists">Semi-Join (EXISTS)</a></h3>
+<p>Return rows from the left side that have a match in the right side:</p>
+<pre><code class="language-sql">SELECT * FROM cluster_a.application_logs
+WHERE user_id IN (SELECT user_id FROM dynamodb.users WHERE role = 'admin')
 </code></pre>
+<h3 id="anti-join-not-exists"><a class="header" href="#anti-join-not-exists">Anti-Join (NOT EXISTS)</a></h3>
+<p>Return rows from the left side that have no match in the right side:</p>
+<pre><code class="language-sql">SELECT * FROM cluster_a.application_logs
+WHERE user_id NOT IN (SELECT user_id FROM dynamodb.users WHERE role = 'admin')
+</code></pre>
+<h2 id="correlated-subqueries"><a class="header" href="#correlated-subqueries">Correlated Subqueries</a></h2>
+<p><code>IN (SELECT ...)</code> subqueries across datasources. The inner query executes first, then results are inlined:</p>
+<pre><code class="language-sql">SELECT * FROM cluster_a.application_logs
+WHERE trace_id IN (
+  SELECT trace_id FROM s3_o11y.logs WHERE level = 'ERROR'
+)
+</code></pre>
+<h2 id="window-functions"><a class="header" href="#window-functions">Window Functions</a></h2>
+<p>Window functions operate over federated result sets:</p>
+<pre><code class="language-sql">SELECT service, status, response_time_ms,
+  ROW_NUMBER() OVER (PARTITION BY service ORDER BY response_time_ms DESC) as rn,
+  RANK() OVER (ORDER BY response_time_ms DESC) as rank
+FROM cluster_a.application_logs
+WHERE status &gt;= 500
+</code></pre>
+<p>Supported: <code>ROW_NUMBER</code>, <code>RANK</code>, <code>DENSE_RANK</code>, <code>LAG</code>, <code>LEAD</code>.</p>
+<h2 id="case-when"><a class="header" href="#case-when">CASE WHEN</a></h2>
+<pre><code class="language-sql">SELECT service,
+  CASE WHEN status &gt;= 500 THEN 'error'
+       WHEN status &gt;= 400 THEN 'client_error'
+       ELSE 'ok'
+  END as category,
+  count(*) as cnt
+FROM cluster_a.application_logs
+GROUP BY service, category
+</code></pre>
+<h2 id="computed-columns"><a class="header" href="#computed-columns">Computed Columns</a></h2>
+<p>Expressions in SELECT:</p>
+<pre><code class="language-sql">SELECT service,
+  response_time_ms / 1000.0 as response_time_sec,
+  UPPER(service) as service_upper
+FROM cluster_a.application_logs
+LIMIT 10
+</code></pre>
+<h2 id="datetime-functions"><a class="header" href="#datetime-functions">Date/Time Functions</a></h2>
+<pre><code class="language-sql">SELECT DATE_TRUNC('hour', timestamp) as hour,
+  count(*) as requests
+FROM cluster_a.application_logs
+GROUP BY hour
+ORDER BY hour DESC
+</code></pre>
+<p>Supported: <code>DATE_TRUNC</code>, <code>DATE_DIFF</code>, <code>NOW()</code>.</p>
+<h2 id="string-functions"><a class="header" href="#string-functions">String Functions</a></h2>
+<p><code>UPPER</code>, <code>LOWER</code>, <code>SUBSTRING</code>, <code>TRIM</code>, <code>REGEXP</code>.</p>
+<h2 id="math-functions"><a class="header" href="#math-functions">Math Functions</a></h2>
+<p><code>ROUND</code>, <code>CEIL</code>, <code>FLOOR</code>, <code>ABS</code>, <code>MOD</code>.</p>
 <h2 id="distinct"><a class="header" href="#distinct">DISTINCT</a></h2>
 <pre><code class="language-sql">SELECT DISTINCT service
 FROM cluster_a.application_logs
@@ -245,6 +317,21 @@ FROM cluster_a.application_logs
 FROM cluster_a.application_logs
 ORDER BY timestamp DESC
 LIMIT 10 OFFSET 20
+</code></pre>
+<h2 id="cursor-pagination"><a class="header" href="#cursor-pagination">Cursor Pagination</a></h2>
+<p>For efficient paging through large result sets, use <code>page_size</code> and <code>cursor</code> instead of OFFSET:</p>
+<pre><code class="language-bash"># First page
+curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT * FROM cluster_a.application_logs ORDER BY timestamp DESC", "format": "sql", "page_size": 20}'
+
+# Response includes next_cursor
+# {"columns": [...], "rows": [...], "next_cursor": "eyJvZmZzZXQiOjIwfQ=="}
+
+# Next page
+curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT * FROM cluster_a.application_logs ORDER BY timestamp DESC", "format": "sql", "page_size": 20, "cursor": "eyJvZmZzZXQiOjIwfQ=="}'
 </code></pre>
 <h2 id="between"><a class="header" href="#between">BETWEEN</a></h2>
 <pre><code class="language-sql">SELECT service, status, response_time_ms
@@ -269,19 +356,28 @@ ORDER BY errors DESC
     "params": {"svc": "api-gateway", "code": 500, "n": 10}
   }'
 </code></pre>
+<h2 id="explain"><a class="header" href="#explain">EXPLAIN</a></h2>
+<p>Inspect the query plan and cost estimates:</p>
+<pre><code class="language-sql">EXPLAIN SELECT l.service, count(*)
+FROM cluster_a.application_logs l
+JOIN dynamodb.users u ON l.user_id = u.user_id
+GROUP BY l.service
+</code></pre>
+<p>See <a href="./explain-analyze.html">EXPLAIN / ANALYZE</a> for details.</p>
 <h2 id="tips"><a class="header" href="#tips">Tips</a></h2>
 <ul>
 <li>Always use <code>LIMIT</code> to avoid fetching entire indices</li>
 <li>Use <code>WHERE</code> clauses — they get pushed down to connectors for performance</li>
 <li><code>SELECT *</code> works but explicit column lists enable projection pushdown</li>
-<li>Check the <a href="./explain-analyze.html">EXPLAIN / ANALYZE</a> page to understand query plans</li>
+<li>For large result sets, use cursor pagination (<code>page_size</code> + <code>cursor</code>) instead of OFFSET</li>
+<li>Check <a href="./explain-analyze.html">EXPLAIN / ANALYZE</a> to understand query plans</li>
 </ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="getting-started.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="architecture.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
@@ -295,7 +391,7 @@ ORDER BY errors DESC
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="getting-started.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="architecture.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 

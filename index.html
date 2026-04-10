@@ -88,7 +88,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html" class="active">Introduction</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="sql-reference.html"><strong aria-hidden="true">2.</strong> SQL Reference</a></li><li class="chapter-item expanded "><a href="ppl-reference.html"><strong aria-hidden="true">3.</strong> PPL Reference</a></li><li class="chapter-item expanded "><a href="api-reference.html"><strong aria-hidden="true">4.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="connectors.html"><strong aria-hidden="true">5.</strong> Connectors</a></li><li class="chapter-item expanded "><a href="data-provenance.html"><strong aria-hidden="true">6.</strong> Data Provenance</a></li><li class="chapter-item expanded "><a href="explain-analyze.html"><strong aria-hidden="true">7.</strong> EXPLAIN / ANALYZE</a></li><li class="chapter-item expanded "><a href="troubleshooting.html"><strong aria-hidden="true">8.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">9.</strong> Contributing</a></li><li class="chapter-item expanded "><a href="blog-introducing-fuse.html"><strong aria-hidden="true">10.</strong> Blog: Introducing Fuse</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html" class="active">Introduction</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">2.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="sql-reference.html"><strong aria-hidden="true">3.</strong> SQL Reference</a></li><li class="chapter-item expanded "><a href="ppl-reference.html"><strong aria-hidden="true">4.</strong> PPL Reference</a></li><li class="chapter-item expanded "><a href="api-reference.html"><strong aria-hidden="true">5.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="connectors.html"><strong aria-hidden="true">6.</strong> Connectors</a></li><li class="chapter-item expanded "><a href="data-provenance.html"><strong aria-hidden="true">7.</strong> Data Provenance</a></li><li class="chapter-item expanded "><a href="explain-analyze.html"><strong aria-hidden="true">8.</strong> EXPLAIN / ANALYZE</a></li><li class="chapter-item expanded "><a href="troubleshooting.html"><strong aria-hidden="true">9.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">10.</strong> Contributing</a></li><li class="chapter-item expanded "><a href="blog-introducing-fuse.html"><strong aria-hidden="true">11.</strong> Blog: Introducing Fuse</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -180,72 +180,75 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="fuse--federated-query-engine"><a class="header" href="#fuse--federated-query-engine">Fuse — Federated Query Engine</a></h1>
-<p>Fuse is a cross-datasource federated query engine for <a href="https://opensearch.org/docs/latest/dashboards/">OpenSearch Dashboards</a>. Write a single SQL or PPL query that spans multiple OpenSearch clusters, S3 data lakes, and Prometheus — Fuse fans out, executes, and merges results automatically.</p>
+<p>Fuse is a federated query engine that lets you query any datasource with SQL or PPL. Join OpenSearch logs with DynamoDB profiles, union CloudWatch and S3 events, correlate Prometheus metrics with Elasticsearch alerts — all in one statement. Built on <a href="https://datafusion.apache.org/">Apache DataFusion</a> and <a href="https://github.com/datafusion-contrib/datafusion-federation">datafusion-federation</a>.</p>
 <p><strong><a href="https://fuse.huanji.profile.aws.dev">🎮 Live Playground</a></strong> <em>(Amazon VPN required)</em></p>
 <h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
-<pre><code>                    ┌─────────────────────┐
-                    │  OpenSearch          │
-                    │  Dashboards / REST   │
-                    └─────────┬───────────┘
-                              │
-                    ┌─────────▼───────────┐
-                    │    Fuse Server       │
-                    │  (Axum REST API)     │
-                    └─────────┬───────────┘
-                              │
-                    ┌─────────▼───────────┐
-                    │   Fuse Engine        │
-                    │  (DataFusion-based   │
-                    │   planner/optimizer) │
-                    └──┬──────┬───────┬───┘
-                       │      │       │
-              ┌────────▼┐ ┌──▼─────┐ ┌▼────────┐
-              │ OS (a)   │ │ OS (b) │ │ S3 O11y │
-              │ SigV4    │ │ SigV4  │ │ NDJSON  │
-              └──────────┘ └────────┘ └─────────┘
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│  Client (Playground UI / curl / OpenSearch Dashboards)      │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ REST API (:9400)
+┌──────────────────────▼──────────────────────────────────────┐
+│  Fuse Server (axum)                                         │
+│                                                             │
+│  SQL / PPL Parser ──→ Logical Plan                          │
+│  + Cost-Based Join Planner (build-side selection)           │
+│       ┌──────┬──────┬──────┬──────┬──────┬──────┐           │
+│       ▼      ▼      ▼      ▼      ▼      ▼      ▼          │
+│     OS    ES   PG/MySQL DDB  S3  Prom  CW  Redis ...       │
+│     Mongo  InfluxDB  ClickHouse  CSV/JSON                   │
+│       └──────┴──────┴──────┴──────┴──────┴──────┘           │
+│            Result Merger + Re-Aggregator                    │
+│  Cursor Pagination · Query Cache · Cost Estimator           │
+└─────────────────────────────────────────────────────────────┘
 </code></pre>
+<p>See <a href="./architecture.html">Architecture</a> for the full query execution model.</p>
 <h2 id="key-features"><a class="header" href="#key-features">Key Features</a></h2>
 <ul>
-<li><strong>Same-type federation</strong> — Query across multiple OpenSearch clusters with UNION ALL</li>
-<li><strong>Cross-type federation</strong> — JOIN OpenSearch data with S3 or Prometheus</li>
-<li><strong>SQL + PPL</strong> — Full support for both query languages</li>
-<li><strong>Query pushdown</strong> — Filters, projections, and limits pushed to connectors</li>
+<li><strong>14 connectors</strong> — OpenSearch, Elasticsearch, PostgreSQL, MySQL, DynamoDB, S3 (Parquet), S3 O11y (NDJSON), Prometheus, CloudWatch, Redis, CSV/JSON, MongoDB, InfluxDB, ClickHouse</li>
+<li><strong>Cross-datasource JOINs</strong> — hash join with build-side selection, semi-join (EXISTS), anti-join (NOT EXISTS)</li>
+<li><strong>Correlated subqueries</strong> — <code>WHERE col IN (SELECT ... FROM other_source)</code></li>
+<li><strong>Federated UNION / UNION ALL</strong> — combine any mix of sources, with deduplication</li>
+<li><strong>Window functions</strong> — ROW_NUMBER, RANK, LAG, LEAD over federated results</li>
+<li><strong>Cross-datasource GROUP BY</strong> — federated re-aggregation across sources</li>
+<li><strong>Cursor pagination</strong> — keyset-based server-side cursors for efficient paging</li>
+<li><strong>Cost estimator</strong> — pre-execution cost estimates per plan node</li>
+<li><strong>SQL + PPL</strong> — full support for both query languages, including PPL <code>lookup</code></li>
+<li><strong>EXPLAIN / ANALYZE</strong> — inspect federated query plans and execution stats</li>
 <li><strong>Data provenance</strong> — <code>_datasource</code> column shows where each row came from</li>
-<li><strong>Execution profiling</strong> — EXPLAIN and ANALYZE with visual plan tree</li>
-<li><strong>5 connectors</strong> — OpenSearch, S3 Parquet, S3 O11y (NDJSON), Prometheus, custom via SDK</li>
 <li><strong>Caching</strong> — TTL-based query result cache per connector type</li>
-<li><strong>Alerting</strong> — Rule-based alerting on federated queries</li>
-<li><strong>Materialized views</strong> — Pre-computed cross-datasource views</li>
-<li><strong>Saved queries</strong> — Named query templates with parameter binding</li>
-<li><strong>CSV export</strong> — Download results as CSV</li>
-<li><strong>Query cancellation</strong> — Cancel long-running queries by ID</li>
-<li><strong>Per-query timeout</strong> — Configurable timeout_ms per request</li>
+<li><strong>Materialized views</strong> — pre-computed cross-datasource views with scheduled refresh</li>
+<li><strong>Saved queries</strong> — named query templates with parameter binding</li>
+<li><strong>Query cancellation</strong> — cancel long-running queries by ID</li>
 <li><strong>Partial failure resilience</strong> — UNION ALL continues if one datasource fails</li>
-<li><strong>OSD plugin</strong> — Native OpenSearch Dashboards integration</li>
+<li><strong>845+ tests</strong> — unit, integration, E2E, and performance regression suite</li>
 </ul>
 <h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
-<pre><code class="language-bash"># Clone and build
-git clone https://github.com/seraphjiang/fuse.git
+<pre><code class="language-bash">git clone https://github.com/seraphjiang/fuse.git
 cd fuse
 cargo build --release
-
-# Run with sample config
 ./target/release/fuse-server --config fuse.toml
-
-# Query
-curl -X POST http://localhost:9400/api/fuse/query \
-  -H 'Content-Type: application/json' \
-  -d '{"query": "SELECT * FROM cluster_a.application_logs LIMIT 5"}'
 </code></pre>
+<p>Open <code>http://localhost:9400</code> for the playground UI. See <a href="./getting-started.html">Getting Started</a> for full setup instructions.</p>
 <h2 id="connectors"><a class="header" href="#connectors">Connectors</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Connector</th><th>Type</th><th>Auth</th><th>Status</th></tr></thead><tbody>
-<tr><td>OpenSearch</td><td><code>opensearch</code></td><td>SigV4, Basic, None</td><td>✅ Production</td></tr>
-<tr><td>S3 Parquet</td><td><code>s3</code></td><td>IAM</td><td>✅ Production</td></tr>
-<tr><td>S3 O11y</td><td><code>s3-o11y</code></td><td>IAM</td><td>✅ Production</td></tr>
-<tr><td>Prometheus</td><td><code>prometheus</code></td><td>Bearer, None</td><td>✅ Production</td></tr>
-<tr><td>Custom</td><td>SDK</td><td>Any</td><td>✅ Via fuse-connector-sdk</td></tr>
+<div class="table-wrapper"><table><thead><tr><th>Connector</th><th>Type</th><th>Push-down</th></tr></thead><tbody>
+<tr><td>OpenSearch</td><td><code>opensearch</code></td><td>Filter, projection, aggregation, sort, limit, search_after</td></tr>
+<tr><td>Elasticsearch</td><td><code>elasticsearch</code></td><td>Filter, projection, aggregation, sort, limit</td></tr>
+<tr><td>PostgreSQL</td><td><code>postgres</code></td><td>Full SQL pushdown</td></tr>
+<tr><td>MySQL</td><td><code>mysql</code></td><td>Full SQL pushdown</td></tr>
+<tr><td>DynamoDB</td><td><code>dynamodb</code></td><td>Filter (Scan/Query), projection, limit</td></tr>
+<tr><td>S3 (Parquet)</td><td><code>s3</code></td><td>Column pruning, row-group pagination, limit</td></tr>
+<tr><td>S3 O11y (NDJSON)</td><td><code>s3-o11y</code></td><td>Projection, limit</td></tr>
+<tr><td>Prometheus</td><td><code>prometheus</code></td><td>Time range, label filters</td></tr>
+<tr><td>CloudWatch</td><td><code>cloudwatch</code></td><td>Log group, time range, filter pattern</td></tr>
+<tr><td>Redis</td><td><code>redis</code></td><td>Key pattern (SCAN), hash/string types</td></tr>
+<tr><td>CSV/JSON</td><td><code>csv-json</code></td><td>Schema inference, auto-detect format</td></tr>
+<tr><td>MongoDB</td><td><code>mongodb</code></td><td>Filter (BSON), projection, limit</td></tr>
+<tr><td>InfluxDB</td><td><code>influxdb</code></td><td>InfluxQL WHERE, time range</td></tr>
+<tr><td>ClickHouse</td><td><code>clickhouse</code></td><td>Full SQL pushdown</td></tr>
 </tbody></table>
 </div>
+<p>See <a href="./connectors.html">Connectors</a> for configuration details.</p>
+
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">

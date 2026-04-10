@@ -89,7 +89,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="sql-reference.html"><strong aria-hidden="true">2.</strong> SQL Reference</a></li><li class="chapter-item expanded "><a href="ppl-reference.html"><strong aria-hidden="true">3.</strong> PPL Reference</a></li><li class="chapter-item expanded "><a href="api-reference.html"><strong aria-hidden="true">4.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="connectors.html"><strong aria-hidden="true">5.</strong> Connectors</a></li><li class="chapter-item expanded "><a href="data-provenance.html"><strong aria-hidden="true">6.</strong> Data Provenance</a></li><li class="chapter-item expanded "><a href="explain-analyze.html"><strong aria-hidden="true">7.</strong> EXPLAIN / ANALYZE</a></li><li class="chapter-item expanded "><a href="troubleshooting.html"><strong aria-hidden="true">8.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">9.</strong> Contributing</a></li><li class="chapter-item expanded "><a href="blog-introducing-fuse.html"><strong aria-hidden="true">10.</strong> Blog: Introducing Fuse</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">2.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="sql-reference.html"><strong aria-hidden="true">3.</strong> SQL Reference</a></li><li class="chapter-item expanded "><a href="ppl-reference.html"><strong aria-hidden="true">4.</strong> PPL Reference</a></li><li class="chapter-item expanded "><a href="api-reference.html"><strong aria-hidden="true">5.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="connectors.html"><strong aria-hidden="true">6.</strong> Connectors</a></li><li class="chapter-item expanded "><a href="data-provenance.html"><strong aria-hidden="true">7.</strong> Data Provenance</a></li><li class="chapter-item expanded "><a href="explain-analyze.html"><strong aria-hidden="true">8.</strong> EXPLAIN / ANALYZE</a></li><li class="chapter-item expanded "><a href="troubleshooting.html"><strong aria-hidden="true">9.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">10.</strong> Contributing</a></li><li class="chapter-item expanded "><a href="blog-introducing-fuse.html"><strong aria-hidden="true">11.</strong> Blog: Introducing Fuse</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -178,77 +178,80 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="fuse--federated-query-engine"><a class="header" href="#fuse--federated-query-engine">Fuse — Federated Query Engine</a></h1>
-<p>Fuse is a cross-datasource federated query engine for <a href="https://opensearch.org/docs/latest/dashboards/">OpenSearch Dashboards</a>. Write a single SQL or PPL query that spans multiple OpenSearch clusters, S3 data lakes, and Prometheus — Fuse fans out, executes, and merges results automatically.</p>
+<p>Fuse is a federated query engine that lets you query any datasource with SQL or PPL. Join OpenSearch logs with DynamoDB profiles, union CloudWatch and S3 events, correlate Prometheus metrics with Elasticsearch alerts — all in one statement. Built on <a href="https://datafusion.apache.org/">Apache DataFusion</a> and <a href="https://github.com/datafusion-contrib/datafusion-federation">datafusion-federation</a>.</p>
 <p><strong><a href="https://fuse.huanji.profile.aws.dev">🎮 Live Playground</a></strong> <em>(Amazon VPN required)</em></p>
 <h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
-<pre><code>                    ┌─────────────────────┐
-                    │  OpenSearch          │
-                    │  Dashboards / REST   │
-                    └─────────┬───────────┘
-                              │
-                    ┌─────────▼───────────┐
-                    │    Fuse Server       │
-                    │  (Axum REST API)     │
-                    └─────────┬───────────┘
-                              │
-                    ┌─────────▼───────────┐
-                    │   Fuse Engine        │
-                    │  (DataFusion-based   │
-                    │   planner/optimizer) │
-                    └──┬──────┬───────┬───┘
-                       │      │       │
-              ┌────────▼┐ ┌──▼─────┐ ┌▼────────┐
-              │ OS (a)   │ │ OS (b) │ │ S3 O11y │
-              │ SigV4    │ │ SigV4  │ │ NDJSON  │
-              └──────────┘ └────────┘ └─────────┘
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│  Client (Playground UI / curl / OpenSearch Dashboards)      │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ REST API (:9400)
+┌──────────────────────▼──────────────────────────────────────┐
+│  Fuse Server (axum)                                         │
+│                                                             │
+│  SQL / PPL Parser ──→ Logical Plan                          │
+│  + Cost-Based Join Planner (build-side selection)           │
+│       ┌──────┬──────┬──────┬──────┬──────┬──────┐           │
+│       ▼      ▼      ▼      ▼      ▼      ▼      ▼          │
+│     OS    ES   PG/MySQL DDB  S3  Prom  CW  Redis ...       │
+│     Mongo  InfluxDB  ClickHouse  CSV/JSON                   │
+│       └──────┴──────┴──────┴──────┴──────┴──────┘           │
+│            Result Merger + Re-Aggregator                    │
+│  Cursor Pagination · Query Cache · Cost Estimator           │
+└─────────────────────────────────────────────────────────────┘
 </code></pre>
+<p>See <a href="./architecture.html">Architecture</a> for the full query execution model.</p>
 <h2 id="key-features"><a class="header" href="#key-features">Key Features</a></h2>
 <ul>
-<li><strong>Same-type federation</strong> — Query across multiple OpenSearch clusters with UNION ALL</li>
-<li><strong>Cross-type federation</strong> — JOIN OpenSearch data with S3 or Prometheus</li>
-<li><strong>SQL + PPL</strong> — Full support for both query languages</li>
-<li><strong>Query pushdown</strong> — Filters, projections, and limits pushed to connectors</li>
+<li><strong>14 connectors</strong> — OpenSearch, Elasticsearch, PostgreSQL, MySQL, DynamoDB, S3 (Parquet), S3 O11y (NDJSON), Prometheus, CloudWatch, Redis, CSV/JSON, MongoDB, InfluxDB, ClickHouse</li>
+<li><strong>Cross-datasource JOINs</strong> — hash join with build-side selection, semi-join (EXISTS), anti-join (NOT EXISTS)</li>
+<li><strong>Correlated subqueries</strong> — <code>WHERE col IN (SELECT ... FROM other_source)</code></li>
+<li><strong>Federated UNION / UNION ALL</strong> — combine any mix of sources, with deduplication</li>
+<li><strong>Window functions</strong> — ROW_NUMBER, RANK, LAG, LEAD over federated results</li>
+<li><strong>Cross-datasource GROUP BY</strong> — federated re-aggregation across sources</li>
+<li><strong>Cursor pagination</strong> — keyset-based server-side cursors for efficient paging</li>
+<li><strong>Cost estimator</strong> — pre-execution cost estimates per plan node</li>
+<li><strong>SQL + PPL</strong> — full support for both query languages, including PPL <code>lookup</code></li>
+<li><strong>EXPLAIN / ANALYZE</strong> — inspect federated query plans and execution stats</li>
 <li><strong>Data provenance</strong> — <code>_datasource</code> column shows where each row came from</li>
-<li><strong>Execution profiling</strong> — EXPLAIN and ANALYZE with visual plan tree</li>
-<li><strong>5 connectors</strong> — OpenSearch, S3 Parquet, S3 O11y (NDJSON), Prometheus, custom via SDK</li>
 <li><strong>Caching</strong> — TTL-based query result cache per connector type</li>
-<li><strong>Alerting</strong> — Rule-based alerting on federated queries</li>
-<li><strong>Materialized views</strong> — Pre-computed cross-datasource views</li>
-<li><strong>Saved queries</strong> — Named query templates with parameter binding</li>
-<li><strong>CSV export</strong> — Download results as CSV</li>
-<li><strong>Query cancellation</strong> — Cancel long-running queries by ID</li>
-<li><strong>Per-query timeout</strong> — Configurable timeout_ms per request</li>
+<li><strong>Materialized views</strong> — pre-computed cross-datasource views with scheduled refresh</li>
+<li><strong>Saved queries</strong> — named query templates with parameter binding</li>
+<li><strong>Query cancellation</strong> — cancel long-running queries by ID</li>
 <li><strong>Partial failure resilience</strong> — UNION ALL continues if one datasource fails</li>
-<li><strong>OSD plugin</strong> — Native OpenSearch Dashboards integration</li>
+<li><strong>845+ tests</strong> — unit, integration, E2E, and performance regression suite</li>
 </ul>
 <h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
-<pre><code class="language-bash"># Clone and build
-git clone https://github.com/seraphjiang/fuse.git
+<pre><code class="language-bash">git clone https://github.com/seraphjiang/fuse.git
 cd fuse
 cargo build --release
-
-# Run with sample config
 ./target/release/fuse-server --config fuse.toml
-
-# Query
-curl -X POST http://localhost:9400/api/fuse/query \
-  -H 'Content-Type: application/json' \
-  -d '{"query": "SELECT * FROM cluster_a.application_logs LIMIT 5"}'
 </code></pre>
+<p>Open <code>http://localhost:9400</code> for the playground UI. See <a href="./getting-started.html">Getting Started</a> for full setup instructions.</p>
 <h2 id="connectors"><a class="header" href="#connectors">Connectors</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Connector</th><th>Type</th><th>Auth</th><th>Status</th></tr></thead><tbody>
-<tr><td>OpenSearch</td><td><code>opensearch</code></td><td>SigV4, Basic, None</td><td>✅ Production</td></tr>
-<tr><td>S3 Parquet</td><td><code>s3</code></td><td>IAM</td><td>✅ Production</td></tr>
-<tr><td>S3 O11y</td><td><code>s3-o11y</code></td><td>IAM</td><td>✅ Production</td></tr>
-<tr><td>Prometheus</td><td><code>prometheus</code></td><td>Bearer, None</td><td>✅ Production</td></tr>
-<tr><td>Custom</td><td>SDK</td><td>Any</td><td>✅ Via fuse-connector-sdk</td></tr>
+<div class="table-wrapper"><table><thead><tr><th>Connector</th><th>Type</th><th>Push-down</th></tr></thead><tbody>
+<tr><td>OpenSearch</td><td><code>opensearch</code></td><td>Filter, projection, aggregation, sort, limit, search_after</td></tr>
+<tr><td>Elasticsearch</td><td><code>elasticsearch</code></td><td>Filter, projection, aggregation, sort, limit</td></tr>
+<tr><td>PostgreSQL</td><td><code>postgres</code></td><td>Full SQL pushdown</td></tr>
+<tr><td>MySQL</td><td><code>mysql</code></td><td>Full SQL pushdown</td></tr>
+<tr><td>DynamoDB</td><td><code>dynamodb</code></td><td>Filter (Scan/Query), projection, limit</td></tr>
+<tr><td>S3 (Parquet)</td><td><code>s3</code></td><td>Column pruning, row-group pagination, limit</td></tr>
+<tr><td>S3 O11y (NDJSON)</td><td><code>s3-o11y</code></td><td>Projection, limit</td></tr>
+<tr><td>Prometheus</td><td><code>prometheus</code></td><td>Time range, label filters</td></tr>
+<tr><td>CloudWatch</td><td><code>cloudwatch</code></td><td>Log group, time range, filter pattern</td></tr>
+<tr><td>Redis</td><td><code>redis</code></td><td>Key pattern (SCAN), hash/string types</td></tr>
+<tr><td>CSV/JSON</td><td><code>csv-json</code></td><td>Schema inference, auto-detect format</td></tr>
+<tr><td>MongoDB</td><td><code>mongodb</code></td><td>Filter (BSON), projection, limit</td></tr>
+<tr><td>InfluxDB</td><td><code>influxdb</code></td><td>InfluxQL WHERE, time range</td></tr>
+<tr><td>ClickHouse</td><td><code>clickhouse</code></td><td>Full SQL pushdown</td></tr>
 </tbody></table>
-</div><div style="break-before: page; page-break-before: always;"></div><h1 id="getting-started"><a class="header" href="#getting-started">Getting Started</a></h1>
+</div>
+<p>See <a href="./connectors.html">Connectors</a> for configuration details.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="getting-started"><a class="header" href="#getting-started">Getting Started</a></h1>
 <h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
 <ul>
-<li>Rust 1.75+ (for building from source)</li>
-<li>Access to at least one OpenSearch cluster or S3 bucket</li>
-<li>Docker (optional, for local dev environment)</li>
+<li>Rust stable (1.85+) — <code>curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh</code></li>
+<li>OpenSSL dev — <code>apt install libssl-dev pkg-config</code> or <code>yum install openssl-devel</code></li>
+<li>Docker (optional, for local OpenSearch)</li>
 </ul>
 <h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
 <pre><code class="language-bash">git clone https://github.com/seraphjiang/fuse.git
@@ -256,25 +259,27 @@ cd fuse
 cargo build --release
 </code></pre>
 <h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
-<p>Create a <code>fuse.toml</code> file:</p>
-<pre><code class="language-toml">[server]
-host = "0.0.0.0"
-port = 9400
+<p>Create a <code>fuse.toml</code> file with your datasources. Here's a minimal example with two OpenSearch clusters:</p>
+<pre><code class="language-toml">[engine]
+bind = "0.0.0.0:9400"
+max_concurrent_queries = 64
 
 [[connector]]
 id = "cluster_a"
-connector_type = "opensearch"
-endpoint = "https://your-opensearch-endpoint"
-auth = "sigv4"
+type = "opensearch"
+url = "https://your-opensearch-endpoint"
+[connector.auth]
+type = "sigv4"
 region = "us-west-2"
+service = "aoss"
 
 [[connector]]
-id = "cluster_b"
-connector_type = "opensearch"
-endpoint = "https://your-other-endpoint"
-auth = "sigv4"
+id = "my_ddb"
+type = "dynamodb"
 region = "us-west-2"
+table_names = ["users", "orders"]
 </code></pre>
+<p>See <a href="./connectors.html">Connectors</a> for all 14 connector types and their configuration.</p>
 <h2 id="running"><a class="header" href="#running">Running</a></h2>
 <pre><code class="language-bash">./target/release/fuse-server --config fuse.toml
 </code></pre>
@@ -294,20 +299,39 @@ region = "us-west-2"
   -H 'Content-Type: application/json' \
   -d '{"query": "SELECT service, status, message FROM cluster_a.application_logs WHERE status &gt;= 500 LIMIT 10"}'
 </code></pre>
-<h3 id="5-cross-cluster-federation"><a class="header" href="#5-cross-cluster-federation">5. Cross-cluster federation</a></h3>
+<h3 id="5-cross-datasource-join"><a class="header" href="#5-cross-datasource-join">5. Cross-datasource JOIN</a></h3>
 <pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/query \
   -H 'Content-Type: application/json' \
-  -d '{"query": "SELECT service, status FROM cluster_a.application_logs UNION ALL SELECT service, status FROM cluster_b.application_logs LIMIT 20"}'
+  -d '{
+    "query": "SELECT l.service, u.name FROM cluster_a.application_logs l JOIN dynamodb.users u ON l.user_id = u.user_id WHERE l.status &gt;= 500",
+    "format": "sql"
+  }'
 </code></pre>
-<h2 id="available-datasources-playground"><a class="header" href="#available-datasources-playground">Available Datasources (Playground)</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>ID</th><th>Type</th><th>Services</th></tr></thead><tbody>
-<tr><td><code>cluster_a</code></td><td>OpenSearch (AOSS)</td><td>api-gateway, auth-service, user-service</td></tr>
-<tr><td><code>cluster_b</code></td><td>OpenSearch (AOSS)</td><td>order-service, payment-service, notification-service</td></tr>
-<tr><td><code>s3_o11y</code></td><td>S3 NDJSON</td><td>Fuse server logs</td></tr>
-</tbody></table>
-</div>
-<p><strong>Index:</strong> <code>application_logs</code></p>
-<p><strong>Fields:</strong> <code>timestamp</code>, <code>service</code>, <code>status</code>, <code>message</code>, <code>trace_id</code>, <code>user_id</code>, <code>response_time_ms</code>, <code>method</code>, <code>path</code></p>
+<h3 id="6-union-all-across-sources"><a class="header" href="#6-union-all-across-sources">6. UNION ALL across sources</a></h3>
+<pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "SELECT service, status FROM cluster_a.application_logs UNION ALL SELECT service, status FROM cluster_b.application_logs LIMIT 20",
+    "format": "sql"
+  }'
+</code></pre>
+<h3 id="7-cursor-pagination"><a class="header" href="#7-cursor-pagination">7. Cursor pagination</a></h3>
+<pre><code class="language-bash"># First page
+curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT * FROM cluster_a.application_logs ORDER BY timestamp DESC", "format": "sql", "page_size": 20}'
+
+# Next page (use next_cursor from previous response)
+curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT * FROM cluster_a.application_logs ORDER BY timestamp DESC", "format": "sql", "page_size": 20, "cursor": "&lt;next_cursor&gt;"}'
+</code></pre>
+<h3 id="8-explain-a-query-plan"><a class="header" href="#8-explain-a-query-plan">8. EXPLAIN a query plan</a></h3>
+<pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/query/explain \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT l.service, count(*) FROM cluster_a.application_logs l JOIN dynamodb.users u ON l.user_id = u.user_id GROUP BY l.service"}'
+</code></pre>
+<p>See <a href="./explain-analyze.html">EXPLAIN / ANALYZE</a> for reading query plans.</p>
 <h2 id="docker-development"><a class="header" href="#docker-development">Docker Development</a></h2>
 <pre><code class="language-bash"># Start OpenSearch + Dashboards + Fuse
 docker compose up -d
@@ -317,6 +341,264 @@ docker compose up -d
 
 # Run tests
 ./scripts/test-local.sh
+</code></pre>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<ul>
+<li><a href="./architecture.html">Architecture</a> — how federated query execution works</li>
+<li><a href="./sql-reference.html">SQL Reference</a> — JOINs, UNION, window functions, subqueries</li>
+<li><a href="./ppl-reference.html">PPL Reference</a> — pipe-delimited queries with <code>lookup</code></li>
+<li><a href="./connectors.html">Connectors</a> — configure all 14 datasource types</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="fuse-architecture-federated-query-execution-model"><a class="header" href="#fuse-architecture-federated-query-execution-model">Fuse Architecture: Federated Query Execution Model</a></h1>
+<p>This document describes how Fuse executes a federated query — from SQL/PPL input to merged response — across 14 heterogeneous connectors.</p>
+<h2 id="high-level-flow"><a class="header" href="#high-level-flow">High-Level Flow</a></h2>
+<pre><code>                          ┌──────────────┐
+                          │  SQL or PPL  │
+                          └──────┬───────┘
+                                 │
+                          ┌──────▼───────┐
+                     ┌────│    Parse     │
+                     │    └──────┬───────┘
+                     │           │
+                PPL? │    ┌──────▼───────┐
+                yes──┘    │  PPL→SQL     │
+                          │  Translation │
+                          └──────┬───────┘
+                                 │
+                          ┌──────▼───────┐
+                          │  Classify    │
+                          │  Query Type  │
+                          └──┬───┬───┬───┘
+                             │   │   │
+                   ┌─────────┘   │   └─────────┐
+                   ▼             ▼             ▼
+              Single-Source   UNION ALL     JOIN
+                   │             │             │
+                   ▼             ▼             ▼
+              ┌─────────┐  ┌─────────┐  ┌─────────┐
+              │SubQuery │  │SubQuery │  │SubQuery │
+              │ build   │  │per src  │  │per side │
+              └────┬────┘  └────┬────┘  └────┬────┘
+                   │            │            │
+              ┌────▼────┐  ┌───▼────┐  ┌────▼────┐
+              │Connector│  │Fan-out │  │Parallel │
+              │execute()│  │(tokio  │  │fetch    │
+              └────┬────┘  │spawn)  │  │(join!)  │
+                   │       └───┬────┘  └────┬────┘
+                   │           │            │
+                   │      ┌────▼────┐  ┌────▼────┐
+                   │      │ Merge   │  │HashJoin │
+                   │      │ + align │  │+ merge  │
+                   │      └────┬────┘  └────┬────┘
+                   │           │            │
+                   └─────┬─────┘────────────┘
+                         │
+                  ┌──────▼───────┐
+                  │Post-Process  │
+                  │ re-aggregate │
+                  │ ORDER BY     │
+                  │ DISTINCT     │
+                  │ OFFSET/LIMIT │
+                  │ cursor page  │
+                  └──────┬───────┘
+                         │
+                  ┌──────▼───────┐
+                  │   Response   │
+                  │  (JSON/CSV)  │
+                  └──────────────┘
+</code></pre>
+<h2 id="phase-1-parse"><a class="header" href="#phase-1-parse">Phase 1: Parse</a></h2>
+<p>The query enters via <code>POST /api/fuse/query</code> with a <code>format</code> field (<code>sql</code> or <code>ppl</code>).</p>
+<p><strong>SQL path:</strong> The raw SQL string is parsed to extract datasource.table references (e.g., <code>cluster_a.application_logs</code>). The parser identifies the query type — single-source, UNION/UNION ALL, or JOIN — by inspecting the FROM clause and set operators.</p>
+<p><strong>PPL path:</strong> If the format is <code>ppl</code> (or the query starts with <code>source</code>/<code>search</code>), the PPL parser (<code>fuse-engine/src/ppl.rs</code>) tokenizes the pipe-delimited query into a <code>PplQuery</code> struct containing source tables and a chain of commands (<code>where</code>, <code>stats</code>, <code>sort</code>, <code>head</code>, <code>fields</code>, <code>lookup</code>, <code>dedup</code>, <code>eval</code>, <code>rename</code>, <code>top</code>, <code>rare</code>). This is then translated to equivalent SQL via <code>ppl_to_sql()</code>.</p>
+<p><strong>CTE resolution:</strong> If the query contains <code>WITH</code> clauses, <code>resolve_ctes()</code> executes each CTE subquery first and registers the results as temporary in-memory datasources, making them available to the main query.</p>
+<p><strong>Correlated subqueries:</strong> <code>IN (SELECT ...)</code> subqueries are detected by <code>extract_in_subqueries()</code>. Each inner query is executed against its connector first, and the results are inlined as a literal <code>IN (val1, val2, ...)</code> list before the main query executes.</p>
+<h2 id="phase-2-plan--subquery-construction"><a class="header" href="#phase-2-plan--subquery-construction">Phase 2: Plan — SubQuery Construction</a></h2>
+<p>The SQL string is converted into a <code>SubQuery</code> struct via <code>sql_to_subquery()</code>:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct SubQuery {
+    pub table: String,
+    pub projections: Vec&lt;String&gt;,       // SELECT columns
+    pub filter: Option&lt;FilterExpr&gt;,     // WHERE clause
+    pub aggregations: Vec&lt;AggregationExpr&gt;, // COUNT, SUM, AVG, etc.
+    pub group_by: Vec&lt;String&gt;,          // GROUP BY columns
+    pub having: Option&lt;FilterExpr&gt;,     // HAVING clause
+    pub sort: Vec&lt;SortExpr&gt;,            // ORDER BY
+    pub limit: Option&lt;u64&gt;,             // LIMIT
+    pub passthrough: Option&lt;Value&gt;,     // Connector-specific (e.g., Prometheus range params)
+}
+<span class="boring">}</span></code></pre></pre>
+<p>This is the universal query representation that every connector understands. The <code>SubQuery</code> is connector-agnostic — each connector translates it into its native query language (Query DSL for OpenSearch, SQL for PostgreSQL/ClickHouse, BSON for MongoDB, InfluxQL for InfluxDB, etc.).</p>
+<h3 id="pushdown-rewrite"><a class="header" href="#pushdown-rewrite">Pushdown Rewrite</a></h3>
+<p>For multi-source queries (UNION ALL), <code>push_down_to_sources()</code> copies applicable clauses from the parsed base query into each per-source <code>SubQuery</code>:</p>
+<ul>
+<li><strong>Filter</strong> → pushed to all sources (reduces data transferred)</li>
+<li><strong>Projections</strong> → pushed to all sources (column pruning)</li>
+<li><strong>Sort</strong> → pushed to all sources (pre-sorted for merge)</li>
+<li><strong>Limit</strong> → pushed to all sources (each source gets the full limit; global limit applied after merge)</li>
+<li><strong>Aggregations + GROUP BY + HAVING</strong> → pushed to all sources (partial aggregation)</li>
+</ul>
+<p>The cost estimator (<code>fuse-engine/src/cost.rs</code>) decides whether pushdown is beneficial by comparing estimated remote vs. local execution cost, factoring in connector capabilities and latency class.</p>
+<h2 id="phase-3-fan-out-to-connectors"><a class="header" href="#phase-3-fan-out-to-connectors">Phase 3: Fan-Out to Connectors</a></h2>
+<p>Execution diverges based on query type:</p>
+<h3 id="single-source"><a class="header" href="#single-source">Single-Source</a></h3>
+<p>Direct call to <code>connector.execute(&amp;sub_query)</code>. The connector translates the <code>SubQuery</code> to its native format and returns Arrow <code>RecordBatch</code>es.</p>
+<h3 id="union-all"><a class="header" href="#union-all">UNION ALL</a></h3>
+<p>Each source gets its own <code>SubQuery</code> (with pushdown applied). Sources execute in parallel via <code>tokio::spawn</code>:</p>
+<pre><code>┌──────────┐  ┌──────────┐  ┌──────────┐
+│ OS query │  │ CW query │  │ S3 query │
+│ (spawn)  │  │ (spawn)  │  │ (spawn)  │
+└────┬─────┘  └────┬─────┘  └────┬─────┘
+     │              │              │
+     └──────────────┼──────────────┘
+                    ▼
+              union_batches()
+</code></pre>
+<p>Each result set is tagged with a <code>_datasource</code> column identifying its origin. Schema alignment (<code>union_schema</code> + <code>align_batch</code>) handles type mismatches across sources by widening to a common type (e.g., Int32 + Int64 → Int64, any + Utf8 → Utf8).</p>
+<p>Partial failures are tolerated — if one source errors, the others still return results with the error reported in <code>partial_errors</code>.</p>
+<h3 id="join"><a class="header" href="#join">JOIN</a></h3>
+<p>Both sides execute in parallel via <code>tokio::join!</code>. The planner selects the smaller table as the build side for memory efficiency:</p>
+<pre><code>┌─────────────────┐    ┌─────────────────┐
+│  Left (probe)   │    │ Right (build)   │
+│  e.g., OS logs  │    │ e.g., DDB users │
+└────────┬────────┘    └────────┬────────┘
+         │                      │
+         └──────────┬───────────┘
+                    ▼
+            hash_join(left, key, right, key, type)
+</code></pre>
+<p><strong>Join types:</strong> Inner, Left, Semi (EXISTS), Anti (NOT EXISTS).</p>
+<p><strong>Join strategies</strong> (selected by <code>plan_join()</code> based on cost estimation):</p>
+<ul>
+<li><strong>Hash join</strong> — build a hash table from the smaller side, probe with the larger side</li>
+<li><strong>Semi-join optimization</strong> — when the build side is small enough (&lt; threshold), extract join keys and push them as an <code>IN</code> filter to the probe side's connector, reducing data transfer</li>
+</ul>
+<h2 id="phase-4-merge-and-re-aggregate"><a class="header" href="#phase-4-merge-and-re-aggregate">Phase 4: Merge and Re-Aggregate</a></h2>
+<p>After fan-out results return:</p>
+<ol>
+<li><strong>Schema alignment</strong> — <code>union_schema()</code> computes the widest common schema; <code>align_batch()</code> casts each batch to match</li>
+<li><strong>UNION dedup</strong> — for plain <code>UNION</code> (not <code>UNION ALL</code>), <code>dedup_batches()</code> removes duplicate rows across all non-<code>_datasource</code> columns</li>
+<li><strong>Cross-datasource GROUP BY</strong> — <code>reaggregate_batches()</code> performs a second-pass aggregation when GROUP BY spans multiple sources. Each source returns partial aggregates; the merger sums numeric columns per group key to produce correct global totals</li>
+<li><strong>Global ORDER BY</strong> — <code>sort_batches()</code> applies multi-column sorting with mixed ASC/DESC</li>
+<li><strong>DISTINCT</strong> — deduplication on all projected columns</li>
+<li><strong>OFFSET + LIMIT</strong> — applied after all other post-processing</li>
+<li><strong>Cursor pagination</strong> — keyset-based: <code>cursor</code> offset is added to SQL OFFSET; <code>next_cursor</code> is returned when more rows exist beyond the page</li>
+</ol>
+<h2 id="the-connector-trait"><a class="header" href="#the-connector-trait">The Connector Trait</a></h2>
+<p>Every datasource implements <code>FederatedConnector</code>:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub trait FederatedConnector: Send + Sync + Debug {
+    fn id(&amp;self) -&gt; &amp;str;                    // Instance identifier
+    fn connector_type(&amp;self) -&gt; &amp;str;        // "opensearch", "dynamodb", etc.
+    fn capabilities(&amp;self) -&gt; ConnectorCapabilities;  // What can be pushed down
+    async fn health_check(&amp;self) -&gt; ConnectorHealth;
+    async fn discover_schemas(&amp;self) -&gt; Result&lt;Vec&lt;SchemaInfo&gt;&gt;;  // List tables
+    async fn get_schema(&amp;self, table: &amp;str) -&gt; Result&lt;Schema&gt;;    // Arrow schema
+    async fn execute(&amp;self, query: &amp;SubQuery) -&gt; Result&lt;Vec&lt;RecordBatch&gt;&gt;;
+    async fn execute_streaming(&amp;self, query: &amp;SubQuery, tx: Sender&lt;...&gt;);
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="capabilities-declaration"><a class="header" href="#capabilities-declaration">Capabilities Declaration</a></h3>
+<p>Each connector declares what it supports. The planner uses this to decide what to push down vs. compute locally:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct ConnectorCapabilities {
+    pub supports_filtering: bool,
+    pub supports_projection: bool,
+    pub supports_aggregation: bool,
+    pub supports_sorting: bool,
+    pub supports_limit: bool,
+    pub supports_join: bool,
+    pub max_concurrent_queries: usize,
+    pub supports_streaming: bool,
+    pub latency_class: LatencyClass,  // Low, Medium, High
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="how-pushdown-works-per-connector"><a class="header" href="#how-pushdown-works-per-connector">How Pushdown Works Per Connector</a></h3>
+<p>The <code>SubQuery</code> is the contract. Each connector translates it to its native language:</p>
+<div class="table-wrapper"><table><thead><tr><th>Connector</th><th>Native Translation</th></tr></thead><tbody>
+<tr><td>OpenSearch</td><td><code>SubQuery.filter</code> → Query DSL (<code>bool/must/range/term</code>), <code>projections</code> → <code>_source</code>, <code>sort</code> → <code>sort</code>, <code>limit</code> → <code>size</code>, deep pagination → <code>search_after</code></td></tr>
+<tr><td>Elasticsearch</td><td>Same as OpenSearch (Query DSL), plus API key auth</td></tr>
+<tr><td>PostgreSQL / MySQL</td><td><code>SubQuery</code> → full SQL string (<code>SELECT ... WHERE ... GROUP BY ... ORDER BY ... LIMIT</code>)</td></tr>
+<tr><td>ClickHouse</td><td>Full SQL passthrough via HTTP interface (<code>JSONEachRow</code> response format)</td></tr>
+<tr><td>DynamoDB</td><td><code>filter</code> → <code>FilterExpression</code> (Scan) or <code>KeyConditionExpression</code> (Query), <code>projections</code> → <code>ProjectionExpression</code></td></tr>
+<tr><td>MongoDB</td><td><code>filter</code> → BSON query document, <code>projections</code> → projection document, <code>limit</code> → <code>FindOptions.limit</code></td></tr>
+<tr><td>S3 (Parquet)</td><td><code>projections</code> → column pruning (read only needed columns), <code>limit</code> → early row-group termination</td></tr>
+<tr><td>Prometheus</td><td><code>filter</code> → PromQL label matchers, time range via <code>passthrough</code> (start/end/step)</td></tr>
+<tr><td>InfluxDB</td><td><code>filter</code> → InfluxQL <code>WHERE</code> clause, time range pushdown</td></tr>
+<tr><td>CloudWatch</td><td><code>filter</code> → CloudWatch Logs Insights filter pattern, time range + log group</td></tr>
+<tr><td>Redis</td><td>Key pattern via <code>SCAN</code>, type-specific reads (hash fields, string values)</td></tr>
+<tr><td>CSV/JSON</td><td>Schema inference on first read, in-memory filtering</td></tr>
+</tbody></table>
+</div>
+<h3 id="connector-registration"><a class="header" href="#connector-registration">Connector Registration</a></h3>
+<p>At startup, <code>FuseEngine::new()</code> iterates over all connectors in the registry, discovers their tables, and registers each as a DataFusion <code>FederatedTableProviderAdaptor</code>. This enables DataFusion's optimizer to route queries to the correct connector via the federation layer.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// For each connector:
+for (ds_name, connector) in registry.connectors() {
+    let table_names = connector.table_names().await?;
+    let executor = Arc::new(FuseExecutor::new(ds_name, connector));
+    let provider = Arc::new(SQLFederationProvider::new(executor));
+
+    for table_name in &amp;table_names {
+        let schema = connector.get_table_schema(table_name).await?;
+        // Register as "datasource.table" for qualified access
+        ctx.register_table(&amp;format!("{}.{}", ds_name, table_name), adaptor);
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="cost-estimator"><a class="header" href="#cost-estimator">Cost Estimator</a></h2>
+<p>The cost estimator (<code>fuse-engine/src/cost.rs</code>) compares remote execution (pushdown) vs. local execution for each operation:</p>
+<p><strong>Remote cost</strong> factors:</p>
+<ul>
+<li>Latency class multiplier (Low=1.0, Medium=2.0, High=5.0)</li>
+<li>Estimated result rows after filter selectivity and aggregation reduction</li>
+<li>Network transfer = result_rows × row_bytes × latency factor</li>
+</ul>
+<p><strong>Local cost</strong> factors:</p>
+<ul>
+<li>Full table scan (all rows transferred)</li>
+<li>CPU cost for local filtering/aggregation</li>
+</ul>
+<p><strong>Decision:</strong> <code>should_push_down()</code> returns true when <code>remote_cost.total &lt;= local_cost.total</code>. The join planner (<code>plan_join()</code>) uses the same cost model to select the build side (smaller/cheaper table) and join strategy (hash vs. semi-join with key extraction).</p>
+<h2 id="execution-profile"><a class="header" href="#execution-profile">Execution Profile</a></h2>
+<p>When <code>analyze: true</code> is set on the request, the response includes an <code>execution_profile</code> tree showing:</p>
+<pre><code class="language-json">{
+  "execution_profile": {
+    "total_ms": 142,
+    "nodes": [{
+      "operator": "HashJoin",
+      "rows": 47,
+      "time_ms": 12,
+      "children": [
+        {"operator": "Scan", "datasource": "cluster_a", "rows": 200, "time_ms": 89, "data_bytes": 48000, "pushdown": ["probe side"]},
+        {"operator": "Scan", "datasource": "dynamodb", "rows": 50, "time_ms": 41, "data_bytes": 3200, "pushdown": ["build side (smaller)"]}
+      ]
+    }]
+  }
+}
+</code></pre>
+<h2 id="crate-structure"><a class="header" href="#crate-structure">Crate Structure</a></h2>
+<pre><code>fuse-core/          Connector trait, SubQuery, FilterExpr, capabilities, registry, config
+fuse-engine/
+  ├── planner.rs    FuseEngine — DataFusion session setup, table registration
+  ├── ppl.rs        PPL parser and PPL→SQL translator
+  ├── sql_to_subquery.rs  SQL→SubQuery conversion
+  ├── rewrite.rs    Pushdown rewrite (filter, projection, sort, limit, agg)
+  ├── cost.rs       Cost estimator, pushdown decisions, join planning
+  ├── join.rs       Hash join, semi-join, anti-join, build-side selection
+  ├── merger.rs     Schema alignment, UNION, sort, dedup, merge
+  ├── cache.rs      Query result cache (per-connector TTL)
+  └── materialized.rs  Materialized views (scheduled refresh)
+fuse-server/
+  ├── api.rs        REST handlers: query_handler (orchestrates the full flow)
+  ├── streaming.rs  SSE streaming endpoint
+  └── health.rs     Connector health aggregation
+fuse-connectors/    14 connector implementations
+fuse-connector-sdk/ Mock utilities for connector development
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="sql-reference"><a class="header" href="#sql-reference">SQL Reference</a></h1>
 <p>Fuse supports standard SQL with <code>datasource.table</code> addressing for cross-datasource queries.</p>
@@ -340,41 +622,113 @@ WHERE status &gt;= 500
 GROUP BY service
 ORDER BY errors DESC
 </code></pre>
-<p>Supported functions: <code>COUNT</code>, <code>SUM</code>, <code>AVG</code>, <code>MIN</code>, <code>MAX</code>.</p>
+<p>Supported functions: <code>COUNT</code>, <code>SUM</code>, <code>AVG</code>, <code>MIN</code>, <code>MAX</code>, <code>PERCENTILE</code>, <code>PERCENTILE_APPROX</code>.</p>
+<h3 id="cross-datasource-group-by"><a class="header" href="#cross-datasource-group-by">Cross-Datasource GROUP BY</a></h3>
+<p>GROUP BY works across multiple datasources. Fuse executes partial aggregation at each source, then re-aggregates after merge:</p>
+<pre><code class="language-sql">SELECT service, count(*) as total
+FROM cluster_a.application_logs
+UNION ALL
+SELECT service, count(*) as total
+FROM cluster_b.application_logs
+GROUP BY service
+</code></pre>
 <h2 id="order-by--limit"><a class="header" href="#order-by--limit">ORDER BY + LIMIT</a></h2>
 <pre><code class="language-sql">SELECT service, response_time_ms
 FROM cluster_a.application_logs
 ORDER BY response_time_ms DESC
 LIMIT 10
 </code></pre>
-<h2 id="union-all-cross-cluster"><a class="header" href="#union-all-cross-cluster">UNION ALL (Cross-Cluster)</a></h2>
-<p>Combine results from multiple datasources:</p>
-<pre><code class="language-sql">SELECT service, status, message
+<p>Multi-column ORDER BY with mixed directions:</p>
+<pre><code class="language-sql">SELECT service, status, response_time_ms
 FROM cluster_a.application_logs
-UNION ALL
-SELECT service, status, message
-FROM cluster_b.application_logs
+ORDER BY service ASC, response_time_ms DESC
 LIMIT 20
 </code></pre>
+<h2 id="union--union-all"><a class="header" href="#union--union-all">UNION / UNION ALL</a></h2>
+<p>Combine results from multiple datasources:</p>
+<pre><code class="language-sql">-- UNION ALL (keep duplicates)
+SELECT service, status, message FROM cluster_a.application_logs
+UNION ALL
+SELECT service, status, message FROM cluster_b.application_logs
+LIMIT 20
+
+-- UNION (deduplicate)
+SELECT service FROM cluster_a.application_logs
+UNION
+SELECT service FROM cluster_b.application_logs
+</code></pre>
 <p>Cross-cluster queries add a <code>_datasource</code> column automatically. See <a href="./data-provenance.html">Data Provenance</a>.</p>
+<p>Three or more sources:</p>
+<pre><code class="language-sql">SELECT source, service, message FROM cluster_a.application_logs
+UNION ALL
+SELECT source, service, message FROM cloudwatch.events
+UNION ALL
+SELECT source, service, message FROM s3_o11y.logs
+LIMIT 50
+</code></pre>
 <h2 id="join-cross-datasource"><a class="header" href="#join-cross-datasource">JOIN (Cross-Datasource)</a></h2>
-<p>Join data across different datasource types:</p>
-<pre><code class="language-sql">SELECT l.trace_id, l.service, l.status, s.level, s.message
+<p>Join data across different datasource types. Fuse fetches both sides in parallel, then performs a local hash join with the smaller table as the build side:</p>
+<pre><code class="language-sql">SELECT l.trace_id, l.service, u.name, u.role
 FROM cluster_a.application_logs l
-JOIN s3_o11y.fuse_logs s ON l.trace_id = s.trace_id
+JOIN dynamodb.users u ON l.user_id = u.user_id
 WHERE l.status &gt;= 500
 </code></pre>
-<p>Fuse uses hash-join for cross-datasource JOINs. Both sides are fetched in parallel, then joined locally.</p>
-<h2 id="subqueries"><a class="header" href="#subqueries">Subqueries</a></h2>
-<pre><code class="language-sql">SELECT service, cnt
-FROM (
-  SELECT service, count(*) as cnt
-  FROM cluster_a.application_logs
-  GROUP BY service
-) sub
-WHERE cnt &gt; 10
-ORDER BY cnt DESC
+<h3 id="semi-join-exists"><a class="header" href="#semi-join-exists">Semi-Join (EXISTS)</a></h3>
+<p>Return rows from the left side that have a match in the right side:</p>
+<pre><code class="language-sql">SELECT * FROM cluster_a.application_logs
+WHERE user_id IN (SELECT user_id FROM dynamodb.users WHERE role = 'admin')
 </code></pre>
+<h3 id="anti-join-not-exists"><a class="header" href="#anti-join-not-exists">Anti-Join (NOT EXISTS)</a></h3>
+<p>Return rows from the left side that have no match in the right side:</p>
+<pre><code class="language-sql">SELECT * FROM cluster_a.application_logs
+WHERE user_id NOT IN (SELECT user_id FROM dynamodb.users WHERE role = 'admin')
+</code></pre>
+<h2 id="correlated-subqueries"><a class="header" href="#correlated-subqueries">Correlated Subqueries</a></h2>
+<p><code>IN (SELECT ...)</code> subqueries across datasources. The inner query executes first, then results are inlined:</p>
+<pre><code class="language-sql">SELECT * FROM cluster_a.application_logs
+WHERE trace_id IN (
+  SELECT trace_id FROM s3_o11y.logs WHERE level = 'ERROR'
+)
+</code></pre>
+<h2 id="window-functions"><a class="header" href="#window-functions">Window Functions</a></h2>
+<p>Window functions operate over federated result sets:</p>
+<pre><code class="language-sql">SELECT service, status, response_time_ms,
+  ROW_NUMBER() OVER (PARTITION BY service ORDER BY response_time_ms DESC) as rn,
+  RANK() OVER (ORDER BY response_time_ms DESC) as rank
+FROM cluster_a.application_logs
+WHERE status &gt;= 500
+</code></pre>
+<p>Supported: <code>ROW_NUMBER</code>, <code>RANK</code>, <code>DENSE_RANK</code>, <code>LAG</code>, <code>LEAD</code>.</p>
+<h2 id="case-when"><a class="header" href="#case-when">CASE WHEN</a></h2>
+<pre><code class="language-sql">SELECT service,
+  CASE WHEN status &gt;= 500 THEN 'error'
+       WHEN status &gt;= 400 THEN 'client_error'
+       ELSE 'ok'
+  END as category,
+  count(*) as cnt
+FROM cluster_a.application_logs
+GROUP BY service, category
+</code></pre>
+<h2 id="computed-columns"><a class="header" href="#computed-columns">Computed Columns</a></h2>
+<p>Expressions in SELECT:</p>
+<pre><code class="language-sql">SELECT service,
+  response_time_ms / 1000.0 as response_time_sec,
+  UPPER(service) as service_upper
+FROM cluster_a.application_logs
+LIMIT 10
+</code></pre>
+<h2 id="datetime-functions"><a class="header" href="#datetime-functions">Date/Time Functions</a></h2>
+<pre><code class="language-sql">SELECT DATE_TRUNC('hour', timestamp) as hour,
+  count(*) as requests
+FROM cluster_a.application_logs
+GROUP BY hour
+ORDER BY hour DESC
+</code></pre>
+<p>Supported: <code>DATE_TRUNC</code>, <code>DATE_DIFF</code>, <code>NOW()</code>.</p>
+<h2 id="string-functions"><a class="header" href="#string-functions">String Functions</a></h2>
+<p><code>UPPER</code>, <code>LOWER</code>, <code>SUBSTRING</code>, <code>TRIM</code>, <code>REGEXP</code>.</p>
+<h2 id="math-functions"><a class="header" href="#math-functions">Math Functions</a></h2>
+<p><code>ROUND</code>, <code>CEIL</code>, <code>FLOOR</code>, <code>ABS</code>, <code>MOD</code>.</p>
 <h2 id="distinct"><a class="header" href="#distinct">DISTINCT</a></h2>
 <pre><code class="language-sql">SELECT DISTINCT service
 FROM cluster_a.application_logs
@@ -384,6 +738,21 @@ FROM cluster_a.application_logs
 FROM cluster_a.application_logs
 ORDER BY timestamp DESC
 LIMIT 10 OFFSET 20
+</code></pre>
+<h2 id="cursor-pagination"><a class="header" href="#cursor-pagination">Cursor Pagination</a></h2>
+<p>For efficient paging through large result sets, use <code>page_size</code> and <code>cursor</code> instead of OFFSET:</p>
+<pre><code class="language-bash"># First page
+curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT * FROM cluster_a.application_logs ORDER BY timestamp DESC", "format": "sql", "page_size": 20}'
+
+# Response includes next_cursor
+# {"columns": [...], "rows": [...], "next_cursor": "eyJvZmZzZXQiOjIwfQ=="}
+
+# Next page
+curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT * FROM cluster_a.application_logs ORDER BY timestamp DESC", "format": "sql", "page_size": 20, "cursor": "eyJvZmZzZXQiOjIwfQ=="}'
 </code></pre>
 <h2 id="between"><a class="header" href="#between">BETWEEN</a></h2>
 <pre><code class="language-sql">SELECT service, status, response_time_ms
@@ -408,12 +777,21 @@ ORDER BY errors DESC
     "params": {"svc": "api-gateway", "code": 500, "n": 10}
   }'
 </code></pre>
+<h2 id="explain"><a class="header" href="#explain">EXPLAIN</a></h2>
+<p>Inspect the query plan and cost estimates:</p>
+<pre><code class="language-sql">EXPLAIN SELECT l.service, count(*)
+FROM cluster_a.application_logs l
+JOIN dynamodb.users u ON l.user_id = u.user_id
+GROUP BY l.service
+</code></pre>
+<p>See <a href="./explain-analyze.html">EXPLAIN / ANALYZE</a> for details.</p>
 <h2 id="tips"><a class="header" href="#tips">Tips</a></h2>
 <ul>
 <li>Always use <code>LIMIT</code> to avoid fetching entire indices</li>
 <li>Use <code>WHERE</code> clauses — they get pushed down to connectors for performance</li>
 <li><code>SELECT *</code> works but explicit column lists enable projection pushdown</li>
-<li>Check the <a href="./explain-analyze.html">EXPLAIN / ANALYZE</a> page to understand query plans</li>
+<li>For large result sets, use cursor pagination (<code>page_size</code> + <code>cursor</code>) instead of OFFSET</li>
+<li>Check <a href="./explain-analyze.html">EXPLAIN / ANALYZE</a> to understand query plans</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="ppl-reference"><a class="header" href="#ppl-reference">PPL Reference</a></h1>
 <p>Piped Processing Language (PPL) uses a pipe syntax: <code>source = datasource.table | command | command</code>.</p>
@@ -487,6 +865,14 @@ ORDER BY errors DESC
 <pre><code>source = cluster_a.application_logs
 | rare 5 service
 </code></pre>
+<h2 id="lookup-cross-source-enrichment"><a class="header" href="#lookup-cross-source-enrichment">lookup (Cross-Source Enrichment)</a></h2>
+<p>Enrich results by looking up fields from another datasource:</p>
+<pre><code>source = cluster_a.application_logs
+| where status &gt;= 500
+| lookup dynamodb.users user_id AS user_id REPLACE name, role
+| stats count() by role
+</code></pre>
+<p>This joins each row from <code>cluster_a.application_logs</code> with matching rows from <code>dynamodb.users</code> on <code>user_id</code>, adding the <code>name</code> and <code>role</code> fields. It's the PPL equivalent of a SQL JOIN.</p>
 <h2 id="multi-source-queries"><a class="header" href="#multi-source-queries">Multi-Source Queries</a></h2>
 <p>Query across clusters in a single PPL statement:</p>
 <pre><code>source = cluster_a.application_logs, cluster_b.application_logs
@@ -525,6 +911,8 @@ ORDER BY errors DESC
 <tr><td><code>timeout_ms</code></td><td>int</td><td><code>30000</code></td><td>Per-query timeout in milliseconds</td></tr>
 <tr><td><code>result_format</code></td><td>string</td><td><code>"json"</code></td><td><code>"json"</code> or <code>"csv"</code></td></tr>
 <tr><td><code>params</code></td><td>object</td><td><code>{}</code></td><td>Named parameters for <code>$name</code> placeholders</td></tr>
+<tr><td><code>page_size</code></td><td>int</td><td>none</td><td>Rows per page (enables cursor pagination)</td></tr>
+<tr><td><code>cursor</code></td><td>string</td><td>none</td><td>Cursor from previous response's <code>next_cursor</code></td></tr>
 </tbody></table>
 </div>
 <p><strong>Response:</strong></p>
@@ -561,7 +949,7 @@ ORDER BY errors DESC
   }
 }
 </code></pre>
-<p><code>datasource_stats</code> and <code>datasources_queried</code> appear for cross-datasource queries. <code>execution_profile</code> appears when <code>analyze: true</code>.</p>
+<p><code>datasource_stats</code> and <code>datasources_queried</code> appear for cross-datasource queries. <code>execution_profile</code> appears when <code>analyze: true</code>. <code>next_cursor</code> appears when <code>page_size</code> is set and more rows exist.</p>
 <p><strong>curl:</strong></p>
 <pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/query \
   -H 'Content-Type: application/json' \
@@ -603,6 +991,33 @@ data: {"type":"progress","batches_sent":5}
 data: {"type":"done","total_rows":42}
 data: {"type":"error","message":"..."}
 </code></pre>
+<h2 id="trace-reconstruction"><a class="header" href="#trace-reconstruction">Trace Reconstruction</a></h2>
+<h3 trace_id="">GET /api/fuse/trace/</h3>
+<p>Fan out to all datasources, search for a trace ID, and reconstruct the full trace timeline sorted by timestamp.</p>
+<pre><code class="language-bash">curl http://localhost:9400/api/fuse/trace/tr-abc123
+</code></pre>
+<p><strong>Response:</strong></p>
+<pre><code class="language-json">{
+  "trace_id": "tr-abc123",
+  "spans": [
+    {
+      "datasource": "cluster_a",
+      "timestamp": "2026-04-10T05:30:00Z",
+      "fields": {"service": "api-gateway", "status": 200, "message": "request received"}
+    },
+    {
+      "datasource": "dynamodb",
+      "timestamp": "2026-04-10T05:30:01Z",
+      "fields": {"user_id": "u-42", "action": "lookup"}
+    }
+  ],
+  "datasources_searched": ["cluster_a", "cluster_b", "dynamodb", "s3_o11y"],
+  "datasources_matched": ["cluster_a", "dynamodb"],
+  "total_spans": 2,
+  "search_ms": 187
+}
+</code></pre>
+<p>Searches all registered datasources for rows where <code>trace_id</code> matches. Spans are sorted by timestamp. Useful for cross-source distributed trace correlation.</p>
 <h2 id="discovery-endpoints"><a class="header" href="#discovery-endpoints">Discovery Endpoints</a></h2>
 <h3 id="get-apifusehealth"><a class="header" href="#get-apifusehealth">GET /api/fuse/health</a></h3>
 <p>Engine and per-connector health status.</p>
@@ -712,76 +1127,187 @@ data: {"type":"error","message":"..."}
 <tr><td>500</td><td>Connector error, timeout, internal failure</td></tr>
 </tbody></table>
 </div><div style="break-before: page; page-break-before: always;"></div><h1 id="connectors-1"><a class="header" href="#connectors-1">Connectors</a></h1>
-<p>Fuse ships with 5 connectors. Each implements the <code>FederatedConnector</code> trait and is registered via a <code>ConnectorFactory</code>.</p>
+<p>Fuse ships with 14 connectors. Each implements the <code>FederatedConnector</code> trait and is registered via a <code>ConnectorFactory</code>. Add a connector by adding a <code>[[connector]]</code> block to <code>fuse.toml</code>.</p>
 <h2 id="opensearch"><a class="header" href="#opensearch">OpenSearch</a></h2>
 <p>The primary connector. Supports OpenSearch and Amazon OpenSearch Serverless (AOSS).</p>
 <pre><code class="language-toml">[[connector]]
 id = "cluster_a"
-connector_type = "opensearch"
-endpoint = "https://abc123.us-west-2.aoss.amazonaws.com"
-auth = "sigv4"
+type = "opensearch"
+url = "https://abc123.us-west-2.aoss.amazonaws.com"
+[connector.auth]
+type = "sigv4"
 region = "us-west-2"
+service = "aoss"
 </code></pre>
-<p><strong>Auth options:</strong> <code>none</code>, <code>basic</code>, <code>sigv4</code></p>
 <p>For basic auth:</p>
-<pre><code class="language-toml">auth = "basic"
+<pre><code class="language-toml">[connector.auth]
+type = "basic"
 username = "admin"
 password = "admin"
 </code></pre>
-<p><strong>Capabilities:</strong> filtering, projection, aggregation, sorting, limit, streaming.</p>
-<p><strong>Pushdown:</strong> WHERE clauses become Query DSL filters. SELECT columns become <code>_source</code> includes. LIMIT becomes <code>size</code>.</p>
-<h2 id="s3-parquet"><a class="header" href="#s3-parquet">S3 Parquet</a></h2>
-<p>Read Parquet files from S3.</p>
+<p><strong>Pushdown:</strong> Filter (Query DSL bool/must/range/term), projection (<code>_source</code> includes), aggregation, sort, limit, deep pagination via <code>search_after</code>.</p>
+<h2 id="elasticsearch"><a class="header" href="#elasticsearch">Elasticsearch</a></h2>
+<p>Elasticsearch 7.x and 8.x clusters. Separate from OpenSearch to handle API differences.</p>
+<pre><code class="language-toml">[[connector]]
+id = "es_cluster"
+type = "elasticsearch"
+url = "https://es-cluster.example.com:9200"
+[connector.auth]
+type = "api_key"
+api_key = "base64-encoded-key"
+</code></pre>
+<p><strong>Auth:</strong> <code>basic</code>, <code>api_key</code>.</p>
+<p><strong>Pushdown:</strong> Filter (Query DSL), projection, aggregation, sort, limit.</p>
+<h2 id="postgresql"><a class="header" href="#postgresql">PostgreSQL</a></h2>
+<p>Full SQL pushdown via <code>sqlx</code> connection pool.</p>
+<pre><code class="language-toml">[[connector]]
+id = "my_pg"
+type = "postgres"
+url = "postgresql://user:pass@host:5432/mydb"
+</code></pre>
+<p><strong>Pushdown:</strong> Full SQL — the entire SubQuery is translated to a native PostgreSQL query and executed remotely.</p>
+<h2 id="mysql"><a class="header" href="#mysql">MySQL</a></h2>
+<p>Full SQL pushdown via <code>sqlx</code> connection pool.</p>
+<pre><code class="language-toml">[[connector]]
+id = "my_mysql"
+type = "mysql"
+url = "mysql://user:pass@host:3306/mydb"
+</code></pre>
+<p><strong>Pushdown:</strong> Full SQL — same as PostgreSQL.</p>
+<h2 id="dynamodb"><a class="header" href="#dynamodb">DynamoDB</a></h2>
+<p>Scan and Query operations with filter pushdown.</p>
+<pre><code class="language-toml">[[connector]]
+id = "my_ddb"
+type = "dynamodb"
+region = "us-west-2"
+table_names = ["users", "orders"]
+</code></pre>
+<p><strong>Auth:</strong> IAM (default credential chain).</p>
+<p><strong>Pushdown:</strong> Filter → <code>FilterExpression</code> (Scan) or <code>KeyConditionExpression</code> (Query), projection → <code>ProjectionExpression</code>, limit.</p>
+<h2 id="s3-parquet"><a class="header" href="#s3-parquet">S3 (Parquet)</a></h2>
+<p>Read Parquet files from S3 with column pruning and row-group pagination.</p>
 <pre><code class="language-toml">[[connector]]
 id = "data_lake"
-connector_type = "s3"
+type = "s3"
 bucket = "my-data-bucket"
 prefix = "warehouse/"
 region = "us-west-2"
 </code></pre>
-<p><strong>Auth:</strong> IAM (uses default credential chain).</p>
-<p><strong>Capabilities:</strong> filtering, projection, limit.</p>
+<p><strong>Auth:</strong> IAM (default credential chain).</p>
+<p><strong>Pushdown:</strong> Column pruning (read only needed columns), row-group pagination with early limit termination.</p>
 <h2 id="s3-o11y-ndjson"><a class="header" href="#s3-o11y-ndjson">S3 O11y (NDJSON)</a></h2>
 <p>Read gzipped newline-delimited JSON from S3. Designed for observability log pipelines.</p>
 <pre><code class="language-toml">[[connector]]
 id = "s3_o11y"
-connector_type = "s3-o11y"
-bucket = "s3-query-logs-544277935543-us-west-1"
-prefix = "fuse/"
+type = "s3-o11y"
+bucket = "my-log-bucket"
+prefix = "logs/"
 region = "us-west-1"
 </code></pre>
 <p><strong>Auth:</strong> IAM.</p>
 <p><strong>Format:</strong> Gzipped NDJSON files at <code>{prefix}{YYYY/MM/DD/HH}/{timestamp}.json.gz</code>.</p>
-<p><strong>Schema discovery:</strong> Automatic from first file. Fields: any JSON keys found in records.</p>
+<p><strong>Pushdown:</strong> Projection, limit.</p>
 <h2 id="prometheus"><a class="header" href="#prometheus">Prometheus</a></h2>
-<p>Query Prometheus metrics via PromQL.</p>
+<p>Query Prometheus metrics. Time range and label filters pushed down as PromQL.</p>
 <pre><code class="language-toml">[[connector]]
-id = "metrics"
-connector_type = "prometheus"
-endpoint = "https://prometheus.example.com"
-auth = "bearer"
+id = "prom"
+type = "prometheus"
+url = "http://prometheus:9090"
+[connector.auth]
+type = "bearer"
 token = "your-token"
 </code></pre>
-<p><strong>Auth options:</strong> <code>none</code>, <code>bearer</code></p>
-<p><strong>Capabilities:</strong> filtering (time range), projection.</p>
+<p><strong>Auth:</strong> <code>none</code>, <code>bearer</code>.</p>
+<p><strong>Pushdown:</strong> Time range (start/end/step via passthrough), label matchers.</p>
+<p><strong>Range queries:</strong> Pass <code>start</code>, <code>end</code>, <code>step</code> in the request body for range vector queries.</p>
+<h2 id="cloudwatch"><a class="header" href="#cloudwatch">CloudWatch</a></h2>
+<p>Query CloudWatch Logs via CloudWatch Logs Insights.</p>
+<pre><code class="language-toml">[[connector]]
+id = "cw"
+type = "cloudwatch"
+region = "us-west-2"
+log_group = "/aws/lambda/my-function"
+</code></pre>
+<p><strong>Auth:</strong> IAM (default credential chain).</p>
+<p><strong>Pushdown:</strong> Log group, time range, filter pattern.</p>
+<h2 id="redis"><a class="header" href="#redis">Redis</a></h2>
+<p>Read key-value data from Redis. Supports hash and string types via SCAN.</p>
+<pre><code class="language-toml">[[connector]]
+id = "my_redis"
+type = "redis"
+url = "redis://host:6379"
+</code></pre>
+<p><strong>Auth:</strong> Password (in URL or separate field).</p>
+<p><strong>Pushdown:</strong> Key pattern (SCAN), hash field selection, string value reads.</p>
+<h2 id="csvjson"><a class="header" href="#csvjson">CSV/JSON</a></h2>
+<p>Read CSV or JSON files from local filesystem or S3. Auto-detects format and infers schema.</p>
+<pre><code class="language-toml">[[connector]]
+id = "local_data"
+type = "csv-json"
+path = "/data/reports/"
+</code></pre>
+<p>For S3-backed files:</p>
+<pre><code class="language-toml">[[connector]]
+id = "s3_csv"
+type = "csv-json"
+bucket = "my-bucket"
+prefix = "exports/"
+region = "us-west-2"
+</code></pre>
+<p><strong>Pushdown:</strong> Schema inference on first read, in-memory filtering.</p>
+<h2 id="mongodb"><a class="header" href="#mongodb">MongoDB</a></h2>
+<p>Query MongoDB collections with BSON filter pushdown.</p>
+<pre><code class="language-toml">[[connector]]
+id = "my_mongo"
+type = "mongodb"
+url = "mongodb://host:27017/mydb"
+</code></pre>
+<p><strong>Auth:</strong> Connection string (supports username/password, SRV, replica sets).</p>
+<p><strong>Pushdown:</strong> Filter → BSON query document, projection → projection document, limit → <code>FindOptions.limit</code>.</p>
+<h2 id="influxdb"><a class="header" href="#influxdb">InfluxDB</a></h2>
+<p>Query InfluxDB 1.x (InfluxQL) and 2.x (Flux). Version auto-detected.</p>
+<pre><code class="language-toml">[[connector]]
+id = "my_influx"
+type = "influxdb"
+url = "http://influxdb:8086"
+database = "telegraf"
+</code></pre>
+<p>For InfluxDB 2.x:</p>
+<pre><code class="language-toml">[[connector]]
+id = "my_influx_v2"
+type = "influxdb"
+url = "http://influxdb:8086"
+org = "my-org"
+bucket = "my-bucket"
+token = "my-token"
+</code></pre>
+<p><strong>Auth:</strong> Token (v2), Basic (v1).</p>
+<p><strong>Pushdown:</strong> InfluxQL <code>WHERE</code> clause, time range.</p>
+<h2 id="clickhouse"><a class="header" href="#clickhouse">ClickHouse</a></h2>
+<p>Full SQL pushdown via ClickHouse HTTP interface (port 8123). Response format: <code>JSONEachRow</code>.</p>
+<pre><code class="language-toml">[[connector]]
+id = "my_ch"
+type = "clickhouse"
+url = "http://clickhouse:8123"
+database = "default"
+</code></pre>
+<p><strong>Auth:</strong> Basic (HTTP).</p>
+<p><strong>Pushdown:</strong> Full SQL — ClickHouse is SQL-native, so the entire query is pushed down.</p>
 <h2 id="custom-connectors-sdk"><a class="header" href="#custom-connectors-sdk">Custom Connectors (SDK)</a></h2>
-<p>Build your own connector using <code>fuse-connector-sdk</code>. See the <a href="./contributing.html">Writing a Connector</a> section.</p>
+<p>Build your own connector using <code>fuse-connector-sdk</code>. See the <a href="https://github.com/seraphjiang/fuse/blob/main/docs/guides/writing-a-connector.md">connector authoring guide</a>.</p>
 <p>Implement two traits:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>#[async_trait]
-pub trait FederatedConnector: Send + Sync {
+pub trait FederatedConnector: Send + Sync + Debug {
     fn id(&amp;self) -&gt; &amp;str;
     fn connector_type(&amp;self) -&gt; &amp;str;
     fn capabilities(&amp;self) -&gt; ConnectorCapabilities;
-    async fn health_check(&amp;self) -&gt; Result&lt;HealthStatus&gt;;
+    async fn health_check(&amp;self) -&gt; ConnectorHealth;
     async fn discover_schemas(&amp;self) -&gt; Result&lt;Vec&lt;SchemaInfo&gt;&gt;;
     async fn get_schema(&amp;self, table: &amp;str) -&gt; Result&lt;Schema&gt;;
-    fn table_names(&amp;self) -&gt; Vec&lt;String&gt;;
-    async fn get_table_schema(&amp;self, table: &amp;str) -&gt; Result&lt;Schema&gt;;
     async fn execute(&amp;self, query: &amp;SubQuery) -&gt; Result&lt;Vec&lt;RecordBatch&gt;&gt;;
-    async fn execute_streaming(&amp;self, query: &amp;SubQuery)
-        -&gt; Result&lt;Pin&lt;Box&lt;dyn Stream&lt;Item = Result&lt;RecordBatch&gt;&gt; + Send&gt;&gt;&gt;;
+    async fn execute_streaming(&amp;self, query: &amp;SubQuery, tx: Sender&lt;...&gt;);
 }
 
 pub trait ConnectorFactory: Send + Sync {
@@ -789,17 +1315,7 @@ pub trait ConnectorFactory: Send + Sync {
     fn create(&amp;self, config: &amp;ConnectorConfig) -&gt; Result&lt;Arc&lt;dyn FederatedConnector&gt;&gt;;
 }
 <span class="boring">}</span></code></pre></pre>
-<p>Register your factory in <code>main.rs</code>:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>registry.register_factory(Arc::new(MyConnectorFactory));
-<span class="boring">}</span></code></pre></pre>
-<p>The connector is then available via <code>fuse.toml</code>:</p>
-<pre><code class="language-toml">[[connector]]
-id = "my_source"
-connector_type = "my-connector"
-# ... your config fields
-</code></pre>
+<p>Register your factory in <code>main.rs</code> and add a <code>[[connector]]</code> block to <code>fuse.toml</code>. See <code>crates/fuse-connectors/example/</code> for a minimal working template.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="data-provenance"><a class="header" href="#data-provenance">Data Provenance</a></h1>
 <p>When a query touches multiple datasources, Fuse adds a <code>_datasource</code> column to every row indicating which datasource produced it.</p>
 <h2 id="the-_datasource-column"><a class="header" href="#the-_datasource-column">The <code>_datasource</code> Column</a></h2>
@@ -842,7 +1358,7 @@ LIMIT 10
 </ol>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="explain--analyze"><a class="header" href="#explain--analyze">EXPLAIN / ANALYZE</a></h1>
 <p>Fuse provides two ways to inspect query execution: EXPLAIN (plan only) and ANALYZE (plan + actual timing).</p>
-<h2 id="explain"><a class="header" href="#explain">EXPLAIN</a></h2>
+<h2 id="explain-1"><a class="header" href="#explain-1">EXPLAIN</a></h2>
 <p>Shows the execution plan without running the query:</p>
 <pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/query/explain \
   -H 'Content-Type: application/json' \
@@ -1213,7 +1729,7 @@ aggregation down, and merges the results with a global sort and limit.</p>
 <p>Join OpenSearch logs with S3 data — the first real cross-type federation:</p>
 <pre><code class="language-sql">SELECT l.trace_id, l.service, l.status, s.level, s.message
 FROM cluster_a.application_logs l
-JOIN s3_o11y.fuse_logs s ON l.trace_id = s.trace_id
+JOIN s3_o11y.logs s ON l.trace_id = s.trace_id
 WHERE l.status &gt;= 500
 </code></pre>
 <p>DataFusion's optimizer uses semi-join pushdown: it extracts matching keys
