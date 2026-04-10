@@ -1,0 +1,18 @@
+[package]
+name = "fuse-connector-elasticsearch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Elasticsearch 7.x/8.x connector for the Fuse federated query engine"
+
+[dependencies]
+fuse-core = { path = "../../fuse-core" }
+arrow = { workspace = true }
+reqwest = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+base64 = "0.22"

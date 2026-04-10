@@ -12,6 +12,7 @@ members = [
     "crates/fuse-connectors/redis",
     "crates/fuse-connectors/dynamodb",
     "crates/fuse-connectors/postgres",
+    "crates/fuse-connectors/elasticsearch",
     "crates/fuse-connector-sdk",
     "crates/fuse-server",
 ]
