@@ -70,6 +70,7 @@ pub struct AppState {
     pub plan_cache: Arc<PlanCache>,
     pub result_cache: Arc<crate::plan_cache::ResultCache>,
     pub tenant_registry: Arc<TenantRegistry>,
+    pub audit_log: Arc<crate::audit::AuditLog>,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.
@@ -672,11 +673,23 @@ pub async fn query_handler(
                 query: req.query.clone(),
                 format: req.format.clone(),
                 timestamp: crate::history::now_secs(),
-                latency_ms: t0.elapsed().as_millis() as u64,
+                latency_ms: elapsed_ms,
                 row_count: total_rows,
                 error: None,
             });
-            crate::metrics::record_query(&req.format, true, t0.elapsed().as_millis() as u64);
+            state.audit_log.record(crate::audit::AuditEntry {
+                timestamp: crate::history::now_secs(),
+                identity: tenant_id.clone().unwrap_or_else(|| "anonymous".into()),
+                action: crate::audit::AuditAction::Query,
+                query: Some(req.query.clone()),
+                datasources: fed.datasources.clone(),
+                duration_ms: elapsed_ms,
+                row_count: total_rows,
+                status: crate::audit::AuditStatus::Success,
+                error: None,
+                client_ip: None,
+            });
+            crate::metrics::record_query(&req.format, true, elapsed_ms);
             tracing::info!(
                 query_id = %query_id,
                 format = %format,

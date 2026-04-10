@@ -561,6 +561,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-sdk-redshift"
+version = "1.105.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b318ae574fe0d5fb2824856f4f819adb0b75cb443385d27a4d3355657d13a9fa"
+dependencies = [
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
+ "aws-smithy-http",
+ "aws-smithy-json",
+ "aws-smithy-observability",
+ "aws-smithy-query",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-smithy-xml",
+ "aws-types",
+ "fastrand",
+ "http 0.2.12",
+ "http 1.4.0",
+ "regex-lite",
+ "tracing",
+]
+
+[[package]]
 name = "aws-sdk-s3"
 version = "1.129.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2935,12 +2960,15 @@ version = "0.5.0"
 dependencies = [
  "arrow",
  "async-trait",
+ "aws-config",
+ "aws-sdk-redshift",
  "fuse-core",
  "serde",
  "serde_json",
  "sqlx",
  "thiserror 2.0.18",
  "tokio",
+ "toml",
  "tracing",
 ]
 

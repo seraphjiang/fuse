@@ -8,7 +8,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 510 | Amazon Redshift connector | general | todo | SQL pushdown, IAM auth |
+| 510 | Amazon Redshift connector | explorer | done | IAM GetClusterCredentials, temp creds, fallback direct URL. Commit: 51e9f1a |
 | 511 | DuckDB connector (local compute engine) | general | todo | In-process, Arrow-native |
 | 512 | SQLite connector | general | todo | File-based, embedded |
 
@@ -45,8 +45,8 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 720 | Verify enterprise stack end-to-end | tester | done | 13 tests: multi-tenancy, governor, auth, audit, rate limit, isolation. Commit: 9d379e1 |
-| 721 | SDK integration tests (Python + TypeScript) | tester | todo | Test SDKs against live playground |
-| 722 | Grafana plugin verification | tester | todo | Test Grafana plugin against live Fuse |
+| 721 | SDK integration tests (Python + TypeScript) | tester | done | 10 tests: unit + live + API contract. Commit: b8c1df4 |
+| 722 | Grafana plugin verification | tester | done | 14 tests: structure, API contract, auth, health. Commit: b8c1df4 |
 
 ## P2: Docs
 
