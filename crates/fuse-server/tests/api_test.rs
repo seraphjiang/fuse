@@ -2152,3 +2152,61 @@ async fn test_single_column_order_by_still_works() {
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows[0][0], "h1");
 }
+
+// ── Demo #311: 3-source UNION ALL ──
+
+fn build_three_source_app() -> axum::Router {
+    use fuse_server::api::{AppState, RunningQueries};
+    use fuse_core::registry::ConnectorRegistry;
+    use std::sync::Arc;
+
+    let registry = ConnectorRegistry::new();
+    let mock_a = Arc::new(MockConnector::new("opensearch_logs"));
+    let mock_b = Arc::new(MockConnector::new("s3_logs"));
+    let mock_c = Arc::new(MockConnector::new("cloudwatch_logs"));
+    registry.register(mock_a).unwrap();
+    registry.register(mock_b).unwrap();
+    registry.register(mock_c).unwrap();
+
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(fuse_server::history::QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+    });
+    fuse_server::build_router(state)
+}
+
+#[tokio::test]
+async fn test_three_source_union_all() {
+    let (status, json) = post_query(
+        build_three_source_app(),
+        "SELECT * FROM opensearch_logs.logs UNION ALL SELECT * FROM s3_logs.logs UNION ALL SELECT * FROM cloudwatch_logs.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    // 2 rows per source × 3 sources = 6 rows
+    assert_eq!(rows.len(), 6);
+    // Should have _datasource column
+    let columns = json["columns"].as_array().unwrap();
+    assert!(columns.iter().any(|c| c == "_datasource"));
+    // Metadata should list all 3 datasources
+    let ds = json["metadata"]["datasources_queried"].as_array().unwrap();
+    assert_eq!(ds.len(), 3);
+}
+
+#[tokio::test]
+async fn test_three_source_union_with_limit() {
+    let (status, json) = post_query(
+        build_three_source_app(),
+        "SELECT * FROM opensearch_logs.logs UNION ALL SELECT * FROM s3_logs.logs UNION ALL SELECT * FROM cloudwatch_logs.logs LIMIT 4",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 4);
+}

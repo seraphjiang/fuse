@@ -11,7 +11,7 @@
 | 300 | DynamoDB connector | general | todo | Scan/Query API, filter pushdown to KeyConditionExpression + FilterExpression |
 | 301 | PostgreSQL/MySQL connector (JDBC-style) | general | todo | SQL passthrough, schema discovery, connection pooling |
 | 302 | Elasticsearch connector (distinct from OpenSearch) | general | todo | REST API, version-aware (ES 7.x/8.x), Query DSL pushdown |
-| 303 | Redis connector (key-value + sorted sets) | explorer | todo | SCAN/HSCAN, schema inference from sample keys |
+| 303 | Redis connector (key-value + sorted sets) | explorer | done | 8th connector. SCAN, hash+string types, 8 tests. Commit: afd98f8 |
 | 304 | CSV/JSON file connector (local or S3) | explorer | done | 7th connector. Auto-detect format, schema inference, 13 tests. Commit: c97bfea |
 | 305 | Deploy new connectors to playground with sample data | infra | todo | Depends: 300-304. Add to fuse.toml, seed demo data |
 
@@ -24,7 +24,7 @@
 | 312 | Demo: Aggregate Prometheus metrics + OpenSearch events | planner | todo | Correlate metrics spikes with error logs |
 | 313 | Demo: PPL lookup across datasources (logs → user enrichment) | planner | todo | Showcase #235 PPL lookup in production |
 | 314 | Demo data seeding (consistent timestamps, correlated events) | infra | done | 50 users, 200 logs, 200 S3 rows, 50 CW events. Shared user_ids + trace_ids |
-| 315 | Playground UI: demo scenario selector (pre-built queries) | explorer | todo | Dropdown with demo queries + descriptions |
+| 315 | Playground UI: demo scenario selector (pre-built queries) | explorer | done | 6 scenarios, auto-execute on click. Commit: 6d85d72 |
 
 ## P1: Pagination, Sorting & Limit Depth
 
@@ -45,10 +45,10 @@
 | 330 | Window functions (ROW_NUMBER, RANK, LAG, LEAD) | planner | todo | Post-fetch compute, DataFusion integration |
 | 331 | PERCENTILE / PERCENTILE_APPROX aggregation | planner | todo | OpenSearch → percentiles agg, others → post-compute |
 | 332 | Computed columns (expressions in SELECT) | planner | done | Pass-through SQL expressions. Commit: 0631c5b |
-| 333 | CASE WHEN expressions | planner | todo | Conditional logic in SELECT and WHERE |
-| 334 | Date/time functions (DATE_TRUNC, DATE_DIFF, NOW()) | planner | todo | Cross-connector date normalization |
-| 335 | String functions (UPPER, LOWER, SUBSTRING, TRIM, REGEXP) | planner | todo | Pushdown where supported, post-compute otherwise |
-| 336 | Math functions (ROUND, CEIL, FLOOR, ABS, MOD) | planner | todo | Pushdown where supported, post-compute otherwise |
+| 333 | CASE WHEN expressions | planner | done | Via passthrough + partial WHERE translation. Commit: f14f517. 3 tests |
+| 334 | Date/time functions (DATE_TRUNC, DATE_DIFF, NOW()) | planner | done | Via computed column passthrough. Commit: f14f517. 3 tests |
+| 335 | String functions (UPPER, LOWER, SUBSTRING, TRIM, REGEXP) | planner | done | Via #332 passthrough. Already tested |
+| 336 | Math functions (ROUND, CEIL, FLOOR, ABS, MOD) | planner | done | Via #332 passthrough. Already tested |
 | 337 | Nested field access (JSON dot notation) | general | todo | SELECT metadata.region FROM ... for nested OpenSearch docs |
 | 338 | UNION (deduplicated) vs UNION ALL | planner | todo | Hash-based dedup for UNION without ALL |
 
