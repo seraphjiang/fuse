@@ -202,6 +202,16 @@ body.light .ac-item .ac-label{color:#1f2328}
 kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5px;font-size:11px;color:#e1e4e8;font-family:inherit}
 /* Onboarding */
 /* Focus styles for keyboard navigation */
+/* Advisor */
+.advice-item{padding:8px;border:1px solid #21262d;border-radius:6px;margin-bottom:6px;background:#0d1117}
+.advice-item .advice-type{font-size:10px;padding:1px 5px;border-radius:3px;font-weight:600;margin-right:6px}
+.advice-type-performance{background:#3a2a1a;color:#d29922}
+.advice-type-index{background:#1f3a5f;color:#58a6ff}
+.advice-type-pushdown{background:#1a3a2a;color:#3fb950}
+.advice-type-pattern{background:#2d1f3a;color:#bc8cff}
+.advice-item .advice-msg{color:#e1e4e8;font-size:12px}
+.advice-item .advice-detail{color:#8b949e;font-size:11px;margin-top:4px}
+/* Focus styles for keyboard navigation */
 :focus-visible{outline:2px solid #58a6ff;outline-offset:2px}
 button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #58a6ff;outline-offset:2px}
 /* Onboarding */
@@ -327,6 +337,7 @@ button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #58a
     <select id="datasource" onchange="onDatasourceChange(this.value)"><option value="">Loading…</option></select>
     <button class="primary" id="run-btn" onclick="runQuery()">▶ Run</button>
     <label class="analyze-label"><input type="checkbox" id="analyze-cb"> Analyze</label>
+    <label class="analyze-label"><input type="checkbox" id="anomaly-cb" onchange="if(currentView==='chart')renderChart()"> 🔴 Anomalies</label>
     <button class="lucky" id="lucky-btn" onclick="feelingLucky()">🎲 Feeling Lucky</button>
     <div class="demo-dropdown">
       <button class="demo-btn" onclick="toggleDemos()">🎬 Demos ▾</button>
@@ -360,6 +371,7 @@ button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #58a
     <button id="explain-btn" onclick="explainQuery()">Explain</button>
     <button id="validate-btn" onclick="validateQuery()">Validate</button>
     <button onclick="prettifyQuery()">✨ Format</button>
+    <button class="help-toggle" onclick="toggleAdvisor()">💡 Advisor</button>
     <button class="help-toggle" onclick="toggleHelp()">📖 Docs &amp; Examples ▾</button>
   </div>
 
@@ -504,6 +516,14 @@ button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #58a
     <div class="tab-content" id="tab-history">
       <div id="history-list"><div style="color:#8b949e;padding:8px 0">Loading…</div></div>
     </div>
+  </div>
+
+  <div id="advisor-panel" class="help-panel" style="max-height:320px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span style="font-size:13px;font-weight:600;color:#58a6ff">💡 Query Advisor</span>
+      <span id="advisor-count" style="font-size:11px;color:#8b949e"></span>
+    </div>
+    <div id="advisor-list" style="font-size:12px"><div class="empty">Click to load recommendations…</div></div>
   </div>
 
   <div id="plan-tree" class="plan-tree"></div>
@@ -1526,6 +1546,83 @@ function buildChartOption(suggestion, columns, rows) {
     yAxis: { type: 'value', axisLabel }, series, grid: { ...grid, top: 30 } };
 }
 
+// === Query Advisor (#714) ===
+async function toggleAdvisor() {
+  const panel = $('advisor-panel');
+  panel.classList.toggle('open');
+  if (panel.classList.contains('open')) loadAdvisor();
+}
+
+async function loadAdvisor() {
+  const list = $('advisor-list');
+  list.innerHTML = '<div class="empty"><span class="spinner"></span> Loading recommendations…</div>';
+  try {
+    const res = await api('/api/fuse/advisor');
+    $('advisor-count').textContent = `Based on ${res.analyzed_queries} queries`;
+    const advice = res.advice || [];
+    if (!advice.length) { list.innerHTML = '<div class="empty" style="color:#3fb950">✓ No issues found — your queries look good!</div>'; return; }
+    list.innerHTML = advice.map(a => {
+      const type = (a.type || a.category || 'pattern').toLowerCase();
+      return `<div class="advice-item">
+        <span class="advice-type advice-type-${type}">${type}</span>
+        <span class="advice-msg">${esc(a.message || a.advice || '')}</span>
+        ${a.detail || a.suggestion ? `<div class="advice-detail">${esc(a.detail || a.suggestion || '')}</div>` : ''}
+        ${a.query ? `<div class="advice-detail" style="cursor:pointer;color:#58a6ff" onclick="$('editor').value='${esc(a.query)}';syncHighlight()">→ Try suggested query</div>` : ''}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    list.innerHTML = `<div class="empty" style="color:#f85149">Advisor unavailable: ${esc(e.message)}</div>`;
+  }
+}
+
+// === Anomaly Detection (#713) ===
+function detectAnomalies(values, window = 5, threshold = 2.0) {
+  const anomalies = [];
+  for (let i = window; i < values.length; i++) {
+    const slice = values.slice(i - window, i);
+    const mean = slice.reduce((a, b) => a + b, 0) / slice.length;
+    const variance = slice.reduce((a, v) => a + (v - mean) ** 2, 0) / (slice.length - 1 || 1);
+    const stddev = Math.sqrt(variance);
+    if (stddev > 0) {
+      const zScore = Math.abs((values[i] - mean) / stddev);
+      if (zScore >= threshold) anomalies.push({ index: i, value: values[i], zScore: zScore.toFixed(2), mean: mean.toFixed(1) });
+    }
+  }
+  return anomalies;
+}
+
+function applyAnomalyMarkers(option, suggestion, columns, rows) {
+  if (!$('anomaly-cb').checked) return option;
+  if (!suggestion || !suggestion.y) return option;
+  const ci = columns.indexOf(suggestion.y);
+  if (ci < 0) return option;
+  const values = rows.map(r => Number(r[ci]));
+  const anomalies = detectAnomalies(values);
+  if (!anomalies.length || !option.series || !option.series[0]) return option;
+  option.series[0].markPoint = {
+    symbol: 'circle', symbolSize: 12,
+    itemStyle: { color: '#f85149', borderColor: '#fff', borderWidth: 1 },
+    label: { show: false },
+    data: anomalies.map(a => ({
+      coord: [a.index, a.value],
+      value: `z=${a.zScore}`,
+    })),
+    tooltip: { formatter: p => `Anomaly: ${p.data.value}<br/>Value: ${p.data.coord[1]}<br/>Expected: ~${anomalies.find(a=>a.index===p.data.coord[0])?.mean || '?'}` }
+  };
+  // Also add moving average line
+  const window = 5;
+  const maData = values.map((_, i) => {
+    if (i < window - 1) return null;
+    const slice = values.slice(i - window + 1, i + 1);
+    return slice.reduce((a, b) => a + b, 0) / slice.length;
+  });
+  option.series.push({
+    type: 'line', data: maData, smooth: true, lineStyle: { color: '#d29922', type: 'dashed', width: 1 },
+    symbol: 'none', name: 'Moving Avg', z: 0
+  });
+  return option;
+}
+
 function renderChart() {
   const container = $('chart-container');
   if (!lastColumns.length || !lastRows.length) {
@@ -1553,7 +1650,8 @@ function renderChart() {
   container.style.display = currentView === 'chart' ? 'block' : 'none';
   if (fuseChart) fuseChart.dispose();
   fuseChart = echarts.init(container, 'dark');
-  fuseChart.setOption(option);
+  const finalOption = applyAnomalyMarkers(option, suggestion, lastColumns, lastRows);
+  fuseChart.setOption(finalOption);
   // Drill-down: click chart element → filter query (#448)
   fuseChart.on('click', (params) => {
     const val = params.name || (params.data && params.data.name) || '';
