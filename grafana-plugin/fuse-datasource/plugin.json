@@ -1,0 +1,21 @@
+{
+  "type": "datasource",
+  "name": "Fuse",
+  "id": "fuse-datasource",
+  "info": {
+    "description": "Fuse federated query engine datasource for Grafana",
+    "author": { "name": "Fuse Team" },
+    "version": "1.0.0",
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    }
+  },
+  "dependencies": {
+    "grafanaDependency": ">=9.0.0",
+    "plugins": []
+  },
+  "metrics": true,
+  "annotations": false,
+  "alerting": true
+}

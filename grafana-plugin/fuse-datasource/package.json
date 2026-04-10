@@ -1,0 +1,15 @@
+{
+  "name": "fuse-datasource",
+  "version": "1.0.0",
+  "description": "Fuse federated query engine datasource plugin for Grafana",
+  "scripts": {
+    "build": "tsc && cp plugin.json dist/",
+    "dev": "tsc --watch"
+  },
+  "devDependencies": {
+    "@grafana/data": "^10.0.0",
+    "@grafana/runtime": "^10.0.0",
+    "@grafana/ui": "^10.0.0",
+    "typescript": "^5.0.0"
+  }
+}
