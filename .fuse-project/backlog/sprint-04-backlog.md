@@ -1,8 +1,8 @@
 # Sprint 4 Backlog
 
 **Sprint:** 4
-**Start:** TBD
-**Focus:** Cross-datasource analytics depth, log analysis primitives, search capabilities, observability correlation
+**Start:** 2026-04-10T05:30Z
+**Focus:** Cross-datasource analytics depth, visualization platform, new connectors, docs catch-up
 
 ## P0: Cross-Datasource Query Capabilities
 

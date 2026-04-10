@@ -35,8 +35,8 @@
 | 322 | OFFSET pushdown to connectors | planner | todo | Skip rows at source, not post-fetch |
 | 323 | Pagination across UNION ALL (global cursor) | planner | todo | Maintain per-source cursors, merge in order |
 | 324 | Large result streaming with backpressure | explorer | todo | SSE with flow control, client-driven page size |
-| 325 | OpenSearch search_after for deep pagination | general | todo | Replace from+size with search_after for >10k results |
-| 326 | S3 connector: paginated Parquet reading | general | todo | Read row groups incrementally, not full file |
+| 325 | OpenSearch search_after for deep pagination | general | done | Stateless deep pagination with sort, scroll fallback. Commit: 3caf4ff |
+| 326 | S3 connector: paginated Parquet reading | general | done | Row-group iteration with early limit termination. Commit: 3caf4ff |
 
 ## P1: Advanced Aggregation & Compute
 
@@ -49,7 +49,7 @@
 | 334 | Date/time functions (DATE_TRUNC, DATE_DIFF, NOW()) | planner | done | Via computed column passthrough. Commit: f14f517. 3 tests |
 | 335 | String functions (UPPER, LOWER, SUBSTRING, TRIM, REGEXP) | planner | done | Via #332 passthrough. Already tested |
 | 336 | Math functions (ROUND, CEIL, FLOOR, ABS, MOD) | planner | done | Via #332 passthrough. Already tested |
-| 337 | Nested field access (JSON dot notation) | general | todo | SELECT metadata.region FROM ... for nested OpenSearch docs |
+| 337 | Nested field access (JSON dot notation) | general | done | Dot-path traversal in OS + ES parse_hits. Commit: 3caf4ff |
 | 338 | UNION (deduplicated) vs UNION ALL | planner | done | Plain UNION now deduplicates. Commit: e61512e. 2 tests |
 
 ## P2: Cross-Datasource Query Improvements
