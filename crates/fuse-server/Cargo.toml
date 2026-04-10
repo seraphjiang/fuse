@@ -13,6 +13,9 @@ fuse-connector-s3-o11y = { path = "../fuse-connectors/s3-o11y" }
 fuse-connector-dynamodb = { path = "../fuse-connectors/dynamodb" }
 fuse-connector-postgres = { path = "../fuse-connectors/postgres" }
 fuse-connector-elasticsearch = { path = "../fuse-connectors/elasticsearch" }
+fuse-connector-mongodb = { path = "../fuse-connectors/mongodb" }
+fuse-connector-influxdb = { path = "../fuse-connectors/influxdb" }
+fuse-connector-clickhouse = { path = "../fuse-connectors/clickhouse" }
 fuse-connector-cloudwatch = { path = "../fuse-connectors/cloudwatch" }
 fuse-connector-csv-json = { path = "../fuse-connectors/csv-json" }
 fuse-connector-redis = { path = "../fuse-connectors/redis" }
@@ -33,6 +36,6 @@ tower-http = { version = "0.6", features = ["trace"] }
 tower = { version = "0.5", features = ["util", "limit"] }
 governor = { version = "0.6", features = ["std", "dashmap"] }
 anyhow = { workspace = true }
+async-trait = { workspace = true }
 
 [dev-dependencies]
-async-trait = { workspace = true }
