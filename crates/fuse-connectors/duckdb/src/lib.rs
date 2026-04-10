@@ -110,6 +110,7 @@ impl FederatedConnector for DuckDbConnector {
     async fn get_schema(&self, table: &str) -> Result<Schema, ConnectorError> {
         let path = self.path.clone();
         let table = table.to_string();
+        let table2 = table.clone();
         let fields = tokio::task::spawn_blocking(move || -> Result<Vec<(String, String)>, ConnectorError> {
             let conn = duckdb::Connection::open(&path)
                 .map_err(|e| ConnectorError::schema(e))?;
@@ -123,9 +124,9 @@ impl FederatedConnector for DuckDbConnector {
         }).await.map_err(|e| ConnectorError::schema(e))??;
 
         if fields.is_empty() {
-            return Err(ConnectorError::schema(format!("table '{table}' not found")));
+            return Err(ConnectorError::schema(format!("table '{table2}' not found")));
         }
-        Ok(Schema::new(fields.iter().map(|(col, dt)| Field::new(col, duckdb_type_to_arrow(dt), true)).collect()))
+        Ok(Schema::new(fields.iter().map(|(col, dt)| Field::new(col, duckdb_type_to_arrow(dt), true)).collect::<Vec<_>>()))
     }
 
     async fn execute(&self, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
@@ -140,7 +141,7 @@ impl FederatedConnector for DuckDbConnector {
 
             // Collect rows as JSON-like values
             let col_count = stmt.column_count();
-            let col_names: Vec<String> = (0..col_count).map(|i| stmt.column_name(i).unwrap_or("col").to_string()).collect();
+            let col_names: Vec<String> = (0..col_count).map(|i| stmt.column_name(i).unwrap_or(&"col".to_string()).to_string()).collect();
 
             let mut col_data: Vec<Vec<Option<String>>> = vec![vec![]; col_count];
             let mut rows = stmt.query([]).map_err(|e| ConnectorError::query(e))?;

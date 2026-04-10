@@ -144,3 +144,77 @@ mod tests {
         assert_eq!(cache.len(), 0);
     }
 }
+
+// ── Result Cache ──
+
+/// Cached query result with TTL.
+#[derive(Clone)]
+pub struct CachedResult {
+    pub response_json: serde_json::Value,
+    pub created: std::time::Instant,
+}
+
+/// TTL-based cache for query results.
+pub struct ResultCache {
+    entries: Mutex<HashMap<String, CachedResult>>,
+    ttl: Duration,
+    max_size: usize,
+}
+
+impl ResultCache {
+    pub fn new(ttl_secs: u64, max_size: usize) -> Self {
+        Self {
+            entries: Mutex::new(HashMap::new()),
+            ttl: Duration::from_secs(ttl_secs),
+            max_size,
+        }
+    }
+
+    pub fn get(&self, key: &str) -> Option<CachedResult> {
+        let entries = self.entries.lock().unwrap();
+        let cached = entries.get(key)?;
+        if cached.created.elapsed() < self.ttl {
+            Some(cached.clone())
+        } else {
+            None
+        }
+    }
+
+    pub fn insert(&self, key: String, response_json: serde_json::Value) {
+        let mut entries = self.entries.lock().unwrap();
+        if entries.len() >= self.max_size {
+            let ttl = self.ttl;
+            entries.retain(|_, v| v.created.elapsed() < ttl);
+            if entries.len() >= self.max_size {
+                if let Some(oldest_key) = entries.iter()
+                    .min_by_key(|(_, v)| v.created)
+                    .map(|(k, _)| k.clone())
+                {
+                    entries.remove(&oldest_key);
+                }
+            }
+        }
+        entries.insert(key, CachedResult {
+            response_json,
+            created: std::time::Instant::now(),
+        });
+    }
+}
+
+#[cfg(test)]
+mod result_cache_tests {
+    use super::*;
+
+    #[test]
+    fn test_result_cache_hit() {
+        let cache = ResultCache::new(60, 10);
+        cache.insert("k".into(), serde_json::json!({"rows": []}));
+        assert!(cache.get("k").is_some());
+    }
+
+    #[test]
+    fn test_result_cache_miss() {
+        let cache = ResultCache::new(60, 10);
+        assert!(cache.get("missing").is_none());
+    }
+}

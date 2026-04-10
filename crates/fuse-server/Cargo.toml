@@ -11,15 +11,15 @@ fuse-engine = { path = "../fuse-engine" }
 fuse-connector-opensearch = { path = "../fuse-connectors/opensearch" }
 fuse-connector-s3-o11y = { path = "../fuse-connectors/s3-o11y" }
 fuse-connector-dynamodb = { path = "../fuse-connectors/dynamodb" }
-# fuse-connector-postgres = { path = "../fuse-connectors/postgres" }  # blocked: sqlite compile error
-fuse-connector-duckdb = { path = "../fuse-connectors/duckdb" }
+fuse-connector-postgres = { path = "../fuse-connectors/postgres" }
+# fuse-connector-duckdb = { path = "../fuse-connectors/duckdb" }  # blocked: compile error
 fuse-connector-elasticsearch = { path = "../fuse-connectors/elasticsearch" }
-# fuse-connector-mongodb = { path = "../fuse-connectors/mongodb" }  # blocked: compile error in mongodb connector
+fuse-connector-mongodb = { path = "../fuse-connectors/mongodb" }
 fuse-connector-influxdb = { path = "../fuse-connectors/influxdb" }
 fuse-connector-clickhouse = { path = "../fuse-connectors/clickhouse" }
 fuse-connector-cloudwatch = { path = "../fuse-connectors/cloudwatch" }
 fuse-connector-csv-json = { path = "../fuse-connectors/csv-json" }
-# fuse-connector-redis = { path = "../fuse-connectors/redis" }  # blocked: compile error
+fuse-connector-redis = { path = "../fuse-connectors/redis" }
 arrow = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }

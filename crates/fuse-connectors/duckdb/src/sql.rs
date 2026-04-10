@@ -49,7 +49,7 @@ fn filter_to_sql(f: &FilterExpr) -> String {
                 ComparisonOp::Eq => "=", ComparisonOp::Neq => "!=",
                 ComparisonOp::Lt => "<", ComparisonOp::Lte => "<=",
                 ComparisonOp::Gt => ">", ComparisonOp::Gte => ">=",
-                ComparisonOp::Like => "LIKE", ComparisonOp::ILike => "ILIKE",
+                ComparisonOp::Like | ComparisonOp::Contains => "LIKE", ComparisonOp::ILike => "ILIKE",
             };
             format!("{field} {op_str} {}", scalar_to_sql(value))
         }
@@ -78,7 +78,7 @@ mod tests {
     use fuse_core::connector::SubQuery;
 
     fn base() -> SubQuery {
-        SubQuery { table: "events".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None }
+        SubQuery { table: "events".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None }
     }
 
     #[test]

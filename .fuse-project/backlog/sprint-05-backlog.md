@@ -8,7 +8,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 500 | Deploy Sprint 4 to playground (all 14 connectors + viz platform) | infra | todo | Full feature set live including dashboards |
+| 500 | Deploy Sprint 4 to playground (all 14 connectors + viz platform) | infra | done | /playground + /dashboard + /explore live. 6 connectors healthy. Pipeline ec1cce12 |
 | 501 | Auth/RBAC: API key authentication | explorer | done | x-api-key + Bearer, Role enum, public path bypass, 401 JSON. Commit: 50669df |
 | 502 | Rate limiting per API key | explorer | done | PerKeyLimiter, 200 req/min default, global→IP→key chain. Commit: 84e6f33 |
 | 503 | Query timeout enforcement | planner | done | Per-connector 25s timeout on UNION ALL + JOIN tasks. Commit: 5ebf648 |
@@ -45,11 +45,11 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 413 | Recursive CTEs | planner | todo | Trace dependency chains across services |
-| 422 | Anomaly detection primitives | planner | todo | Moving avg, stddev, z-score across time-bucketed data |
+| 413 | Recursive CTEs | explorer | done | WITH RECURSIVE, base+recursive step, 100 iteration safety. Commit: c307ec9 |
+| 422 | Anomaly detection primitives | explorer | done | moving_avg, stddev, z_scores, detect_anomalies, annotate_batch. Commit: 5dfa8f3 |
 | 530 | Query result caching with TTL | planner | todo | Cache frequent queries, invalidate on TTL or schema change |
-| 531 | Parallel connector health checks | infra | todo | Concurrent health pings, timeout per connector |
-| 532 | RIGHT JOIN support | planner | todo | Complete the join type matrix |
+| 531 | Parallel connector health checks | infra | done | 5s per-connector timeout, unhealthy on hang. Commit: 4d55226 |
+| 532 | RIGHT JOIN support | planner | done | Swap sides + delegate to LEFT. 6 join types complete. Commit: cfda8ea |
 
 ## P2: Testing & Quality
 
