@@ -23,7 +23,7 @@
 | 311 | Demo: UNION ALL across OpenSearch + CloudWatch + S3 logs | planner | todo | Unified log view across 3 sources |
 | 312 | Demo: Aggregate Prometheus metrics + OpenSearch events | planner | todo | Correlate metrics spikes with error logs |
 | 313 | Demo: PPL lookup across datasources (logs → user enrichment) | planner | todo | Showcase #235 PPL lookup in production |
-| 314 | Demo data seeding (consistent timestamps, correlated events) | infra | todo | Seed all datasources with correlated demo data |
+| 314 | Demo data seeding (consistent timestamps, correlated events) | infra | done | 50 users, 200 logs, 200 S3 rows, 50 CW events. Shared user_ids + trace_ids |
 | 315 | Playground UI: demo scenario selector (pre-built queries) | explorer | todo | Dropdown with demo queries + descriptions |
 
 ## P1: Pagination, Sorting & Limit Depth
@@ -44,7 +44,7 @@
 |----|------|-------|--------|-------|
 | 330 | Window functions (ROW_NUMBER, RANK, LAG, LEAD) | planner | todo | Post-fetch compute, DataFusion integration |
 | 331 | PERCENTILE / PERCENTILE_APPROX aggregation | planner | todo | OpenSearch → percentiles agg, others → post-compute |
-| 332 | Computed columns (expressions in SELECT) | planner | todo | SELECT price * quantity AS total, CONCAT(), COALESCE() |
+| 332 | Computed columns (expressions in SELECT) | planner | done | Pass-through SQL expressions. Commit: 0631c5b |
 | 333 | CASE WHEN expressions | planner | todo | Conditional logic in SELECT and WHERE |
 | 334 | Date/time functions (DATE_TRUNC, DATE_DIFF, NOW()) | planner | todo | Cross-connector date normalization |
 | 335 | String functions (UPPER, LOWER, SUBSTRING, TRIM, REGEXP) | planner | todo | Pushdown where supported, post-compute otherwise |

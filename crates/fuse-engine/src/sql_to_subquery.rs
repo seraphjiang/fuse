@@ -940,4 +940,56 @@ mod tests {
         assert!(sq.projections.iter().any(|p| p == "id"));
         assert!(sq.projections.iter().any(|p| p.contains("AS total")));
     }
+
+    #[test]
+    fn test_case_when_in_select() {
+        let sq = sql_to_subquery(
+            "SELECT CASE WHEN status >= 400 THEN 'error' ELSE 'ok' END AS category FROM logs",
+        ).unwrap();
+        assert!(sq.projections.iter().any(|p| p.contains("CASE")));
+    }
+
+    #[test]
+    fn test_case_when_in_where() {
+        // CASE WHEN in WHERE is untranslatable — filter should be None (safely dropped)
+        let sq = sql_to_subquery(
+            "SELECT * FROM logs WHERE CASE WHEN status > 0 THEN 1 ELSE 0 END = 1",
+        ).unwrap();
+        assert!(sq.filter.is_none());
+    }
+
+    #[test]
+    fn test_case_when_mixed_with_columns() {
+        let sq = sql_to_subquery(
+            "SELECT host, CASE WHEN status >= 500 THEN 'server_error' WHEN status >= 400 THEN 'client_error' ELSE 'ok' END AS error_class FROM logs",
+        ).unwrap();
+        assert!(sq.projections.iter().any(|p| p == "host"));
+        assert!(sq.projections.iter().any(|p| p.contains("CASE")));
+    }
+
+    #[test]
+    fn test_date_trunc_in_select() {
+        let sq = sql_to_subquery(
+            "SELECT DATE_TRUNC('hour', timestamp) AS hour FROM logs",
+        ).unwrap();
+        assert!(sq.projections.iter().any(|p| p.contains("DATE_TRUNC")));
+    }
+
+    #[test]
+    fn test_now_function() {
+        let sq = sql_to_subquery(
+            "SELECT * FROM logs WHERE timestamp > NOW() - INTERVAL '1' HOUR",
+        ).unwrap();
+        // NOW() in WHERE — the comparison may or may not translate,
+        // but the query should parse without error
+        assert_eq!(sq.table, "logs");
+    }
+
+    #[test]
+    fn test_multiple_functions_in_select() {
+        let sq = sql_to_subquery(
+            "SELECT UPPER(host) AS h, ROUND(latency, 2) AS lat, SUBSTRING(msg, 1, 10) AS prefix FROM logs",
+        ).unwrap();
+        assert_eq!(sq.projections.len(), 3);
+    }
 }
