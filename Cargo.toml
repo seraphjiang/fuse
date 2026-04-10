@@ -11,6 +11,7 @@ members = [
     "crates/fuse-connectors/csv-json",
     "crates/fuse-connectors/redis",
     "crates/fuse-connectors/dynamodb",
+    "crates/fuse-connectors/postgres",
     "crates/fuse-connector-sdk",
     "crates/fuse-server",
 ]
@@ -53,6 +54,7 @@ opensearch = { version = "2", features = ["aws-auth"] }
 aws-sdk-s3 = "1"
 aws-sdk-cloudwatchlogs = "1"
 aws-sdk-dynamodb = "1"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "mysql", "json"] }
 metrics = "0.24"
 metrics-exporter-prometheus = "0.16"
 redis = { version = "0.27", features = ["tokio-comp", "aio"] }

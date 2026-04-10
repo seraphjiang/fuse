@@ -9,6 +9,7 @@ use fuse_core::registry::{ConnectorFactory, ConnectorRegistry};
 use fuse_connector_opensearch::OpenSearchConnectorFactory;
 use fuse_connector_s3_o11y::S3O11yConnectorFactory;
 use fuse_connector_dynamodb::DynamoDbConnectorFactory;
+use fuse_connector_postgres::{PostgresConnectorFactory, MysqlConnectorFactory};
 use fuse_connector_cloudwatch::CloudWatchConnectorFactory;
 use fuse_connector_csv_json::CsvJsonConnectorFactory;
 use fuse_connector_redis::RedisConnectorFactory;
@@ -55,6 +56,8 @@ async fn main() -> anyhow::Result<()> {
         Box::new(OpenSearchConnectorFactory),
         Box::new(S3O11yConnectorFactory),
         Box::new(DynamoDbConnectorFactory),
+        Box::new(PostgresConnectorFactory),
+        Box::new(MysqlConnectorFactory),
         Box::new(CloudWatchConnectorFactory),
         Box::new(CsvJsonConnectorFactory),
         Box::new(RedisConnectorFactory),
