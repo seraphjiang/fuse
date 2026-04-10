@@ -1,0 +1,389 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Migration from OpenSearch - Fuse — Federated Query Engine</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "navy";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">2.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="sql-reference.html"><strong aria-hidden="true">3.</strong> SQL Reference</a></li><li class="chapter-item expanded "><a href="ppl-reference.html"><strong aria-hidden="true">4.</strong> PPL Reference</a></li><li class="chapter-item expanded "><a href="connectors.html"><strong aria-hidden="true">5.</strong> Connectors</a></li><li class="chapter-item expanded "><a href="dashboard-guide.html"><strong aria-hidden="true">6.</strong> Dashboard Guide</a></li><li class="chapter-item expanded "><a href="data-provenance.html"><strong aria-hidden="true">7.</strong> Data Provenance</a></li><li class="chapter-item expanded "><a href="explain-analyze.html"><strong aria-hidden="true">8.</strong> EXPLAIN / ANALYZE</a></li><li class="chapter-item expanded "><a href="performance-tuning.html"><strong aria-hidden="true">9.</strong> Cursor Pagination & Performance</a></li><li class="chapter-item expanded "><a href="migration-guide.html" class="active"><strong aria-hidden="true">10.</strong> Migration from OpenSearch</a></li><li class="chapter-item expanded "><a href="troubleshooting.html"><strong aria-hidden="true">11.</strong> Troubleshooting</a></li><li class="chapter-item expanded affix "><li class="part-title">API</li><li class="chapter-item expanded "><a href="api-reference.html"><strong aria-hidden="true">12.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="api-reference-guide.html"><strong aria-hidden="true">13.</strong> API Guide (curl examples)</a></li><li class="chapter-item expanded affix "><li class="part-title">Developer</li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">14.</strong> Contributing</a></li><li class="chapter-item expanded "><a href="connector-development.html"><strong aria-hidden="true">15.</strong> Connector Development</a></li><li class="chapter-item expanded affix "><li class="part-title">Blog</li><li class="chapter-item expanded "><a href="blog-introducing-fuse.html"><strong aria-hidden="true">16.</strong> Introducing Fuse</a></li><li class="chapter-item expanded "><a href="blog-sprint-5-release.html"><strong aria-hidden="true">17.</strong> v0.5.0: Dashboards, 14 Connectors & Production Hardening</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Fuse — Federated Query Engine</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/seraphjiang/fuse" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/seraphjiang/fuse/edit/main/docs-site/src/src/migration-guide.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="migration-guide-opensearch-to-fuse"><a class="header" href="#migration-guide-opensearch-to-fuse">Migration Guide: OpenSearch to Fuse</a></h1>
+<p>How to migrate from direct OpenSearch queries to Fuse federated queries. Fuse is a superset — your existing queries work with minimal changes, and you gain cross-datasource capabilities.</p>
+<h2 id="what-changes"><a class="header" href="#what-changes">What Changes</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Aspect</th><th>Direct OpenSearch</th><th>Fuse</th></tr></thead><tbody>
+<tr><td>Endpoint</td><td><code>POST /_search</code></td><td><code>POST /api/fuse/query</code></td></tr>
+<tr><td>Query language</td><td>Query DSL (JSON)</td><td>SQL or PPL</td></tr>
+<tr><td>Table reference</td><td>Index name</td><td><code>datasource.index</code></td></tr>
+<tr><td>Auth</td><td>Direct to cluster</td><td>Fuse handles per-connector auth</td></tr>
+<tr><td>Results</td><td>OpenSearch JSON</td><td>Columnar JSON (columns + rows)</td></tr>
+</tbody></table>
+</div>
+<h2 id="what-doesnt-change"><a class="header" href="#what-doesnt-change">What Doesn't Change</a></h2>
+<ul>
+<li>Your OpenSearch clusters stay where they are</li>
+<li>Index mappings, data, and aliases are untouched</li>
+<li>Fuse reads from OpenSearch — it never writes</li>
+<li>Existing Query DSL dashboards continue to work alongside Fuse</li>
+</ul>
+<h2 id="step-1-register-your-clusters"><a class="header" href="#step-1-register-your-clusters">Step 1: Register Your Clusters</a></h2>
+<p>Add each OpenSearch cluster to <code>fuse.toml</code>:</p>
+<pre><code class="language-toml"># Existing cluster (direct access today)
+[[connector]]
+id = "prod"
+type = "opensearch"
+url = "https://your-cluster.us-west-2.aoss.amazonaws.com"
+[connector.auth]
+type = "sigv4"
+region = "us-west-2"
+service = "aoss"
+
+# Second cluster you want to federate with
+[[connector]]
+id = "staging"
+type = "opensearch"
+url = "https://staging-cluster.us-west-2.es.amazonaws.com"
+[connector.auth]
+type = "basic"
+username = "admin"
+password = "admin"
+</code></pre>
+<p>Verify with:</p>
+<pre><code class="language-bash">curl http://localhost:9400/api/fuse/health
+curl http://localhost:9400/api/fuse/datasources
+</code></pre>
+<h2 id="step-2-translate-queries"><a class="header" href="#step-2-translate-queries">Step 2: Translate Queries</a></h2>
+<h3 id="query-dsl--sql"><a class="header" href="#query-dsl--sql">Query DSL → SQL</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Query DSL</th><th>Fuse SQL</th></tr></thead><tbody>
+<tr><td><code>{"query": {"match_all": {}}}</code></td><td><code>SELECT * FROM prod.logs LIMIT 100</code></td></tr>
+<tr><td><code>{"query": {"term": {"service": "api"}}}</code></td><td><code>SELECT * FROM prod.logs WHERE service = 'api'</code></td></tr>
+<tr><td><code>{"query": {"range": {"status": {"gte": 500}}}}</code></td><td><code>SELECT * FROM prod.logs WHERE status &gt;= 500</code></td></tr>
+<tr><td><code>{"query": {"bool": {"must": [...]}}}</code></td><td><code>SELECT * FROM prod.logs WHERE cond1 AND cond2</code></td></tr>
+<tr><td><code>{"_source": ["service", "status"]}</code></td><td><code>SELECT service, status FROM prod.logs</code></td></tr>
+<tr><td><code>{"size": 10}</code></td><td><code>SELECT * FROM prod.logs LIMIT 10</code></td></tr>
+<tr><td><code>{"sort": [{"timestamp": "desc"}]}</code></td><td><code>SELECT * FROM prod.logs ORDER BY timestamp DESC</code></td></tr>
+<tr><td><code>{"aggs": {"by_svc": {"terms": {"field": "service"}}}}</code></td><td><code>SELECT service, count(*) FROM prod.logs GROUP BY service</code></td></tr>
+</tbody></table>
+</div>
+<h3 id="query-dsl--ppl"><a class="header" href="#query-dsl--ppl">Query DSL → PPL</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Query DSL</th><th>Fuse PPL</th></tr></thead><tbody>
+<tr><td>Match all, limit 10</td><td><code>source = prod.logs | head 10</code></td></tr>
+<tr><td>Filter by field</td><td><code>source = prod.logs | where service = 'api'</code></td></tr>
+<tr><td>Aggregation</td><td><code>source = prod.logs | stats count() by service</code></td></tr>
+<tr><td>Sort descending</td><td><code>source = prod.logs | sort - timestamp | head 10</code></td></tr>
+<tr><td>Select fields</td><td><code>source = prod.logs | fields service, status</code></td></tr>
+</tbody></table>
+</div>
+<h3 id="common-patterns"><a class="header" href="#common-patterns">Common Patterns</a></h3>
+<p><strong>Error search:</strong></p>
+<pre><code>-- Before (Query DSL)
+POST /application_logs/_search
+{"query": {"range": {"status": {"gte": 500}}}, "size": 20, "sort": [{"timestamp": "desc"}]}
+
+-- After (SQL)
+SELECT * FROM prod.application_logs WHERE status &gt;= 500 ORDER BY timestamp DESC LIMIT 20
+
+-- After (PPL)
+source = prod.application_logs | where status &gt;= 500 | sort - timestamp | head 20
+</code></pre>
+<p><strong>Aggregation:</strong></p>
+<pre><code>-- Before (Query DSL)
+POST /application_logs/_search
+{"size": 0, "aggs": {"errors_by_service": {"terms": {"field": "service"}, "aggs": {"error_count": {"filter": {"range": {"status": {"gte": 500}}}}}}}}
+
+-- After (SQL)
+SELECT service, count(*) as errors FROM prod.application_logs WHERE status &gt;= 500 GROUP BY service ORDER BY errors DESC
+</code></pre>
+<p><strong>Multi-index search:</strong></p>
+<pre><code>-- Before (Query DSL — comma-separated indices)
+POST /index_a,index_b/_search
+{"query": {"match_all": {}}}
+
+-- After (SQL — UNION ALL)
+SELECT * FROM prod.index_a UNION ALL SELECT * FROM prod.index_b LIMIT 100
+</code></pre>
+<h2 id="step-3-gain-cross-datasource-power"><a class="header" href="#step-3-gain-cross-datasource-power">Step 3: Gain Cross-Datasource Power</a></h2>
+<p>Once your queries work through Fuse, you unlock capabilities that weren't possible with direct OpenSearch:</p>
+<h3 id="join-with-other-datasources"><a class="header" href="#join-with-other-datasources">Join with other datasources</a></h3>
+<pre><code class="language-sql">-- Enrich OpenSearch logs with DynamoDB user profiles
+SELECT l.service, l.status, u.name, u.team
+FROM prod.application_logs l
+JOIN dynamodb.users u ON l.user_id = u.user_id
+WHERE l.status &gt;= 500
+</code></pre>
+<h3 id="unified-view-across-clusters"><a class="header" href="#unified-view-across-clusters">Unified view across clusters</a></h3>
+<pre><code class="language-sql">-- Query production + staging in one statement
+SELECT _datasource, service, count(*) as errors
+FROM prod.application_logs WHERE status &gt;= 500
+UNION ALL
+SELECT _datasource, service, count(*) as errors
+FROM staging.application_logs WHERE status &gt;= 500
+GROUP BY _datasource, service
+</code></pre>
+<h3 id="correlate-with-metrics"><a class="header" href="#correlate-with-metrics">Correlate with metrics</a></h3>
+<pre><code class="language-sql">-- Join OpenSearch logs with Prometheus metrics
+SELECT l.service, l.status, p.value as cpu_usage
+FROM prod.application_logs l
+JOIN prometheus.cpu_metrics p ON l.service = p.service
+WHERE l.status &gt;= 500
+</code></pre>
+<h3 id="cross-source-trace-reconstruction"><a class="header" href="#cross-source-trace-reconstruction">Cross-source trace reconstruction</a></h3>
+<pre><code class="language-bash"># Find a trace across all registered datasources
+curl http://localhost:9400/api/fuse/trace/trace-abc123
+</code></pre>
+<h2 id="step-4-migrate-dashboards"><a class="header" href="#step-4-migrate-dashboards">Step 4: Migrate Dashboards</a></h2>
+<h3 id="from-opensearch-dashboards-visualizations"><a class="header" href="#from-opensearch-dashboards-visualizations">From OpenSearch Dashboards Visualizations</a></h3>
+<ol>
+<li>Identify the Query DSL behind each visualization</li>
+<li>Translate to SQL using the table above</li>
+<li>Create a Fuse dashboard panel at <code>/dashboard</code> with the SQL query</li>
+<li>Select the matching chart type (Fuse auto-detects in most cases)</li>
+</ol>
+<h3 id="from-saved-searches"><a class="header" href="#from-saved-searches">From Saved Searches</a></h3>
+<p>Saved searches translate directly:</p>
+<pre><code>-- OpenSearch saved search: index=application_logs, query="status &gt;= 500"
+-- Fuse equivalent:
+SELECT * FROM prod.application_logs WHERE status &gt;= 500 LIMIT 100
+</code></pre>
+<p>Save as a Fuse saved query:</p>
+<pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/saved \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "error_search", "query": "SELECT * FROM prod.application_logs WHERE status &gt;= 500 LIMIT 100"}'
+</code></pre>
+<h2 id="pushdown-guarantee"><a class="header" href="#pushdown-guarantee">Pushdown Guarantee</a></h2>
+<p>Fuse pushes filters, projections, aggregations, sort, and limit to OpenSearch. A single-source Fuse query has the same performance as a direct Query DSL call — the SubQuery is translated back to Query DSL and sent to your cluster.</p>
+<p>Verify with EXPLAIN:</p>
+<pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/query/explain \
+  -d '{"query": "SELECT service, count(*) FROM prod.logs WHERE status &gt;= 500 GROUP BY service"}'
+</code></pre>
+<p>The plan shows <code>RemoteScan</code> with pushdown badges: <code>filter</code>, <code>projection</code>, <code>aggregation</code>, <code>limit</code>.</p>
+<h2 id="rollback"><a class="header" href="#rollback">Rollback</a></h2>
+<p>Fuse is read-only and additive. Your OpenSearch clusters are unchanged. To rollback:</p>
+<ol>
+<li>Point clients back to OpenSearch directly</li>
+<li>Stop the Fuse server</li>
+<li>No data migration needed — Fuse stores nothing in your clusters</li>
+</ol>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="performance-tuning.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="troubleshooting.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="performance-tuning.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="troubleshooting.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

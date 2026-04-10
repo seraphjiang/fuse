@@ -1,0 +1,415 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Cursor Pagination &amp; Performance - Fuse — Federated Query Engine</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "navy";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">2.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="sql-reference.html"><strong aria-hidden="true">3.</strong> SQL Reference</a></li><li class="chapter-item expanded "><a href="ppl-reference.html"><strong aria-hidden="true">4.</strong> PPL Reference</a></li><li class="chapter-item expanded "><a href="connectors.html"><strong aria-hidden="true">5.</strong> Connectors</a></li><li class="chapter-item expanded "><a href="dashboard-guide.html"><strong aria-hidden="true">6.</strong> Dashboard Guide</a></li><li class="chapter-item expanded "><a href="data-provenance.html"><strong aria-hidden="true">7.</strong> Data Provenance</a></li><li class="chapter-item expanded "><a href="explain-analyze.html"><strong aria-hidden="true">8.</strong> EXPLAIN / ANALYZE</a></li><li class="chapter-item expanded "><a href="performance-tuning.html" class="active"><strong aria-hidden="true">9.</strong> Cursor Pagination & Performance</a></li><li class="chapter-item expanded "><a href="migration-guide.html"><strong aria-hidden="true">10.</strong> Migration from OpenSearch</a></li><li class="chapter-item expanded "><a href="troubleshooting.html"><strong aria-hidden="true">11.</strong> Troubleshooting</a></li><li class="chapter-item expanded affix "><li class="part-title">API</li><li class="chapter-item expanded "><a href="api-reference.html"><strong aria-hidden="true">12.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="api-reference-guide.html"><strong aria-hidden="true">13.</strong> API Guide (curl examples)</a></li><li class="chapter-item expanded affix "><li class="part-title">Developer</li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">14.</strong> Contributing</a></li><li class="chapter-item expanded "><a href="connector-development.html"><strong aria-hidden="true">15.</strong> Connector Development</a></li><li class="chapter-item expanded affix "><li class="part-title">Blog</li><li class="chapter-item expanded "><a href="blog-introducing-fuse.html"><strong aria-hidden="true">16.</strong> Introducing Fuse</a></li><li class="chapter-item expanded "><a href="blog-sprint-5-release.html"><strong aria-hidden="true">17.</strong> v0.5.0: Dashboards, 14 Connectors & Production Hardening</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Fuse — Federated Query Engine</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/seraphjiang/fuse" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/seraphjiang/fuse/edit/main/docs-site/src/src/performance-tuning.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="performance-tuning-guide"><a class="header" href="#performance-tuning-guide">Performance Tuning Guide</a></h1>
+<p>How to get the most out of Fuse — from query design to server configuration.</p>
+<h2 id="1-query-design"><a class="header" href="#1-query-design">1. Query Design</a></h2>
+<h3 id="use-pushdown"><a class="header" href="#use-pushdown">Use Pushdown</a></h3>
+<p>The single biggest performance lever. When Fuse pushes operations to connectors, less data crosses the network.</p>
+<pre><code class="language-sql">-- ❌ Slow: fetches all rows, filters locally
+SELECT * FROM my_os.logs
+
+-- ✅ Fast: filter + projection + limit pushed to OpenSearch
+SELECT service, status FROM my_os.logs WHERE status &gt;= 500 LIMIT 100
+</code></pre>
+<p>Check what got pushed down with <code>analyze: true</code>:</p>
+<pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "SELECT service FROM my_os.logs WHERE status &gt;= 500 LIMIT 10", "analyze": true}'
+</code></pre>
+<p>Look at <code>pushdown</code> badges on RemoteScan nodes in the execution profile. More badges = less data transferred = faster.</p>
+<h3 id="pushdown-by-connector"><a class="header" href="#pushdown-by-connector">Pushdown by Connector</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Connector</th><th>Filter</th><th>Projection</th><th>Aggregation</th><th>Sort</th><th>Limit</th></tr></thead><tbody>
+<tr><td>OpenSearch</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+<tr><td>Elasticsearch</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+<tr><td>PostgreSQL</td><td>✅ Full SQL</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+<tr><td>MySQL</td><td>✅ Full SQL</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+<tr><td>ClickHouse</td><td>✅ Full SQL</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+<tr><td>DynamoDB</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td></tr>
+<tr><td>MongoDB</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td></tr>
+<tr><td>S3 Parquet</td><td>❌</td><td>✅ Column pruning</td><td>❌</td><td>❌</td><td>✅</td></tr>
+<tr><td>Prometheus</td><td>✅ Time range</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+<tr><td>InfluxDB</td><td>✅ WHERE</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+<tr><td>CloudWatch</td><td>✅ Filter pattern</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+<tr><td>Redis</td><td>✅ Key pattern</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+<tr><td>CSV/JSON</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+</tbody></table>
+</div>
+<p><strong>Rule of thumb:</strong> SQL-native connectors (PG, MySQL, ClickHouse) push down everything. Document stores (OS, ES, DDB, Mongo) push down filters and projections. File-based connectors (S3, CSV) push down very little — always use LIMIT.</p>
+<h3 id="always-use-limit"><a class="header" href="#always-use-limit">Always Use LIMIT</a></h3>
+<p>Queries without LIMIT fetch entire tables. For UNION ALL, each source gets the full limit — the global limit is applied after merge.</p>
+<pre><code class="language-sql">-- Each source fetches up to 10,000 rows (default fan-out limit)
+SELECT * FROM os.logs UNION ALL SELECT * FROM cw.logs
+
+-- Each source fetches up to 100 rows
+SELECT * FROM os.logs UNION ALL SELECT * FROM cw.logs LIMIT 100
+</code></pre>
+<h3 id="use-explicit-column-lists"><a class="header" href="#use-explicit-column-lists">Use Explicit Column Lists</a></h3>
+<p><code>SELECT *</code> transfers all columns. Explicit projections enable column pruning, especially important for wide tables and Parquet files:</p>
+<pre><code class="language-sql">-- ❌ Transfers all 30 columns
+SELECT * FROM s3.events LIMIT 100
+
+-- ✅ Transfers only 3 columns (10x less data for Parquet)
+SELECT timestamp, service, status FROM s3.events LIMIT 100
+</code></pre>
+<h3 id="use-cursor-pagination-for-large-results"><a class="header" href="#use-cursor-pagination-for-large-results">Use Cursor Pagination for Large Results</a></h3>
+<p>OFFSET-based pagination re-scans from the start each time. Cursor pagination is stateless and efficient:</p>
+<pre><code class="language-bash"># First page
+curl -X POST .../api/fuse/query \
+  -d '{"query": "SELECT * FROM os.logs ORDER BY timestamp DESC", "page_size": 50}'
+
+# Next page (no re-scan)
+curl -X POST .../api/fuse/query \
+  -d '{"query": "SELECT * FROM os.logs ORDER BY timestamp DESC", "page_size": 50, "cursor": "..."}'
+</code></pre>
+<p>For OpenSearch, deep pagination (&gt;10k rows) automatically uses <code>search_after</code> instead of <code>from+size</code>.</p>
+<h2 id="2-join-optimization"><a class="header" href="#2-join-optimization">2. JOIN Optimization</a></h2>
+<h3 id="smaller-table-as-build-side"><a class="header" href="#smaller-table-as-build-side">Smaller Table as Build Side</a></h3>
+<p>Fuse automatically selects the smaller table as the hash join build side. If you know which side is smaller, put it on the right:</p>
+<pre><code class="language-sql">-- DynamoDB users (50 rows) is build side, OS logs (10k rows) is probe side
+SELECT l.*, u.name
+FROM os.logs l JOIN ddb.users u ON l.user_id = u.user_id
+</code></pre>
+<h3 id="semi-join-for-filtered-joins"><a class="header" href="#semi-join-for-filtered-joins">Semi-Join for Filtered JOINs</a></h3>
+<p>When the build side is small enough, Fuse extracts join keys and pushes them as an <code>IN</code> filter to the probe side — reducing data transfer:</p>
+<pre><code class="language-sql">-- Small subquery → keys pushed as IN filter to OpenSearch
+SELECT * FROM os.logs
+WHERE user_id IN (SELECT user_id FROM ddb.users WHERE role = 'admin')
+</code></pre>
+<h3 id="avoid-joining-large-tables"><a class="header" href="#avoid-joining-large-tables">Avoid JOINing Large Tables</a></h3>
+<p>Cross-datasource JOINs fetch both sides fully. If both sides are large, add WHERE clauses to reduce row counts before the join:</p>
+<pre><code class="language-sql">-- ❌ Fetches all logs + all events
+SELECT * FROM os.logs JOIN cw.events ON trace_id = trace_id
+
+-- ✅ Filter both sides first
+SELECT * FROM os.logs l JOIN cw.events e ON l.trace_id = e.trace_id
+WHERE l.status &gt;= 500 AND e.level = 'ERROR'
+</code></pre>
+<h2 id="3-caching"><a class="header" href="#3-caching">3. Caching</a></h2>
+<h3 id="query-result-cache"><a class="header" href="#query-result-cache">Query Result Cache</a></h3>
+<p>Fuse caches query results per connector with TTL-based expiry:</p>
+<div class="table-wrapper"><table><thead><tr><th>Connector Type</th><th>Default TTL</th></tr></thead><tbody>
+<tr><td>OpenSearch</td><td>30s</td></tr>
+<tr><td>S3</td><td>5 min</td></tr>
+<tr><td>Prometheus</td><td>60s</td></tr>
+<tr><td>All others</td><td>30s</td></tr>
+</tbody></table>
+</div>
+<p>Identical queries to the same connector hit the cache. Different WHERE values = cache miss.</p>
+<h3 id="plan-cache"><a class="header" href="#plan-cache">Plan Cache</a></h3>
+<p>Parsed query plans are cached by query string. Repeated queries skip SQL parsing and source extraction. The plan cache stores source references, ORDER BY, LIMIT, DISTINCT, and OFFSET — so re-execution only does the fan-out.</p>
+<h2 id="4-server-configuration"><a class="header" href="#4-server-configuration">4. Server Configuration</a></h2>
+<h3 id="engine-settings"><a class="header" href="#engine-settings">Engine Settings</a></h3>
+<pre><code class="language-toml">[engine]
+bind = "0.0.0.0:9400"
+max_concurrent_queries = 64    # Global query concurrency limit
+default_timeout = "30s"        # Default per-query timeout
+rate_limit_global = 1000       # Requests per minute (global)
+rate_limit_per_ip = 100        # Requests per minute (per IP)
+</code></pre>
+<p><strong>Tuning:</strong></p>
+<ul>
+<li><code>max_concurrent_queries</code>: increase for high-throughput workloads, decrease if connectors are overloaded</li>
+<li><code>default_timeout</code>: increase for complex cross-datasource queries, decrease to fail fast</li>
+<li><code>rate_limit_per_ip</code>: increase for trusted internal clients, keep low for public-facing deployments</li>
+</ul>
+<h3 id="per-connector-settings"><a class="header" href="#per-connector-settings">Per-Connector Settings</a></h3>
+<pre><code class="language-toml">[[connector]]
+id = "my_os"
+type = "opensearch"
+url = "https://..."
+max_concurrent_queries = 16    # Concurrent queries to this connector
+scroll_size = 1000             # Rows per scroll page (OpenSearch)
+request_timeout = "30s"        # Per-request timeout to this connector
+</code></pre>
+<p><strong>Tuning:</strong></p>
+<ul>
+<li><code>max_concurrent_queries</code>: match your datasource's capacity. OpenSearch Serverless handles 16+ well; a small PostgreSQL instance may need 4-8</li>
+<li><code>scroll_size</code>: larger = fewer round trips but more memory. 1000 is a good default for OpenSearch</li>
+<li><code>request_timeout</code>: set lower than <code>default_timeout</code> so connector timeouts are reported as partial errors rather than full query failures</li>
+</ul>
+<h2 id="5-cost-estimator"><a class="header" href="#5-cost-estimator">5. Cost Estimator</a></h2>
+<p>Fuse's cost estimator decides whether to push operations down or compute locally. It factors in:</p>
+<ul>
+<li><strong>Latency class</strong>: Low (1x), Medium (3x), High (10x) multiplier on network cost</li>
+<li><strong>Filter selectivity</strong>: estimated 10% of rows pass a filter</li>
+<li><strong>Aggregation reduction</strong>: estimated 1% of rows after GROUP BY</li>
+<li><strong>Column ratio</strong>: fewer projected columns = less data transferred</li>
+</ul>
+<p>Use <code>EXPLAIN</code> to see estimated costs:</p>
+<pre><code class="language-bash">curl -X POST .../api/fuse/query/explain \
+  -d '{"query": "SELECT service, count(*) FROM os.logs GROUP BY service"}'
+</code></pre>
+<p>If a connector has high latency (e.g., cross-region S3), the estimator favors pushdown more aggressively.</p>
+<h2 id="6-monitoring"><a class="header" href="#6-monitoring">6. Monitoring</a></h2>
+<h3 id="query-history"><a class="header" href="#query-history">Query History</a></h3>
+<pre><code class="language-bash">curl http://localhost:9400/api/fuse/history
+</code></pre>
+<p>Shows recent queries with latency. Look for:</p>
+<ul>
+<li>Queries with high <code>latency_ms</code> — candidates for optimization</li>
+<li>Queries with <code>error</code> — failing connectors</li>
+</ul>
+<h3 id="query-stats"><a class="header" href="#query-stats">Query Stats</a></h3>
+<pre><code class="language-bash">curl http://localhost:9400/api/fuse/stats
+</code></pre>
+<p>Aggregated counts: total queries, success rate, average latency.</p>
+<h3 id="prometheus-metrics"><a class="header" href="#prometheus-metrics">Prometheus Metrics</a></h3>
+<pre><code class="language-bash">curl http://localhost:9400/metrics
+</code></pre>
+<p>Exposes query count, latency histogram, and connector health for Prometheus scraping.</p>
+<h3 id="health-check"><a class="header" href="#health-check">Health Check</a></h3>
+<pre><code class="language-bash">curl http://localhost:9400/api/fuse/health
+</code></pre>
+<p>Per-connector health with latency. A <code>degraded</code> connector slows all queries that touch it.</p>
+<h2 id="checklist"><a class="header" href="#checklist">Checklist</a></h2>
+<ul>
+<li><input disabled="" type="checkbox"/>
+All queries have <code>LIMIT</code></li>
+<li><input disabled="" type="checkbox"/>
+Explicit column lists instead of <code>SELECT *</code></li>
+<li><input disabled="" type="checkbox"/>
+<code>WHERE</code> clauses on columns the connector can push down</li>
+<li><input disabled="" type="checkbox"/>
+<code>analyze: true</code> confirms pushdown is happening</li>
+<li><input disabled="" type="checkbox"/>
+JOINs have filters on both sides</li>
+<li><input disabled="" type="checkbox"/>
+<code>max_concurrent_queries</code> matches connector capacity</li>
+<li><input disabled="" type="checkbox"/>
+<code>request_timeout</code> &lt; <code>default_timeout</code></li>
+<li><input disabled="" type="checkbox"/>
+Dashboard panels use auto-refresh intervals ≥ cache TTL</li>
+<li><input disabled="" type="checkbox"/>
+Cursor pagination for large result sets</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="explain-analyze.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="migration-guide.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="explain-analyze.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="migration-guide.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>
