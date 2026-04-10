@@ -2484,3 +2484,45 @@ async fn test_is_union_distinct_detection() {
     let dedup_count = j2["rows"].as_array().unwrap().len();
     assert!(dedup_count <= all_count);
 }
+
+// ── Cost estimator tests ──
+
+#[tokio::test]
+async fn test_analyze_has_cost_estimates() {
+    let (status, json) = post_query_analyze(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "sql",
+        true,
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let nodes = json["execution_profile"]["nodes"].as_array().unwrap();
+    let union_node = &nodes[0];
+    // Parent should have estimated_rows (sum of children)
+    assert!(union_node["estimated_rows"].as_u64().is_some());
+    // Children should have estimated_rows and estimated_cost
+    let children = union_node["children"].as_array().unwrap();
+    for child in children {
+        assert!(child["estimated_rows"].as_u64().is_some());
+        assert!(child["estimated_cost"].as_f64().is_some());
+    }
+}
+
+#[tokio::test]
+async fn test_explain_has_cost_estimates() {
+    let resp = build_test_app()
+        .oneshot(
+            Request::builder().method("POST").uri("/api/fuse/query/explain")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                    "query": "SELECT * FROM testds.logs",
+                    "format": "sql"
+                })).unwrap())).unwrap(),
+        ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let tree = &json["plan_tree"];
+    assert!(tree["estimated_rows"].as_u64().is_some());
+    assert!(tree["estimated_cost"].as_f64().is_some());
+}
