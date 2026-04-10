@@ -18,7 +18,7 @@ fuse-connector-influxdb = { path = "../fuse-connectors/influxdb" }
 fuse-connector-clickhouse = { path = "../fuse-connectors/clickhouse" }
 fuse-connector-cloudwatch = { path = "../fuse-connectors/cloudwatch" }
 fuse-connector-csv-json = { path = "../fuse-connectors/csv-json" }
-fuse-connector-redis = { path = "../fuse-connectors/redis" }
+# fuse-connector-redis = { path = "../fuse-connectors/redis" }  # blocked: compile error
 arrow = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }

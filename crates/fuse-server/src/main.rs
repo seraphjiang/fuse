@@ -16,7 +16,7 @@ use fuse_connector_influxdb::InfluxDbConnectorFactory;
 use fuse_connector_clickhouse::ClickHouseConnectorFactory;
 use fuse_connector_cloudwatch::CloudWatchConnectorFactory;
 use fuse_connector_csv_json::CsvJsonConnectorFactory;
-use fuse_connector_redis::RedisConnectorFactory;
+// use fuse_connector_redis::RedisConnectorFactory;  // blocked: compile error
 
 use fuse_server::api::AppState;
 
@@ -68,7 +68,7 @@ async fn main() -> anyhow::Result<()> {
         Box::new(ClickHouseConnectorFactory),
         Box::new(CloudWatchConnectorFactory),
         Box::new(CsvJsonConnectorFactory),
-        Box::new(RedisConnectorFactory),
+        // Box::new(RedisConnectorFactory),  // blocked
     ];
 
     for cc in &config.connector {

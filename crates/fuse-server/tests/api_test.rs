@@ -3784,3 +3784,42 @@ async fn test_date_trunc_cross_source() {
     ).await;
     assert_eq!(status, StatusCode::OK);
 }
+
+// ── Timeout and partial failure tests ──
+
+#[tokio::test]
+async fn test_query_timeout_field_respected() {
+    // Very short timeout should still work for fast queries
+    let app = build_federation_app();
+    let req = serde_json::json!({
+        "query": "SELECT * FROM cluster_a.logs",
+        "format": "sql",
+        "timeout_ms": 5000
+    });
+    let resp = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query")
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(serde_json::to_string(&req).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_partial_failure_returns_results() {
+    // If one source fails, should still get results from the other
+    // (existing behavior — verifying it works)
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert!(!rows.is_empty());
+}

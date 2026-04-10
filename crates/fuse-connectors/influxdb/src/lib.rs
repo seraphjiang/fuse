@@ -65,6 +65,8 @@ impl InfluxDbConnector {
 
         let client = reqwest::Client::builder()
             .default_headers(headers)
+            .pool_max_idle_per_host(config.max_connections(8) as usize)
+            .timeout(std::time::Duration::from_secs(config.connection_timeout_secs(30)))
             .build()
             .map_err(|e| ConnectorError::Connection(e.to_string()))?;
 

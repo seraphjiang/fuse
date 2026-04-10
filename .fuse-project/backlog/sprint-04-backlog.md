@@ -57,7 +57,7 @@
 | 446 | Dashboard sharing: URL sharing, export PNG/PDF/CSV | frontend | done | Base64 URL sharing, PNG 2x retina, CSV re-query, print/PDF. Commit: 5a41f6b |
 | 447 | Variables/parameters: dropdown filters that update all panels | frontend | done | Custom + query vars, $varname substitution, auto-refresh. Commit: bbc43a3 |
 | 448 | Drill-down: click chart element → filter to that value | frontend | done | Playground: appends WHERE. Dashboard: global drill-down bar + clear. Commit: 2e88b63 |
-| 449 | One-stop-shop: expand playground into /playground + /dashboards + /explore | infra | todo | Single URL, single auth, tabbed navigation |
+| 449 | One-stop-shop: expand playground into /playground + /dashboards + /explore | frontend | done | Tabbed nav, /explore quick-viz, shared header, Explore→Dashboard handoff. Commit: 66ed1c9 |
 
 ## P1: New Connectors (DB-Engines Top 50)
 

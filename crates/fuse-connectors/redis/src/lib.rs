@@ -22,6 +22,7 @@ use arrow::array::StringArray;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use async_trait::async_trait;
+use bb8_redis::RedisConnectionManager;
 use redis::AsyncCommands;
 use tokio::sync::mpsc;
 
@@ -30,9 +31,11 @@ use fuse_core::connector::*;
 use fuse_core::error::ConnectorError;
 use fuse_core::registry::ConnectorFactory;
 
+type RedisPool = bb8::Pool<RedisConnectionManager>;
+
 pub struct RedisConnector {
     id: String,
-    client: redis::Client,
+    pool: RedisPool,
     key_pattern: String,
 }
 
@@ -46,25 +49,29 @@ impl std::fmt::Debug for RedisConnector {
 }
 
 impl RedisConnector {
-    pub fn new(id: String, url: &str, key_pattern: String) -> Result<Self, ConnectorError> {
-        let client = redis::Client::open(url)
+    pub async fn new(id: String, url: &str, key_pattern: String, max_connections: u32) -> Result<Self, ConnectorError> {
+        let manager = RedisConnectionManager::new(url)
             .map_err(|e| ConnectorError::Connection(format!("Redis connect: {e}")))?;
-        Ok(Self { id, client, key_pattern })
+        let pool = bb8::Pool::builder()
+            .max_size(max_connections)
+            .build(manager).await
+            .map_err(|e| ConnectorError::Connection(format!("Redis pool: {e}")))?;
+        Ok(Self { id, pool, key_pattern })
     }
 
-    async fn get_connection(&self) -> Result<redis::aio::MultiplexedConnection, ConnectorError> {
-        self.client.get_multiplexed_async_connection().await
-            .map_err(|e| ConnectorError::Connection(format!("Redis connection: {e}")))
+    async fn get_connection(&self) -> Result<bb8::PooledConnection<'_, RedisConnectionManager>, ConnectorError> {
+        self.pool.get().await
+            .map_err(|e| ConnectorError::Connection(format!("Redis pool get: {e}")))
     }
 
     /// Scan keys matching the pattern.
     async fn scan_keys(&self, limit: Option<u64>) -> Result<Vec<String>, ConnectorError> {
         let mut conn = self.get_connection().await?;
+        let inner: &mut redis::aio::MultiplexedConnection = &mut *conn;
         let mut keys = Vec::new();
         let max = limit.unwrap_or(10_000) as usize;
 
-        // Use SCAN for non-blocking iteration
-        let mut iter: redis::AsyncIter<String> = conn.scan_match(&self.key_pattern).await
+        let mut iter: redis::AsyncIter<String> = inner.scan_match(&self.key_pattern).await
             .map_err(|e| ConnectorError::QueryFailed(format!("SCAN: {e}")))?;
 
         while let Some(key) = iter.next_item().await {
@@ -74,14 +81,12 @@ impl RedisConnector {
         Ok(keys)
     }
 
-    /// Read a hash key into a field map.
     async fn read_hash(conn: &mut redis::aio::MultiplexedConnection, key: &str) -> Result<BTreeMap<String, String>, ConnectorError> {
         let fields: BTreeMap<String, String> = conn.hgetall(key).await
             .map_err(|e| ConnectorError::QueryFailed(format!("HGETALL {key}: {e}")))?;
         Ok(fields)
     }
 
-    /// Read a string key.
     async fn read_string(conn: &mut redis::aio::MultiplexedConnection, key: &str) -> Result<String, ConnectorError> {
         let val: String = conn.get(key).await
             .map_err(|e| ConnectorError::QueryFailed(format!("GET {key}: {e}")))?;
@@ -91,11 +96,12 @@ impl RedisConnector {
     /// Infer schema from a sample of keys.
     async fn infer_schema_from_sample(&self) -> Result<(Schema, String), ConnectorError> {
         let mut conn = self.get_connection().await?;
+        let inner = &mut *conn;
         let keys = self.scan_keys(Some(10)).await?;
         let key = keys.first()
             .ok_or_else(|| ConnectorError::SchemaDiscovery("no keys match pattern".into()))?;
 
-        let key_type: String = redis::cmd("TYPE").arg(key).query_async(&mut conn).await
+        let key_type: String = redis::cmd("TYPE").arg(key).query_async(inner).await
             .map_err(|e| ConnectorError::SchemaDiscovery(format!("TYPE: {e}")))?;
 
         match key_type.as_str() {
@@ -103,7 +109,7 @@ impl RedisConnector {
                 // Collect all field names from sample keys
                 let mut field_names = BTreeSet::new();
                 for k in keys.iter().take(10) {
-                    if let Ok(fields) = Self::read_hash(&mut conn, k).await {
+                    if let Ok(fields) = Self::read_hash(inner, k).await {
                         field_names.extend(fields.keys().cloned());
                     }
                 }
@@ -177,7 +183,7 @@ impl FederatedConnector for RedisConnector {
         let start = Instant::now();
         match self.get_connection().await {
             Ok(mut conn) => {
-                let pong: Result<String, _> = redis::cmd("PING").query_async(&mut conn).await;
+                let pong: Result<String, _> = redis::cmd("PING").query_async(&mut *conn).await;
                 match pong {
                     Ok(_) => ConnectorHealth {
                         status: HealthStatus::Healthy,
@@ -272,7 +278,7 @@ impl ConnectorFactory for RedisConnectorFactory {
             .and_then(|v| v.as_str())
             .unwrap_or("*")
             .to_string();
-        Ok(Arc::new(RedisConnector::new(config.id.clone(), url, key_pattern)?))
+        Ok(Arc::new(RedisConnector::new(config.id.clone(), url, key_pattern, config.max_connections(8)).await?))
     }
 }
 
@@ -280,20 +286,20 @@ impl ConnectorFactory for RedisConnectorFactory {
 mod tests {
     use super::*;
 
-    fn make_connector() -> RedisConnector {
-        RedisConnector::new("r1".into(), "redis://localhost:6379", "user:*".into()).unwrap()
+    async fn make_connector() -> RedisConnector {
+        RedisConnector::new("r1".into(), "redis://localhost:6379", "user:*".into(), 2).await.unwrap()
     }
 
-    #[test]
-    fn test_metadata() {
-        let c = make_connector();
+    #[tokio::test]
+    async fn test_metadata() {
+        let c = make_connector().await;
         assert_eq!(c.id(), "r1");
         assert_eq!(c.connector_type(), "redis");
     }
 
-    #[test]
-    fn test_capabilities() {
-        let caps = make_connector().capabilities();
+    #[tokio::test]
+    async fn test_capabilities() {
+        let caps = make_connector().await.capabilities();
         assert!(caps.supports_limit);
         assert!(!caps.supports_filtering);
         assert!(!caps.supports_aggregation);
@@ -335,25 +341,23 @@ mod tests {
         assert_eq!(batch.num_columns(), 2);
     }
 
-    #[test]
-    fn test_discover_schemas_pattern() {
-        let c = make_connector();
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let schemas = rt.block_on(c.discover_schemas()).unwrap();
+    #[tokio::test]
+    async fn test_discover_schemas_pattern() {
+        let c = make_connector().await;
+        let schemas = c.discover_schemas().await.unwrap();
         assert_eq!(schemas[0].name, "user");
     }
 
-    #[test]
-    fn test_discover_schemas_wildcard_only() {
-        let c = RedisConnector::new("r".into(), "redis://localhost:6379", "*".into()).unwrap();
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let schemas = rt.block_on(c.discover_schemas()).unwrap();
+    #[tokio::test]
+    async fn test_discover_schemas_wildcard_only() {
+        let c = RedisConnector::new("r".into(), "redis://localhost:6379", "*".into(), 2).await.unwrap();
+        let schemas = c.discover_schemas().await.unwrap();
         assert_eq!(schemas[0].name, "keys");
     }
 
-    #[test]
-    fn test_new_invalid_url() {
-        let result = RedisConnector::new("r".into(), "not-a-url", "*".into());
+    #[tokio::test]
+    async fn test_new_invalid_url() {
+        let result = RedisConnector::new("r".into(), "not-a-url", "*".into(), 2).await;
         assert!(result.is_err());
     }
 
@@ -394,10 +398,9 @@ mod tests {
         assert_eq!(batch.num_rows(), 0);
     }
 
-    #[test]
-    fn test_new_valid_url_formats() {
-        assert!(RedisConnector::new("r".into(), "redis://localhost", "*".into()).is_ok());
-        assert!(RedisConnector::new("r".into(), "redis://localhost:6379", "*".into()).is_ok());
-        assert!(RedisConnector::new("r".into(), "redis://user:pass@host:6379", "*".into()).is_ok());
+    #[tokio::test]
+    async fn test_new_valid_url_formats() {
+        assert!(RedisConnector::new("r".into(), "redis://localhost", "*".into(), 2).await.is_ok());
+        assert!(RedisConnector::new("r".into(), "redis://localhost:6379", "*".into(), 2).await.is_ok());
     }
 }

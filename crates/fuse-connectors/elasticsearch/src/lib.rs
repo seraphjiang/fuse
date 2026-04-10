@@ -78,6 +78,8 @@ impl ElasticsearchConnector {
             .danger_accept_invalid_certs(
                 config.properties.get("tls_insecure").and_then(|v| v.as_bool()).unwrap_or(false)
             )
+            .pool_max_idle_per_host(config.max_connections(16) as usize)
+            .timeout(std::time::Duration::from_secs(config.connection_timeout_secs(30)))
             .build()
             .map_err(|e| ConnectorError::Connection(e.to_string()))?;
 

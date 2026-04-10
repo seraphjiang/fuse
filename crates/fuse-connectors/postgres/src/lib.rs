@@ -24,7 +24,7 @@ use fuse_core::connector::*;
 use fuse_core::error::ConnectorError;
 use fuse_core::registry::ConnectorFactory;
 
-mod sql;
+pub mod sql;
 pub use sql::subquery_to_sql;
 
 // ── Connector variants ────────────────────────────────────────────────────────
@@ -50,11 +50,7 @@ impl SqlConnector {
             .and_then(|v| v.as_str())
             .ok_or_else(|| ConnectorError::Connection("missing 'url' in connector config".into()))?;
 
-        let max_conns = config
-            .properties
-            .get("max_connections")
-            .and_then(|v| v.as_integer())
-            .unwrap_or(10) as u32;
+        let max_conns = config.max_connections(10);
 
         let (pool, db_type) = if url.starts_with("postgres") {
             let p = sqlx::postgres::PgPoolOptions::new()

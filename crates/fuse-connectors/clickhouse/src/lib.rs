@@ -23,7 +23,7 @@ use fuse_core::error::ConnectorError;
 use fuse_core::registry::ConnectorFactory;
 
 // Reuse SQL generation from postgres connector pattern
-mod sql;
+pub mod sql;
 pub use sql::subquery_to_sql;
 
 #[derive(Debug)]
@@ -60,6 +60,8 @@ impl ClickHouseConnector {
 
         let client = reqwest::Client::builder()
             .default_headers(headers)
+            .pool_max_idle_per_host(config.max_connections(16) as usize)
+            .timeout(std::time::Duration::from_secs(config.connection_timeout_secs(30)))
             .build()
             .map_err(|e| ConnectorError::Connection(e.to_string()))?;
 

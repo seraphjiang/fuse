@@ -56,7 +56,17 @@ tr:hover td{background:#161b22}
 .view-toggle button.active{background:#238636;border-color:#238636;color:#fff}
 #chart-container{width:100%;height:400px;display:none;border:1px solid #21262d;border-radius:6px;background:#0d1117}
 .chart-hint{font-size:11px;color:#8b949e;padding:4px 0}
-/* Autocomplete */
+/* Syntax highlighting overlay */
+.editor-wrap{position:relative}
+.editor-highlight{position:absolute;top:0;left:0;right:0;bottom:0;padding:12px;font-family:"SF Mono",Consolas,monospace;font-size:14px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word;overflow:auto;pointer-events:none;color:transparent;border:1px solid transparent;border-radius:6px}
+.editor-highlight .kw{color:#ff7b72}
+.editor-highlight .fn{color:#d2a8ff}
+.editor-highlight .str{color:#a5d6ff}
+.editor-highlight .num{color:#79c0ff}
+.editor-highlight .op{color:#8b949e}
+.editor-highlight .cm{color:#484f58;font-style:italic}
+.editor-highlight .tbl{color:#7ee787}
+textarea#editor{background:transparent;color:#e1e4e8;caret-color:#e1e4e8;position:relative;z-index:1}
 .ac-wrap{position:relative}
 .ac-dropdown{display:none;position:absolute;z-index:60;background:#161b22;border:1px solid #30363d;border-radius:6px;max-height:200px;overflow-y:auto;min-width:220px;box-shadow:0 8px 24px rgba(0,0,0,.4);font-size:12px}
 .ac-dropdown.open{display:block}
@@ -205,7 +215,10 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
   </div>
 
   <div class="ac-wrap">
-    <textarea id="editor" placeholder="SELECT * FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20" spellcheck="false">SELECT service, status, message FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20</textarea>
+    <div class="editor-wrap">
+      <div class="editor-highlight" id="editor-highlight"></div>
+      <textarea id="editor" placeholder="SELECT * FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20" spellcheck="false">SELECT service, status, message FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20</textarea>
+    </div>
     <div class="ac-dropdown" id="ac-dropdown"></div>
   </div>
 
