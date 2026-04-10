@@ -109,3 +109,33 @@ export interface TraceResponse {
 export const PLUGIN_ID = 'fuseQuery';
 export const PLUGIN_NAME = 'Fuse Query';
 export const API_BASE = '/api/fuse_query';
+
+
+// === Dashboard types (#521) ===
+
+export interface DashboardPanel {
+  id: string;
+  title: string;
+  query: string;
+  format: 'sql' | 'ppl';
+  chartType: string;
+  width: number;
+}
+
+export interface DashboardVariable {
+  name: string;
+  label: string;
+  type: 'custom' | 'query';
+  values: string[];
+  query?: string;
+  current: string;
+}
+
+export interface SavedDashboard {
+  title: string;
+  panels: DashboardPanel[];
+  variables: DashboardVariable[];
+  timeRange: string;
+  refreshInterval: number;
+  savedAt?: number;
+}

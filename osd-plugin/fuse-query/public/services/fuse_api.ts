@@ -11,6 +11,7 @@ import {
   ExplainResponse,
   HistoryEntry,
   TraceResponse,
+  SavedDashboard,
 } from '../../common';
 
 export class FuseApiService {
@@ -53,5 +54,24 @@ export class FuseApiService {
 
   async trace(traceId: string): Promise<TraceResponse> {
     return this.http.get(`${API_BASE}/trace/${encodeURIComponent(traceId)}`);
+  }
+
+  // Dashboard persistence (#521) — uses localStorage as OSD doesn't have a dashboard backend
+  private readonly DASHBOARD_KEY = 'fuse-osd-dashboards';
+
+  getDashboards(): Record<string, SavedDashboard> {
+    try { return JSON.parse(localStorage.getItem(this.DASHBOARD_KEY) || '{}'); } catch { return {}; }
+  }
+
+  saveDashboard(dashboard: SavedDashboard): void {
+    const all = this.getDashboards();
+    all[dashboard.title] = { ...dashboard, savedAt: Date.now() };
+    localStorage.setItem(this.DASHBOARD_KEY, JSON.stringify(all));
+  }
+
+  deleteDashboard(name: string): void {
+    const all = this.getDashboards();
+    delete all[name];
+    localStorage.setItem(this.DASHBOARD_KEY, JSON.stringify(all));
   }
 }
