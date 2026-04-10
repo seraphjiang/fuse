@@ -34,6 +34,13 @@ pub fn sql_to_subquery(sql: &str) -> Result<SubQuery, ConnectorError> {
 
     let select = match *query.body {
         SetExpr::Select(s) => *s,
+        SetExpr::SetOperation { left, .. } => {
+            // For UNION ALL, extract the first SELECT branch
+            match *left {
+                SetExpr::Select(s) => *s,
+                _ => return Err(ConnectorError::QueryFailed("expected SELECT in UNION".into())),
+            }
+        }
         _ => return Err(ConnectorError::QueryFailed("expected simple SELECT".into())),
     };
 
@@ -1130,5 +1137,15 @@ mod tests {
         ).unwrap();
         // Should be captured as projection (not a known agg function)
         assert!(sq.projections.iter().any(|p| p.contains("PERCENTILE_APPROX") || p.contains("p99")));
+    }
+
+    #[test]
+    fn test_union_all_extracts_first_branch() {
+        let sq = sql_to_subquery(
+            "SELECT host, status FROM logs WHERE status >= 500 UNION ALL SELECT host, status FROM other_logs",
+        ).unwrap();
+        // Should extract filter from first SELECT branch
+        assert!(sq.filter.is_some());
+        assert!(sq.projections.contains(&"host".to_string()));
     }
 }

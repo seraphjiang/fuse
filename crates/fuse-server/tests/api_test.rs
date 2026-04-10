@@ -3165,3 +3165,203 @@ async fn test_union_all_with_explicit_limit() {
     let rows = json["rows"].as_array().unwrap();
     assert!(rows.len() <= 3, "explicit LIMIT 3 should be respected, got {}", rows.len());
 }
+
+// ── Hardening: Error message quality (tester) ──
+
+#[tokio::test]
+async fn test_error_wrong_datasource_is_helpful() {
+    let (status, json) = post_query(
+        build_test_app(),
+        "SELECT * FROM nonexistent_ds.logs",
+        "sql",
+    ).await;
+    assert_ne!(status, StatusCode::OK);
+    let err = json["error"].as_str().unwrap_or("");
+    assert!(err.contains("nonexistent_ds"), "error should mention the bad datasource: {}", err);
+    assert!(!err.contains("panic") && !err.contains("stack trace"), "should not expose internals: {}", err);
+}
+
+#[tokio::test]
+async fn test_error_bad_syntax_is_helpful() {
+    let (status, json) = post_query(
+        build_test_app(),
+        "SELEC * FORM logs",
+        "sql",
+    ).await;
+    assert_ne!(status, StatusCode::OK);
+    let err = json["error"].as_str().unwrap_or("");
+    assert!(!err.is_empty(), "should return an error message");
+    assert!(!err.contains("panic"), "should not expose internals: {}", err);
+}
+
+#[tokio::test]
+async fn test_error_empty_query() {
+    let (status, json) = post_query(build_test_app(), "", "sql").await;
+    assert_ne!(status, StatusCode::OK);
+    let err = json["error"].as_str().unwrap_or("");
+    assert!(!err.is_empty(), "empty query should return error message");
+}
+
+// ── Hardening: Edge cases (tester) ──
+
+/// Zero-row connector for edge case testing.
+#[derive(Debug)]
+struct EmptyMockConnector { id: String }
+
+#[async_trait]
+impl FederatedConnector for EmptyMockConnector {
+    fn id(&self) -> &str { &self.id }
+    fn connector_type(&self) -> &str { "empty-mock" }
+    fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+    async fn health_check(&self) -> ConnectorHealth {
+        ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(1), message: None }
+    }
+    async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
+        Ok(vec![SchemaInfo { name: "logs".into(), schema_type: SchemaType::Table, estimated_row_count: Some(0) }])
+    }
+    async fn get_schema(&self, _: &str) -> Result<Schema, ConnectorError> {
+        Ok(Schema::new(vec![
+            Field::new("host", DataType::Utf8, true),
+            Field::new("status", DataType::Int64, true),
+        ]))
+    }
+    async fn execute(&self, _: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("host", DataType::Utf8, true),
+            Field::new("status", DataType::Int64, true),
+        ]));
+        Ok(vec![RecordBatch::try_new(schema, vec![
+            Arc::new(StringArray::from(Vec::<Option<&str>>::new())),
+            Arc::new(Int64Array::from(Vec::<Option<i64>>::new())),
+        ]).map_err(ConnectorError::query)?])
+    }
+    async fn execute_streaming(&self, q: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>) -> Result<(), ConnectorError> {
+        for b in self.execute(q).await? { tx.send(Ok(b)).await.map_err(|_| ConnectorError::ChannelClosed)?; }
+        Ok(())
+    }
+}
+
+fn build_empty_source_app() -> axum::Router {
+    use fuse_server::api::{AppState, RunningQueries};
+    use fuse_core::registry::ConnectorRegistry;
+    let registry = ConnectorRegistry::new();
+    registry.register(Arc::new(MockConnector::new("has_data"))).unwrap();
+    registry.register(Arc::new(EmptyMockConnector { id: "no_data".into() })).unwrap();
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(fuse_server::history::QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+    });
+    fuse_server::build_router(state)
+}
+
+#[tokio::test]
+async fn test_edge_empty_result_set() {
+    let (status, json) = post_query(
+        build_empty_source_app(),
+        "SELECT * FROM no_data.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 0, "zero-row source should return empty rows");
+}
+
+#[tokio::test]
+async fn test_edge_union_all_with_empty_source() {
+    let (status, json) = post_query(
+        build_empty_source_app(),
+        "SELECT host, status FROM has_data.logs UNION ALL SELECT host, status FROM no_data.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2, "should get rows from has_data only");
+}
+
+#[tokio::test]
+async fn test_edge_join_with_empty_source() {
+    let (status, json) = post_query(
+        build_empty_source_app(),
+        "SELECT * FROM has_data.logs JOIN no_data.logs ON has_data.logs.host = no_data.logs.host",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 0, "JOIN with empty side should produce 0 rows");
+}
+
+#[tokio::test]
+async fn test_edge_limit_zero() {
+    let (status, json) = post_query(
+        build_test_app(),
+        "SELECT * FROM testds.logs LIMIT 0",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 0, "LIMIT 0 should return 0 rows");
+}
+
+// ── Hardening: Connector error handling (tester) ──
+
+#[tokio::test]
+async fn test_connector_error_single_source_returns_error() {
+    use fuse_server::api::{AppState, RunningQueries};
+    use fuse_core::registry::ConnectorRegistry;
+    let registry = ConnectorRegistry::new();
+    registry.register(Arc::new(FailingMockConnector::new("broken"))).unwrap();
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(fuse_server::history::QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+    });
+    let (status, json) = post_query(
+        fuse_server::build_router(state),
+        "SELECT * FROM broken.logs",
+        "sql",
+    ).await;
+    assert_ne!(status, StatusCode::OK);
+    let err = json["error"].as_str().unwrap_or("");
+    assert!(err.contains("connection refused"), "should surface connector error: {}", err);
+}
+
+#[tokio::test]
+async fn test_connector_error_union_partial_graceful() {
+    // One healthy + one failing → should still return data or a clear error
+    use fuse_server::api::{AppState, RunningQueries};
+    use fuse_core::registry::ConnectorRegistry;
+    let registry = ConnectorRegistry::new();
+    registry.register(Arc::new(MockConnector::new("good"))).unwrap();
+    registry.register(Arc::new(FailingMockConnector::new("bad"))).unwrap();
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(fuse_server::history::QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+    });
+    let (status, json) = post_query(
+        fuse_server::build_router(state),
+        "SELECT host, status FROM good.logs UNION ALL SELECT host, status FROM bad.logs",
+        "sql",
+    ).await;
+    // Either partial results (200) or clear error — not a panic/crash
+    let has_rows = json["rows"].as_array().map(|r| !r.is_empty()).unwrap_or(false);
+    let has_error = json["error"].as_str().map(|e| !e.is_empty()).unwrap_or(false);
+    assert!(has_rows || has_error, "should return partial results or clear error, got: {:?}", json);
+    if has_error {
+        let err = json["error"].as_str().unwrap();
+        assert!(!err.contains("panic"), "should not expose panic: {}", err);
+    }
+}
