@@ -12,7 +12,7 @@
 | 510 | Amazon Redshift connector | general | todo | AWS native warehouse. SQL pushdown, IAM auth |
 | 511 | DuckDB connector (local compute engine) | general | todo | In-process analytics, Arrow-native |
 | 512 | SQLite connector | general | todo | File-based, embedded |
-| 542 | Connector integration tests against real services | tester | todo | Test against live playground endpoints |
+| 542 | Connector integration tests against real services | tester | done | 21/21 green against live playground. Commit: bd7f382 |
 
 ## P0: Security Fix
 
@@ -35,7 +35,7 @@
 |----|------|-------|--------|-------|
 | 620 | Multi-tenant isolation | explorer | done | TenantConfig, TenantRegistry, datasource filtering, secure default. Commit: 2026634 |
 | 621 | Query governor (max rows, max time, max memory) | planner | todo | Per-tenant resource limits |
-| 622 | Audit logging (who queried what, when) | explorer | todo | Structured audit log with identity, query, duration, result count |
+| 622 | Audit logging (who queried what, when) | explorer | done | AuditEntry, 8 action types, bounded FIFO, identity tracking. Commit: 9f1e42e |
 
 ## P1: Ecosystem & Integration
 
@@ -65,6 +65,6 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 660 | Video recording of demo script | docs | todo | Record the v2 demo script as actual video |
+| 660 | Video recording of demo script | docs | done | v3 script, 9 scenes, ~4:30, covers all v0.5.0 features. Commit: 92f932e |
 | 661 | Community Discord/Slack setup | docs | todo | Community channel for users and contributors |
 | 662 | Roadmap page on docs-site | docs | done | Shipped/In Progress/Planned/Community sections. Commit: 05a46d9 |

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fuse-client"
+version = "0.2.0"
+description = "Python SDK for the Fuse federated query engine"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.8"
+keywords = ["fuse", "federated-query", "opensearch", "sql", "observability"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+]
+
+[project.urls]
+Homepage = "https://github.com/seraphjiang/fuse"
+Documentation = "https://seraphjiang.github.io/fuse/"

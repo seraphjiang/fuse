@@ -288,10 +288,10 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
   </div>
 </div>
 
-<header>
+<header role="banner">
   <div style="display:flex;align-items:center;gap:16px">
     <h1>Fuse</h1>
-    <nav class="nav-tabs">
+    <nav class="nav-tabs" role="navigation" aria-label="Main navigation">
       <a href="/playground" class="nav-tab active">Playground</a>
       <a href="/dashboard" class="nav-tab">Dashboard</a>
       <a href="/explore" class="nav-tab">Explore</a>
@@ -311,7 +311,7 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
   </div>
 </header>
 
-<main>
+<main role="main" aria-label="Query playground">
   <div class="toolbar">
     <select id="format">
       <option value="sql">SQL</option>

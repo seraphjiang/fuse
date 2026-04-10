@@ -139,12 +139,15 @@ impl FederatedConnector for DuckDbConnector {
                 .map_err(|e| ConnectorError::query(e))?;
             let mut stmt = conn.prepare(&sql).map_err(|e| ConnectorError::query(e))?;
 
-            // Collect rows as JSON-like values
-            let col_count = stmt.column_count();
-            let col_names: Vec<String> = (0..col_count).map(|i| stmt.column_name(i).unwrap_or(&"col".to_string()).to_string()).collect();
+            let mut rows = stmt.query([]).map_err(|e| ConnectorError::query(e))?;
+
+            // Get column info from statement after query() is called
+            let (col_count, col_names) = match rows.as_ref() {
+                Some(stmt) => (stmt.column_count(), stmt.column_names()),
+                None => (0, vec![]),
+            };
 
             let mut col_data: Vec<Vec<Option<String>>> = vec![vec![]; col_count];
-            let mut rows = stmt.query([]).map_err(|e| ConnectorError::query(e))?;
             while let Some(row) = rows.next().map_err(|e| ConnectorError::query(e))? {
                 for i in 0..col_count {
                     let val: Option<String> = row.get::<_, Option<String>>(i)
@@ -155,7 +158,7 @@ impl FederatedConnector for DuckDbConnector {
                 }
             }
 
-            if col_data.is_empty() || col_data[0].is_empty() { return Ok(vec![]); }
+            if col_count == 0 || col_data.is_empty() || col_data[0].is_empty() { return Ok(vec![]); }
 
             let fields: Vec<Field> = col_names.iter().map(|n| Field::new(n, DataType::Utf8, true)).collect();
             let arrays: Vec<ArrayRef> = col_data.into_iter()

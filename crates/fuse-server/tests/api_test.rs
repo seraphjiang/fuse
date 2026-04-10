@@ -4097,3 +4097,57 @@ fn test_split_statements_single() {
     let stmts = fuse_server::api::split_statements("SELECT * FROM t");
     assert_eq!(stmts.len(), 1);
 }
+
+// ── #530 Result caching verification (tester) ──
+
+#[test]
+fn test_result_cache_hit_and_miss() {
+    use fuse_server::plan_cache::ResultCache;
+    let cache = ResultCache::new(300, 100);
+    let key = "sql:SELECT * FROM test".to_string();
+    let result = fuse_server::plan_cache::CachedResult {
+        response_json: serde_json::json!({"rows": [], "columns": []}),
+    };
+    assert!(cache.get(&key).is_none(), "should miss before insert");
+    cache.insert(key.clone(), result);
+    assert!(cache.get(&key).is_some(), "should hit after insert");
+    assert!(cache.get("sql:SELECT * FROM other").is_none(), "different query should miss");
+}
+
+#[test]
+fn test_result_cache_key_format() {
+    // Cache key is "format:query" — different formats = different keys
+    use fuse_server::plan_cache::ResultCache;
+    let cache = ResultCache::new(300, 100);
+    let result = fuse_server::plan_cache::CachedResult {
+        response_json: serde_json::json!({"rows": []}),
+    };
+    cache.insert("sql:SELECT 1".into(), result.clone());
+    assert!(cache.get("sql:SELECT 1").is_some());
+    assert!(cache.get("ppl:SELECT 1").is_none(), "different format = different key");
+}
+
+#[test]
+fn test_plan_cache_ttl_expiry() {
+    use fuse_server::plan_cache::PlanCache;
+    // TTL of 0 seconds = immediate expiry
+    let cache = PlanCache::new(0, 100);
+    let plan = fuse_server::plan_cache::CachedPlan {
+        refs: vec![("ds".into(), "table".into())],
+        created: std::time::Instant::now() - std::time::Duration::from_secs(1),
+    };
+    cache.insert("key".into(), plan);
+    assert!(cache.get("key").is_none(), "expired entry should not be returned");
+}
+
+// ── #412 Approximate aggregations verification (tester) ──
+
+#[test]
+fn test_approx_percentile_variant_exists() {
+    use fuse_core::connector::AggFunction;
+    let p = AggFunction::ApproxPercentile(95.0);
+    match p {
+        AggFunction::ApproxPercentile(v) => assert_eq!(v, 95.0),
+        _ => panic!("should be ApproxPercentile"),
+    }
+}
