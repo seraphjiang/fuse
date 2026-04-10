@@ -66,7 +66,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 350 | Cross-datasource integration test suite | tester | todo | JOIN, UNION, lookup across real connectors |
+| 350 | Cross-datasource integration test suite | tester | done | 6 tests: JOIN, UNION ALL, correlated subquery, 3-source, GROUP BY. Commit: 4d089d0. Tests: 654→660 |
 | 351 | Pagination E2E tests (cursor, offset, deep pages) | tester | done | 5 cursor tests, roundtrip verified. Commit: bdd2cff. Tests: 599→609 |
 | 352 | Aggregation correctness tests (window, percentile, computed) | tester | done | 10 tests verifying #321/#332-336. Commit: 0c0082e. Tests: 589→599 |
 | 353 | New connector E2E tests (DynamoDB, PostgreSQL, etc.) | tester | done | Conformance framework + MockConnector. Commit: 2306031. 5 tests |

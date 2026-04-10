@@ -3050,3 +3050,47 @@ async fn test_cross_ds_group_by_across_types() {
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 2, "GROUP BY host across 2 sources → 2 groups");
 }
+
+// ── UNION ALL default limit test ──
+
+#[tokio::test]
+async fn test_union_all_without_limit_applies_default() {
+    // UNION ALL without explicit LIMIT should still return results
+    // (infra fix: default 10k limit per source to avoid scroll issues)
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    // MockConnector returns 2 rows per source — should get all 4
+    assert_eq!(rows.len(), 4);
+}
+
+#[tokio::test]
+async fn test_union_all_explicit_limit_overrides() {
+    // Explicit LIMIT should still work and cap results
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs LIMIT 2",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+}
+
+#[tokio::test]
+async fn test_three_source_union_without_limit() {
+    // 3-source UNION ALL without LIMIT — each source gets default limit
+    let (status, json) = post_query(
+        build_three_source_app(),
+        "SELECT * FROM opensearch_logs.logs UNION ALL SELECT * FROM s3_logs.logs UNION ALL SELECT * FROM cloudwatch_logs.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    // 2 rows × 3 sources = 6, all within default limit
+    assert_eq!(rows.len(), 6);
+}
