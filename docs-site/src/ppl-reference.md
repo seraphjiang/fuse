@@ -123,6 +123,19 @@ source = cluster_a.application_logs
 | rare 5 service
 ```
 
+## lookup (Cross-Source Enrichment)
+
+Enrich results by looking up fields from another datasource:
+
+```
+source = cluster_a.application_logs
+| where status >= 500
+| lookup dynamodb.users user_id AS user_id REPLACE name, role
+| stats count() by role
+```
+
+This joins each row from `cluster_a.application_logs` with matching rows from `dynamodb.users` on `user_id`, adding the `name` and `role` fields. It's the PPL equivalent of a SQL JOIN.
+
 ## Multi-Source Queries
 
 Query across clusters in a single PPL statement:
