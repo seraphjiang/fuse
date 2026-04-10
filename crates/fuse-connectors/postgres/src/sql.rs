@@ -244,4 +244,131 @@ mod tests {
         let sql = subquery_to_sql(&q);
         assert!(sql.contains("HAVING cnt > 5"));
     }
+
+    // ── #301 Verification tests (tester) ──
+
+    #[test]
+    fn test_ilike_pushdown() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::Comparison {
+                field: "name".into(),
+                op: ComparisonOp::ILike,
+                value: ScalarValue::Utf8("%alice%".into()),
+            }),
+            ..base()
+        };
+        assert_eq!(subquery_to_sql(&q), "SELECT * FROM users WHERE name ILIKE '%alice%'");
+    }
+
+    #[test]
+    fn test_count_distinct_pushdown() {
+        let q = SubQuery {
+            aggregations: vec![AggregationExpr {
+                function: AggFunction::CountDistinct,
+                field: Some("email".into()),
+                alias: "uniq".into(),
+            }],
+            ..base()
+        };
+        assert_eq!(subquery_to_sql(&q), "SELECT COUNT(DISTINCT email) AS uniq FROM users");
+    }
+
+    #[test]
+    fn test_not_filter() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::Not(Box::new(FilterExpr::Comparison {
+                field: "active".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Boolean(true),
+            }))),
+            ..base()
+        };
+        assert_eq!(subquery_to_sql(&q), "SELECT * FROM users WHERE NOT (active = true)");
+    }
+
+    #[test]
+    fn test_compound_and_or() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::Or(
+                Box::new(FilterExpr::And(
+                    Box::new(FilterExpr::Comparison { field: "a".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(1) }),
+                    Box::new(FilterExpr::Comparison { field: "b".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(2) }),
+                )),
+                Box::new(FilterExpr::Comparison { field: "c".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(3) }),
+            )),
+            ..base()
+        };
+        let sql = subquery_to_sql(&q);
+        assert!(sql.contains("(a = 1 AND b = 2)"));
+        assert!(sql.contains("OR c = 3"));
+    }
+
+    #[test]
+    fn test_multi_sort() {
+        let q = SubQuery {
+            sort: vec![
+                SortExpr { field: "region".into(), descending: false },
+                SortExpr { field: "created_at".into(), descending: true },
+            ],
+            ..base()
+        };
+        assert_eq!(subquery_to_sql(&q), "SELECT * FROM users ORDER BY region, created_at DESC");
+    }
+
+    #[test]
+    fn test_full_pushdown_combined() {
+        let q = SubQuery {
+            projections: vec![],
+            aggregations: vec![AggregationExpr { function: AggFunction::Count, field: None, alias: "cnt".into() }],
+            group_by: vec!["region".into()],
+            filter: Some(FilterExpr::Comparison { field: "active".into(), op: ComparisonOp::Eq, value: ScalarValue::Boolean(true) }),
+            having: Some(FilterExpr::Comparison { field: "cnt".into(), op: ComparisonOp::Gte, value: ScalarValue::Int64(10) }),
+            sort: vec![SortExpr { field: "cnt".into(), descending: true }],
+            limit: Some(5),
+            ..base()
+        };
+        let sql = subquery_to_sql(&q);
+        assert!(sql.starts_with("SELECT region, COUNT(*) AS cnt FROM users"));
+        assert!(sql.contains("WHERE active = true"));
+        assert!(sql.contains("GROUP BY region"));
+        assert!(sql.contains("HAVING cnt >= 10"));
+        assert!(sql.contains("ORDER BY cnt DESC"));
+        assert!(sql.ends_with("LIMIT 5"));
+    }
+
+    #[test]
+    fn test_single_quote_double_escape() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::Comparison {
+                field: "name".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Utf8("it's a 'test'".into()),
+            }),
+            ..base()
+        };
+        let sql = subquery_to_sql(&q);
+        assert!(sql.contains("it''s a ''test''"), "multiple quotes should all be escaped: {}", sql);
+    }
+
+    #[test]
+    fn test_is_not_null() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::IsNotNull("email".into())),
+            ..base()
+        };
+        assert_eq!(subquery_to_sql(&q), "SELECT * FROM users WHERE email IS NOT NULL");
+    }
+
+    #[test]
+    fn test_null_scalar_value() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::Comparison {
+                field: "x".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Null,
+            }),
+            ..base()
+        };
+        assert!(subquery_to_sql(&q).contains("x = NULL"));
+    }
 }

@@ -9,8 +9,8 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 300 | DynamoDB connector | general | done | Scan/Query, full filter pushdown, 18 tests. Commit: a89c037 |
-| 301 | PostgreSQL/MySQL connector (JDBC-style) | general | todo | SQL passthrough, schema discovery, connection pooling |
-| 302 | Elasticsearch connector (distinct from OpenSearch) | general | todo | REST API, version-aware (ES 7.x/8.x), Query DSL pushdown |
+| 301 | PostgreSQL/MySQL connector (JDBC-style) | general | done | sqlx PgPool/MySqlPool, full SQL pushdown, 17 tests. Commit: 853fa9e |
+| 302 | Elasticsearch connector (distinct from OpenSearch) | general | done | ES 7.x/8.x, API key + Basic auth, full Query DSL pushdown. Commit: 537f733 |
 | 303 | Redis connector (key-value + sorted sets) | explorer | done | 8th connector. SCAN, hash+string types, 8 tests. Commit: afd98f8 |
 | 304 | CSV/JSON file connector (local or S3) | explorer | done | 7th connector. Auto-detect format, schema inference, 13 tests. Commit: c97bfea |
 | 305 | Deploy new connectors to playground with sample data | infra | todo | Depends: 300-304. Add to fuse.toml, seed demo data |
