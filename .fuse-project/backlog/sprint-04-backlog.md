@@ -9,7 +9,7 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 400 | CTEs (WITH clause) | planner | done | Parse → execute inner → MemoryConnector → main SELECT. Cross-datasource. Commit: f36e421 |
-| 401 | Time-windowed JOINs | planner | todo | JOIN ON key AND timestamp BETWEEN t1 AND t2. Critical for log correlation within time windows |
+| 401 | Time-windowed JOINs | planner | done | Hash join + post-join time-window filter. BETWEEN + INTERVAL support. Tests: 537→543 |
 | 402 | HAVING clause on cross-source GROUP BY | planner | todo | Filter aggregated results after federated re-aggregation |
 | 403 | Nested/JSON field access (dot notation) | general | done | get_nested() across OS, ES, MongoDB, ClickHouse. Dot-path traversal |
 | 404 | DISTINCT / COUNT DISTINCT across sources | planner | todo | Deduplicated counts across federated UNION ALL. Cardinality analysis |
@@ -29,7 +29,7 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 420 | Full-text search syntax | planner | todo | WHERE message CONTAINS 'OutOfMemory' or MATCH(). Bridge SQL + OpenSearch full-text |
-| 421 | Cross-source trace reconstruction | explorer | todo | Given trace_id, auto-query all datasources, reconstruct full trace timeline |
+| 421 | Cross-source trace reconstruction | explorer | done | GET /api/fuse/trace/{trace_id}, parallel fan-out, unified timeline. Commit: 3f5b498 |
 | 422 | Anomaly detection primitives | planner | todo | Moving avg, stddev, z-score across time-bucketed data. Statistical outlier detection |
 | 423 | Saved queries / virtual views | planner | todo | CREATE VIEW unified_logs AS SELECT ... UNION ALL ... Virtual tables over cross-source queries |
 

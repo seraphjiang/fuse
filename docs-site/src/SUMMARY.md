@@ -5,6 +5,7 @@
 ---
 
 - [Getting Started](./getting-started.md)
+- [Architecture](./architecture.md)
 - [SQL Reference](./sql-reference.md)
 - [PPL Reference](./ppl-reference.md)
 - [API Reference](./api-reference.md)
