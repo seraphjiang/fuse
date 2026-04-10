@@ -43,7 +43,7 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 330 | Window functions (ROW_NUMBER, RANK, LAG, LEAD) | planner | done | Via passthrough, OVER clause skip fix. Commit: fdd3073. Tests: 500→505 |
-| 331 | PERCENTILE / PERCENTILE_APPROX aggregation | planner | todo | OpenSearch → percentiles agg, others → post-compute |
+| 331 | PERCENTILE / PERCENTILE_APPROX aggregation | planner | done | Via passthrough. Commit: 5a4f39b. Tests: 505→508 |
 | 332 | Computed columns (expressions in SELECT) | planner | done | Pass-through SQL expressions. Commit: 0631c5b |
 | 333 | CASE WHEN expressions | planner | done | Via passthrough + partial WHERE translation. Commit: f14f517. 3 tests |
 | 334 | Date/time functions (DATE_TRUNC, DATE_DIFF, NOW()) | planner | done | Via computed column passthrough. Commit: f14f517. 3 tests |
