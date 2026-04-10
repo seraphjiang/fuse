@@ -1036,5 +1036,6 @@ if (window.location.hash === '#add-from-explore') {
   history.replaceState(null, '', '/dashboard');
 }
 </script>
+<script>fetch("/feedback-widget").then(r=>r.text()).then(h=>{const d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d);const s=d.querySelectorAll("script");s.forEach(sc=>{const n=document.createElement("script");n.textContent=sc.textContent;document.body.appendChild(n);});})</script>
 </body>
 </html>

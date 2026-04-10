@@ -32,6 +32,7 @@ const STATUS_HTML: &str = include_str!("../../../playground/status.html");
 const HELP_HTML: &str = include_str!("../../../playground/help.html");
 const ADMIN_HTML: &str = include_str!("../../../playground/admin.html");
 const CHANGELOG_HTML: &str = include_str!("../../../playground/changelog.html");
+const FEEDBACK_WIDGET_HTML: &str = include_str!("../../../playground/feedback-widget.html");
 
 async fn playground() -> impl IntoResponse {
     ([(header::CACHE_CONTROL, "no-cache")], Html(PLAYGROUND_HTML))
@@ -65,6 +66,10 @@ async fn changelog() -> impl IntoResponse {
     ([(header::CACHE_CONTROL, "no-cache")], Html(CHANGELOG_HTML))
 }
 
+async fn feedback_widget() -> impl IntoResponse {
+    ([(header::CACHE_CONTROL, "no-cache")], Html(FEEDBACK_WIDGET_HTML))
+}
+
 /// Build the Fuse API router with the given shared state.
 /// Build the Fuse API router with the given shared state and default rate limits.
 pub fn build_router(state: Arc<AppState>) -> Router {
@@ -83,6 +88,7 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/help", get(help))
         .route("/admin", get(admin))
         .route("/changelog", get(changelog))
+        .route("/feedback-widget", get(feedback_widget))
         .route("/api/fuse/query", post(api::query_handler))
         .route("/api/fuse/query/stream", post(streaming::stream_handler))
         .route("/api/fuse/datasources", get(api::list_datasources))
