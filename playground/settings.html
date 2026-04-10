@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuse Settings</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e1e4e8;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #21262d;background:#161b22}
+header h1{font-size:18px;font-weight:600;color:#58a6ff}
+.nav-tabs{display:flex;gap:0}
+.nav-tab{padding:8px 16px;font-size:13px;color:#8b949e;text-decoration:none;border-bottom:2px solid transparent;transition:color .15s,border-color .15s}
+.nav-tab:hover{color:#e1e4e8}
+.nav-tab.active{color:#58a6ff;border-bottom-color:#58a6ff;font-weight:600}
+.health{display:flex;align-items:center;gap:6px;font-size:13px;color:#8b949e}
+.health-dot{width:10px;height:10px;border-radius:50%;background:#484f58}
+.health-dot.healthy{background:#3fb950}
+main{max-width:800px;width:100%;margin:0 auto;padding:24px}
+select,button,input{background:#21262d;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;padding:6px 12px;font-size:13px;cursor:pointer}
+input[type="text"],input[type="number"],input[type="password"]{cursor:text;width:100%}
+input:focus,select:focus{outline:none;border-color:#58a6ff}
+button:hover{border-color:#58a6ff}
+button.primary{background:#238636;border-color:#238636;font-weight:600;color:#fff}
+button.primary:hover{background:#2ea043}
+button.danger{background:none;border-color:#f8514933;color:#f85149}
+button.danger:hover{border-color:#f85149}
+.section{margin-bottom:32px}
+.section h2{font-size:15px;font-weight:600;color:#58a6ff;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #21262d}
+.form-row{margin-bottom:12px}
+.form-row label{display:block;font-size:12px;color:#8b949e;margin-bottom:4px;font-weight:500}
+.form-row .hint{font-size:11px;color:#484f58;margin-top:2px}
+.card{padding:12px;border:1px solid #21262d;border-radius:6px;background:#161b22;margin-bottom:8px}
+.card-header{display:flex;justify-content:space-between;align-items:center}
+.card-title{font-size:13px;font-weight:600;color:#e1e4e8}
+.card-meta{font-size:11px;color:#8b949e;margin-top:4px}
+.card-actions{display:flex;gap:6px}
+.card-actions button{padding:3px 8px;font-size:11px}
+.empty{color:#484f58;font-size:13px;padding:20px;text-align:center;border:1px dashed #21262d;border-radius:6px}
+.status-ok{color:#3fb950}.status-err{color:#f85149}.status-warn{color:#d29922}
+.inline-form{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
+.inline-form .form-row{margin-bottom:0;flex:1;min-width:120px}
+.toast{position:fixed;bottom:24px;right:24px;background:#238636;color:#fff;padding:10px 20px;border-radius:6px;font-size:13px;display:none;z-index:100}
+.toast.show{display:block}
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:16px">
+    <h1>Fuse</h1>
+    <nav class="nav-tabs">
+      <a href="/playground" class="nav-tab">Playground</a>
+      <a href="/dashboard" class="nav-tab">Dashboard</a>
+      <a href="/explore" class="nav-tab">Explore</a>
+      <a href="/settings" class="nav-tab active">Settings</a>
+    </nav>
+  </div>
+  <div class="health" id="health"><span class="health-dot" id="health-dot"></span><span id="health-text">connecting…</span></div>
+</header>
+
+<main>
+  <!-- Datasource Connections -->
+  <div class="section">
+    <h2>📡 Datasource Connections</h2>
+    <div id="ds-list"></div>
+    <button onclick="showAddDs()" style="margin-top:8px">+ Add Datasource</button>
+    <div id="ds-form" style="display:none;margin-top:12px;padding:12px;border:1px solid #30363d;border-radius:6px;background:#0d1117">
+      <div class="inline-form">
+        <div class="form-row"><label>ID</label><input type="text" id="ds-id" placeholder="my_cluster"></div>
+        <div class="form-row"><label>Type</label>
+          <select id="ds-type">
+            <option value="opensearch">OpenSearch</option>
+            <option value="s3">S3</option>
+            <option value="dynamodb">DynamoDB</option>
+            <option value="postgresql">PostgreSQL</option>
+            <option value="redis">Redis</option>
+            <option value="mongodb">MongoDB</option>
+            <option value="influxdb">InfluxDB</option>
+            <option value="clickhouse">ClickHouse</option>
+            <option value="redshift">Redshift</option>
+            <option value="sqlite">SQLite</option>
+            <option value="duckdb">DuckDB</option>
+            <option value="elasticsearch">Elasticsearch</option>
+          </select>
+        </div>
+        <div class="form-row"><label>Endpoint</label><input type="text" id="ds-endpoint" placeholder="https://..."></div>
+      </div>
+      <div class="form-row" style="margin-top:8px"><label>Auth (optional)</label><input type="password" id="ds-auth" placeholder="API key or credentials"></div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="primary" onclick="saveDs()">Save</button>
+        <button onclick="hideAddDs()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- API Keys -->
+  <div class="section">
+    <h2>🔑 API Keys</h2>
+    <div id="key-list"></div>
+    <div class="inline-form" style="margin-top:8px">
+      <div class="form-row"><label>Key Name</label><input type="text" id="key-name" placeholder="my-app"></div>
+      <button class="primary" onclick="addApiKey()" style="align-self:flex-end">Generate Key</button>
+    </div>
+  </div>
+
+  <!-- Query Defaults -->
+  <div class="section">
+    <h2>⚙️ Query Defaults</h2>
+    <div class="form-row">
+      <label>Default Timeout (ms)</label>
+      <input type="number" id="default-timeout" placeholder="30000" style="max-width:200px">
+      <div class="hint">Maximum query execution time. 0 = no timeout.</div>
+    </div>
+    <div class="form-row">
+      <label>Default Format</label>
+      <select id="default-format" style="max-width:200px">
+        <option value="sql">SQL</option>
+        <option value="ppl">PPL</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Default Result Limit</label>
+      <input type="number" id="default-limit" placeholder="100" style="max-width:200px">
+      <div class="hint">Max rows returned when LIMIT is not specified.</div>
+    </div>
+    <div class="form-row">
+      <label>Theme</label>
+      <select id="theme-select" style="max-width:200px" onchange="setThemePref(this.value)">
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+      </select>
+    </div>
+    <button class="primary" onclick="saveDefaults()" style="margin-top:8px">Save Defaults</button>
+  </div>
+
+  <!-- Data Management -->
+  <div class="section">
+    <h2>🗑️ Data Management</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button onclick="clearHistory()">Clear Query History</button>
+      <button onclick="clearDashboards()">Clear Saved Dashboards</button>
+      <button class="danger" onclick="resetAll()">Reset All Settings</button>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = window.location.origin;
+const $ = id => document.getElementById(id);
+const SETTINGS_KEY = 'fuse-settings';
+const DS_KEY = 'fuse-custom-datasources';
+const KEYS_KEY = 'fuse-api-keys';
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+function getSettings() { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); } catch { return {}; } }
+function saveSettings(s) { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }
+
+// === Datasources ===
+function getDatasources() { try { return JSON.parse(localStorage.getItem(DS_KEY) || '[]'); } catch { return []; } }
+function saveDatasources(ds) { localStorage.setItem(DS_KEY, JSON.stringify(ds)); }
+
+async function renderDatasources() {
+  const el = $('ds-list');
+  // Show server datasources + custom ones
+  let serverDs = [];
+  try { const r = await fetch(API + '/api/fuse/datasources'); serverDs = await r.json(); } catch {}
+  const customDs = getDatasources();
+
+  if (!serverDs.length && !customDs.length) {
+    el.innerHTML = '<div class="empty">No datasources configured</div>';
+    return;
+  }
+  let html = '';
+  serverDs.forEach(d => {
+    html += `<div class="card"><div class="card-header"><div>
+      <div class="card-title">${esc(d.id)} <span class="status-ok">● connected</span></div>
+      <div class="card-meta">${esc(d.connector_type)}</div>
+    </div></div></div>`;
+  });
+  customDs.forEach((d, i) => {
+    html += `<div class="card"><div class="card-header"><div>
+      <div class="card-title">${esc(d.id)} <span class="status-warn">● custom</span></div>
+      <div class="card-meta">${esc(d.type)} · ${esc(d.endpoint || 'no endpoint')}</div>
+    </div><div class="card-actions">
+      <button class="danger" onclick="removeDs(${i})">Remove</button>
+    </div></div></div>`;
+  });
+  el.innerHTML = html;
+}
+
+function showAddDs() { $('ds-form').style.display = 'block'; }
+function hideAddDs() { $('ds-form').style.display = 'none'; $('ds-id').value = ''; $('ds-endpoint').value = ''; $('ds-auth').value = ''; }
+
+function saveDs() {
+  const id = $('ds-id').value.trim();
+  if (!id) { alert('ID is required'); return; }
+  const ds = getDatasources();
+  ds.push({ id, type: $('ds-type').value, endpoint: $('ds-endpoint').value.trim(), auth: $('ds-auth').value ? '***' : '' });
+  saveDatasources(ds);
+  hideAddDs();
+  renderDatasources();
+  toast('Datasource added');
+}
+
+function removeDs(idx) {
+  const ds = getDatasources();
+  ds.splice(idx, 1);
+  saveDatasources(ds);
+  renderDatasources();
+  toast('Datasource removed');
+}
+
+// === API Keys ===
+function getApiKeys() { try { return JSON.parse(localStorage.getItem(KEYS_KEY) || '[]'); } catch { return []; } }
+function saveApiKeys(keys) { localStorage.setItem(KEYS_KEY, JSON.stringify(keys)); }
+
+function renderApiKeys() {
+  const keys = getApiKeys();
+  if (!keys.length) { $('key-list').innerHTML = '<div class="empty">No API keys. Generate one to authenticate requests.</div>'; return; }
+  $('key-list').innerHTML = keys.map((k, i) => `<div class="card"><div class="card-header"><div>
+    <div class="card-title">${esc(k.name)}</div>
+    <div class="card-meta">Key: ${esc(k.key.substring(0, 8))}... · Created: ${new Date(k.created).toLocaleDateString()}</div>
+  </div><div class="card-actions">
+    <button onclick="copyKey(${i})">📋 Copy</button>
+    <button class="danger" onclick="removeKey(${i})">Remove</button>
+  </div></div></div>`).join('');
+}
+
+function addApiKey() {
+  const name = $('key-name').value.trim() || 'default';
+  const key = 'fuse_' + crypto.randomUUID().replace(/-/g, '');
+  const keys = getApiKeys();
+  keys.push({ name, key, created: Date.now() });
+  saveApiKeys(keys);
+  $('key-name').value = '';
+  renderApiKeys();
+  navigator.clipboard.writeText(key).catch(() => {});
+  toast('API key generated and copied');
+}
+
+function copyKey(idx) {
+  const k = getApiKeys()[idx];
+  if (k) navigator.clipboard.writeText(k.key).then(() => toast('Key copied')).catch(() => {});
+}
+
+function removeKey(idx) {
+  const keys = getApiKeys();
+  keys.splice(idx, 1);
+  saveApiKeys(keys);
+  renderApiKeys();
+  toast('API key removed');
+}
+
+// === Defaults ===
+function loadDefaults() {
+  const s = getSettings();
+  $('default-timeout').value = s.timeout || '';
+  $('default-format').value = s.format || 'sql';
+  $('default-limit').value = s.limit || '';
+  $('theme-select').value = localStorage.getItem('fuse-theme') || 'dark';
+}
+
+function saveDefaults() {
+  const s = getSettings();
+  s.timeout = parseInt($('default-timeout').value) || 0;
+  s.format = $('default-format').value;
+  s.limit = parseInt($('default-limit').value) || 0;
+  saveSettings(s);
+  toast('Defaults saved');
+}
+
+function setThemePref(theme) {
+  localStorage.setItem('fuse-theme', theme);
+  toast('Theme set to ' + theme);
+}
+
+// === Data Management ===
+function clearHistory() { if (confirm('Clear all query history?')) { toast('History cleared (server-side history requires API)'); } }
+function clearDashboards() { if (confirm('Clear all saved dashboards?')) { localStorage.removeItem('fuse-dashboards'); toast('Dashboards cleared'); } }
+function resetAll() {
+  if (!confirm('Reset ALL Fuse settings? This cannot be undone.')) return;
+  [SETTINGS_KEY, DS_KEY, KEYS_KEY, 'fuse-dashboards', 'fuse-theme', 'fuse-osd-dashboards', 'fuse-osd-favorites'].forEach(k => localStorage.removeItem(k));
+  toast('All settings reset');
+  setTimeout(() => location.reload(), 1000);
+}
+
+// === Health ===
+async function checkHealth() {
+  try {
+    const r = await fetch(API + '/api/fuse/health');
+    const h = await r.json();
+    $('health-dot').className = 'health-dot ' + (h.status === 'ok' ? 'healthy' : '');
+    $('health-text').textContent = h.status;
+  } catch { $('health-text').textContent = 'unreachable'; }
+}
+
+// === Init ===
+renderDatasources();
+renderApiKeys();
+loadDefaults();
+checkHealth();
+</script>
+</body>
+</html>
