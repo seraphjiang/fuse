@@ -53,7 +53,25 @@ pub struct ConnectorConfig {
     pub properties: HashMap<String, toml::Value>,
 }
 
-impl FuseConfig {
+impl ConnectorConfig {
+    /// Read `max_connections` from properties, defaulting to `default`.
+    pub fn max_connections(&self, default: u32) -> u32 {
+        self.properties
+            .get("max_connections")
+            .and_then(|v| v.as_integer())
+            .map(|n| n as u32)
+            .unwrap_or(default)
+    }
+
+    /// Read `connection_timeout_secs` from properties, defaulting to `default`.
+    pub fn connection_timeout_secs(&self, default: u64) -> u64 {
+        self.properties
+            .get("connection_timeout_secs")
+            .and_then(|v| v.as_integer())
+            .map(|n| n as u64)
+            .unwrap_or(default)
+    }
+
     pub fn from_file(path: &str) -> Result<Self, crate::error::FuseError> {
         let content =
             std::fs::read_to_string(path).map_err(|e| crate::error::FuseError::Config(e.to_string()))?;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub mod api;
+pub mod auth;
 pub mod health;
 pub mod history;
 pub mod metrics;
@@ -79,6 +80,8 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/metrics", get(metrics::metrics_handler))
         .layer(middleware::from_fn(rate_limit::rate_limit_middleware))
         .layer(axum::Extension(rl))
+        .layer(middleware::from_fn(auth::auth_middleware))
+        .layer(axum::Extension(auth::AuthState::default()))
         .layer(TraceLayer::new_for_http()
             .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(Level::INFO))
             .on_response(tower_http::trace::DefaultOnResponse::new().level(Level::INFO)))
