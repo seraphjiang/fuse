@@ -1,0 +1,331 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>What is Fuse? - Fuse — Federated Query Engine</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "navy";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="what-is-fuse.html" class="active"><strong aria-hidden="true">1.</strong> What is Fuse?</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">2.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">3.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="sql-reference.html"><strong aria-hidden="true">4.</strong> SQL Reference</a></li><li class="chapter-item expanded "><a href="ppl-reference.html"><strong aria-hidden="true">5.</strong> PPL Reference</a></li><li class="chapter-item expanded "><a href="connectors.html"><strong aria-hidden="true">6.</strong> Connectors</a></li><li class="chapter-item expanded "><a href="dashboard-guide.html"><strong aria-hidden="true">7.</strong> Dashboard Guide</a></li><li class="chapter-item expanded "><a href="data-provenance.html"><strong aria-hidden="true">8.</strong> Data Provenance</a></li><li class="chapter-item expanded "><a href="explain-analyze.html"><strong aria-hidden="true">9.</strong> EXPLAIN / ANALYZE</a></li><li class="chapter-item expanded "><a href="performance-tuning.html"><strong aria-hidden="true">10.</strong> Performance Tuning</a></li><li class="chapter-item expanded "><a href="migration-guide.html"><strong aria-hidden="true">11.</strong> Migration from OpenSearch</a></li><li class="chapter-item expanded "><a href="troubleshooting.html"><strong aria-hidden="true">12.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="troubleshooting-faq.html"><strong aria-hidden="true">13.</strong> Troubleshooting FAQ</a></li><li class="chapter-item expanded affix "><li class="part-title">SDKs & Integrations</li><li class="chapter-item expanded "><a href="python-sdk.html"><strong aria-hidden="true">14.</strong> Python SDK</a></li><li class="chapter-item expanded "><a href="typescript-sdk.html"><strong aria-hidden="true">15.</strong> TypeScript SDK</a></li><li class="chapter-item expanded "><a href="sdk-comparison.html"><strong aria-hidden="true">16.</strong> SDK Comparison (Python vs TypeScript)</a></li><li class="chapter-item expanded "><a href="jupyter-integration.html"><strong aria-hidden="true">17.</strong> Jupyter Notebooks</a></li><li class="chapter-item expanded "><a href="grafana-plugin.html"><strong aria-hidden="true">18.</strong> Grafana Plugin</a></li><li class="chapter-item expanded affix "><li class="part-title">API</li><li class="chapter-item expanded "><a href="api-reference.html"><strong aria-hidden="true">19.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="api-reference-guide.html"><strong aria-hidden="true">20.</strong> API Guide (curl examples)</a></li><li class="chapter-item expanded affix "><li class="part-title">Administration</li><li class="chapter-item expanded "><a href="admin-guide.html"><strong aria-hidden="true">21.</strong> Admin Guide</a></li><li class="chapter-item expanded affix "><li class="part-title">Developer</li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">22.</strong> Contributing</a></li><li class="chapter-item expanded "><a href="connector-development.html"><strong aria-hidden="true">23.</strong> Connector Development</a></li><li class="chapter-item expanded "><a href="community-guide.html"><strong aria-hidden="true">24.</strong> Community</a></li><li class="chapter-item expanded affix "><li class="part-title">Blog & Roadmap</li><li class="chapter-item expanded "><a href="roadmap.html"><strong aria-hidden="true">25.</strong> Roadmap</a></li><li class="chapter-item expanded "><a href="blog-v060-release.html"><strong aria-hidden="true">26.</strong> v0.6.0: Enterprise, AI & SDKs</a></li><li class="chapter-item expanded "><a href="blog-sprint-5-release.html"><strong aria-hidden="true">27.</strong> v0.5.0 Release</a></li><li class="chapter-item expanded "><a href="blog-introducing-fuse.html"><strong aria-hidden="true">28.</strong> Introducing Fuse</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Fuse — Federated Query Engine</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/seraphjiang/fuse" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/seraphjiang/fuse/edit/main/docs-site/src/src/what-is-fuse.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="what-is-fuse"><a class="header" href="#what-is-fuse">What is Fuse?</a></h1>
+<p>Fuse is a federated query engine. It lets you write one SQL or PPL query that runs across multiple datasources — OpenSearch, PostgreSQL, DynamoDB, S3, Prometheus, and more — and returns merged results.</p>
+<h2 id="the-problem"><a class="header" href="#the-problem">The Problem</a></h2>
+<p>Modern applications spread data across many systems:</p>
+<ul>
+<li><strong>Logs</strong> in OpenSearch or CloudWatch</li>
+<li><strong>User profiles</strong> in DynamoDB or PostgreSQL</li>
+<li><strong>Metrics</strong> in Prometheus or InfluxDB</li>
+<li><strong>Analytics</strong> in S3 Parquet or ClickHouse</li>
+<li><strong>Cache</strong> in Redis</li>
+</ul>
+<p>To answer "which users are causing the most errors?", you'd need to:</p>
+<ol>
+<li>Query OpenSearch for error logs</li>
+<li>Query DynamoDB for user profiles</li>
+<li>Export both to CSV</li>
+<li>Join them in a spreadsheet or Python script</li>
+<li>Repeat every time the data changes</li>
+</ol>
+<p>Fuse eliminates steps 2–5.</p>
+<h2 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h2>
+<pre><code>You write:
+  SELECT l.service, u.name, count(*) as errors
+  FROM opensearch.logs l
+  JOIN dynamodb.users u ON l.user_id = u.user_id
+  WHERE l.status &gt;= 500
+  GROUP BY l.service, u.name
+
+Fuse does:
+  1. Parse → identify datasources (OpenSearch + DynamoDB)
+  2. Plan → build SubQuery per source, decide pushdown
+  3. Fan out → query both in parallel
+  4. Merge → hash join on user_id, re-aggregate GROUP BY
+  5. Return → unified result set with _datasource provenance
+</code></pre>
+<p>Fuse translates your SQL into each datasource's native language — Query DSL for OpenSearch, FilterExpression for DynamoDB, SQL for PostgreSQL, BSON for MongoDB — so filters and projections are pushed down for performance.</p>
+<h2 id="key-features"><a class="header" href="#key-features">Key Features</a></h2>
+<ul>
+<li><strong>15 connectors</strong> — OpenSearch, Elasticsearch, PostgreSQL, MySQL, DynamoDB, S3, Prometheus, CloudWatch, Redis, CSV/JSON, MongoDB, InfluxDB, ClickHouse, DuckDB, S3 O11y</li>
+<li><strong>Cross-datasource JOINs</strong> — hash join, semi-join, anti-join, correlated subqueries</li>
+<li><strong>UNION ALL</strong> — combine any mix of sources with automatic schema alignment</li>
+<li><strong>SQL + PPL</strong> — standard SQL and OpenSearch's pipe-delimited language</li>
+<li><strong>Dashboard platform</strong> — 12 chart types, variables, drill-down, templates</li>
+<li><strong>Cursor pagination</strong> — efficient paging through large result sets</li>
+<li><strong>AI-powered</strong> — natural language → SQL, query advisor</li>
+<li><strong>Enterprise</strong> — multi-tenancy, API key auth, rate limiting, audit logging</li>
+<li><strong>SDKs</strong> — Python and TypeScript (zero dependencies)</li>
+<li><strong>Grafana plugin</strong> — use Fuse as a Grafana datasource</li>
+<li><strong>1,000+ tests</strong> — unit, integration, E2E, performance regression</li>
+</ul>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
+<pre><code class="language-bash">git clone https://github.com/seraphjiang/fuse &amp;&amp; cd fuse
+cargo build --release
+./target/release/fuse-server --config fuse.toml
+# Open http://localhost:9400
+</code></pre>
+<p>Or try the <a href="https://fuse.huanji.profile.aws.dev">live playground</a> (Amazon VPN).</p>
+<p>→ <a href="./getting-started.html">Full Getting Started Guide</a></p>
+<h2 id="how-fuse-compares"><a class="header" href="#how-fuse-compares">How Fuse Compares</a></h2>
+<div class="table-wrapper"><table><thead><tr><th></th><th>Fuse</th><th>Trino/Presto</th><th>Direct Queries</th></tr></thead><tbody>
+<tr><td><strong>Setup</strong></td><td>Single binary, TOML config</td><td>JVM cluster, coordinator + workers</td><td>N/A</td></tr>
+<tr><td><strong>Latency</strong></td><td>Sub-100ms (p99)</td><td>Seconds (query planning overhead)</td><td>Varies</td></tr>
+<tr><td><strong>Connectors</strong></td><td>15 (observability-focused)</td><td>40+ (warehouse-focused)</td><td>1 per tool</td></tr>
+<tr><td><strong>Query language</strong></td><td>SQL + PPL</td><td>SQL (ANSI)</td><td>Native per datasource</td></tr>
+<tr><td><strong>Pushdown</strong></td><td>Filter, projection, agg, sort, limit</td><td>Filter, projection, limit</td><td>Full native</td></tr>
+<tr><td><strong>JOINs</strong></td><td>Cross-datasource hash join</td><td>Cross-datasource</td><td>Within single datasource</td></tr>
+<tr><td><strong>Built-in UI</strong></td><td>Playground + dashboards + charts</td><td>None (use external tools)</td><td>Varies</td></tr>
+<tr><td><strong>Target use case</strong></td><td>Observability, log analysis, operational analytics</td><td>Data warehouse federation</td><td>Single-source queries</td></tr>
+<tr><td><strong>Resource footprint</strong></td><td>~50MB binary, single process</td><td>Multi-GB JVM, multi-node</td><td>N/A</td></tr>
+</tbody></table>
+</div>
+<p><strong>Choose Fuse when:</strong></p>
+<ul>
+<li>You need sub-second queries across observability data (logs, metrics, traces)</li>
+<li>You want a single binary with zero JVM overhead</li>
+<li>You need built-in dashboards and visualization</li>
+<li>Your datasources are OpenSearch, DynamoDB, Prometheus, CloudWatch, S3</li>
+</ul>
+<p><strong>Choose Trino/Presto when:</strong></p>
+<ul>
+<li>You need warehouse-scale analytics (petabytes)</li>
+<li>You need ANSI SQL compliance for complex analytical queries</li>
+<li>Your datasources are primarily Hive, Iceberg, Delta Lake, Redshift</li>
+</ul>
+<p><strong>Choose direct queries when:</strong></p>
+<ul>
+<li>You only query one datasource</li>
+<li>You need the full native query language (e.g., OpenSearch Query DSL aggregations)</li>
+<li>Latency is not a concern</li>
+</ul>
+<h2 id="learn-more"><a class="header" href="#learn-more">Learn More</a></h2>
+<ul>
+<li><a href="./architecture.html">Architecture</a> — how federated query execution works</li>
+<li><a href="./connectors.html">Connectors</a> — all 15 datasource types</li>
+<li><a href="./sql-reference.html">SQL Reference</a> — JOINs, UNION, window functions, CTEs</li>
+<li><a href="./dashboard-guide.html">Dashboard Guide</a> — visualization platform</li>
+<li><a href="./contributing.html">Contributing</a> — get involved</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="index.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="getting-started.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="index.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="getting-started.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>
