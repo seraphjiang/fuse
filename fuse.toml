@@ -51,8 +51,6 @@ region = "us-west-1"
 [[connector]]
 id = "dynamodb"
 type = "dynamodb"
-
-[connector.properties]
 table_prefix = "fuse_"
 
 # ── CloudWatch Logs Connector ──
@@ -60,8 +58,6 @@ table_prefix = "fuse_"
 [[connector]]
 id = "cloudwatch"
 type = "cloudwatch"
-
-[connector.properties]
 log_group = "/aws/lambda/fuse-demo-processor"
 region = "us-west-2"
 
@@ -70,8 +66,6 @@ region = "us-west-2"
 [[connector]]
 id = "s3_demo"
 type = "csv-json"
-
-[connector.properties]
 bucket = "fuse-demo-data-544277935543"
 prefix = ""
 region = "us-west-2"
