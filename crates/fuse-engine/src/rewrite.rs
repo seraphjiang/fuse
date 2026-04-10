@@ -30,9 +30,12 @@ pub fn push_down_to_sources(base: &SubQuery, per_source: &mut [SubQuery]) {
         if sq.sort.is_empty() && !base.sort.is_empty() {
             sq.sort = base.sort.clone();
         }
-        // Push limit (each source gets the full limit; global limit applied after merge)
-        if sq.limit.is_none() && base.limit.is_some() {
-            sq.limit = base.limit;
+        // Push limit — for Top-N (sort + limit), use the smaller of base and existing
+        if let Some(base_limit) = base.limit {
+            match sq.limit {
+                None => sq.limit = Some(base_limit),
+                Some(existing) => sq.limit = Some(existing.min(base_limit)),
+            }
         }
         // Push aggregations + group_by + having
         if sq.aggregations.is_empty() && !base.aggregations.is_empty() {

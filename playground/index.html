@@ -67,6 +67,19 @@ tr:hover td{background:#161b22}
 .editor-highlight .cm{color:#484f58;font-style:italic}
 .editor-highlight .tbl{color:#7ee787}
 textarea#editor{background:transparent;color:#e1e4e8;caret-color:#e1e4e8;position:relative;z-index:1}
+/* Responsive */
+@media(max-width:768px){
+  main{padding:8px 12px}
+  .toolbar{flex-direction:column;align-items:stretch}
+  .toolbar select,.toolbar button{width:100%}
+  header{flex-direction:column;gap:8px;padding:8px 12px}
+  .nav-tabs{justify-content:center}
+  .meta{flex-wrap:wrap}
+  .view-toggle{margin-left:0}
+  textarea{min-height:80px;font-size:13px}
+  .results{max-height:50vh}
+  #chart-container{height:300px}
+}
 .ac-wrap{position:relative}
 .ac-dropdown{display:none;position:absolute;z-index:60;background:#161b22;border:1px solid #30363d;border-radius:6px;max-height:200px;overflow-y:auto;min-width:220px;box-shadow:0 8px 24px rgba(0,0,0,.4);font-size:12px}
 .ac-dropdown.open{display:block}
@@ -363,6 +376,7 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
     <span id="meta-cols"></span>
     <span id="meta-time"></span>
     <button id="csv-btn" onclick="downloadCSV()" style="display:none;margin-left:auto;padding:3px 10px;font-size:12px">⬇ CSV</button>
+    <button id="json-btn" onclick="downloadJSON()" style="display:none;padding:3px 10px;font-size:12px">⬇ JSON</button>
     <div class="view-toggle" id="view-toggle" style="display:none">
       <button class="active" onclick="setView('table')">Table</button>
       <button onclick="setView('chart')">Chart</button>
@@ -591,6 +605,20 @@ function downloadCSV() {
   URL.revokeObjectURL(a.href);
 }
 
+function downloadJSON() {
+  const data = lastRows.map(row => {
+    const obj = {};
+    lastColumns.forEach((col, i) => { obj[col] = row[i]; });
+    return obj;
+  });
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'fuse-results.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 function renderProvenance(res) {
   const m = res.metadata;
   if (m.datasource_stats && Object.keys(m.datasource_stats).length > 0) {
@@ -804,6 +832,77 @@ document.addEventListener('keydown', e => {
 checkHealth();
 loadDatasources();
 setInterval(checkHealth, 30000);
+
+// === Syntax Highlighting ===
+const SQL_KW_SET = new Set(['SELECT','FROM','WHERE','AND','OR','NOT','IN','BETWEEN','LIKE','ILIKE','IS','NULL','JOIN','LEFT','RIGHT','INNER','CROSS','FULL','OUTER','ON','GROUP','BY','ORDER','ASC','DESC','LIMIT','OFFSET','HAVING','UNION','ALL','AS','DISTINCT','WITH','CASE','WHEN','THEN','ELSE','END','EXISTS','EXPLAIN','ANALYZE','INSERT','UPDATE','DELETE','CREATE','DROP','ALTER','TABLE','INDEX','VIEW','TRUE','FALSE','SEMI','ANTI']);
+const SQL_FN_SET = new Set(['COUNT','SUM','AVG','MIN','MAX','COALESCE','CAST','UPPER','LOWER','TRIM','LENGTH','CONCAT','NOW','DATE_TRUNC','EXTRACT']);
+
+function highlightSQL(text) {
+  // Tokenize and highlight
+  let result = '';
+  let i = 0;
+  while (i < text.length) {
+    // Single-line comment
+    if (text[i] === '-' && text[i+1] === '-') {
+      const end = text.indexOf('\n', i);
+      const cm = end === -1 ? text.substring(i) : text.substring(i, end);
+      result += '<span class="cm">' + esc(cm) + '</span>';
+      i += cm.length;
+      continue;
+    }
+    // String literal
+    if (text[i] === "'") {
+      let j = i + 1;
+      while (j < text.length && !(text[j] === "'" && text[j+1] !== "'")) { if (text[j] === "'" && text[j+1] === "'") j += 2; else j++; }
+      const s = text.substring(i, j + 1);
+      result += '<span class="str">' + esc(s) + '</span>';
+      i = j + 1;
+      continue;
+    }
+    // Number
+    if (/\d/.test(text[i]) && (i === 0 || /[\s,=(><+\-*/]/.test(text[i-1]))) {
+      let j = i;
+      while (j < text.length && /[\d.]/.test(text[j])) j++;
+      result += '<span class="num">' + esc(text.substring(i, j)) + '</span>';
+      i = j;
+      continue;
+    }
+    // Word (keyword, function, or identifier)
+    if (/[a-zA-Z_]/.test(text[i])) {
+      let j = i;
+      while (j < text.length && /[\w.]/.test(text[j])) j++;
+      const word = text.substring(i, j);
+      const upper = word.toUpperCase();
+      if (SQL_KW_SET.has(upper)) result += '<span class="kw">' + esc(word) + '</span>';
+      else if (SQL_FN_SET.has(upper)) result += '<span class="fn">' + esc(word) + '</span>';
+      else if (word.includes('.')) result += '<span class="tbl">' + esc(word) + '</span>';
+      else result += esc(word);
+      i = j;
+      continue;
+    }
+    // Operators
+    if (/[=<>!+\-*/%]/.test(text[i])) {
+      result += '<span class="op">' + esc(text[i]) + '</span>';
+      i++;
+      continue;
+    }
+    result += esc(text[i]);
+    i++;
+  }
+  return result + '\n'; // trailing newline keeps height in sync
+}
+
+function syncHighlight() {
+  const el = $('editor');
+  const hl = $('editor-highlight');
+  hl.innerHTML = highlightSQL(el.value);
+  hl.scrollTop = el.scrollTop;
+  hl.scrollLeft = el.scrollLeft;
+}
+
+$('editor').addEventListener('input', syncHighlight);
+$('editor').addEventListener('scroll', () => { $('editor-highlight').scrollTop = $('editor').scrollTop; });
+syncHighlight();
 
 // === Schema-Aware Autocomplete ===
 const SQL_KEYWORDS = ['SELECT','FROM','WHERE','AND','OR','NOT','IN','BETWEEN','LIKE','IS','NULL','JOIN','LEFT','RIGHT','INNER','CROSS','ON','GROUP','BY','ORDER','ASC','DESC','LIMIT','OFFSET','HAVING','UNION','ALL','AS','DISTINCT','COUNT','SUM','AVG','MIN','MAX','INSERT','UPDATE','DELETE','CREATE','DROP','ALTER','TABLE','INDEX','VIEW','WITH','CASE','WHEN','THEN','ELSE','END','EXISTS','EXPLAIN','ANALYZE'];

@@ -11,9 +11,9 @@
 | 500 | Deploy Sprint 4 to playground (all 14 connectors + viz platform) | infra | todo | Full feature set live including dashboards |
 | 501 | Auth/RBAC: API key authentication | explorer | done | x-api-key + Bearer, Role enum, public path bypass, 401 JSON. Commit: 50669df |
 | 502 | Rate limiting per API key | explorer | done | PerKeyLimiter, 200 req/min default, global→IP→key chain. Commit: 84e6f33 |
-| 503 | Query timeout enforcement | planner | todo | Cancel long-running queries after configurable timeout |
+| 503 | Query timeout enforcement | planner | done | Per-connector 25s timeout on UNION ALL + JOIN tasks. Commit: 5ebf648 |
 | 504 | Connection pooling for all connectors | general | todo | Reuse connections, health checks, pool size config |
-| 505 | Graceful error handling for connector failures | planner | todo | Partial results when one connector fails in UNION ALL |
+| 505 | Graceful error handling for connector failures | planner | done | Already implemented — partial_errors + merge successful results |
 
 ## P0: Carried from Sprint 4
 
