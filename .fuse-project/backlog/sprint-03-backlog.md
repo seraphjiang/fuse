@@ -68,7 +68,7 @@
 |----|------|-------|--------|-------|
 | 350 | Cross-datasource integration test suite | tester | todo | JOIN, UNION, lookup across real connectors |
 | 351 | Pagination E2E tests (cursor, offset, deep pages) | tester | todo | Depends: 320-326 |
-| 352 | Aggregation correctness tests (window, percentile, computed) | tester | todo | Depends: 330-336 |
+| 352 | Aggregation correctness tests (window, percentile, computed) | tester | done | 10 tests verifying #321/#332-336. Commit: 0c0082e. Tests: 589→599 |
 | 353 | New connector E2E tests (DynamoDB, PostgreSQL, etc.) | tester | done | Conformance framework + MockConnector. Commit: 2306031. 5 tests |
 | 354 | Performance regression suite (compare vs Sprint 2 baseline) | tester | done | p50=90ms p95=148ms, no regression. Commit: 2306031 |
 

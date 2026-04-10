@@ -463,7 +463,8 @@ pub async fn query_handler(
                 batches
             };
             let (columns, rows) = batches_to_json(&batches);
-            let total_rows = rows.len() as u64;
+            let row_count = rows.len();
+            let total_rows = row_count as u64;
             state.history.push(crate::history::HistoryEntry {
                 query: req.query.clone(),
                 format: req.format.clone(),
@@ -512,7 +513,11 @@ pub async fn query_handler(
                         None
                     },
                     partial_errors: fed.partial_errors,
-                    next_cursor: None,
+                    next_cursor: if page_size.is_some() && (effective_offset + row_count) < total_available {
+                        Some(encode_cursor(effective_offset + row_count))
+                    } else {
+                        None
+                    },
                 })
                 .into_response()
             }

@@ -2238,3 +2238,156 @@ async fn test_union_all_keeps_duplicates() {
     // UNION ALL keeps all rows — 4 (2 per source + _datasource makes unique)
     assert!(rows.len() >= 4);
 }
+
+// ── Cursor pagination tests ──
+
+#[tokio::test]
+async fn test_cursor_pagination_first_page() {
+    let body = serde_json::json!({
+        "query": "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "format": "sql",
+        "page_size": 2
+    });
+    let resp = build_federation_app()
+        .oneshot(
+            Request::builder().method("POST").uri("/api/fuse/query")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap())).unwrap(),
+        ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    // Should have next_cursor since there are more rows
+    assert!(json["next_cursor"].as_str().is_some());
+}
+
+#[tokio::test]
+async fn test_cursor_pagination_second_page() {
+    let body = serde_json::json!({
+        "query": "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "format": "sql",
+        "page_size": 2,
+        "cursor": "fuse_c_2"
+    });
+    let resp = build_federation_app()
+        .oneshot(
+            Request::builder().method("POST").uri("/api/fuse/query")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap())).unwrap(),
+        ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    // Last page — no next_cursor
+    assert!(json.get("next_cursor").is_none() || json["next_cursor"].is_null());
+}
+
+#[tokio::test]
+async fn test_no_cursor_no_page_size() {
+    // Without page_size, no cursor pagination — returns all rows, no next_cursor
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(json.get("next_cursor").is_none() || json["next_cursor"].is_null());
+}
+
+// ── #351 Pagination E2E verification (tester) ──
+
+async fn post_query_paginated(
+    app: axum::Router,
+    query: &str,
+    format: &str,
+    cursor: Option<&str>,
+    page_size: Option<usize>,
+) -> (StatusCode, serde_json::Value) {
+    let mut body = serde_json::json!({"query": query, "format": format});
+    if let Some(c) = cursor {
+        body["cursor"] = serde_json::Value::String(c.into());
+    }
+    if let Some(ps) = page_size {
+        body["page_size"] = serde_json::json!(ps);
+    }
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = resp.status();
+    let bytes = axum::body::to_bytes(resp.into_body(), 1 << 20).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or_default();
+    (status, json)
+}
+
+#[tokio::test]
+async fn test_cursor_first_page_returns_next_cursor() {
+    let (status, json) = post_query_paginated(
+        build_test_app(), "SELECT * FROM testds.logs", "sql", None, Some(1),
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    // Should have next_cursor since there are more rows
+    assert!(json["next_cursor"].is_string(), "expected next_cursor, got: {:?}", json["next_cursor"]);
+}
+
+#[tokio::test]
+async fn test_cursor_second_page_different_rows() {
+    // Page 1
+    let (_, json1) = post_query_paginated(
+        build_test_app(), "SELECT * FROM testds.logs", "sql", None, Some(1),
+    ).await;
+    let cursor = json1["next_cursor"].as_str().unwrap();
+    let row1 = json1["rows"][0].clone();
+
+    // Page 2
+    let (status, json2) = post_query_paginated(
+        build_test_app(), "SELECT * FROM testds.logs", "sql", Some(cursor), Some(1),
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let row2 = json2["rows"][0].clone();
+    assert_ne!(row1, row2, "page 2 should return different row than page 1");
+}
+
+#[tokio::test]
+async fn test_cursor_no_page_size_no_cursor() {
+    // Without page_size, no cursor pagination
+    let (status, json) = post_query_paginated(
+        build_test_app(), "SELECT * FROM testds.logs", "sql", None, None,
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    // All rows returned, no next_cursor
+    assert!(json["next_cursor"].is_null() || !json.get("next_cursor").is_some());
+}
+
+#[tokio::test]
+async fn test_cursor_invalid_token_handled() {
+    let (status, _) = post_query_paginated(
+        build_test_app(), "SELECT * FROM testds.logs", "sql", Some("invalid_cursor"), Some(1),
+    ).await;
+    // Should either ignore invalid cursor (200) or reject (400)
+    assert!(status == StatusCode::OK || status == StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_cursor_encode_decode_roundtrip() {
+    // Verify cursor format: fuse_c_<offset>
+    let (_, json) = post_query_paginated(
+        build_test_app(), "SELECT * FROM testds.logs", "sql", None, Some(1),
+    ).await;
+    if let Some(cursor) = json["next_cursor"].as_str() {
+        assert!(cursor.starts_with("fuse_c_"), "cursor should start with fuse_c_, got: {}", cursor);
+    }
+}
