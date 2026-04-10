@@ -9,15 +9,15 @@ use fuse_core::registry::{ConnectorFactory, ConnectorRegistry};
 use fuse_connector_opensearch::OpenSearchConnectorFactory;
 use fuse_connector_s3_o11y::S3O11yConnectorFactory;
 use fuse_connector_dynamodb::DynamoDbConnectorFactory;
-use fuse_connector_postgres::{PostgresConnectorFactory, MysqlConnectorFactory, RedshiftConnectorFactory, SqliteConnectorFactory};
+// use fuse_connector_postgres::{PostgresConnectorFactory, MysqlConnectorFactory, RedshiftConnectorFactory, SqliteConnectorFactory};  // blocked
 use fuse_connector_elasticsearch::ElasticsearchConnectorFactory;
-use fuse_connector_mongodb::MongoDbConnectorFactory;
+// use fuse_connector_mongodb::MongoDbConnectorFactory;  // blocked
 use fuse_connector_influxdb::InfluxDbConnectorFactory;
 use fuse_connector_clickhouse::ClickHouseConnectorFactory;
 use fuse_connector_cloudwatch::CloudWatchConnectorFactory;
 use fuse_connector_csv_json::CsvJsonConnectorFactory;
-use fuse_connector_redis::RedisConnectorFactory;
-use fuse_connector_duckdb::DuckDbConnectorFactory;
+// use fuse_connector_redis::RedisConnectorFactory;  // blocked
+// use fuse_connector_duckdb::DuckDbConnectorFactory;  // blocked
 
 use fuse_server::api::AppState;
 
@@ -61,18 +61,18 @@ async fn main() -> anyhow::Result<()> {
         Box::new(OpenSearchConnectorFactory),
         Box::new(S3O11yConnectorFactory),
         Box::new(DynamoDbConnectorFactory),
-        Box::new(PostgresConnectorFactory),
-        Box::new(MysqlConnectorFactory),
-        Box::new(RedshiftConnectorFactory),
-        Box::new(SqliteConnectorFactory),
+        // // Box::new(PostgresConnectorFactory),  // blocked  // blocked
+        // Box::new(MysqlConnectorFactory),  // blocked
+        // Box::new(RedshiftConnectorFactory),  // blocked
+        // Box::new(SqliteConnectorFactory),  // blocked
         Box::new(ElasticsearchConnectorFactory),
-        Box::new(MongoDbConnectorFactory),
+        // Box::new(MongoDbConnectorFactory),  // blocked
         Box::new(InfluxDbConnectorFactory),
         Box::new(ClickHouseConnectorFactory),
         Box::new(CloudWatchConnectorFactory),
         Box::new(CsvJsonConnectorFactory),
-        Box::new(RedisConnectorFactory),
-        Box::new(DuckDbConnectorFactory),
+        // Box::new(RedisConnectorFactory),  // blocked
+        // Box::new(DuckDbConnectorFactory),  // blocked
     ];
 
     for cc in &config.connector {
@@ -108,6 +108,7 @@ async fn main() -> anyhow::Result<()> {
         running_queries: Arc::new(fuse_server::api::RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
         plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
     });
 
     // Initialize metrics
