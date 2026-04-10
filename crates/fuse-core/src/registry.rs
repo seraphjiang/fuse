@@ -56,7 +56,25 @@ impl ConnectorRegistry {
         let connectors = self.list();
         let futs = connectors.iter().map(|c| {
             let c = c.clone();
-            async move { (c.id().to_string(), c.health_check().await) }
+            async move {
+                let id = c.id().to_string();
+                match tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    c.health_check(),
+                )
+                .await
+                {
+                    Ok(h) => (id, h),
+                    Err(_) => (
+                        id,
+                        ConnectorHealth {
+                            status: crate::connector::HealthStatus::Unhealthy,
+                            latency_ms: Some(5000),
+                            message: Some("health check timed out (5s)".into()),
+                        },
+                    ),
+                }
+            }
         });
         futures::future::join_all(futs).await.into_iter().collect()
     }
