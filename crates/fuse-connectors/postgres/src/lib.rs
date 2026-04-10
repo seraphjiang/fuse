@@ -363,8 +363,13 @@ impl ConnectorFactory for RedshiftConnectorFactory {
             let region = config.properties.get("region").and_then(|v| v.as_str()).unwrap_or("us-east-1");
 
             let url = get_redshift_iam_url(cluster_id, db_name, db_user, region).await?;
-            let mut iam_config = config.clone();
-            iam_config.properties.insert("url".into(), toml::Value::String(url));
+            let mut props = config.properties.clone();
+            props.insert("url".into(), toml::Value::String(url));
+            let iam_config = fuse_core::config::ConnectorConfig {
+                id: config.id.clone(),
+                connector_type: config.connector_type.clone(),
+                properties: props,
+            };
             return Ok(Arc::new(SqlConnector::from_config(&iam_config).await?));
         }
         // Fallback: direct URL
