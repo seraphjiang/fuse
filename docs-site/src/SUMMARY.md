@@ -4,6 +4,8 @@
 
 ---
 
+- [What is Fuse?](./what-is-fuse.md)
+
 # User Guide
 
 - [Getting Started](./getting-started.md)
