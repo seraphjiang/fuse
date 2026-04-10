@@ -9,6 +9,7 @@ members = [
     "crates/fuse-connectors/prometheus",
     "crates/fuse-connectors/cloudwatch",
     "crates/fuse-connectors/csv-json",
+    "crates/fuse-connectors/redis",
     "crates/fuse-connector-sdk",
     "crates/fuse-server",
 ]
@@ -52,6 +53,7 @@ aws-sdk-s3 = "1"
 aws-sdk-cloudwatchlogs = "1"
 metrics = "0.24"
 metrics-exporter-prometheus = "0.16"
+redis = { version = "0.27", features = ["tokio-comp", "aio"] }
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 parquet = { version = "58", features = ["arrow", "async"] }
 bytes = "1"

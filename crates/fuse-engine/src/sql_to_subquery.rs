@@ -133,14 +133,20 @@ fn extract_projections_and_aggs(items: &[SelectItem]) -> (Vec<String>, Vec<Aggre
                     aggregations.push(agg);
                 } else if let Some(col) = expr_to_column_name(expr) {
                     projections.push(col);
+                } else {
+                    // Computed expression — pass through as SQL string
+                    projections.push(expr.to_string());
                 }
             }
             SelectItem::ExprWithAlias { expr, alias } => {
                 let alias_str = ident_to_string(alias);
-                if let Some(agg) = try_extract_agg(expr, Some(alias_str)) {
+                if let Some(agg) = try_extract_agg(expr, Some(alias_str.clone())) {
                     aggregations.push(agg);
                 } else if let Some(col) = expr_to_column_name(expr) {
                     projections.push(col);
+                } else {
+                    // Computed expression with alias — pass through as "expr AS alias"
+                    projections.push(format!("{} AS {}", expr, alias_str));
                 }
             }
             SelectItem::Wildcard(_) | SelectItem::QualifiedWildcard(_, _) => {}
@@ -907,5 +913,31 @@ mod tests {
         ).unwrap();
         let f = sq.filter.unwrap();
         assert!(matches!(f, FilterExpr::Not(_)));
+    }
+
+    #[test]
+    fn test_computed_column_arithmetic() {
+        let sq = sql_to_subquery("SELECT price * quantity AS total FROM orders").unwrap();
+        assert!(sq.projections.iter().any(|p| p.contains("AS total")));
+    }
+
+    #[test]
+    fn test_computed_column_concat() {
+        let sq = sql_to_subquery("SELECT CONCAT(first, last) AS name FROM users").unwrap();
+        // Function expressions are captured via expr_to_column_name
+        assert!(sq.projections.iter().any(|p| p.contains("CONCAT")));
+    }
+
+    #[test]
+    fn test_computed_column_coalesce() {
+        let sq = sql_to_subquery("SELECT COALESCE(email, 'unknown') AS contact FROM users").unwrap();
+        assert!(sq.projections.iter().any(|p| p.contains("COALESCE")));
+    }
+
+    #[test]
+    fn test_computed_column_with_plain_columns() {
+        let sq = sql_to_subquery("SELECT id, price * quantity AS total FROM orders").unwrap();
+        assert!(sq.projections.iter().any(|p| p == "id"));
+        assert!(sq.projections.iter().any(|p| p.contains("AS total")));
     }
 }
