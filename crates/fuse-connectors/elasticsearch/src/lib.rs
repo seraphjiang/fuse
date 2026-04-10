@@ -212,6 +212,14 @@ fn es_type_to_arrow(es_type: &str) -> DataType {
     }
 }
 
+/// Traverse a dot-separated field path through a JSON object.
+fn get_nested<'a>(mut val: &'a serde_json::Value, path: &str) -> Option<&'a serde_json::Value> {
+    for key in path.split('.') {
+        val = val.get(key)?;
+    }
+    Some(val)
+}
+
 fn parse_hits(body: &serde_json::Value, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
     let hits = body.pointer("/hits/hits")
         .and_then(|v| v.as_array())
@@ -240,22 +248,22 @@ fn parse_hits(body: &serde_json::Value, query: &SubQuery) -> Result<Vec<RecordBa
     let mut arrays: Vec<ArrayRef> = Vec::new();
 
     for col in &cols {
-        // Infer type from first non-null value
-        let first = hits.iter().find_map(|h| h.pointer(&format!("/_source/{col}")));
+        // Infer type from first non-null value — use get_nested for dot-path support
+        let first = hits.iter().find_map(|h| h.get("_source").and_then(|s| get_nested(s, col)));
         match first {
             Some(serde_json::Value::Number(n)) if n.is_i64() => {
-                let vals: Vec<Option<i64>> = hits.iter().map(|h| h.pointer(&format!("/_source/{col}")).and_then(|v| v.as_i64())).collect();
+                let vals: Vec<Option<i64>> = hits.iter().map(|h| h.get("_source").and_then(|s| get_nested(s, col)).and_then(|v| v.as_i64())).collect();
                 fields.push(Field::new(col, DataType::Int64, true));
                 arrays.push(Arc::new(Int64Array::from(vals)) as ArrayRef);
             }
             Some(serde_json::Value::Number(_)) => {
-                let vals: Vec<Option<f64>> = hits.iter().map(|h| h.pointer(&format!("/_source/{col}")).and_then(|v| v.as_f64())).collect();
+                let vals: Vec<Option<f64>> = hits.iter().map(|h| h.get("_source").and_then(|s| get_nested(s, col)).and_then(|v| v.as_f64())).collect();
                 fields.push(Field::new(col, DataType::Float64, true));
                 arrays.push(Arc::new(Float64Array::from(vals)) as ArrayRef);
             }
             _ => {
                 let vals: Vec<Option<String>> = hits.iter().map(|h| {
-                    h.pointer(&format!("/_source/{col}")).map(|v| match v {
+                    h.get("_source").and_then(|s| get_nested(s, col)).map(|v| match v {
                         serde_json::Value::String(s) => s.clone(),
                         other => other.to_string(),
                     })
@@ -338,5 +346,49 @@ mod tests {
         let batches = parse_hits(&body, &q).unwrap();
         assert_eq!(batches[0].num_columns(), 1);
         assert_eq!(batches[0].schema().field(0).name(), "name");
+    }
+
+    // ── #302 Verification tests (tester) ──
+
+    #[test]
+    fn test_version_enum_values() {
+        // V7 and V8 are distinct
+        assert_ne!(EsVersion::V7, EsVersion::V8);
+        let v7 = EsVersion::V7;
+        let v8 = EsVersion::V8;
+        assert_eq!(v7, EsVersion::V7);
+        assert_eq!(v8, EsVersion::V8);
+    }
+
+    #[test]
+    fn test_es_type_unknown_defaults_utf8() {
+        assert_eq!(es_type_to_arrow("geo_point"), DataType::Utf8);
+        assert_eq!(es_type_to_arrow("nested"), DataType::Utf8);
+    }
+
+    #[test]
+    fn test_parse_hits_mixed_types() {
+        let body = serde_json::json!({
+            "hits": {"hits": [
+                {"_source": {"name": "alice", "score": 95.5, "active": true}},
+                {"_source": {"name": "bob", "score": 80.0, "active": false}}
+            ]}
+        });
+        let q = SubQuery { table: "t".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None };
+        let batches = parse_hits(&body, &q).unwrap();
+        assert_eq!(batches[0].num_rows(), 2);
+        assert!(batches[0].num_columns() >= 3);
+    }
+
+    #[test]
+    fn test_parse_hits_null_field() {
+        let body = serde_json::json!({
+            "hits": {"hits": [
+                {"_source": {"name": "alice", "email": null}}
+            ]}
+        });
+        let q = SubQuery { table: "t".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None };
+        let batches = parse_hits(&body, &q).unwrap();
+        assert_eq!(batches[0].num_rows(), 1);
     }
 }

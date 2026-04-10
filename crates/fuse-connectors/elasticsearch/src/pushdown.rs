@@ -198,4 +198,120 @@ mod tests {
         assert_eq!(dsl["size"], 0);
         assert!(dsl["aggs"].is_object());
     }
+
+    // ── #302 Verification tests (tester) ──
+
+    #[test]
+    fn test_like_to_wildcard() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::Comparison {
+                field: "name".into(),
+                op: ComparisonOp::Like,
+                value: ScalarValue::Utf8("%alice_".into()),
+            }),
+            ..base()
+        };
+        let dsl = translate_to_query_dsl(&q);
+        let wc = &dsl["query"]["wildcard"]["name"]["value"];
+        assert_eq!(wc, "*alice?", "% → *, _ → ?: got {}", wc);
+    }
+
+    #[test]
+    fn test_ilike_to_wildcard_case_insensitive() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::Comparison {
+                field: "host".into(),
+                op: ComparisonOp::ILike,
+                value: ScalarValue::Utf8("%prod%".into()),
+            }),
+            ..base()
+        };
+        let dsl = translate_to_query_dsl(&q);
+        assert_eq!(dsl["query"]["wildcard"]["host"]["value"], "*prod*");
+        assert_eq!(dsl["query"]["wildcard"]["host"]["case_insensitive"], true);
+    }
+
+    #[test]
+    fn test_and_filter_bool_must() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::And(
+                Box::new(FilterExpr::Comparison { field: "a".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(1) }),
+                Box::new(FilterExpr::Comparison { field: "b".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(2) }),
+            )),
+            ..base()
+        };
+        let dsl = translate_to_query_dsl(&q);
+        assert!(dsl["query"]["bool"]["must"].is_array());
+        assert_eq!(dsl["query"]["bool"]["must"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_or_filter_bool_should() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::Or(
+                Box::new(FilterExpr::Comparison { field: "a".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(1) }),
+                Box::new(FilterExpr::Comparison { field: "b".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(2) }),
+            )),
+            ..base()
+        };
+        let dsl = translate_to_query_dsl(&q);
+        assert!(dsl["query"]["bool"]["should"].is_array());
+        assert_eq!(dsl["query"]["bool"]["minimum_should_match"], 1);
+    }
+
+    #[test]
+    fn test_not_filter_must_not() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::Not(Box::new(
+                FilterExpr::Comparison { field: "x".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(0) },
+            ))),
+            ..base()
+        };
+        let dsl = translate_to_query_dsl(&q);
+        assert!(dsl["query"]["bool"]["must_not"].is_array());
+    }
+
+    #[test]
+    fn test_is_null_no_exists() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::IsNull("email".into())),
+            ..base()
+        };
+        let dsl = translate_to_query_dsl(&q);
+        assert!(dsl["query"]["bool"]["must_not"][0]["exists"].is_object());
+    }
+
+    #[test]
+    fn test_is_not_null_exists() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::IsNotNull("email".into())),
+            ..base()
+        };
+        let dsl = translate_to_query_dsl(&q);
+        assert_eq!(dsl["query"]["exists"]["field"], "email");
+    }
+
+    #[test]
+    fn test_neq_uses_must_not_term() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::Comparison {
+                field: "status".into(), op: ComparisonOp::Neq, value: ScalarValue::Int64(500),
+            }),
+            ..base()
+        };
+        let dsl = translate_to_query_dsl(&q);
+        assert!(dsl["query"]["bool"]["must_not"][0]["term"].is_object());
+    }
+
+    #[test]
+    fn test_group_by_terms_agg() {
+        let q = SubQuery {
+            aggregations: vec![AggregationExpr { function: AggFunction::Sum, field: Some("amount".into()), alias: "total".into() }],
+            group_by: vec!["region".into()],
+            ..base()
+        };
+        let dsl = translate_to_query_dsl(&q);
+        assert!(dsl["aggs"]["region"]["terms"].is_object());
+        assert!(dsl["aggs"]["region"]["aggs"]["total"]["sum"].is_object());
+    }
 }

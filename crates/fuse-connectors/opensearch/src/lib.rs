@@ -411,6 +411,15 @@ fn parse_search_response(
 }
 
 /// Parse hits array into a RecordBatch.
+/// Traverse a dot-separated field path through a JSON object.
+/// `get_nested(obj, "metadata.region")` → `obj["metadata"]["region"]`
+fn get_nested<'a>(mut val: &'a serde_json::Value, path: &str) -> Option<&'a serde_json::Value> {
+    for key in path.split('.') {
+        val = val.get(key)?;
+    }
+    Some(val)
+}
+
 /// Simplified: extracts projected string fields from _source.
 fn parse_hits_to_batch(
     body: &serde_json::Value,
@@ -461,7 +470,7 @@ fn parse_hits_to_batch(
                 .iter()
                 .map(|hit| {
                     hit.get("_source")
-                        .and_then(|s| s.get(col))
+                        .and_then(|s| get_nested(s, col))
                         .map(|v| match v {
                             serde_json::Value::String(s) => s.clone(),
                             other => other.to_string(),
@@ -609,5 +618,49 @@ mod tests {
     fn test_scroll_threshold_above_boundary() {
         let q = sq(Some(SCROLL_THRESHOLD + 1));
         assert!(q.limit.map_or(true, |l| l > SCROLL_THRESHOLD));
+    }
+
+    #[test]
+    fn test_get_nested_top_level() {
+        let v = serde_json::json!({"name": "alice"});
+        assert_eq!(get_nested(&v, "name").unwrap(), "alice");
+    }
+
+    #[test]
+    fn test_get_nested_dot_path() {
+        let v = serde_json::json!({"metadata": {"region": "us-east-1"}});
+        assert_eq!(get_nested(&v, "metadata.region").unwrap(), "us-east-1");
+    }
+
+    #[test]
+    fn test_get_nested_deep_path() {
+        let v = serde_json::json!({"a": {"b": {"c": 42}}});
+        assert_eq!(get_nested(&v, "a.b.c").unwrap(), 42);
+    }
+
+    #[test]
+    fn test_get_nested_missing_key() {
+        let v = serde_json::json!({"name": "alice"});
+        assert!(get_nested(&v, "metadata.region").is_none());
+    }
+
+    #[test]
+    fn test_parse_hits_nested_projection() {
+        let body = serde_json::json!({
+            "hits": {"hits": [
+                {"_source": {"metadata": {"region": "us-east-1"}, "status": 200}},
+                {"_source": {"metadata": {"region": "eu-west-1"}, "status": 404}}
+            ]}
+        });
+        let q = SubQuery {
+            table: "logs".into(),
+            projections: vec!["metadata.region".into(), "status".into()],
+            filter: None, aggregations: vec![], group_by: vec![], having: None,
+            sort: vec![], limit: None, passthrough: None,
+        };
+        let batch = parse_hits_to_batch(&body, &q).unwrap();
+        assert_eq!(batch.num_rows(), 2);
+        assert_eq!(batch.num_columns(), 2);
+        assert_eq!(batch.schema().field(0).name(), "metadata.region");
     }
 }
