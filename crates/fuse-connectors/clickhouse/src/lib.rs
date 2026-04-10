@@ -175,6 +175,14 @@ impl FederatedConnector for ClickHouseConnector {
     }
 }
 
+/// Traverse a dot-separated path through a JSON object.
+fn get_nested_json<'a>(mut val: &'a serde_json::Value, path: &str) -> Option<&'a serde_json::Value> {
+    for key in path.split('.') {
+        val = val.get(key)?;
+    }
+    Some(val)
+}
+
 fn ch_type_to_arrow(ch_type: &str) -> DataType {
     // Strip Nullable() wrapper
     let inner = ch_type.trim_start_matches("Nullable(").trim_end_matches(')');
@@ -203,25 +211,25 @@ fn parse_json_each_row(text: &str) -> Result<Vec<RecordBatch>, ConnectorError> {
     let mut arrays: Vec<ArrayRef> = Vec::new();
 
     for col in &cols {
-        let first = rows.iter().find_map(|r| r.get(col)).filter(|v| !v.is_null());
+        let first = rows.iter().find_map(|r| get_nested_json(r, col)).filter(|v| !v.is_null());
         match first {
             Some(serde_json::Value::Number(n)) if n.is_i64() => {
-                let vals: Vec<Option<i64>> = rows.iter().map(|r| r.get(col).and_then(|v| v.as_i64())).collect();
+                let vals: Vec<Option<i64>> = rows.iter().map(|r| get_nested_json(r, col).and_then(|v| v.as_i64())).collect();
                 fields.push(Field::new(col, DataType::Int64, true));
                 arrays.push(Arc::new(Int64Array::from(vals)) as ArrayRef);
             }
             Some(serde_json::Value::Number(_)) => {
-                let vals: Vec<Option<f64>> = rows.iter().map(|r| r.get(col).and_then(|v| v.as_f64())).collect();
+                let vals: Vec<Option<f64>> = rows.iter().map(|r| get_nested_json(r, col).and_then(|v| v.as_f64())).collect();
                 fields.push(Field::new(col, DataType::Float64, true));
                 arrays.push(Arc::new(Float64Array::from(vals)) as ArrayRef);
             }
             Some(serde_json::Value::Bool(_)) => {
-                let vals: Vec<Option<bool>> = rows.iter().map(|r| r.get(col).and_then(|v| v.as_bool())).collect();
+                let vals: Vec<Option<bool>> = rows.iter().map(|r| get_nested_json(r, col).and_then(|v| v.as_bool())).collect();
                 fields.push(Field::new(col, DataType::Boolean, true));
                 arrays.push(Arc::new(BooleanArray::from(vals)) as ArrayRef);
             }
             _ => {
-                let vals: Vec<Option<String>> = rows.iter().map(|r| r.get(col).map(|v| match v {
+                let vals: Vec<Option<String>> = rows.iter().map(|r| get_nested_json(r, col).map(|v| match v {
                     serde_json::Value::String(s) => s.clone(),
                     other => other.to_string(),
                 })).collect();
@@ -301,5 +309,31 @@ mod tests {
         let q = SubQuery { table: "events".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: Some(5), passthrough: None };
         let sql = subquery_to_sql(&q);
         assert_eq!(sql, "SELECT * FROM events LIMIT 5");
+    }
+
+    #[test]
+    fn test_get_nested_json_top_level() {
+        let v = serde_json::json!({"name": "alice"});
+        assert_eq!(get_nested_json(&v, "name").unwrap(), "alice");
+    }
+
+    #[test]
+    fn test_get_nested_json_dot_path() {
+        let v = serde_json::json!({"meta": {"region": "us-east-1"}});
+        assert_eq!(get_nested_json(&v, "meta.region").unwrap(), "us-east-1");
+    }
+
+    #[test]
+    fn test_get_nested_json_missing() {
+        let v = serde_json::json!({"name": "alice"});
+        assert!(get_nested_json(&v, "meta.region").is_none());
+    }
+
+    #[test]
+    fn test_parse_json_each_row_nested() {
+        let text = r#"{"user":{"name":"alice"},"score":100}"#;
+        let batches = parse_json_each_row(text).unwrap();
+        // Top-level keys only in auto-discovery; nested via projection
+        assert_eq!(batches[0].num_rows(), 1);
     }
 }

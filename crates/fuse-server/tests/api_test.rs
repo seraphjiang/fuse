@@ -3365,3 +3365,42 @@ async fn test_connector_error_union_partial_graceful() {
         assert!(!err.contains("panic"), "should not expose panic: {}", err);
     }
 }
+
+// ── CTE tests ──
+
+#[tokio::test]
+async fn test_cte_basic() {
+    // WITH errors AS (SELECT * FROM cluster_a.logs) SELECT * FROM errors
+    let (status, json) = post_query(
+        build_federation_app(),
+        "WITH errors AS (SELECT * FROM cluster_a.logs) SELECT * FROM errors.data",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert!(!rows.is_empty());
+}
+
+#[tokio::test]
+async fn test_cte_with_filter() {
+    // CTE with WHERE clause
+    let (status, json) = post_query(
+        build_federation_app(),
+        "WITH filtered AS (SELECT * FROM cluster_a.logs WHERE status = '200') SELECT * FROM filtered.data",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_non_cte_query_unchanged() {
+    // Regular query should still work
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert!(!rows.is_empty());
+}

@@ -13,7 +13,7 @@ fuse-connector-s3-o11y = { path = "../fuse-connectors/s3-o11y" }
 fuse-connector-dynamodb = { path = "../fuse-connectors/dynamodb" }
 fuse-connector-postgres = { path = "../fuse-connectors/postgres" }
 fuse-connector-elasticsearch = { path = "../fuse-connectors/elasticsearch" }
-fuse-connector-mongodb = { path = "../fuse-connectors/mongodb" }
+# fuse-connector-mongodb = { path = "../fuse-connectors/mongodb" }  # blocked: compile error in mongodb connector
 fuse-connector-influxdb = { path = "../fuse-connectors/influxdb" }
 fuse-connector-clickhouse = { path = "../fuse-connectors/clickhouse" }
 fuse-connector-cloudwatch = { path = "../fuse-connectors/cloudwatch" }

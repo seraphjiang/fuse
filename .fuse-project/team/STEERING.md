@@ -140,3 +140,11 @@ api.rs, main.rs, Cargo.toml, lib.rs are HIGH-CONTENTION files:
 - Announce `[WORKING] filename` before editing
 - Other agents MUST wait for `[RELEASED]` before touching
 - If urgent, ask sisyphus to coordinate handoff
+
+## Sprint 3 Retro Additions (Rules 18-19)
+
+## Rule 18: Pre-Commit Build Check
+Before committing, MUST run `cargo check` and `cargo test` on affected crates. Do NOT commit code that breaks the build for other agents. If build fails, fix before committing.
+
+## Rule 19: Fix All Instances
+When fixing a bug, grep the entire codebase for the same pattern. If the same bug exists in another code path, fix ALL instances in the same commit. The scroll API bug (UNION ALL fixed but JOIN had the identical issue) must not repeat.

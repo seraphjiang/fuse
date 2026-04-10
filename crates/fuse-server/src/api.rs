@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use axum::extract::{Json, Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -329,6 +330,9 @@ pub async fn query_handler(
         Ok(r) => r,
         Err(e) => return error_json(StatusCode::BAD_REQUEST, e).into_response(),
     };
+
+    // Resolve CTEs first — they register temp datasources needed by validation
+    let (query, refs, _cte_connectors) = resolve_ctes(&state, &query, &format, &refs).await;
 
     // Validate all datasources exist
     for (ds_id, _) in &refs {
@@ -1104,6 +1108,139 @@ fn add_datasource_column(
 
 /// Detect IN (SELECT ...) subquery pattern and extract the inner query.
 /// Returns: Vec<(outer_column, inner_datasource, inner_table, inner_column, inner_filter)>
+/// In-memory connector for CTE materialized results.
+#[derive(Debug)]
+struct MemoryConnector {
+    name: String,
+    batches: Vec<arrow::record_batch::RecordBatch>,
+}
+
+#[async_trait]
+impl fuse_core::connector::FederatedConnector for MemoryConnector {
+    fn id(&self) -> &str { &self.name }
+    fn connector_type(&self) -> &str { "memory" }
+    fn capabilities(&self) -> fuse_core::connector::ConnectorCapabilities {
+        fuse_core::connector::ConnectorCapabilities {
+            supports_filtering: false, supports_projection: false,
+            supports_aggregation: false, supports_sorting: false,
+            supports_limit: false, supports_join: false,
+            max_concurrent_queries: 1, supports_streaming: false,
+            latency_class: fuse_core::connector::LatencyClass::Low,
+        }
+    }
+    async fn health_check(&self) -> fuse_core::connector::ConnectorHealth {
+        fuse_core::connector::ConnectorHealth { status: fuse_core::connector::HealthStatus::Healthy, message: None, latency_ms: Some(0) }
+    }
+    async fn discover_schemas(&self) -> Result<Vec<fuse_core::connector::SchemaInfo>, fuse_core::error::ConnectorError> { Ok(vec![]) }
+    async fn get_schema(&self, _table: &str) -> Result<arrow::datatypes::Schema, fuse_core::error::ConnectorError> {
+        self.batches.first()
+            .map(|b| b.schema().as_ref().clone())
+            .ok_or_else(|| fuse_core::error::ConnectorError::QueryFailed("empty CTE".into()))
+    }
+    async fn execute(&self, _query: &fuse_core::connector::SubQuery) -> Result<Vec<arrow::record_batch::RecordBatch>, fuse_core::error::ConnectorError> {
+        Ok(self.batches.clone())
+    }
+    async fn execute_streaming(&self, _query: &fuse_core::connector::SubQuery, tx: tokio::sync::mpsc::Sender<Result<arrow::record_batch::RecordBatch, fuse_core::error::ConnectorError>>) -> Result<(), fuse_core::error::ConnectorError> {
+        for b in &self.batches { let _ = tx.send(Ok(b.clone())).await; }
+        Ok(())
+    }
+}
+
+/// Parse WITH clauses, execute each CTE, register results as temp connectors.
+/// Returns (rewritten_query, updated_refs, temp_connectors_to_keep_alive).
+async fn resolve_ctes(
+    state: &AppState,
+    query: &str,
+    format: &str,
+    refs: &[(String, String)],
+) -> (String, Vec<(String, String)>, Vec<(String, Arc<dyn fuse_core::connector::FederatedConnector>)>) {
+    let lower = query.to_lowercase();
+    let trimmed = lower.trim_start();
+    if !trimmed.starts_with("with ") {
+        return (query.to_string(), refs.to_vec(), vec![]);
+    }
+
+    let mut cte_connectors = Vec::new();
+    let mut cte_defs: Vec<(String, String)> = Vec::new();
+
+    // Work on original query to preserve offsets
+    let with_start = lower.find("with ").unwrap();
+    let mut pos = with_start + 5;
+
+    loop {
+        // Skip whitespace
+        while pos < query.len() && query.as_bytes()[pos].is_ascii_whitespace() { pos += 1; }
+        if pos >= query.len() { break; }
+
+        // Parse CTE name
+        let name_start = pos;
+        while pos < query.len() && !query.as_bytes()[pos].is_ascii_whitespace() && query.as_bytes()[pos] != b'(' {
+            pos += 1;
+        }
+        let cte_name = query[name_start..pos].trim().to_string();
+
+        // Skip whitespace + "AS" + whitespace
+        while pos < query.len() && query.as_bytes()[pos].is_ascii_whitespace() { pos += 1; }
+        if pos + 2 > query.len() || query[pos..pos+2].to_lowercase() != "as" { break; }
+        pos += 2;
+        while pos < query.len() && query.as_bytes()[pos].is_ascii_whitespace() { pos += 1; }
+
+        // Expect '('
+        if pos >= query.len() || query.as_bytes()[pos] != b'(' { break; }
+        pos += 1; // skip '('
+
+        // Find matching ')'
+        let inner_start = pos;
+        match find_matching_paren(&query[inner_start..]) {
+            Some(close) => {
+                let inner_sql = query[inner_start..inner_start + close].trim().to_string();
+                cte_defs.push((cte_name, inner_sql));
+                pos = inner_start + close + 1; // skip ')'
+            }
+            None => break,
+        }
+
+        // After closing paren: comma → more CTEs, else → main SELECT
+        while pos < query.len() && query.as_bytes()[pos].is_ascii_whitespace() { pos += 1; }
+        if pos < query.len() && query.as_bytes()[pos] == b',' {
+            pos += 1;
+        } else {
+            break;
+        }
+    }
+
+    if cte_defs.is_empty() {
+        return (query.to_string(), refs.to_vec(), vec![]);
+    }
+
+    let main_query = query[pos..].trim().to_string();
+
+    // Execute each CTE and register as temp connector
+    for (name, inner_sql) in &cte_defs {
+        let inner_refs = match parse_sql_sources(inner_sql) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let result = if inner_refs.len() == 1 {
+            execute_single(state, inner_sql, format, &inner_refs[0], None).await
+        } else if is_union_query(inner_sql) {
+            execute_union(state, inner_sql, format, &inner_refs).await
+        } else {
+            execute_join(state, &inner_refs).await
+        };
+        if let Ok(fed) = result {
+            let conn: Arc<dyn fuse_core::connector::FederatedConnector> = Arc::new(MemoryConnector { name: name.clone(), batches: fed.batches });
+            let _ = state.registry.register(conn.clone());
+            cte_connectors.push((name.clone(), conn));
+        }
+    }
+
+    // Re-parse refs from main query (CTE names are now registered datasources)
+    let new_refs = parse_sql_sources(&main_query).unwrap_or_else(|_| refs.to_vec());
+
+    (main_query, new_refs, cte_connectors)
+}
+
 fn extract_in_subqueries(query: &str) -> Vec<InSubquery> {
     let stripped = strip_string_literals(query);
     let lower = stripped.to_lowercase();

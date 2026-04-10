@@ -154,6 +154,16 @@ impl FederatedConnector for MongoDbConnector {
     }
 }
 
+/// Traverse a dot-separated path through a BSON document.
+/// `get_nested_bson(doc, "address.city")` → `doc["address"]["city"]`
+fn get_nested_bson(val: &Bson, path: &str) -> Option<Bson> {
+    let mut current = val.clone();
+    for key in path.split('.') {
+        current = current.as_document()?.get(key)?.clone();
+    }
+    Some(current)
+}
+
 fn filter_to_bson(f: &FilterExpr) -> Document {
     match f {
         FilterExpr::And(l, r) => doc! { "$and": [filter_to_bson(l), filter_to_bson(r)] },
@@ -226,29 +236,29 @@ fn docs_to_batch(docs: &[Document], query: &SubQuery) -> Result<Vec<RecordBatch>
     let mut arrays: Vec<ArrayRef> = Vec::new();
 
     for col in &cols {
-        let first = docs.iter().find_map(|d| d.get(col));
+        let first = docs.iter().find_map(|d| get_nested_bson(&Bson::Document(d.clone()), col));
         match first {
             Some(Bson::Int32(_)) | Some(Bson::Int64(_)) => {
-                let vals: Vec<Option<i64>> = docs.iter().map(|d| match d.get(col) {
-                    Some(Bson::Int64(n)) => Some(*n),
-                    Some(Bson::Int32(n)) => Some(*n as i64),
+                let vals: Vec<Option<i64>> = docs.iter().map(|d| match get_nested_bson(&Bson::Document(d.clone()), col) {
+                    Some(Bson::Int64(n)) => Some(n),
+                    Some(Bson::Int32(n)) => Some(n as i64),
                     _ => None,
                 }).collect();
                 fields.push(Field::new(col, DataType::Int64, true));
                 arrays.push(Arc::new(Int64Array::from(vals)) as ArrayRef);
             }
             Some(Bson::Double(_)) => {
-                let vals: Vec<Option<f64>> = docs.iter().map(|d| if let Some(Bson::Double(f)) = d.get(col) { Some(*f) } else { None }).collect();
+                let vals: Vec<Option<f64>> = docs.iter().map(|d| if let Some(Bson::Double(f)) = get_nested_bson(&Bson::Document(d.clone()), col) { Some(f) } else { None }).collect();
                 fields.push(Field::new(col, DataType::Float64, true));
                 arrays.push(Arc::new(Float64Array::from(vals)) as ArrayRef);
             }
             Some(Bson::Boolean(_)) => {
-                let vals: Vec<Option<bool>> = docs.iter().map(|d| if let Some(Bson::Boolean(b)) = d.get(col) { Some(*b) } else { None }).collect();
+                let vals: Vec<Option<bool>> = docs.iter().map(|d| if let Some(Bson::Boolean(b)) = get_nested_bson(&Bson::Document(d.clone()), col) { Some(b) } else { None }).collect();
                 fields.push(Field::new(col, DataType::Boolean, true));
                 arrays.push(Arc::new(BooleanArray::from(vals)) as ArrayRef);
             }
             _ => {
-                let vals: Vec<Option<String>> = docs.iter().map(|d| d.get(col).map(|v| v.to_string())).collect();
+                let vals: Vec<Option<String>> = docs.iter().map(|d| get_nested_bson(&Bson::Document(d.clone()), col).map(|v| v.to_string())).collect();
                 fields.push(Field::new(col, DataType::Utf8, true));
                 arrays.push(Arc::new(StringArray::from(vals)) as ArrayRef);
             }
@@ -334,5 +344,23 @@ mod tests {
         assert_eq!(bson_type_to_arrow(&Bson::Double(1.0)), DataType::Float64);
         assert_eq!(bson_type_to_arrow(&Bson::Boolean(true)), DataType::Boolean);
         assert_eq!(bson_type_to_arrow(&Bson::String("x".into())), DataType::Utf8);
+    }
+
+    #[test]
+    fn test_get_nested_bson_top_level() {
+        let doc = doc! { "name": "alice" };
+        assert_eq!(get_nested_bson(&Bson::Document(doc), "name"), Some(Bson::String("alice".into())));
+    }
+
+    #[test]
+    fn test_get_nested_bson_dot_path() {
+        let doc = doc! { "address": { "city": "Seattle" } };
+        assert_eq!(get_nested_bson(&Bson::Document(doc), "address.city"), Some(Bson::String("Seattle".into())));
+    }
+
+    #[test]
+    fn test_get_nested_bson_missing() {
+        let doc = doc! { "name": "alice" };
+        assert!(get_nested_bson(&Bson::Document(doc), "address.city").is_none());
     }
 }

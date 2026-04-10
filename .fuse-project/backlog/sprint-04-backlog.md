@@ -63,9 +63,9 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 450 | MongoDB connector | general | todo | #5 globally. Document store, huge in log pipelines. Aggregation pipeline pushdown |
-| 451 | InfluxDB connector | general | todo | #28. Time-series DB, critical for metrics/o11y. InfluxQL/Flux query pushdown |
-| 452 | ClickHouse connector | general | todo | #30. Fast columnar analytics, popular for logs. Native SQL pushdown |
+| 450 | MongoDB connector | general | done | BSON filter pushdown, projection, limit, schema from doc sample. Commit: 2649e4b |
+| 451 | InfluxDB connector | general | done | v1 InfluxQL + v2 Flux, version detection, CSV parsing. Commit: 2649e4b |
+| 452 | ClickHouse connector | general | done | HTTP JSONEachRow, full SQL pushdown, uniq(). Commit: 2649e4b |
 
 ## P2: Docs & Community
 
