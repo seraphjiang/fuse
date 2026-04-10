@@ -19,7 +19,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 310 | Demo: JOIN OpenSearch logs + DynamoDB user profiles | planner | todo | Enrich log events with user metadata. Depends: 300 |
+| 310 | Demo: JOIN OpenSearch logs + DynamoDB user profiles | planner | done | 5 demo queries: JOIN, GROUP BY, PPL lookup, correlated subquery, anti-join. Commit: 99c8732 |
 | 311 | Demo: UNION ALL across OpenSearch + CloudWatch + S3 logs | planner | done | 3-source UNION ALL, trace correlation, error agg. Commit: 1f8498c. 2 tests |
 | 312 | Demo: Aggregate Prometheus metrics + OpenSearch events | planner | done | JOIN + UNION ALL correlating metrics + errors. Commit: 802d3f5 |
 | 313 | Demo: PPL lookup across datasources (logs → user enrichment) | planner | done | 4 lookup demo queries. Commit: dfca414 |

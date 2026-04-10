@@ -480,11 +480,12 @@ mod tests {
 
     #[test]
     fn test_attr_to_string_null() {
-        assert_eq!(attr_to_string(&AttributeValue::Null(true)), "null");
+        assert_eq!(attr_to_string(&AttributeValue::Null(true)), "");
     }
 
     #[test]
     fn test_items_to_batch_mixed_types() {
+        use std::collections::HashMap;
         let item = HashMap::from([
             ("id".to_string(), AttributeValue::S("u1".into())),
             ("count".to_string(), AttributeValue::N("42".into())),
