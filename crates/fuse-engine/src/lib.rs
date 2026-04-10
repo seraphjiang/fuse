@@ -6,6 +6,7 @@
 //! appropriate [`FederatedConnector`](fuse_core::connector::FederatedConnector)
 //! via the [`SQLExecutor`] trait.
 
+pub mod anomaly;
 pub mod cache;
 pub mod cache_middleware;
 pub mod cost;
