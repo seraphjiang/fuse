@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuse Help</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e1e4e8;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #21262d;background:#161b22}
+header h1{font-size:18px;font-weight:600;color:#58a6ff}
+.nav-tabs{display:flex;gap:0}
+.nav-tab{padding:8px 16px;font-size:13px;color:#8b949e;text-decoration:none;border-bottom:2px solid transparent}
+.nav-tab:hover{color:#e1e4e8}
+.nav-tab.active{color:#58a6ff;border-bottom-color:#58a6ff;font-weight:600}
+main{display:flex;max-width:1200px;width:100%;margin:0 auto;min-height:0;flex:1}
+.sidebar{width:220px;border-right:1px solid #21262d;padding:16px 0;overflow-y:auto;flex-shrink:0}
+.sidebar a{display:block;padding:6px 20px;font-size:13px;color:#8b949e;text-decoration:none;border-left:2px solid transparent}
+.sidebar a:hover{color:#e1e4e8;background:#161b22}
+.sidebar a.active{color:#58a6ff;border-left-color:#58a6ff;background:#161b22}
+.sidebar .group{font-size:11px;color:#484f58;text-transform:uppercase;letter-spacing:.5px;padding:12px 20px 4px;font-weight:600}
+.content{flex:1;padding:24px 32px;overflow-y:auto}
+.content section{display:none}
+.content section.active{display:block}
+h2{font-size:18px;color:#58a6ff;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid #21262d}
+h3{font-size:14px;color:#e1e4e8;margin:16px 0 8px}
+p{color:#8b949e;line-height:1.6;margin-bottom:8px}
+pre{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-size:12px;color:#79c0ff;overflow-x:auto;margin:8px 0 16px;font-family:"SF Mono",Consolas,monospace}
+code{background:#21262d;padding:1px 5px;border-radius:3px;font-size:12px;color:#e1e4e8;font-family:"SF Mono",Consolas,monospace}
+table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0 16px}
+th{text-align:left;padding:6px 10px;border-bottom:2px solid #30363d;color:#8b949e;font-size:11px;text-transform:uppercase}
+td{padding:6px 10px;border-bottom:1px solid #21262d}
+kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5px;font-size:11px;color:#e1e4e8}
+.link-card{display:block;padding:12px;border:1px solid #21262d;border-radius:6px;margin-bottom:8px;text-decoration:none;color:#e1e4e8;transition:border-color .15s}
+.link-card:hover{border-color:#58a6ff}
+.link-card .lc-title{font-size:13px;font-weight:600;color:#58a6ff}
+.link-card .lc-desc{font-size:12px;color:#8b949e;margin-top:2px}
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:16px">
+    <h1>Fuse</h1>
+    <nav class="nav-tabs">
+      <a href="/playground" class="nav-tab">Playground</a>
+      <a href="/dashboard" class="nav-tab">Dashboard</a>
+      <a href="/explore" class="nav-tab">Explore</a>
+      <a href="/settings" class="nav-tab">Settings</a>
+      <a href="/status" class="nav-tab">Status</a>
+      <a href="/help" class="nav-tab active">Help</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="sidebar">
+    <div class="group">Reference</div>
+    <a href="#sql" class="active" onclick="show('sql')">SQL Syntax</a>
+    <a href="#ppl" onclick="show('ppl')">PPL Syntax</a>
+    <a href="#shortcuts" onclick="show('shortcuts')">Keyboard Shortcuts</a>
+    <div class="group">Examples</div>
+    <a href="#ex-opensearch" onclick="show('ex-opensearch')">OpenSearch</a>
+    <a href="#ex-s3" onclick="show('ex-s3')">S3</a>
+    <a href="#ex-dynamodb" onclick="show('ex-dynamodb')">DynamoDB</a>
+    <a href="#ex-postgres" onclick="show('ex-postgres')">PostgreSQL</a>
+    <a href="#ex-cross" onclick="show('ex-cross')">Cross-Datasource</a>
+    <div class="group">Resources</div>
+    <a href="#links" onclick="show('links')">External Docs</a>
+  </div>
+
+  <div class="content">
+    <!-- SQL -->
+    <section id="s-sql" class="active">
+      <h2>SQL Syntax Reference</h2>
+      <h3>Basic Queries</h3>
+      <pre>SELECT column1, column2 FROM datasource.table WHERE condition LIMIT n</pre>
+      <h3>Clauses</h3>
+      <table>
+        <tr><th>Clause</th><th>Syntax</th></tr>
+        <tr><td>SELECT</td><td><code>SELECT col1, col2, count(*) as cnt</code></td></tr>
+        <tr><td>FROM</td><td><code>FROM datasource.table [alias]</code></td></tr>
+        <tr><td>WHERE</td><td><code>WHERE status >= 500 AND service = 'api'</code></td></tr>
+        <tr><td>GROUP BY</td><td><code>GROUP BY col1, col2</code></td></tr>
+        <tr><td>HAVING</td><td><code>HAVING count(*) > 10</code></td></tr>
+        <tr><td>ORDER BY</td><td><code>ORDER BY col ASC|DESC</code></td></tr>
+        <tr><td>LIMIT / OFFSET</td><td><code>LIMIT 100 OFFSET 20</code></td></tr>
+      </table>
+      <h3>Joins</h3>
+      <pre>SELECT a.*, b.* FROM ds1.table a
+JOIN ds2.table b ON a.key = b.key
+WHERE a.status >= 500</pre>
+      <p>Supported: <code>JOIN</code>, <code>LEFT JOIN</code>, <code>INNER JOIN</code>, <code>CROSS JOIN</code>, <code>SEMI JOIN</code>, <code>ANTI JOIN</code>, <code>FULL OUTER JOIN</code></p>
+      <h3>UNION</h3>
+      <pre>SELECT * FROM ds1.table
+UNION ALL
+SELECT * FROM ds2.table</pre>
+      <h3>CTEs</h3>
+      <pre>WITH errors AS (
+  SELECT * FROM cluster_a.logs WHERE status >= 500
+)
+SELECT service, count(*) FROM errors GROUP BY service</pre>
+      <h3>Aggregate Functions</h3>
+      <p><code>COUNT(*)</code>, <code>COUNT(DISTINCT col)</code>, <code>SUM(col)</code>, <code>AVG(col)</code>, <code>MIN(col)</code>, <code>MAX(col)</code></p>
+      <h3>Operators</h3>
+      <p><code>=</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>, <code>BETWEEN</code>, <code>IN</code>, <code>LIKE</code>, <code>ILIKE</code>, <code>IS NULL</code>, <code>IS NOT NULL</code>, <code>AND</code>, <code>OR</code>, <code>NOT</code></p>
+    </section>
+
+    <!-- PPL -->
+    <section id="s-ppl">
+      <h2>PPL Syntax Reference</h2>
+      <h3>Basic Pipeline</h3>
+      <pre>source = datasource.table | command1 | command2</pre>
+      <h3>Commands</h3>
+      <table>
+        <tr><th>Command</th><th>Syntax</th><th>Description</th></tr>
+        <tr><td>where</td><td><code>| where status >= 500</code></td><td>Filter rows</td></tr>
+        <tr><td>fields</td><td><code>| fields service, status</code></td><td>Select columns</td></tr>
+        <tr><td>stats</td><td><code>| stats count() by service</code></td><td>Aggregate</td></tr>
+        <tr><td>sort</td><td><code>| sort - count()</code></td><td>Sort (- for desc)</td></tr>
+        <tr><td>head</td><td><code>| head 20</code></td><td>Limit rows</td></tr>
+        <tr><td>dedup</td><td><code>| dedup trace_id</code></td><td>Deduplicate</td></tr>
+        <tr><td>eval</td><td><code>| eval duration_s = duration_ms / 1000</code></td><td>Compute field</td></tr>
+      </table>
+      <h3>Multi-Source</h3>
+      <pre>source = cluster_a.logs, cluster_b.logs | where status >= 500 | stats count() by service</pre>
+      <h3>Stats Functions</h3>
+      <p><code>count()</code>, <code>sum(col)</code>, <code>avg(col)</code>, <code>min(col)</code>, <code>max(col)</code>, <code>dc(col)</code> (distinct count)</p>
+    </section>
+
+    <!-- Shortcuts -->
+    <section id="s-shortcuts">
+      <h2>Keyboard Shortcuts</h2>
+      <table>
+        <tr><th>Shortcut</th><th>Action</th></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>Run query</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd></td><td>Explain query</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd></td><td>Validate query</td></tr>
+        <tr><td><kbd>Tab</kbd></td><td>Accept autocomplete suggestion</td></tr>
+        <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td>Navigate autocomplete</td></tr>
+        <tr><td><kbd>Escape</kbd></td><td>Dismiss autocomplete</td></tr>
+      </table>
+      <h3>Tips</h3>
+      <p>Type 2+ characters to trigger autocomplete. It suggests SQL keywords, datasource names, table names, and field names from the schema.</p>
+      <p>Click ✨ Format to auto-indent and uppercase SQL keywords.</p>
+      <p>Use the Chart view toggle to visualize results. Auto-detection picks the best chart type based on column types.</p>
+    </section>
+
+    <!-- OpenSearch Examples -->
+    <section id="s-ex-opensearch">
+      <h2>OpenSearch Examples</h2>
+      <pre>-- Error search
+SELECT service, status, message
+FROM cluster_a.application_logs
+WHERE status >= 500 LIMIT 20</pre>
+      <pre>-- Error count by service
+SELECT service, count(*) as errors
+FROM cluster_a.application_logs
+WHERE status >= 500
+GROUP BY service ORDER BY errors DESC</pre>
+      <pre>-- PPL: Aggregate by status
+source = cluster_a.application_logs
+| stats count() by status
+| sort - count()</pre>
+    </section>
+
+    <!-- S3 Examples -->
+    <section id="s-ex-s3">
+      <h2>S3 Examples</h2>
+      <pre>-- Browse S3 logs
+SELECT * FROM s3_o11y.fuse_logs LIMIT 20</pre>
+      <pre>-- Join OpenSearch + S3
+SELECT l.trace_id, l.service, s.message
+FROM cluster_a.application_logs l
+JOIN s3_o11y.fuse_logs s ON l.trace_id = s.trace_id
+WHERE l.status >= 500</pre>
+    </section>
+
+    <!-- DynamoDB Examples -->
+    <section id="s-ex-dynamodb">
+      <h2>DynamoDB Examples</h2>
+      <pre>-- Scan table
+SELECT * FROM dynamodb.users LIMIT 20</pre>
+      <pre>-- Filter by partition key
+SELECT * FROM dynamodb.sessions
+WHERE user_id = 'u-12345'</pre>
+    </section>
+
+    <!-- PostgreSQL Examples -->
+    <section id="s-ex-postgres">
+      <h2>PostgreSQL Examples</h2>
+      <pre>-- Query with aggregation
+SELECT department, count(*) as cnt
+FROM postgres.employees
+GROUP BY department ORDER BY cnt DESC</pre>
+      <pre>-- Join PostgreSQL + OpenSearch
+SELECT p.name, l.status, l.message
+FROM postgres.services p
+JOIN cluster_a.application_logs l ON p.service_id = l.service</pre>
+    </section>
+
+    <!-- Cross-Datasource Examples -->
+    <section id="s-ex-cross">
+      <h2>Cross-Datasource Examples</h2>
+      <pre>-- Unified log view (UNION ALL)
+SELECT _datasource, service, count(*) as errors
+FROM cluster_a.application_logs
+WHERE status >= 500
+GROUP BY _datasource, service
+UNION ALL
+SELECT _datasource, service, count(*) as errors
+FROM cluster_b.application_logs
+WHERE status >= 500
+GROUP BY _datasource, service
+ORDER BY errors DESC</pre>
+      <pre>-- Cross-cluster trace correlation (JOIN)
+SELECT a.trace_id, a.service, b.service as b_service
+FROM cluster_a.application_logs a
+JOIN cluster_b.application_logs b ON a.trace_id = b.trace_id
+WHERE a.status >= 500 LIMIT 20</pre>
+      <pre>-- CTE with cross-source
+WITH errors AS (
+  SELECT service, count(*) as cnt
+  FROM cluster_a.application_logs
+  WHERE status >= 500
+  GROUP BY service
+)
+SELECT * FROM errors WHERE cnt > 5</pre>
+    </section>
+
+    <!-- Links -->
+    <section id="s-links">
+      <h2>External Documentation</h2>
+      <a href="https://seraphjiang.github.io/fuse/" target="_blank" class="link-card">
+        <div class="lc-title">📖 Fuse Documentation Site</div>
+        <div class="lc-desc">Full documentation including architecture, connectors, and API reference</div>
+      </a>
+      <a href="https://github.com/seraphjiang/fuse" target="_blank" class="link-card">
+        <div class="lc-title">⭐ GitHub Repository</div>
+        <div class="lc-desc">Source code, issues, and contributing guide</div>
+      </a>
+      <a href="/playground" class="link-card">
+        <div class="lc-title">🔬 Playground</div>
+        <div class="lc-desc">Interactive query editor with auto-visualization</div>
+      </a>
+      <a href="/dashboard" class="link-card">
+        <div class="lc-title">📊 Dashboard Builder</div>
+        <div class="lc-desc">Create multi-panel dashboards with 12 chart types</div>
+      </a>
+      <a href="/status" class="link-card">
+        <div class="lc-title">🟢 System Status</div>
+        <div class="lc-desc">Real-time connector health and query statistics</div>
+      </a>
+    </section>
+  </div>
+</main>
+
+<script>
+function show(id) {
+  document.querySelectorAll('.content section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
+  const section = document.getElementById('s-' + id);
+  if (section) section.classList.add('active');
+  const link = document.querySelector(`.sidebar a[href="#${id}"]`);
+  if (link) link.classList.add('active');
+}
+// Handle hash navigation
+if (window.location.hash) show(window.location.hash.slice(1));
+</script>
+</body>
+</html>
