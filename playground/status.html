@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuse Status</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e1e4e8;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #21262d;background:#161b22}
+header h1{font-size:18px;font-weight:600;color:#58a6ff}
+.nav-tabs{display:flex;gap:0}
+.nav-tab{padding:8px 16px;font-size:13px;color:#8b949e;text-decoration:none;border-bottom:2px solid transparent}
+.nav-tab:hover{color:#e1e4e8}
+.nav-tab.active{color:#58a6ff;border-bottom-color:#58a6ff;font-weight:600}
+main{max-width:1200px;width:100%;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.card{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px}
+.card h3{font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px}
+.big-num{font-size:32px;font-weight:700;color:#e1e4e8}
+.big-label{font-size:11px;color:#8b949e;margin-top:2px}
+.connector-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.conn{padding:10px 12px;border:1px solid #21262d;border-radius:6px;background:#0d1117}
+.conn-header{display:flex;justify-content:space-between;align-items:center}
+.conn-name{font-size:13px;font-weight:600;color:#e1e4e8}
+.conn-dot{width:10px;height:10px;border-radius:50%}
+.conn-dot.ok{background:#3fb950}
+.conn-dot.degraded{background:#d29922}
+.conn-dot.error{background:#f85149}
+.conn-dot.unknown{background:#484f58}
+.conn-meta{font-size:11px;color:#8b949e;margin-top:4px}
+.stat-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #21262d;font-size:13px}
+.stat-row:last-child{border-bottom:none}
+.stat-label{color:#8b949e}
+.stat-value{color:#e1e4e8;font-weight:500}
+.query-item{padding:8px;border:1px solid #21262d;border-radius:6px;background:#0d1117;margin-bottom:6px;font-size:12px}
+.query-item code{color:#79c0ff;font-family:"SF Mono",Consolas,monospace;font-size:11px;display:block;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.query-meta{display:flex;gap:10px;font-size:10px;color:#8b949e}
+.refresh-bar{display:flex;align-items:center;gap:8px;font-size:12px;color:#8b949e}
+.pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:#3fb950;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.empty{color:#484f58;font-size:13px;padding:16px;text-align:center}
+.ok{color:#3fb950}.warn{color:#d29922}.err{color:#f85149}
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:16px">
+    <h1>Fuse</h1>
+    <nav class="nav-tabs">
+      <a href="/playground" class="nav-tab">Playground</a>
+      <a href="/dashboard" class="nav-tab">Dashboard</a>
+      <a href="/explore" class="nav-tab">Explore</a>
+      <a href="/settings" class="nav-tab">Settings</a>
+      <a href="/status" class="nav-tab active">Status</a>
+    </nav>
+  </div>
+  <div class="refresh-bar">
+    <span class="pulse"></span>
+    <span>Auto-refresh 5s</span>
+    <span id="last-update"></span>
+  </div>
+</header>
+
+<main>
+  <!-- System Info -->
+  <div class="grid" id="summary-grid">
+    <div class="card"><h3>Status</h3><div class="big-num" id="sys-status">—</div><div class="big-label" id="sys-version"></div></div>
+    <div class="card"><h3>Connectors</h3><div class="big-num" id="sys-connectors">—</div><div class="big-label">registered</div></div>
+    <div class="card"><h3>Queries / min</h3><div class="big-num" id="sys-qpm">—</div><div class="big-label">last minute</div></div>
+    <div class="card"><h3>Avg Latency</h3><div class="big-num" id="sys-latency">—</div><div class="big-label">ms (recent)</div></div>
+  </div>
+
+  <!-- Connector Status -->
+  <div class="card">
+    <h3>📡 Connector Status</h3>
+    <div class="connector-grid" id="conn-grid"><div class="empty">Loading…</div></div>
+  </div>
+
+  <!-- Query Stats -->
+  <div class="card">
+    <h3>📊 Query Statistics</h3>
+    <div id="stats-body"><div class="empty">Loading…</div></div>
+  </div>
+
+  <!-- Running Queries -->
+  <div class="card">
+    <h3>⚡ Active Queries</h3>
+    <div id="running-body"><div class="empty">Loading…</div></div>
+  </div>
+</main>
+
+<script>
+const API = window.location.origin;
+const $ = id => document.getElementById(id);
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+async function fetchJSON(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error(r.statusText);
+  return r.json();
+}
+
+async function refreshHealth() {
+  try {
+    const h = await fetchJSON('/api/fuse/health');
+    const statusClass = h.status === 'ok' ? 'ok' : h.status === 'degraded' ? 'warn' : 'err';
+    $('sys-status').innerHTML = `<span class="${statusClass}">${esc(h.status)}</span>`;
+    $('sys-version').textContent = h.version ? 'v' + h.version : '';
+
+    const connectors = Object.entries(h.connectors || {});
+    $('sys-connectors').textContent = connectors.length;
+
+    if (!connectors.length) {
+      $('conn-grid').innerHTML = '<div class="empty">No connectors</div>';
+      return;
+    }
+    $('conn-grid').innerHTML = connectors.map(([name, c]) => {
+      const st = c.status === 'ok' || c.status === 'connected' ? 'ok' : c.status === 'degraded' || c.status === 'slow' ? 'degraded' : c.status === 'error' || c.status === 'unreachable' ? 'error' : 'unknown';
+      return `<div class="conn"><div class="conn-header"><span class="conn-name">${esc(name)}</span><span class="conn-dot ${st}"></span></div>
+        <div class="conn-meta">${c.latency_ms != null ? c.latency_ms + 'ms' : '—'}${c.message ? ' · ' + esc(c.message) : ''}</div></div>`;
+    }).join('');
+  } catch { $('conn-grid').innerHTML = '<div class="empty err">Failed to fetch health</div>'; }
+}
+
+async function refreshStats() {
+  try {
+    const s = await fetchJSON('/api/fuse/stats');
+    const rows = [];
+    if (s.total_queries != null) rows.push(['Total Queries', s.total_queries]);
+    if (s.queries_per_minute != null) { rows.push(['Queries / min', s.queries_per_minute]); $('sys-qpm').textContent = s.queries_per_minute; }
+    if (s.avg_latency_ms != null) { rows.push(['Avg Latency', s.avg_latency_ms + ' ms']); $('sys-latency').textContent = s.avg_latency_ms; }
+    if (s.p95_latency_ms != null) rows.push(['P95 Latency', s.p95_latency_ms + ' ms']);
+    if (s.p99_latency_ms != null) rows.push(['P99 Latency', s.p99_latency_ms + ' ms']);
+    if (s.error_count != null) rows.push(['Errors', `<span class="${s.error_count > 0 ? 'err' : 'ok'}">${s.error_count}</span>`]);
+    if (s.error_rate != null) rows.push(['Error Rate', `<span class="${s.error_rate > 0.05 ? 'err' : s.error_rate > 0.01 ? 'warn' : 'ok'}">${(s.error_rate * 100).toFixed(1)}%</span>`]);
+    if (s.cache_hit_rate != null) rows.push(['Cache Hit Rate', (s.cache_hit_rate * 100).toFixed(1) + '%']);
+    if (!rows.length) { $('stats-body').innerHTML = '<div class="empty">No stats available</div>'; return; }
+    $('stats-body').innerHTML = rows.map(([l, v]) => `<div class="stat-row"><span class="stat-label">${l}</span><span class="stat-value">${v}</span></div>`).join('');
+  } catch { $('stats-body').innerHTML = '<div class="empty">Stats endpoint unavailable</div>'; }
+}
+
+async function refreshRunning() {
+  try {
+    const r = await fetchJSON('/api/fuse/queries/running');
+    const queries = r.running || r.queries || [];
+    if (!queries.length) { $('running-body').innerHTML = '<div class="empty ok">No active queries</div>'; return; }
+    $('running-body').innerHTML = queries.map(q => `<div class="query-item">
+      <div class="query-meta"><span>${esc(q.id || '—')}</span><span>${q.elapsed_ms ? q.elapsed_ms + 'ms' : ''}</span><span>${esc(q.format || 'sql')}</span></div>
+      <code>${esc(q.query || '—')}</code>
+    </div>`).join('');
+  } catch { $('running-body').innerHTML = '<div class="empty">Running queries endpoint unavailable</div>'; }
+}
+
+async function refreshAll() {
+  await Promise.all([refreshHealth(), refreshStats(), refreshRunning()]);
+  $('last-update').textContent = 'Updated ' + new Date().toLocaleTimeString();
+}
+
+refreshAll();
+setInterval(refreshAll, 5000);
+</script>
+</body>
+</html>
