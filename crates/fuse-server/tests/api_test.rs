@@ -2210,3 +2210,31 @@ async fn test_three_source_union_with_limit() {
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 4);
 }
+
+// ── UNION (dedup) vs UNION ALL tests ──
+
+#[tokio::test]
+async fn test_union_deduplicates() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT host, status FROM cluster_a.logs UNION SELECT host, status FROM cluster_b.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    // Both sources return same data — plain UNION should dedup to 2
+    assert_eq!(rows.len(), 2);
+}
+
+#[tokio::test]
+async fn test_union_all_keeps_duplicates() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT host, status FROM cluster_a.logs UNION ALL SELECT host, status FROM cluster_b.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    // UNION ALL keeps all rows — 4 (2 per source + _datasource makes unique)
+    assert!(rows.len() >= 4);
+}

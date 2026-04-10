@@ -370,7 +370,8 @@ pub async fn query_handler(
             } else {
                 let ob = parse_order_by(&query);
                 let lim = parse_limit(&query);
-                let dist = strip_string_literals(&query).to_lowercase().contains("select distinct");
+                let dist = strip_string_literals(&query).to_lowercase().contains("select distinct")
+                    || is_union_distinct(&query);
                 let off = parse_offset(&query).unwrap_or(0);
                 // Cache the plan for next time
                 state.plan_cache.insert(cache_key.clone(), CachedPlan::new(
@@ -1069,7 +1070,15 @@ fn strip_string_literals(query: &str) -> String {
 }
 
 fn is_union_query(query: &str) -> bool {
-    strip_string_literals(query).to_lowercase().contains("union all")
+    let lower = strip_string_literals(query).to_lowercase();
+    lower.contains("union all") || lower.contains("union ")
+}
+
+/// Check if query uses plain UNION (deduplicated) vs UNION ALL.
+fn is_union_distinct(query: &str) -> bool {
+    let lower = strip_string_literals(query).to_lowercase();
+    // Has "union" but NOT "union all"
+    lower.contains("union ") && !lower.contains("union all")
 }
 
 /// Extract LIMIT value from end of query.
