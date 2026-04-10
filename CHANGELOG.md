@@ -8,7 +8,79 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.2.0] — 2026-04-09
+## [0.4.0] — 2026-04-10
+
+### Added
+
+**Connectors (3 new → 14 total)**
+- MongoDB connector — BSON filter pushdown, projection, limit, connection pooling
+- InfluxDB connector — InfluxDB 1.x (InfluxQL) and 2.x (Flux), auto-version detection
+- ClickHouse connector — full SQL pushdown via HTTP interface, JSONEachRow streaming
+
+**Docs & Community**
+- Architecture doc: federated query execution model (SQL→parse→plan→fan-out→merge→response)
+- Docs-site: architecture page, updated SQL/PPL reference, all 14 connectors
+- OpenAPI spec v0.4.0: cursor pagination, trace reconstruction, saved queries, running queries (19 paths, 22 schemas)
+- Demo video script v2: 8-scene walkthrough covering JOINs, UNION ALL, CTEs, trace, dashboards, pagination
+- README: updated to 14 connectors, all Sprint 3 features, 900+ tests
+
+### Tests
+- 904 tests (up from 660 in v0.3.0), 0 failures
+
+---
+
+## [0.3.0] — 2026-04-10
+
+### Added
+
+**Connectors (7 new → 11 total)**
+- DynamoDB connector — Scan/Query, full filter pushdown, projection
+- PostgreSQL connector — full SQL pushdown via sqlx PgPool
+- MySQL connector — full SQL pushdown via sqlx MySqlPool
+- Elasticsearch connector — ES 7.x/8.x, API key + Basic auth, Query DSL pushdown
+- Redis connector — SCAN, hash + string types
+- CSV/JSON connector — auto-detect format, schema inference
+- CloudWatch connector — CloudWatch Logs Insights, time range + filter pattern pushdown
+
+**Cross-Datasource Query**
+- Cross-datasource JOIN: hash join with build-side selection (smaller table as build)
+- Semi-join (EXISTS) and anti-join (NOT EXISTS)
+- Correlated subqueries: `WHERE col IN (SELECT ... FROM other_source)`
+- Cross-datasource GROUP BY with federated re-aggregation
+- UNION (deduplicated) vs UNION ALL
+- Hash join optimization: build-side selection based on cost estimation
+
+**Pagination & Sorting**
+- Server-side cursor pagination (keyset-based): `page_size`, `cursor`, `next_cursor`
+- Multi-column ORDER BY with mixed ASC/DESC
+- OpenSearch `search_after` for deep pagination (>10k results)
+- S3 Parquet row-group pagination with early limit termination
+
+**Advanced Compute**
+- Window functions: ROW_NUMBER, RANK, DENSE_RANK, LAG, LEAD
+- PERCENTILE / PERCENTILE_APPROX aggregation
+- Computed columns (expressions in SELECT)
+- CASE WHEN expressions
+- Date/time functions: DATE_TRUNC, DATE_DIFF, NOW()
+- String functions: UPPER, LOWER, SUBSTRING, TRIM, REGEXP
+- Math functions: ROUND, CEIL, FLOOR, ABS, MOD
+- Nested/JSON field access (dot notation) in OpenSearch + Elasticsearch
+
+**Server**
+- Trace reconstruction endpoint: `GET /api/fuse/trace/{trace_id}` — fan-out to all datasources
+- Query cost estimator: pre-execution `estimated_rows` and `estimated_cost` per plan node
+
+**Playground**
+- Demo scenario selector: 6 pre-built cross-datasource queries
+- Demo data seeding: 50 users, 200 logs, 200 S3 rows, 50 CloudWatch events
+
+### Tests
+- 660 tests (up from 586 in v0.2.0), 0 failures
+- Cross-datasource integration test suite (JOIN, UNION ALL, correlated subquery, 3-source, GROUP BY)
+- Pagination E2E tests (cursor roundtrip, offset, deep pages)
+- Aggregation correctness tests (window, percentile, computed columns)
+- New connector conformance framework + MockConnector
+- Performance regression suite (p50=90ms, p95=148ms, no regression vs v0.2.0)
 
 ### Added
 
@@ -154,11 +226,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
-
-- End-to-end playground query verification (#060)
-- Federated demo data seeding (#073)
-- Cache test coverage (#090)
-
+[0.4.0]: https://github.com/seraphjiang/fuse/releases/tag/v0.4.0
+[0.3.0]: https://github.com/seraphjiang/fuse/releases/tag/v0.3.0
 [0.2.0]: https://github.com/seraphjiang/fuse/releases/tag/v0.2.0
 [0.1.0]: https://github.com/seraphjiang/fuse/releases/tag/v0.1.0
