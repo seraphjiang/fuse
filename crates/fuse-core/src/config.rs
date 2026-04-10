@@ -163,4 +163,24 @@ rate_limit_per_ip = 50
         assert_eq!(cfg.engine.rate_limit_global, 500);
         assert_eq!(cfg.engine.rate_limit_per_ip, 50);
     }
+
+    #[test]
+    fn test_connector_config_max_connections_default() {
+        let config = ConnectorConfig { id: "x".into(), connector_type: "pg".into(), properties: Default::default() };
+        assert_eq!(config.max_connections(10), 10);
+    }
+
+    #[test]
+    fn test_connector_config_max_connections_from_properties() {
+        let mut props = HashMap::new();
+        props.insert("max_connections".into(), toml::Value::Integer(25));
+        let config = ConnectorConfig { id: "x".into(), connector_type: "pg".into(), properties: props };
+        assert_eq!(config.max_connections(10), 25);
+    }
+
+    #[test]
+    fn test_connector_config_timeout_default() {
+        let config = ConnectorConfig { id: "x".into(), connector_type: "es".into(), properties: Default::default() };
+        assert_eq!(config.connection_timeout_secs(30), 30);
+    }
 }
