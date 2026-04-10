@@ -2384,6 +2384,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuse-connector-csv-json"
+version = "0.2.0"
+dependencies = [
+ "arrow",
+ "arrow-csv",
+ "arrow-json",
+ "async-trait",
+ "aws-config",
+ "aws-sdk-s3",
+ "fuse-core",
+ "futures",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "fuse-connector-example"
 version = "0.2.0"
 dependencies = [

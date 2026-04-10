@@ -2124,3 +2124,31 @@ async fn test_trace_ids_are_unique() {
     let t2 = json2["metadata"]["trace_id"].as_str().unwrap();
     assert_ne!(t1, t2);
 }
+
+// ── Multi-column ORDER BY tests ──
+
+#[tokio::test]
+async fn test_multi_column_order_by() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs ORDER BY status DESC, host ASC",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    // status DESC: 500 before 200
+    assert_eq!(rows[0][1], "500");
+    assert_eq!(rows[rows.len() - 1][1], "200");
+}
+
+#[tokio::test]
+async fn test_single_column_order_by_still_works() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs ORDER BY host ASC",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows[0][0], "h1");
+}

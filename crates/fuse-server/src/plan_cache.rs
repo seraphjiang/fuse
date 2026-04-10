@@ -14,7 +14,7 @@ pub struct CachedPlan {
     pub is_distinct: bool,
     pub limit: Option<usize>,
     pub offset: usize,
-    pub order_by: Option<(String, bool)>,
+    pub order_by: Vec<(String, bool)>,
     created: Instant,
 }
 
@@ -82,7 +82,7 @@ impl CachedPlan {
         is_distinct: bool,
         limit: Option<usize>,
         offset: usize,
-        order_by: Option<(String, bool)>,
+        order_by: Vec<(String, bool)>,
     ) -> Self {
         Self {
             sources,
@@ -104,7 +104,7 @@ mod tests {
     #[test]
     fn test_cache_hit() {
         let cache = PlanCache::new(60, 100);
-        let plan = CachedPlan::new(vec![("ds".into(), "t".into())], false, false, false, None, 0, None);
+        let plan = CachedPlan::new(vec![("ds".into(), "t".into())], false, false, false, None, 0, vec![]);
         cache.insert("SELECT * FROM ds.t".into(), plan);
         assert!(cache.get("SELECT * FROM ds.t").is_some());
     }
@@ -118,7 +118,7 @@ mod tests {
     #[test]
     fn test_cache_expiry() {
         let cache = PlanCache::new(0, 100); // 0s TTL = immediate expiry
-        let plan = CachedPlan::new(vec![], false, false, false, None, 0, None);
+        let plan = CachedPlan::new(vec![], false, false, false, None, 0, vec![]);
         cache.insert("q".into(), plan);
         std::thread::sleep(Duration::from_millis(10));
         assert!(cache.get("q").is_none());
@@ -128,7 +128,7 @@ mod tests {
     fn test_cache_eviction_at_capacity() {
         let cache = PlanCache::new(60, 2);
         for i in 0..3 {
-            let plan = CachedPlan::new(vec![], false, false, false, None, 0, None);
+            let plan = CachedPlan::new(vec![], false, false, false, None, 0, vec![]);
             cache.insert(format!("q{}", i), plan);
         }
         // Should have evicted oldest, size <= max
@@ -138,7 +138,7 @@ mod tests {
     #[test]
     fn test_cache_clear() {
         let cache = PlanCache::new(60, 100);
-        let plan = CachedPlan::new(vec![], false, false, false, None, 0, None);
+        let plan = CachedPlan::new(vec![], false, false, false, None, 0, vec![]);
         cache.insert("q".into(), plan);
         cache.clear();
         assert_eq!(cache.len(), 0);

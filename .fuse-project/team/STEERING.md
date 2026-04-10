@@ -119,3 +119,24 @@ Don't update artifacts you don't own. If you see a gap, tell the owner.
 - Agents self-assign FROM the backlog only
 - Ad-hoc features (not in backlog) require PM approval
 - If backlog is empty, ask PM for Sprint N+1 items — don't freelance
+
+## Sprint 2 Retro Additions (Rules 15-17)
+
+## Rule 15: Verify Gap Before Starting
+Before implementing a backlog item, spend 2 min checking if it's already done:
+1. `grep` for the feature in codebase
+2. Run relevant tests
+3. If already implemented, report `[ALREADY DONE]` and pick next item
+
+## Rule 16: Idle Agent Protocol
+If no work for 5+ minutes:
+1. Check inbox
+2. Check backlog for unassigned items
+3. If nothing, report `[IDLE]` to sisyphus
+4. Sisyphus will assign or approve stand-by
+
+## Rule 17: Shared File Coordination (Strengthened)
+api.rs, main.rs, Cargo.toml, lib.rs are HIGH-CONTENTION files:
+- Announce `[WORKING] filename` before editing
+- Other agents MUST wait for `[RELEASED]` before touching
+- If urgent, ask sisyphus to coordinate handoff

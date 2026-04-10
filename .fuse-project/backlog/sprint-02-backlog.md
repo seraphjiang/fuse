@@ -1,8 +1,12 @@
 # Sprint 2 Backlog
 
 **Sprint:** 2
-**Start:** 2026-04-09 (pending PM kickoff)
+**Start:** 2026-04-09
+**End:** 2026-04-09
+**Status:** ✅ COMPLETE — 32/32 items shipped
 **Focus:** Production hardening, community adoption, OpenSearch Dashboards integration
+**Release:** v0.1.0 + v0.2.0 on GitHub
+**Tests:** 586 passing, 0 failures
 
 ## P0: Production Hardening
 
@@ -30,7 +34,7 @@
 | 220 | OSD plugin scaffold (TypeScript, Kibana platform plugin) | explorer | done | Verified existing structure. Commit: 102618e |
 | 221 | Query bar component (SQL/PPL toggle, syntax highlighting) | explorer | done | QueryEditor 155 lines, Ctrl+Enter, analyze checkbox. Commit: 102618e |
 | 222 | Results table component (sortable, paginated, provenance colors) | explorer | done | ResultsTable 160 lines, sort/pagination/provenance. Commit: 102618e |
-| 223 | Datasource picker (multi-select from /api/fuse/datasources) | general | todo | Depends: 220 |
+| 223 | Datasource picker (multi-select from /api/fuse/datasources) | general | done | Unblocked by #220. Depends: 220 |
 | 224 | Visual execution plan component (tree view from analyze:true) | planner | done | ProfileNode with cost/detail/pushdown. Commit: 98e326e. Tests: 532→559 |
 
 ## P2: Query Engine Depth
@@ -43,7 +47,7 @@
 | 233 | LIKE/ILIKE filter pushdown | planner | done | Added ILike variant + case_insensitive wildcard. Commit: c52181d. Tests: 502→532 |
 | 234 | COUNT DISTINCT aggregation pushdown | explorer | done | End-to-end: AggFunction::CountDistinct → cardinality. Commit: 3752c6d. 3 tests |
 | 235 | PPL: lookup command (cross-datasource enrichment) | planner | done | 11 PPL commands. extract_lookups() API. Commit: 6099fb7. Tests: 576→582 |
-| 236 | Query plan cache (same query → skip planning) | planner | todo | |
+| 236 | Query plan cache (same query → skip planning) | planner | done | TTL 300s, max 1000. Commit: 4d6bd74. Tests: 561→576 |
 
 ## P2: Connector Improvements
 
@@ -67,7 +71,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 260 | v0.2.0 release (tag + GitHub Release with binaries) | planner | done | Bumped 0.1.0→0.2.0, annotated tag. Commit: 36c0ec7 |
+| 260 | v0.1.0 release (tag + GitHub Release with binaries) | infra | done | Released. Binary: fuse-server-v0.1.0-linux-amd64.tar.gz. Tag: 6c114cb |
 | 261 | Demo video (2-3 min, playground walkthrough) | explorer | done | Commit: 75b68f9. 6-scene script, ~2.5 min |
-| 262 | OpenSearch community forum update post | explorer | todo | Sprint 2 features |
+| 262 | OpenSearch community forum update post | explorer | done | Sprint 2 features, 6 connectors, playground link. Commit: fe14b89 |
 | 263 | Publish fuse-connector-sdk to crates.io | explorer | done | Dry-run OK. fuse-core + SDK metadata. Commit: 6c114cb |

@@ -381,10 +381,17 @@ pub async fn query_handler(
             };
 
             // Apply global ORDER BY if present
-            let batches = if let Some((col, desc)) = &order_by {
+            let batches = if !order_by.is_empty() {
                 if let Ok(schema) = fed.batches.first().map(|b| b.schema()).ok_or(()) {
-                    if let Ok(idx) = schema.index_of(col) {
-                        fuse_engine::sort_batches(fed.batches, &[idx], &[*desc], None)
+                    let indices: Vec<usize> = order_by.iter()
+                        .filter_map(|(col, _)| schema.index_of(col).ok())
+                        .collect();
+                    let descs: Vec<bool> = order_by.iter()
+                        .filter(|(col, _)| schema.index_of(col).is_ok())
+                        .map(|(_, d)| *d)
+                        .collect();
+                    if !indices.is_empty() {
+                        fuse_engine::sort_batches(fed.batches, &indices, &descs, None)
                             .unwrap_or_default()
                     } else {
                         fed.batches
@@ -1088,19 +1095,32 @@ fn parse_offset(query: &str) -> Option<usize> {
 }
 
 /// Extract ORDER BY column name and direction from query.
-fn parse_order_by(query: &str) -> Option<(String, bool)> {
+fn parse_order_by(query: &str) -> Vec<(String, bool)> {
     let stripped = strip_string_literals(query);
     let lower = stripped.to_lowercase();
-    let pos = lower.rfind("order by ")?;
+    let pos = match lower.rfind("order by ") {
+        Some(p) => p,
+        None => return vec![],
+    };
     let after = stripped[pos + 9..].trim();
-    let clause = after.split_once("limit").map(|(c, _)| c.trim()).unwrap_or(after.trim());
-    let parts: Vec<&str> = clause.split_whitespace().collect();
-    if parts.is_empty() {
-        return None;
-    }
-    let col = parts[0].trim_matches(|c: char| !c.is_alphanumeric() && c != '_').to_string();
-    let desc = parts.get(1).map(|d| d.to_lowercase() == "desc").unwrap_or(false);
-    Some((col, desc))
+    // Stop at LIMIT, OFFSET, or end
+    let clause = after
+        .split_once("limit").map(|(c, _)| c)
+        .unwrap_or(after)
+        .split_once("offset").map(|(c, _)| c)
+        .unwrap_or(after)
+        .trim();
+
+    clause.split(',')
+        .filter_map(|part| {
+            let tokens: Vec<&str> = part.trim().split_whitespace().collect();
+            if tokens.is_empty() { return None; }
+            let col = tokens[0].trim_matches(|c: char| !c.is_alphanumeric() && c != '_').to_string();
+            if col.is_empty() { return None; }
+            let desc = tokens.get(1).map(|d| d.to_lowercase() == "desc").unwrap_or(false);
+            Some((col, desc))
+        })
+        .collect()
 }
 
 /// Build a QueryWorkload from query text for cost estimation.

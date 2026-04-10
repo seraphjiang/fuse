@@ -1,0 +1,20 @@
+[package]
+name = "fuse-connector-csv-json"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CSV/JSON file connector for the Fuse federated query engine"
+
+[dependencies]
+fuse-core = { path = "../../fuse-core" }
+arrow = { workspace = true }
+arrow-csv = { workspace = true }
+arrow-json = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+futures = { workspace = true }
+aws-sdk-s3 = { workspace = true }
+aws-config = { workspace = true }
