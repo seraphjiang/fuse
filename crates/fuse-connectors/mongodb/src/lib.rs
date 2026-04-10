@@ -363,4 +363,56 @@ mod tests {
         let doc = doc! { "name": "alice" };
         assert!(get_nested_bson(&Bson::Document(doc), "address.city").is_none());
     }
+
+    // ── #450 Verification tests (tester) ──
+
+    #[test]
+    fn test_filter_like_to_regex() {
+        let f = FilterExpr::Comparison {
+            field: "name".into(),
+            op: ComparisonOp::Like,
+            value: ScalarValue::Utf8("%alice%".into()),
+        };
+        let doc = filter_to_bson(&f);
+        let inner = doc.get_document("name").unwrap();
+        assert_eq!(inner.get_str("$regex").unwrap(), ".*alice.*");
+        assert_eq!(inner.get_str("$options").unwrap(), "");
+    }
+
+    #[test]
+    fn test_filter_ilike_to_regex_case_insensitive() {
+        let f = FilterExpr::Comparison {
+            field: "name".into(),
+            op: ComparisonOp::ILike,
+            value: ScalarValue::Utf8("%bob%".into()),
+        };
+        let doc = filter_to_bson(&f);
+        let inner = doc.get_document("name").unwrap();
+        assert_eq!(inner.get_str("$options").unwrap(), "i");
+    }
+
+    #[test]
+    fn test_filter_in_array() {
+        let f = FilterExpr::In {
+            field: "status".into(),
+            values: vec![ScalarValue::Utf8("a".into()), ScalarValue::Utf8("b".into())],
+        };
+        let doc = filter_to_bson(&f);
+        let inner = doc.get_document("status").unwrap();
+        let arr = inner.get_array("$in").unwrap();
+        assert_eq!(arr.len(), 2);
+    }
+
+    #[test]
+    fn test_filter_is_null_not_exists() {
+        let doc = filter_to_bson(&FilterExpr::IsNull("email".into()));
+        let inner = doc.get_document("email").unwrap();
+        assert_eq!(inner.get_bool("$exists").unwrap(), false);
+    }
+
+    #[test]
+    fn test_nested_bson_deep_path() {
+        let doc = doc! { "a": { "b": { "c": 42 } } };
+        assert_eq!(get_nested_bson(&Bson::Document(doc), "a.b.c"), Some(Bson::Int32(42)));
+    }
 }

@@ -74,4 +74,4 @@
 | 430 | Update docs-site for Sprint 3+4 features | explorer | todo | Connectors, pagination, aggregation, cross-source docs |
 | 431 | Update OpenAPI spec | explorer | todo | Cursor pagination params, new query features, CTE support |
 | 432 | Demo video v2 (cross-datasource scenarios) | explorer | todo | Showcase JOIN/UNION/lookup/CTE across sources |
-| 433 | Architecture doc: federated query execution model | explorer | todo | How Fuse plans, distributes, and merges cross-source queries |
+| 433 | Architecture doc: federated query execution model | docs | done | Full query flow, connector trait, pushdown table, crate map. Commit: aa74eef |

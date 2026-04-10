@@ -66,7 +66,7 @@ Join data across different datasource types:
 ```sql
 SELECT l.trace_id, l.service, l.status, s.level, s.message
 FROM cluster_a.application_logs l
-JOIN s3_o11y.fuse_logs s ON l.trace_id = s.trace_id
+JOIN s3_o11y.logs s ON l.trace_id = s.trace_id
 WHERE l.status >= 500
 ```
 

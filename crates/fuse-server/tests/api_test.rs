@@ -3404,3 +3404,35 @@ async fn test_non_cte_query_unchanged() {
     let rows = json["rows"].as_array().unwrap();
     assert!(!rows.is_empty());
 }
+
+// ── Time-windowed JOIN tests ──
+
+#[test]
+fn test_parse_time_window_minutes() {
+    use fuse_server::api::parse_time_window;
+    let tw = parse_time_window(
+        "SELECT * FROM a.logs JOIN b.metrics ON a.logs.host = b.metrics.host AND a.logs.timestamp BETWEEN b.metrics.timestamp - INTERVAL 5 minutes AND b.metrics.timestamp + INTERVAL 5 minutes"
+    );
+    assert!(tw.is_some());
+    let tw = tw.unwrap();
+    assert_eq!(tw.interval_secs, 300);
+}
+
+#[test]
+fn test_parse_time_window_none_without_between() {
+    use fuse_server::api::parse_time_window;
+    let tw = parse_time_window("SELECT * FROM a.logs JOIN b.metrics ON a.logs.host = b.metrics.host");
+    assert!(tw.is_none());
+}
+
+#[tokio::test]
+async fn test_join_without_time_window_still_works() {
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs JOIN cluster_b.logs ON cluster_a.logs.host = cluster_b.logs.host",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert!(!rows.is_empty());
+}

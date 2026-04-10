@@ -89,7 +89,7 @@ curl -X POST http://localhost:9400/api/fuse/query \
 curl -X POST http://localhost:9400/api/fuse/query \
   -H 'Content-Type: application/json' \
   -d '{
-    "query": "SELECT source, service, message FROM cluster_a.application_logs UNION ALL SELECT source, service, message FROM cloudwatch.events UNION ALL SELECT source, service, message FROM s3_o11y.fuse_logs LIMIT 50",
+    "query": "SELECT source, service, message FROM cluster_a.application_logs UNION ALL SELECT source, service, message FROM cloudwatch.events UNION ALL SELECT source, service, message FROM s3_o11y.logs LIMIT 50",
     "format": "sql"
   }'
 ```

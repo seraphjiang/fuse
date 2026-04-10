@@ -408,7 +408,7 @@ pub async fn query_handler(
         } else if format == "ppl" || is_union_query(&query) {
             execute_union(&state, &query, &format, &refs).await
         } else {
-            execute_join(&state, &refs).await
+            execute_join(&state, &query, &refs).await
         }
     };
 
@@ -739,6 +739,7 @@ async fn execute_union(
 /// Execute a cross-datasource JOIN using the join executor.
 async fn execute_join(
     state: &AppState,
+    query: &str,
     refs: &[(String, String)],
 ) -> Result<FederatedResult, String> {
     if refs.len() != 2 {
@@ -817,6 +818,14 @@ async fn execute_join(
         fuse_engine::JoinType::Inner,
     )
     .map_err(|e| e.to_string())?;
+
+    // Apply time-window filter if ON clause has BETWEEN condition
+    let joined = if let Some(tw) = parse_time_window(query) {
+        filter_time_window(&joined, &tw)
+    } else {
+        joined
+    };
+
     let join_ms = join_start.elapsed().as_millis() as u64;
 
     let join_rows: u64 = joined.iter().map(|b| b.num_rows() as u64).sum();
@@ -836,6 +845,110 @@ async fn execute_join(
 }
 
 /// Find the first column name that exists in both schemas.
+/// Time window condition parsed from JOIN ON clause.
+pub struct TimeWindow {
+    pub column_a: String,
+    pub column_b: String,
+    pub interval_secs: i64,
+}
+
+/// Parse time-window BETWEEN from JOIN ON clause.
+pub fn parse_time_window(query: &str) -> Option<TimeWindow> {
+    let stripped = strip_string_literals(query);
+    let lower = stripped.to_lowercase();
+
+    // Find BETWEEN in ON clause context
+    let on_pos = lower.find(" on ")?;
+    let on_clause = &lower[on_pos + 4..];
+
+    // Look for: col BETWEEN col - INTERVAL 'Ns' AND col + INTERVAL 'Ns'
+    let between_pos = on_clause.find(" between ")?;
+    let before_between = on_clause[..between_pos].trim();
+    // Column A is the last token before BETWEEN
+    let col_a = before_between.rsplit(|c: char| c.is_whitespace() || c == '(')
+        .next()?.trim().to_string();
+    if col_a.is_empty() { return None; }
+
+    let after_between = &on_clause[between_pos + 9..];
+
+    // Extract interval value — look for a number followed by time unit
+    let interval_secs = extract_interval_secs(after_between)?;
+
+    // Column B is referenced in the BETWEEN bounds
+    // Find the first column reference after BETWEEN that isn't col_a
+    let col_b = after_between.split(|c: char| !c.is_alphanumeric() && c != '.' && c != '_')
+        .find(|t| !t.is_empty() && t.contains('.') && *t != col_a)?
+        .to_string();
+
+    Some(TimeWindow { column_a: col_a, column_b: col_b, interval_secs })
+}
+
+/// Extract interval in seconds from a string containing INTERVAL or time notation.
+fn extract_interval_secs(s: &str) -> Option<i64> {
+    // Match patterns like: INTERVAL '5 minutes', INTERVAL '300 seconds', '5m', '1h'
+    let re_num = s.chars()
+        .skip_while(|c| !c.is_ascii_digit())
+        .take_while(|c| c.is_ascii_digit())
+        .collect::<String>();
+    let num: i64 = re_num.parse().ok()?;
+
+    let after_num = &s[s.find(&re_num)? + re_num.len()..].trim_start();
+    let unit = after_num.chars().take_while(|c| c.is_alphabetic()).collect::<String>().to_lowercase();
+
+    match unit.as_str() {
+        "s" | "sec" | "second" | "seconds" => Some(num),
+        "m" | "min" | "minute" | "minutes" => Some(num * 60),
+        "h" | "hour" | "hours" => Some(num * 3600),
+        "d" | "day" | "days" => Some(num * 86400),
+        _ => Some(num), // default to seconds
+    }
+}
+
+/// Filter joined batches by time-window condition.
+fn filter_time_window(
+    batches: &[arrow::record_batch::RecordBatch],
+    tw: &TimeWindow,
+) -> Vec<arrow::record_batch::RecordBatch> {
+    // Strip table alias prefix to find column in schema
+    let col_a_name = tw.column_a.rsplit('.').next().unwrap_or(&tw.column_a);
+    let col_b_name = tw.column_b.rsplit('.').next().unwrap_or(&tw.column_b);
+
+    batches.iter().filter_map(|batch| {
+        let schema = batch.schema();
+        let idx_a = schema.index_of(col_a_name).ok()?;
+        let idx_b = schema.index_of(col_b_name).ok()?;
+
+        let col_a = batch.column(idx_a);
+        let col_b = batch.column(idx_b);
+
+        // Build boolean mask: |a - b| <= interval_secs
+        let mut keep = Vec::with_capacity(batch.num_rows());
+        for i in 0..batch.num_rows() {
+            if col_a.is_null(i) || col_b.is_null(i) {
+                keep.push(false);
+                continue;
+            }
+            let val_a = arrow::util::display::array_value_to_string(col_a, i).unwrap_or_default();
+            let val_b = arrow::util::display::array_value_to_string(col_b, i).unwrap_or_default();
+
+            // Try numeric comparison (epoch seconds/millis)
+            let within = if let (Ok(a), Ok(b)) = (val_a.parse::<i64>(), val_b.parse::<i64>()) {
+                (a - b).abs() <= tw.interval_secs
+            } else if let (Ok(a), Ok(b)) = (val_a.parse::<f64>(), val_b.parse::<f64>()) {
+                (a - b).abs() <= tw.interval_secs as f64
+            } else {
+                // String comparison (ISO timestamps) — lexicographic diff not meaningful,
+                // but include row if we can't parse (don't silently drop)
+                true
+            };
+            keep.push(within);
+        }
+
+        let mask = arrow::array::BooleanArray::from(keep);
+        arrow::compute::filter_record_batch(batch, &mask).ok()
+    }).collect()
+}
+
 fn find_join_key(
     a: &arrow::datatypes::SchemaRef,
     b: &arrow::datatypes::SchemaRef,
@@ -1226,7 +1339,7 @@ async fn resolve_ctes(
         } else if is_union_query(inner_sql) {
             execute_union(state, inner_sql, format, &inner_refs).await
         } else {
-            execute_join(state, &inner_refs).await
+            execute_join(state, inner_sql, &inner_refs).await
         };
         if let Ok(fed) = result {
             let conn: Arc<dyn fuse_core::connector::FederatedConnector> = Arc::new(MemoryConnector { name: name.clone(), batches: fed.batches });
@@ -1899,6 +2012,118 @@ pub async fn refresh_view(
     }
 }
 
+// ── Trace Reconstruction (#421) ──
+
+#[derive(Serialize)]
+pub struct TraceSpan {
+    pub datasource: String,
+    pub timestamp: Option<serde_json::Value>,
+    pub fields: std::collections::HashMap<String, serde_json::Value>,
+}
+
+#[derive(Serialize)]
+pub struct TraceResponse {
+    pub trace_id: String,
+    pub spans: Vec<TraceSpan>,
+    pub datasources_searched: Vec<String>,
+    pub datasources_matched: Vec<String>,
+    pub total_spans: u64,
+    pub search_ms: u64,
+}
+
+/// GET /api/fuse/trace/{trace_id}
+/// Fan out to all datasources, query for trace_id, merge into timeline.
+pub async fn trace_handler(
+    State(state): State<Arc<AppState>>,
+    Path(trace_id): Path<String>,
+) -> impl IntoResponse {
+    use std::time::Instant;
+    use fuse_core::connector::*;
+
+    let start = Instant::now();
+    let connectors = state.registry.connectors();
+    let datasources_searched: Vec<String> = connectors.iter().map(|(id, _)| id.clone()).collect();
+
+    // Fan out: query each connector for trace_id
+    let mut handles = Vec::new();
+    for (ds_id, connector) in &connectors {
+        let ds_id = ds_id.clone();
+        let connector = connector.clone();
+        let tid = trace_id.clone();
+        handles.push(tokio::spawn(async move {
+            // Try common trace_id field names
+            let schemas = connector.discover_schemas().await.unwrap_or_default();
+            let table = schemas.first().map(|s| s.name.clone()).unwrap_or_default();
+            if table.is_empty() {
+                return (ds_id, vec![]);
+            }
+            let sub = SubQuery {
+                table,
+                projections: vec![],
+                filter: Some(FilterExpr::Comparison {
+                    field: "trace_id".into(),
+                    op: ComparisonOp::Eq,
+                    value: ScalarValue::Utf8(tid),
+                }),
+                aggregations: vec![],
+                group_by: vec![],
+                having: None,
+                sort: vec![],
+                limit: Some(1000),
+                passthrough: None,
+            };
+            let batches = connector.execute(&sub).await.unwrap_or_default();
+            (ds_id, batches)
+        }));
+    }
+
+    let mut spans = Vec::new();
+    let mut datasources_matched = Vec::new();
+
+    for handle in handles {
+        if let Ok((ds_id, batches)) = handle.await {
+            if batches.is_empty() { continue; }
+            let (cols, rows) = batches_to_json(&batches);
+            if rows.is_empty() { continue; }
+            datasources_matched.push(ds_id.clone());
+
+            let ts_idx = cols.iter().position(|c| {
+                let l = c.to_lowercase();
+                l == "timestamp" || l == "@timestamp" || l == "time" || l == "ts"
+            });
+
+            for row in &rows {
+                let mut fields = std::collections::HashMap::new();
+                for (i, col) in cols.iter().enumerate() {
+                    if let Some(val) = row.get(i) {
+                        fields.insert(col.clone(), val.clone());
+                    }
+                }
+                let timestamp = ts_idx.and_then(|i| row.get(i).cloned());
+                spans.push(TraceSpan { datasource: ds_id.clone(), timestamp, fields });
+            }
+        }
+    }
+
+    // Sort by timestamp if available
+    spans.sort_by(|a, b| {
+        let ta = a.timestamp.as_ref().and_then(|v| v.as_str()).unwrap_or("");
+        let tb = b.timestamp.as_ref().and_then(|v| v.as_str()).unwrap_or("");
+        ta.cmp(tb)
+    });
+
+    let total_spans = spans.len() as u64;
+    let resp = TraceResponse {
+        trace_id,
+        spans,
+        datasources_searched,
+        datasources_matched,
+        total_spans,
+        search_ms: start.elapsed().as_millis() as u64,
+    };
+    (StatusCode::OK, axum::Json(resp))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2086,5 +2311,80 @@ mod tests {
         assert_eq!(pt["start"], "2024-01-01T00:00:00Z");
         assert_eq!(pt["end"], "2024-01-02T00:00:00Z");
         assert_eq!(pt["step"], "1m");
+    }
+
+    #[test]
+    fn test_trace_response_serialization() {
+        let resp = TraceResponse {
+            trace_id: "abc-123".into(),
+            spans: vec![
+                TraceSpan {
+                    datasource: "cluster_a".into(),
+                    timestamp: Some(serde_json::json!("2024-01-01T00:00:01Z")),
+                    fields: [("service".into(), serde_json::json!("api"))].into(),
+                },
+                TraceSpan {
+                    datasource: "cluster_b".into(),
+                    timestamp: Some(serde_json::json!("2024-01-01T00:00:02Z")),
+                    fields: [("service".into(), serde_json::json!("db"))].into(),
+                },
+            ],
+            datasources_searched: vec!["cluster_a".into(), "cluster_b".into(), "s3".into()],
+            datasources_matched: vec!["cluster_a".into(), "cluster_b".into()],
+            total_spans: 2,
+            search_ms: 42,
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["trace_id"], "abc-123");
+        assert_eq!(json["total_spans"], 2);
+        assert_eq!(json["datasources_matched"].as_array().unwrap().len(), 2);
+        assert_eq!(json["spans"][0]["datasource"], "cluster_a");
+        assert_eq!(json["spans"][1]["timestamp"], "2024-01-01T00:00:02Z");
+    }
+
+    #[test]
+    fn test_trace_span_sort_by_timestamp() {
+        let mut spans = vec![
+            TraceSpan {
+                datasource: "b".into(),
+                timestamp: Some(serde_json::json!("2024-01-01T00:00:05Z")),
+                fields: Default::default(),
+            },
+            TraceSpan {
+                datasource: "a".into(),
+                timestamp: Some(serde_json::json!("2024-01-01T00:00:01Z")),
+                fields: Default::default(),
+            },
+            TraceSpan {
+                datasource: "c".into(),
+                timestamp: None,
+                fields: Default::default(),
+            },
+        ];
+        spans.sort_by(|a, b| {
+            let ta = a.timestamp.as_ref().and_then(|v| v.as_str()).unwrap_or("");
+            let tb = b.timestamp.as_ref().and_then(|v| v.as_str()).unwrap_or("");
+            ta.cmp(tb)
+        });
+        // None timestamp sorts first (empty string), then chronological
+        assert_eq!(spans[0].datasource, "c");
+        assert_eq!(spans[1].datasource, "a");
+        assert_eq!(spans[2].datasource, "b");
+    }
+
+    #[test]
+    fn test_trace_response_empty() {
+        let resp = TraceResponse {
+            trace_id: "not-found".into(),
+            spans: vec![],
+            datasources_searched: vec!["ds1".into()],
+            datasources_matched: vec![],
+            total_spans: 0,
+            search_ms: 5,
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["total_spans"], 0);
+        assert!(json["datasources_matched"].as_array().unwrap().is_empty());
+        assert!(json["spans"].as_array().unwrap().is_empty());
     }
 }

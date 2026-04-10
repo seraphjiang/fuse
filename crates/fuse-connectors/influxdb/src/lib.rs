@@ -472,4 +472,51 @@ mod tests {
     fn test_influx_version_enum() {
         assert_ne!(InfluxVersion::V1, InfluxVersion::V2);
     }
+
+    // ── #451 Verification tests (tester) ──
+
+    #[test]
+    fn test_influxql_projections() {
+        let q = SubQuery { table: "cpu".into(), projections: vec!["usage".into(), "host".into()], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None };
+        let sql = subquery_to_influxql(&q);
+        assert!(sql.contains("SELECT usage, host FROM"));
+    }
+
+    #[test]
+    fn test_flux_with_filter() {
+        let q = SubQuery {
+            table: "cpu".into(), projections: vec![],
+            filter: Some(FilterExpr::Comparison { field: "host".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("web01".into()) }),
+            aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None,
+        };
+        let flux = subquery_to_flux(&q, "metrics");
+        assert!(flux.contains("|> filter(fn: (r) =>"));
+        assert!(flux.contains("r.host == \"web01\""));
+    }
+
+    #[test]
+    fn test_flux_with_limit() {
+        let q = SubQuery { table: "cpu".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: Some(5), passthrough: None };
+        let flux = subquery_to_flux(&q, "b");
+        assert!(flux.contains("|> limit(n: 5)"));
+    }
+
+    #[test]
+    fn test_filter_to_flux_or() {
+        let f = FilterExpr::Or(
+            Box::new(FilterExpr::Comparison { field: "a".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(1) }),
+            Box::new(FilterExpr::Comparison { field: "b".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(2) }),
+        );
+        assert!(filter_to_flux(&f).contains(" or "));
+    }
+
+    #[test]
+    fn test_parse_v1_response_with_data() {
+        let body = serde_json::json!({
+            "results": [{"series": [{"name": "cpu", "columns": ["time", "usage"], "values": [["2026-01-01T00:00:00Z", 42.5]]}]}]
+        });
+        let batches = parse_v1_response(&body).unwrap();
+        assert_eq!(batches[0].num_rows(), 1);
+        assert_eq!(batches[0].num_columns(), 2);
+    }
 }

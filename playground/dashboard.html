@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuse Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e1e4e8;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #21262d;background:#161b22}
+header h1{font-size:18px;font-weight:600;color:#58a6ff}
+header h1 span{color:#8b949e;font-weight:400}
+.header-actions{display:flex;align-items:center;gap:8px}
+select,button,input{background:#21262d;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;padding:6px 12px;font-size:13px;cursor:pointer}
+select:hover,button:hover{border-color:#58a6ff}
+button.primary{background:#238636;border-color:#238636;font-weight:600}
+button.primary:hover{background:#2ea043}
+button.danger{background:#da3633;border-color:#da3633;font-weight:600}
+button.danger:hover{background:#f85149}
+input[type="text"],input[type="number"]{cursor:text}
+input:focus,textarea:focus,select:focus{outline:none;border-color:#58a6ff}
+textarea{width:100%;min-height:60px;background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;padding:8px;font-family:"SF Mono",Consolas,monospace;font-size:13px;resize:vertical}
+/* Grid layout */
+.dashboard-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:12px;padding:16px 24px;flex:1;align-content:start}
+.panel{background:#161b22;border:1px solid #21262d;border-radius:8px;overflow:hidden;min-height:200px;display:flex;flex-direction:column;position:relative}
+.panel:hover{border-color:#30363d}
+.panel-header{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #21262d;background:#0d1117;cursor:move;user-select:none}
+.panel-title{font-size:13px;font-weight:600;color:#e1e4e8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.panel-actions{display:flex;gap:4px}
+.panel-actions button{padding:2px 6px;font-size:11px;background:none;border:1px solid transparent}
+.panel-actions button:hover{border-color:#30363d}
+.panel-chart{flex:1;min-height:180px}
+.panel-error{color:#f85149;padding:12px;font-size:12px}
+.panel-loading{color:#8b949e;padding:12px;font-size:12px;text-align:center}
+/* Panel sizes */
+.col-3{grid-column:span 3}.col-4{grid-column:span 4}.col-6{grid-column:span 6}.col-8{grid-column:span 8}.col-12{grid-column:span 12}
+.row-1{grid-row:span 1}.row-2{grid-row:span 2}
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;width:520px;max-height:80vh;overflow-y:auto}
+.modal h3{font-size:15px;margin-bottom:12px;color:#58a6ff}
+.form-row{margin-bottom:10px}
+.form-row label{display:block;font-size:12px;color:#8b949e;margin-bottom:4px}
+.form-row input,.form-row select,.form-row textarea{width:100%}
+.form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+/* Time range bar */
+.time-bar{display:flex;align-items:center;gap:8px;padding:8px 24px;border-bottom:1px solid #21262d;background:#0d1117;font-size:12px;color:#8b949e}
+.time-bar select,.time-bar button{font-size:12px;padding:4px 8px}
+.refresh-indicator{width:8px;height:8px;border-radius:50%;background:#484f58;margin-left:4px}
+.refresh-indicator.active{background:#3fb950;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+/* Empty state */
+.empty-dashboard{grid-column:1/-1;text-align:center;padding:80px 20px;color:#484f58}
+.empty-dashboard h2{font-size:20px;margin-bottom:8px;color:#8b949e}
+.empty-dashboard p{font-size:14px;margin-bottom:16px}
+/* Nav link */
+.nav-link{color:#8b949e;font-size:13px;text-decoration:none}
+.nav-link:hover{color:#58a6ff}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Fuse <span>Dashboard</span></h1>
+  <div class="header-actions">
+    <a href="/playground" class="nav-link">← Playground</a>
+    <button onclick="addPanel()">+ Add Panel</button>
+    <button onclick="showImport()">📂 Load</button>
+    <button onclick="exportDashboard()">💾 Save</button>
+    <select id="dashboard-list" onchange="loadDashboard(this.value)">
+      <option value="">— Saved Dashboards —</option>
+    </select>
+  </div>
+</header>
+
+<div class="time-bar">
+  <span>Time Range:</span>
+  <select id="time-range" onchange="onTimeRangeChange()">
+    <option value="15m">Last 15 min</option>
+    <option value="1h" selected>Last 1 hour</option>
+    <option value="6h">Last 6 hours</option>
+    <option value="24h">Last 24 hours</option>
+    <option value="7d">Last 7 days</option>
+    <option value="30d">Last 30 days</option>
+  </select>
+  <span>Auto-refresh:</span>
+  <select id="refresh-interval" onchange="onRefreshChange()">
+    <option value="0">Off</option>
+    <option value="10">10s</option>
+    <option value="30">30s</option>
+    <option value="60">1m</option>
+    <option value="300">5m</option>
+  </select>
+  <span class="refresh-indicator" id="refresh-dot"></span>
+  <button onclick="refreshAll()" style="margin-left:auto">↻ Refresh All</button>
+</div>
+
+<div class="dashboard-grid" id="grid"></div>
+
+<!-- Panel editor modal -->
+<div class="modal-overlay" id="panel-modal">
+  <div class="modal">
+    <h3 id="modal-title">Add Panel</h3>
+    <div class="form-row"><label>Title</label><input type="text" id="p-title" placeholder="Panel title"></div>
+    <div class="form-row"><label>Query</label><textarea id="p-query" placeholder="SELECT service, count(*) as errors FROM cluster_a.application_logs WHERE status >= 500 GROUP BY service"></textarea></div>
+    <div class="form-row"><label>Format</label><select id="p-format"><option value="sql">SQL</option><option value="ppl">PPL</option></select></div>
+    <div class="form-row"><label>Chart Type</label>
+      <select id="p-chart">
+        <option value="auto">Auto</option><option value="line">Line</option><option value="bar">Bar</option>
+        <option value="stacked-bar">Stacked Bar</option><option value="pie">Pie</option><option value="area">Area</option>
+        <option value="scatter">Scatter</option><option value="histogram">Histogram</option><option value="table">Table</option>
+      </select>
+    </div>
+    <div class="form-row"><label>Width</label>
+      <select id="p-width"><option value="3">3 cols (¼)</option><option value="4">4 cols (⅓)</option><option value="6" selected>6 cols (½)</option><option value="8">8 cols (⅔)</option><option value="12">12 cols (full)</option></select>
+    </div>
+    <div class="form-actions">
+      <button onclick="closeModal()">Cancel</button>
+      <button class="primary" onclick="savePanel()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import modal -->
+<div class="modal-overlay" id="import-modal">
+  <div class="modal">
+    <h3>Load Dashboard</h3>
+    <div class="form-row"><label>Paste dashboard JSON</label><textarea id="import-json" style="min-height:120px" placeholder='{"title":"My Dashboard","panels":[...]}'></textarea></div>
+    <div class="form-actions">
+      <button onclick="closeImport()">Cancel</button>
+      <button class="primary" onclick="doImport()">Load</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+const $ = id => document.getElementById(id);
+
+// === Dashboard State ===
+let dashboard = { title: 'Untitled Dashboard', panels: [], timeRange: '1h', refreshInterval: 0 };
+let editingPanelId = null;
+let refreshTimer = null;
+let panelCharts = {}; // panelId -> echarts instance
+
+// === API ===
+async function apiQuery(query, format) {
+  const r = await fetch(API + '/api/fuse/query', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, format })
+  });
+  const body = await r.json();
+  if (!r.ok) throw new Error(body.error || r.statusText);
+  return body;
+}
+
+// === Column type detection + chart suggestion (shared with playground) ===
+function detectColumnTypes(columns, rows) {
+  const types = {};
+  columns.forEach((col, i) => {
+    const sample = rows.slice(0, 50).map(r => r[i]).filter(v => v != null && v !== '');
+    if (!sample.length) { types[col] = 'unknown'; return; }
+    const allNum = sample.every(v => !isNaN(Number(v)));
+    const allTime = sample.every(v => !isNaN(Date.parse(String(v))));
+    const uniq = new Set(sample.map(String)).size;
+    if (col === '_datasource' || col === 'datasource') types[col] = 'datasource';
+    else if (/^(timestamp|time|date|created|updated)/i.test(col) || allTime) types[col] = 'time';
+    else if (allNum) types[col] = 'number';
+    else if (uniq <= 30) types[col] = 'category';
+    else types[col] = 'string';
+  });
+  return types;
+}
+
+function suggestChart(columns, rows) {
+  const types = detectColumnTypes(columns, rows);
+  const cats = columns.filter(c => types[c] === 'category' || types[c] === 'datasource');
+  const nums = columns.filter(c => types[c] === 'number');
+  const times = columns.filter(c => types[c] === 'time');
+  if (times.length && nums.length) return { type: 'line', x: times[0], y: nums[0], series: cats[0] || null };
+  if (cats.length && nums.length) {
+    if (nums.length === 1 && rows.length <= 12) return { type: 'pie', label: cats[0], value: nums[0] };
+    return { type: 'bar', x: cats[0], y: nums[0], series: cats[1] || null };
+  }
+  if (nums.length >= 2) return { type: 'scatter', x: nums[0], y: nums[1] };
+  if (cats.length >= 1 && rows.length) return { type: 'bar', x: cats[0], y: null };
+  return null;
+}
+
+function resolveChartType(userType, autoSuggestion) {
+  if (userType === 'auto' || !autoSuggestion) return autoSuggestion;
+  const s = { ...autoSuggestion };
+  if (userType === 'pie') { s.type = 'pie'; s.label = s.label || s.x; s.value = s.value || s.y; }
+  else if (userType === 'histogram') s.type = 'histogram';
+  else if (userType === 'stacked-bar') s.type = 'stacked-bar';
+  else if (userType === 'area') s.type = 'area';
+  else s.type = userType;
+  return s;
+}
+
+function buildChartOption(suggestion, columns, rows) {
+  const ci = col => columns.indexOf(col);
+  const vals = col => rows.map(r => r[ci(col)]);
+  const numVals = col => rows.map(r => Number(r[ci(col)]));
+  const dark = { backgroundColor: 'transparent', textStyle: { color: '#8b949e', fontSize: 11 } };
+  const tooltip = { trigger: 'axis', backgroundColor: '#161b22', borderColor: '#30363d', textStyle: { color: '#e1e4e8', fontSize: 11 } };
+  const grid = { left: 50, right: 12, bottom: 30, top: 16 };
+  const axisLabel = { color: '#8b949e', fontSize: 10 };
+
+  if (suggestion.type === 'histogram') {
+    const nums = columns.filter((c, i) => rows.slice(0, 50).every(r => !isNaN(Number(r[i]))));
+    const col = suggestion.y || suggestion.x || nums[0];
+    if (!col) return null;
+    const values = numVals(col).filter(v => !isNaN(v));
+    const min = Math.min(...values), max = Math.max(...values);
+    const binCount = Math.min(Math.ceil(Math.sqrt(values.length)), 30);
+    const binSize = (max - min) / binCount || 1;
+    const bins = Array(binCount).fill(0);
+    values.forEach(v => { const idx = Math.min(Math.floor((v - min) / binSize), binCount - 1); bins[idx]++; });
+    const labels = bins.map((_, i) => `${(min + i * binSize).toFixed(1)}`);
+    return { ...dark, tooltip, grid, xAxis: { type: 'category', data: labels, axisLabel: { ...axisLabel, rotate: 30 } },
+      yAxis: { type: 'value', axisLabel }, series: [{ type: 'bar', data: bins, barWidth: '90%', itemStyle: { color: '#58a6ff' } }] };
+  }
+  if (suggestion.type === 'pie') {
+    const lbl = suggestion.label || suggestion.x, val = suggestion.value || suggestion.y;
+    if (!lbl || !val) return null;
+    const map = {};
+    rows.forEach(r => { const k = String(r[ci(lbl)]); map[k] = (map[k] || 0) + Number(r[ci(val)]); });
+    const data = Object.entries(map).map(([name, value]) => ({ name, value }));
+    return { ...dark, tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: ['30%', '60%'], data, label: { color: '#8b949e', fontSize: 10 } }] };
+  }
+  if (suggestion.type === 'scatter') {
+    const xv = numVals(suggestion.x), yv = numVals(suggestion.y);
+    return { ...dark, tooltip: { trigger: 'item' }, grid,
+      xAxis: { type: 'value', axisLabel }, yAxis: { type: 'value', axisLabel },
+      series: [{ type: 'scatter', data: xv.map((x, i) => [x, yv[i]]), symbolSize: 6, itemStyle: { color: '#58a6ff' } }] };
+  }
+  const isArea = suggestion.type === 'area', isStacked = suggestion.type === 'stacked-bar';
+  const eType = (isArea || suggestion.type === 'line') ? 'line' : 'bar';
+  const xData = [...new Set(vals(suggestion.x).map(String))];
+  const rotate = xData.length > 10 ? 30 : 0;
+  if (!suggestion.series) {
+    const yData = suggestion.y
+      ? (() => { const m = {}; rows.forEach(r => { const x = String(r[ci(suggestion.x)]); m[x] = (m[x]||0) + Number(r[ci(suggestion.y)]); }); return xData.map(x => m[x]||0); })()
+      : (() => { const m = {}; vals(suggestion.x).forEach(v => m[String(v)] = (m[String(v)]||0)+1); return xData.map(x => m[x]||0); })();
+    return { ...dark, tooltip, grid, xAxis: { type: 'category', data: xData, axisLabel: { ...axisLabel, rotate } },
+      yAxis: { type: 'value', axisLabel },
+      series: [{ type: eType, data: yData, smooth: eType === 'line', areaStyle: isArea ? { opacity: 0.3 } : undefined, stack: isStacked ? 'total' : undefined }] };
+  }
+  const seriesCol = ci(suggestion.series);
+  const groups = {};
+  rows.forEach(r => { const s = String(r[seriesCol]); if (!groups[s]) groups[s] = {}; const x = String(r[ci(suggestion.x)]); groups[s][x] = (groups[s][x]||0) + Number(r[ci(suggestion.y)]||1); });
+  const series = Object.entries(groups).map(([name, map]) => ({
+    name, type: eType, data: xData.map(x => map[x]||0), smooth: eType === 'line',
+    areaStyle: isArea ? { opacity: 0.3 } : undefined, stack: isStacked ? 'total' : undefined
+  }));
+  return { ...dark, tooltip, legend: { textStyle: { color: '#8b949e', fontSize: 10 }, top: 0 },
+    xAxis: { type: 'category', data: xData, axisLabel: { ...axisLabel, rotate } },
+    yAxis: { type: 'value', axisLabel }, series, grid: { ...grid, top: 24 } };
+}
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// === Panel rendering ===
+function renderPanelTable(el, columns, rows) {
+  let html = '<div style="overflow:auto;max-height:100%;font-size:12px"><table style="width:100%;border-collapse:collapse">';
+  html += '<thead><tr>' + columns.map(c => `<th style="position:sticky;top:0;background:#0d1117;text-align:left;padding:4px 8px;border-bottom:1px solid #30363d;color:#8b949e;font-size:10px;text-transform:uppercase">${esc(c)}</th>`).join('') + '</tr></thead><tbody>';
+  rows.slice(0, 100).forEach(row => {
+    html += '<tr>' + row.map(v => `<td style="padding:3px 8px;border-bottom:1px solid #21262d;white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${esc(v)}">${esc(v)}</td>`).join('') + '</tr>';
+  });
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
+}
+
+async function executePanel(panel) {
+  const el = document.getElementById('panel-chart-' + panel.id);
+  if (!el) return;
+  el.innerHTML = '<div class="panel-loading">Loading…</div>';
+  try {
+    const res = await apiQuery(panel.query, panel.format || 'sql');
+    if (panel.chartType === 'table') {
+      renderPanelTable(el, res.columns, res.rows);
+      return;
+    }
+    const auto = suggestChart(res.columns, res.rows);
+    const suggestion = resolveChartType(panel.chartType || 'auto', auto);
+    if (!suggestion) { el.innerHTML = '<div class="panel-error">Cannot visualize — no numeric/categorical columns</div>'; return; }
+    const option = buildChartOption(suggestion, res.columns, res.rows);
+    if (!option) { el.innerHTML = '<div class="panel-error">Not enough data for this chart type</div>'; return; }
+    el.innerHTML = '';
+    if (panelCharts[panel.id]) panelCharts[panel.id].dispose();
+    const chart = echarts.init(el, 'dark');
+    chart.setOption(option);
+    panelCharts[panel.id] = chart;
+  } catch (e) {
+    el.innerHTML = '<div class="panel-error">' + esc(e.message) + '</div>';
+  }
+}
+
+// === Grid rendering ===
+function renderGrid() {
+  const grid = $('grid');
+  if (!dashboard.panels.length) {
+    grid.innerHTML = '<div class="empty-dashboard"><h2>No panels yet</h2><p>Click "+ Add Panel" to create your first visualization</p></div>';
+    return;
+  }
+  grid.innerHTML = dashboard.panels.map(p => {
+    const w = p.width || 6;
+    return `<div class="panel col-${w}" id="panel-${p.id}">
+      <div class="panel-header">
+        <span class="panel-title">${esc(p.title || 'Untitled')}</span>
+        <div class="panel-actions">
+          <button onclick="editPanel('${p.id}')" title="Edit">✏️</button>
+          <button onclick="removePanel('${p.id}')" title="Remove">✕</button>
+        </div>
+      </div>
+      <div class="panel-chart" id="panel-chart-${p.id}"></div>
+    </div>`;
+  }).join('');
+  dashboard.panels.forEach(p => executePanel(p));
+}
+
+// === Panel CRUD ===
+function genId() { return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+function addPanel() {
+  editingPanelId = null;
+  $('modal-title').textContent = 'Add Panel';
+  $('p-title').value = '';
+  $('p-query').value = '';
+  $('p-format').value = 'sql';
+  $('p-chart').value = 'auto';
+  $('p-width').value = '6';
+  $('panel-modal').classList.add('open');
+}
+
+function editPanel(id) {
+  const p = dashboard.panels.find(x => x.id === id);
+  if (!p) return;
+  editingPanelId = id;
+  $('modal-title').textContent = 'Edit Panel';
+  $('p-title').value = p.title || '';
+  $('p-query').value = p.query || '';
+  $('p-format').value = p.format || 'sql';
+  $('p-chart').value = p.chartType || 'auto';
+  $('p-width').value = String(p.width || 6);
+  $('panel-modal').classList.add('open');
+}
+
+function savePanel() {
+  const data = {
+    title: $('p-title').value || 'Untitled',
+    query: $('p-query').value,
+    format: $('p-format').value,
+    chartType: $('p-chart').value,
+    width: parseInt($('p-width').value) || 6
+  };
+  if (editingPanelId) {
+    const p = dashboard.panels.find(x => x.id === editingPanelId);
+    if (p) Object.assign(p, data);
+  } else {
+    dashboard.panels.push({ id: genId(), ...data });
+  }
+  closeModal();
+  saveDashboardLocal();
+  renderGrid();
+}
+
+function removePanel(id) {
+  dashboard.panels = dashboard.panels.filter(x => x.id !== id);
+  if (panelCharts[id]) { panelCharts[id].dispose(); delete panelCharts[id]; }
+  saveDashboardLocal();
+  renderGrid();
+}
+
+function closeModal() { $('panel-modal').classList.remove('open'); }
+
+// === Time range ===
+function onTimeRangeChange() {
+  dashboard.timeRange = $('time-range').value;
+  saveDashboardLocal();
+}
+
+// === Auto-refresh ===
+function onRefreshChange() {
+  const sec = parseInt($('refresh-interval').value);
+  dashboard.refreshInterval = sec;
+  if (refreshTimer) clearInterval(refreshTimer);
+  if (sec > 0) {
+    refreshTimer = setInterval(refreshAll, sec * 1000);
+    $('refresh-dot').classList.add('active');
+  } else {
+    $('refresh-dot').classList.remove('active');
+  }
+  saveDashboardLocal();
+}
+
+function refreshAll() {
+  dashboard.panels.forEach(p => executePanel(p));
+}
+
+// === Save/Load (localStorage) ===
+const STORAGE_KEY = 'fuse-dashboards';
+
+function getSavedDashboards() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; }
+}
+
+function saveDashboardLocal() {
+  const all = getSavedDashboards();
+  const key = dashboard.title || 'Untitled Dashboard';
+  all[key] = { ...dashboard, savedAt: Date.now() };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  refreshDashboardList();
+}
+
+function refreshDashboardList() {
+  const all = getSavedDashboards();
+  const sel = $('dashboard-list');
+  sel.innerHTML = '<option value="">— Saved Dashboards —</option>';
+  Object.keys(all).sort().forEach(name => {
+    const o = document.createElement('option');
+    o.value = name; o.textContent = name;
+    sel.appendChild(o);
+  });
+}
+
+function loadDashboard(name) {
+  if (!name) return;
+  const all = getSavedDashboards();
+  if (!all[name]) return;
+  Object.values(panelCharts).forEach(c => c.dispose());
+  panelCharts = {};
+  dashboard = { ...all[name] };
+  $('time-range').value = dashboard.timeRange || '1h';
+  $('refresh-interval').value = String(dashboard.refreshInterval || 0);
+  onRefreshChange();
+  renderGrid();
+}
+
+function exportDashboard() {
+  const name = prompt('Dashboard name:', dashboard.title || 'Untitled Dashboard');
+  if (!name) return;
+  dashboard.title = name;
+  saveDashboardLocal();
+  // Also copy JSON to clipboard
+  const json = JSON.stringify(dashboard, null, 2);
+  navigator.clipboard.writeText(json).then(() => {
+    alert('Dashboard saved & JSON copied to clipboard');
+  }).catch(() => {
+    alert('Dashboard saved to browser storage');
+  });
+}
+
+function showImport() { $('import-json').value = ''; $('import-modal').classList.add('open'); }
+function closeImport() { $('import-modal').classList.remove('open'); }
+function doImport() {
+  try {
+    const d = JSON.parse($('import-json').value);
+    if (!d.panels || !Array.isArray(d.panels)) throw new Error('Invalid dashboard JSON');
+    Object.values(panelCharts).forEach(c => c.dispose());
+    panelCharts = {};
+    dashboard = d;
+    dashboard.panels.forEach(p => { if (!p.id) p.id = genId(); });
+    saveDashboardLocal();
+    $('time-range').value = dashboard.timeRange || '1h';
+    closeImport();
+    renderGrid();
+  } catch (e) { alert('Invalid JSON: ' + e.message); }
+}
+
+// === Resize observer ===
+const resizeObs = new ResizeObserver(() => {
+  Object.values(panelCharts).forEach(c => c.resize());
+});
+resizeObs.observe(document.body);
+
+// === Init ===
+refreshDashboardList();
+renderGrid();
+</script>
+</body>
+</html>

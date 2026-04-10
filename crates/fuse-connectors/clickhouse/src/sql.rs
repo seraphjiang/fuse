@@ -133,4 +133,56 @@ mod tests {
         };
         assert!(subquery_to_sql(&q).contains("active = 1"));
     }
+
+    // ── #452 Verification tests (tester) ──
+
+    #[test]
+    fn test_uniq_with_group_by() {
+        let q = SubQuery {
+            aggregations: vec![AggregationExpr { function: AggFunction::CountDistinct, field: Some("user_id".into()), alias: "uniq_users".into() }],
+            group_by: vec!["region".into()],
+            ..base()
+        };
+        let sql = subquery_to_sql(&q);
+        assert!(sql.contains("uniq(user_id) AS uniq_users"));
+        assert!(sql.contains("GROUP BY region"));
+    }
+
+    #[test]
+    fn test_having_clause() {
+        let q = SubQuery {
+            aggregations: vec![AggregationExpr { function: AggFunction::Count, field: None, alias: "cnt".into() }],
+            group_by: vec!["host".into()],
+            having: Some(FilterExpr::Comparison { field: "cnt".into(), op: ComparisonOp::Gt, value: ScalarValue::Int64(100) }),
+            ..base()
+        };
+        let sql = subquery_to_sql(&q);
+        assert!(sql.contains("HAVING cnt > 100"));
+    }
+
+    #[test]
+    fn test_false_boolean_as_zero() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::Comparison { field: "active".into(), op: ComparisonOp::Eq, value: ScalarValue::Boolean(false) }),
+            ..base()
+        };
+        assert!(subquery_to_sql(&q).contains("active = 0"));
+    }
+
+    #[test]
+    fn test_full_pushdown() {
+        let q = SubQuery {
+            aggregations: vec![AggregationExpr { function: AggFunction::Sum, field: Some("amount".into()), alias: "total".into() }],
+            group_by: vec!["region".into()],
+            filter: Some(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("active".into()) }),
+            sort: vec![fuse_core::connector::SortExpr { field: "total".into(), descending: true }],
+            limit: Some(10),
+            having: None, ..base()
+        };
+        let sql = subquery_to_sql(&q);
+        assert!(sql.contains("WHERE status = 'active'"));
+        assert!(sql.contains("GROUP BY region"));
+        assert!(sql.contains("ORDER BY total DESC"));
+        assert!(sql.contains("LIMIT 10"));
+    }
 }

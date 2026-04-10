@@ -22,9 +22,14 @@ use tracing::Level;
 use api::AppState;
 
 const PLAYGROUND_HTML: &str = include_str!("../../../playground/index.html");
+const DASHBOARD_HTML: &str = include_str!("../../../playground/dashboard.html");
 
 async fn playground() -> impl IntoResponse {
     ([(header::CACHE_CONTROL, "no-cache")], Html(PLAYGROUND_HTML))
+}
+
+async fn dashboard() -> impl IntoResponse {
+    ([(header::CACHE_CONTROL, "no-cache")], Html(DASHBOARD_HTML))
 }
 
 /// Build the Fuse API router with the given shared state.
@@ -38,6 +43,7 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
     Router::new()
         .route("/", get(playground))
         .route("/playground", get(playground))
+        .route("/dashboard", get(dashboard))
         .route("/api/fuse/query", post(api::query_handler))
         .route("/api/fuse/query/stream", post(streaming::stream_handler))
         .route("/api/fuse/datasources", get(api::list_datasources))
@@ -63,6 +69,7 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/api/fuse/views", get(api::list_views))
         .route("/api/fuse/views/{name}", get(api::get_view))
         .route("/api/fuse/views/{name}/refresh", post(api::refresh_view))
+        .route("/api/fuse/trace/{trace_id}", get(api::trace_handler))
         .route("/metrics", get(metrics::metrics_handler))
         .layer(middleware::from_fn(rate_limit::rate_limit_middleware))
         .layer(axum::Extension(rl))
