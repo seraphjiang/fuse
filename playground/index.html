@@ -102,6 +102,14 @@ body.light .meta{color:#656d76}
 body.light .ac-dropdown{background:#fff;border-color:#d1d9e0}
 body.light .ac-item:hover,body.light .ac-item.selected{background:#f6f8fa}
 body.light .ac-item .ac-label{color:#1f2328}
+/* Query suggestions */
+.suggestions{display:none;border:1px solid #21262d;border-radius:6px;background:#161b22;padding:8px 0;margin-top:4px;max-height:240px;overflow-y:auto}
+.suggestions.open{display:block}
+.suggestions .sg-header{font-size:11px;color:#484f58;text-transform:uppercase;letter-spacing:.5px;padding:4px 12px;font-weight:600}
+.suggestions .sg-item{padding:6px 12px;cursor:pointer;font-size:12px;transition:background .1s}
+.suggestions .sg-item:hover{background:#21262d}
+.suggestions .sg-query{font-family:"SF Mono",Consolas,monospace;color:#79c0ff;font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.suggestions .sg-desc{color:#8b949e;font-size:11px}
 .ac-wrap{position:relative}
 .ac-dropdown{display:none;position:absolute;z-index:60;background:#161b22;border:1px solid #30363d;border-radius:6px;max-height:200px;overflow-y:auto;min-width:220px;box-shadow:0 8px 24px rgba(0,0,0,.4);font-size:12px}
 .ac-dropdown.open{display:block}
@@ -309,7 +317,7 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
       <option value="sql">SQL</option>
       <option value="ppl">PPL</option>
     </select>
-    <select id="datasource"><option value="">Loading…</option></select>
+    <select id="datasource" onchange="onDatasourceChange(this.value)"><option value="">Loading…</option></select>
     <button class="primary" id="run-btn" onclick="runQuery()">▶ Run</button>
     <label class="analyze-label"><input type="checkbox" id="analyze-cb"> Analyze</label>
     <button class="lucky" id="lucky-btn" onclick="feelingLucky()">🎲 Feeling Lucky</button>
@@ -347,6 +355,8 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
     <button onclick="prettifyQuery()">✨ Format</button>
     <button class="help-toggle" onclick="toggleHelp()">📖 Docs &amp; Examples ▾</button>
   </div>
+
+  <div class="suggestions" id="suggestions"></div>
 
   <div class="ac-wrap">
     <div class="editor-wrap">
@@ -643,6 +653,42 @@ async function loadDatasources() {
       sel.appendChild(o);
     });
   } catch { /* ignore */ }
+}
+
+async function onDatasourceChange(dsId) {
+  const sg = $('suggestions');
+  if (!dsId) { sg.classList.remove('open'); return; }
+  try {
+    const schemas = await api(`/api/fuse/datasources/${dsId}/schemas`);
+    if (!schemas.length) { sg.classList.remove('open'); return; }
+    const table = schemas[0].name;
+    const fields = await api(`/api/fuse/datasources/${dsId}/schemas/${table}/fields`);
+    const cols = fields.map(f => f.name);
+    const numCols = fields.filter(f => /int|float|double|long|number|decimal/i.test(f.data_type)).map(f => f.name);
+    const catCols = fields.filter(f => /keyword|text|string|varchar/i.test(f.data_type)).map(f => f.name);
+    const timeCols = fields.filter(f => /date|time|timestamp/i.test(f.data_type) || /timestamp|time|date/i.test(f.name)).map(f => f.name);
+    const ref = `${dsId}.${table}`;
+    const suggestions = [];
+    suggestions.push({ desc: 'Browse data', query: `SELECT * FROM ${ref} LIMIT 20` });
+    if (catCols.length) suggestions.push({ desc: `Count by ${catCols[0]}`, query: `SELECT ${catCols[0]}, count(*) as cnt FROM ${ref} GROUP BY ${catCols[0]} ORDER BY cnt DESC` });
+    if (numCols.length && catCols.length) suggestions.push({ desc: `Avg ${numCols[0]} by ${catCols[0]}`, query: `SELECT ${catCols[0]}, avg(${numCols[0]}) as avg_val FROM ${ref} GROUP BY ${catCols[0]} ORDER BY avg_val DESC` });
+    if (numCols.length) suggestions.push({ desc: `Top values by ${numCols[0]}`, query: `SELECT * FROM ${ref} ORDER BY ${numCols[0]} DESC LIMIT 10` });
+    if (catCols.length) suggestions.push({ desc: `Distinct ${catCols[0]} values`, query: `SELECT DISTINCT ${catCols[0]} FROM ${ref} LIMIT 50` });
+    if (timeCols.length && numCols.length) suggestions.push({ desc: 'Time series', query: `SELECT ${timeCols[0]}, avg(${numCols[0]}) as val FROM ${ref} GROUP BY ${timeCols[0]} ORDER BY ${timeCols[0]}` });
+    if (numCols.length >= 2) suggestions.push({ desc: `${numCols[0]} vs ${numCols[1]}`, query: `SELECT ${numCols[0]}, ${numCols[1]} FROM ${ref} LIMIT 100` });
+
+    sg.innerHTML = `<div class="sg-header">Suggested queries for ${esc(ref)}</div>` +
+      suggestions.map(s => `<div class="sg-item" onclick="loadSuggestion(this)" data-query="${esc(s.query)}"><div class="sg-desc">${esc(s.desc)}</div><div class="sg-query">${esc(s.query)}</div></div>`).join('');
+    sg.classList.add('open');
+  } catch { sg.classList.remove('open'); }
+}
+
+function loadSuggestion(el) {
+  $('editor').value = el.dataset.query;
+  $('format').value = 'sql';
+  syncHighlight();
+  $('suggestions').classList.remove('open');
+  runQuery();
 }
 
 function clearOutput() {
