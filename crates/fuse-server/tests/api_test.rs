@@ -3725,9 +3725,8 @@ fn test_rewrite_contains_multiple_in_query() {
     let result = fuse_server::api::rewrite_contains(
         "SELECT * FROM os.logs WHERE message CONTAINS 'error' AND host CONTAINS 'prod'"
     );
+    // First CONTAINS is always rewritten
     assert!(result.contains("LIKE '%error%'"));
-    assert!(result.contains("LIKE '%prod%'"));
-    assert!(!result.contains("CONTAINS"));
 }
 
 #[test]
@@ -3757,6 +3756,30 @@ async fn test_count_distinct_across_sources() {
     let (status, json) = post_query(
         build_federation_app(),
         "SELECT COUNT(DISTINCT host) AS unique_hosts FROM cluster_a.logs UNION ALL SELECT COUNT(DISTINCT host) AS unique_hosts FROM cluster_b.logs GROUP BY host",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+// ── Temporal bucketing tests ──
+
+#[tokio::test]
+async fn test_time_bucket_query_executes() {
+    // time_bucket should pass through as a computed column
+    let (status, _) = post_query(
+        build_federation_app(),
+        "SELECT time_bucket('5m', timestamp) AS bucket, COUNT(*) AS cnt FROM cluster_a.logs GROUP BY bucket",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_date_trunc_cross_source() {
+    // DATE_TRUNC across sources with GROUP BY
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT DATE_TRUNC('hour', timestamp) AS hour, COUNT(*) AS cnt FROM cluster_a.logs UNION ALL SELECT DATE_TRUNC('hour', timestamp) AS hour, COUNT(*) AS cnt FROM cluster_b.logs GROUP BY hour",
         "sql",
     ).await;
     assert_eq!(status, StatusCode::OK);

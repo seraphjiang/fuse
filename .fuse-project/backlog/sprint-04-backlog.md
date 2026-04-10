@@ -12,7 +12,7 @@
 | 401 | Time-windowed JOINs | planner | done | Hash join + post-join time-window filter. BETWEEN + INTERVAL support. Tests: 537→543 |
 | 402 | HAVING clause on cross-source GROUP BY | planner | done | Post-reaggregation HAVING filter. Commit: 08d4b5f. Tests: 543→551 |
 | 403 | Nested/JSON field access (dot notation) | general | done | get_nested() across OS, ES, MongoDB, ClickHouse. Dot-path traversal |
-| 404 | DISTINCT / COUNT DISTINCT across sources | planner | todo | Deduplicated counts across federated UNION ALL. Cardinality analysis |
+| 404 | DISTINCT / COUNT DISTINCT across sources | planner | done | Already handled by Sprint 2 dedup pipeline. 2 verification tests. Commit: 6f12858 |
 | 405 | FULL OUTER JOIN | planner | done | Tracks matched build rows, emits unmatched with NULLs. Commit: 2984515. Tests: 551→572 |
 
 ## P1: Compute Depth — Time Series & Aggregation
