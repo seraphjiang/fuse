@@ -1162,4 +1162,25 @@ mod tests {
         assert!(sq.filter.is_some());
         assert!(sq.projections.contains(&"host".to_string()));
     }
+
+    #[test]
+    fn test_offset_extraction() {
+        let sq = sql_to_subquery("SELECT * FROM ds.t LIMIT 10 OFFSET 20").unwrap();
+        assert_eq!(sq.limit, Some(10));
+        assert_eq!(sq.offset, Some(20));
+    }
+
+    #[test]
+    fn test_offset_none_when_absent() {
+        let sq = sql_to_subquery("SELECT * FROM ds.t LIMIT 10").unwrap();
+        assert_eq!(sq.limit, Some(10));
+        assert_eq!(sq.offset, None);
+    }
+
+    #[test]
+    fn test_offset_without_limit() {
+        let sq = sql_to_subquery("SELECT * FROM ds.t OFFSET 5").unwrap();
+        assert_eq!(sq.offset, Some(5));
+        assert_eq!(sq.limit, None);
+    }
 }
