@@ -56,6 +56,14 @@ tr:hover td{background:#161b22}
 .view-toggle button.active{background:#238636;border-color:#238636;color:#fff}
 #chart-container{width:100%;height:400px;display:none;border:1px solid #21262d;border-radius:6px;background:#0d1117}
 .chart-hint{font-size:11px;color:#8b949e;padding:4px 0}
+/* Autocomplete */
+.ac-wrap{position:relative}
+.ac-dropdown{display:none;position:absolute;z-index:60;background:#161b22;border:1px solid #30363d;border-radius:6px;max-height:200px;overflow-y:auto;min-width:220px;box-shadow:0 8px 24px rgba(0,0,0,.4);font-size:12px}
+.ac-dropdown.open{display:block}
+.ac-item{padding:5px 10px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.ac-item:hover,.ac-item.selected{background:#21262d}
+.ac-item .ac-label{color:#e1e4e8}
+.ac-item .ac-type{font-size:10px;color:#8b949e;margin-left:8px}
 .error{color:#f85149;padding:12px;background:#1c0d0d;border:1px solid #f8514933;border-radius:6px;font-size:13px}
 .provenance{display:none;font-size:12px;color:#8b949e;padding:6px 0;display:flex;gap:4px;flex-wrap:wrap;align-items:center}
 .provenance.visible{display:flex}
@@ -196,7 +204,10 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
     <button class="help-toggle" onclick="toggleHelp()">📖 Docs &amp; Examples ▾</button>
   </div>
 
-  <textarea id="editor" placeholder="SELECT * FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20" spellcheck="false">SELECT service, status, message FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20</textarea>
+  <div class="ac-wrap">
+    <textarea id="editor" placeholder="SELECT * FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20" spellcheck="false">SELECT service, status, message FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20</textarea>
+    <div class="ac-dropdown" id="ac-dropdown"></div>
+  </div>
 
   <div class="help-panel" id="help-panel">
     <div class="tabs">
@@ -780,6 +791,104 @@ document.addEventListener('keydown', e => {
 checkHealth();
 loadDatasources();
 setInterval(checkHealth, 30000);
+
+// === Schema-Aware Autocomplete ===
+const SQL_KEYWORDS = ['SELECT','FROM','WHERE','AND','OR','NOT','IN','BETWEEN','LIKE','IS','NULL','JOIN','LEFT','RIGHT','INNER','CROSS','ON','GROUP','BY','ORDER','ASC','DESC','LIMIT','OFFSET','HAVING','UNION','ALL','AS','DISTINCT','COUNT','SUM','AVG','MIN','MAX','INSERT','UPDATE','DELETE','CREATE','DROP','ALTER','TABLE','INDEX','VIEW','WITH','CASE','WHEN','THEN','ELSE','END','EXISTS','EXPLAIN','ANALYZE'];
+let acSchema = {}; // { datasource: { table: [field, ...] } }
+let acItems = [];
+let acIdx = -1;
+
+async function loadSchema() {
+  try {
+    const ds = await api('/api/fuse/datasources');
+    for (const d of ds) {
+      acSchema[d.id] = {};
+      try {
+        const schemas = await api(`/api/fuse/datasources/${d.id}/schemas`);
+        for (const s of schemas) {
+          try {
+            const fields = await api(`/api/fuse/datasources/${d.id}/schemas/${s.name}/fields`);
+            acSchema[d.id][s.name] = fields.map(f => f.name);
+          } catch {}
+        }
+      } catch {}
+    }
+  } catch {}
+}
+
+function getCompletions(word) {
+  const w = word.toLowerCase();
+  const results = [];
+  // SQL keywords
+  SQL_KEYWORDS.forEach(k => { if (k.toLowerCase().startsWith(w)) results.push({ label: k, type: 'keyword' }); });
+  // Datasource.table
+  Object.keys(acSchema).forEach(ds => {
+    if (ds.toLowerCase().startsWith(w)) results.push({ label: ds, type: 'datasource' });
+    Object.keys(acSchema[ds]).forEach(tbl => {
+      const full = ds + '.' + tbl;
+      if (full.toLowerCase().startsWith(w) || tbl.toLowerCase().startsWith(w)) results.push({ label: full, type: 'table' });
+      // Fields
+      acSchema[ds][tbl].forEach(f => {
+        if (f.toLowerCase().startsWith(w)) results.push({ label: f, type: 'field' });
+      });
+    });
+  });
+  // Deduplicate
+  const seen = new Set();
+  return results.filter(r => { if (seen.has(r.label)) return false; seen.add(r.label); return true; }).slice(0, 15);
+}
+
+function getCurrentWord(el) {
+  const pos = el.selectionStart;
+  const text = el.value.substring(0, pos);
+  const match = text.match(/[\w.]+$/);
+  return match ? { word: match[0], start: pos - match[0].length, end: pos } : null;
+}
+
+function showAc() {
+  const el = $('editor');
+  const cw = getCurrentWord(el);
+  if (!cw || cw.word.length < 2) { hideAc(); return; }
+  acItems = getCompletions(cw.word);
+  if (!acItems.length) { hideAc(); return; }
+  acIdx = 0;
+  const dd = $('ac-dropdown');
+  dd.innerHTML = acItems.map((item, i) =>
+    `<div class="ac-item${i === 0 ? ' selected' : ''}" onmousedown="applyAc(${i})" onmouseenter="acIdx=${i};renderAcSelection()">` +
+    `<span class="ac-label">${esc(item.label)}</span><span class="ac-type">${item.type}</span></div>`
+  ).join('');
+  dd.classList.add('open');
+}
+
+function hideAc() { $('ac-dropdown').classList.remove('open'); acItems = []; acIdx = -1; }
+
+function renderAcSelection() {
+  $('ac-dropdown').querySelectorAll('.ac-item').forEach((el, i) => el.classList.toggle('selected', i === acIdx));
+}
+
+function applyAc(idx) {
+  const el = $('editor');
+  const cw = getCurrentWord(el);
+  if (!cw || !acItems[idx]) return;
+  const before = el.value.substring(0, cw.start);
+  const after = el.value.substring(cw.end);
+  el.value = before + acItems[idx].label + after;
+  el.selectionStart = el.selectionEnd = cw.start + acItems[idx].label.length;
+  el.focus();
+  hideAc();
+}
+
+$('editor').addEventListener('input', showAc);
+$('editor').addEventListener('blur', () => setTimeout(hideAc, 150));
+$('editor').addEventListener('keydown', e => {
+  if (!$('ac-dropdown').classList.contains('open')) return;
+  if (e.key === 'ArrowDown') { e.preventDefault(); acIdx = (acIdx + 1) % acItems.length; renderAcSelection(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); acIdx = (acIdx - 1 + acItems.length) % acItems.length; renderAcSelection(); }
+  else if (e.key === 'Tab' || e.key === 'Enter') { if (acIdx >= 0 && acItems.length) { e.preventDefault(); applyAc(acIdx); } }
+  else if (e.key === 'Escape') { hideAc(); }
+});
+
+loadSchema();
 
 // === ECharts Integration (#440) + Auto-Visualization (#441) + Core Charts (#442) ===
 let fuseChart = null;
