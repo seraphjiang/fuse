@@ -3685,3 +3685,79 @@ async fn test_contains_query_executes() {
     ).await;
     assert_eq!(status, StatusCode::OK);
 }
+
+// ── DISTINCT across sources tests ──
+
+#[tokio::test]
+async fn test_distinct_across_sources_deduplicates() {
+    // Both sources have same hosts (h1, h2) — DISTINCT should dedup
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT DISTINCT host FROM cluster_a.logs UNION ALL SELECT DISTINCT host FROM cluster_b.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    // Each source has h1, h2 → 4 rows without dedup, 2 with DISTINCT
+    assert_eq!(rows.len(), 2);
+}
+
+// ── #420 Full-text search verification (tester) ──
+
+#[test]
+fn test_rewrite_contains_multi_word() {
+    let result = fuse_server::api::rewrite_contains(
+        "SELECT * FROM os.logs WHERE message CONTAINS 'out of memory'"
+    );
+    assert!(result.contains("LIKE '%out of memory%'"));
+}
+
+#[test]
+fn test_rewrite_contains_special_chars() {
+    let result = fuse_server::api::rewrite_contains(
+        "SELECT * FROM os.logs WHERE message CONTAINS 'error: [timeout]'"
+    );
+    assert!(result.contains("LIKE '%error: [timeout]%'"));
+}
+
+#[test]
+fn test_rewrite_contains_multiple_in_query() {
+    let result = fuse_server::api::rewrite_contains(
+        "SELECT * FROM os.logs WHERE message CONTAINS 'error' AND host CONTAINS 'prod'"
+    );
+    assert!(result.contains("LIKE '%error%'"));
+    assert!(result.contains("LIKE '%prod%'"));
+    assert!(!result.contains("CONTAINS"));
+}
+
+#[test]
+fn test_rewrite_contains_case_insensitive_keyword() {
+    let result = fuse_server::api::rewrite_contains(
+        "SELECT * FROM os.logs WHERE message contains 'OOM'"
+    );
+    assert!(result.contains("LIKE '%OOM%'"));
+}
+
+#[tokio::test]
+async fn test_contains_returns_filtered_rows() {
+    // Mock has h1 and h2 — CONTAINS 'h1' should work (via LIKE fallback)
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs WHERE host CONTAINS 'h1'",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert!(!rows.is_empty());
+}
+
+#[tokio::test]
+async fn test_count_distinct_across_sources() {
+    // COUNT(DISTINCT host) across 2 sources with same hosts should give 2, not 4
+    let (status, json) = post_query(
+        build_federation_app(),
+        "SELECT COUNT(DISTINCT host) AS unique_hosts FROM cluster_a.logs UNION ALL SELECT COUNT(DISTINCT host) AS unique_hosts FROM cluster_b.logs GROUP BY host",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+}

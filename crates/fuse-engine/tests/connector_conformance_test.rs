@@ -28,7 +28,7 @@ fn test_query(table: &str) -> SubQuery {
         having: None,
         sort: vec![],
         limit: Some(10),
-        passthrough: None,
+        offset: None, passthrough: None,
     }
 }
 

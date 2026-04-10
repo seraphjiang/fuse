@@ -69,6 +69,10 @@ pub fn sql_to_subquery(sql: &str) -> Result<SubQuery, ConnectorError> {
         .limit_clause
         .as_ref()
         .and_then(extract_limit);
+    let offset = query
+        .limit_clause
+        .as_ref()
+        .and_then(extract_offset);
 
     Ok(SubQuery {
         table,
@@ -79,6 +83,7 @@ pub fn sql_to_subquery(sql: &str) -> Result<SubQuery, ConnectorError> {
         having,
         sort,
         limit,
+        offset,
         passthrough: None,
     })
 }
@@ -452,6 +457,15 @@ fn extract_limit(clause: &LimitClause) -> Option<u64> {
             limit.as_ref().and_then(|e| expr_to_u64(e))
         }
         LimitClause::OffsetCommaLimit { limit, .. } => expr_to_u64(limit),
+    }
+}
+
+fn extract_offset(clause: &LimitClause) -> Option<u64> {
+    match clause {
+        LimitClause::LimitOffset { offset, .. } => {
+            offset.as_ref().and_then(|o| expr_to_u64(&o.value))
+        }
+        LimitClause::OffsetCommaLimit { .. } => None,
     }
 }
 

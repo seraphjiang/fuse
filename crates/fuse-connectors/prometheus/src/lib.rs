@@ -650,6 +650,7 @@ mod tests {
                 "end": "2024-01-02T00:00:00Z",
                 "step": "1m"
             })),
+            offset: None,
         };
         let is_range = sq.passthrough.as_ref().and_then(|p| p.get("start")).is_some();
         assert!(is_range);
@@ -667,7 +668,7 @@ mod tests {
             having: None,
             sort: vec![],
             limit: None,
-            passthrough: None,
+            offset: None, passthrough: None,
         };
         let is_range = sq.passthrough.as_ref().and_then(|p| p.get("start")).is_some();
         assert!(!is_range);

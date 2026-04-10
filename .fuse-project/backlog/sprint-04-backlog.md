@@ -28,7 +28,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 420 | Full-text search syntax | planner | todo | WHERE message CONTAINS 'OutOfMemory' or MATCH(). Bridge SQL + OpenSearch full-text |
+| 420 | Full-text search syntax | planner | done | CONTAINS → LIKE for generic, native match for OpenSearch. All 10 connectors. Commit: 0c74c1d |
 | 421 | Cross-source trace reconstruction | explorer | done | GET /api/fuse/trace/{trace_id}, parallel fan-out, unified timeline. Commit: 3f5b498 |
 | 422 | Anomaly detection primitives | planner | todo | Moving avg, stddev, z-score across time-bucketed data. Statistical outlier detection |
 | 423 | Saved queries / virtual views | planner | todo | CREATE VIEW unified_logs AS SELECT ... UNION ALL ... Virtual tables over cross-source queries |
@@ -55,8 +55,8 @@
 | 444 | Dashboard builder: grid layout, save/load JSON, time range picker | frontend | done | 12-col grid, panel CRUD, localStorage + JSON export, auto-refresh. Commit: 3f5b498 |
 | 445 | Dashboard templates: pre-built for error analysis, trace correlation, capacity | frontend | done | 3 templates (16 panels), one-click load via Templates button |
 | 446 | Dashboard sharing: URL sharing, export PNG/PDF/CSV | frontend | done | Base64 URL sharing, PNG 2x retina, CSV re-query, print/PDF. Commit: 5a41f6b |
-| 447 | Variables/parameters: dropdown filters that update all panels | explorer | todo | Service picker, time range, environment selector |
-| 448 | Drill-down: click chart element → filter to that value | explorer | todo | Click bar → filter all panels to that service/status |
+| 447 | Variables/parameters: dropdown filters that update all panels | frontend | done | Custom + query vars, $varname substitution, auto-refresh. Commit: bbc43a3 |
+| 448 | Drill-down: click chart element → filter to that value | frontend | done | Playground: appends WHERE. Dashboard: global drill-down bar + clear. Commit: 2e88b63 |
 | 449 | One-stop-shop: expand playground into /playground + /dashboards + /explore | infra | todo | Single URL, single auth, tabbed navigation |
 
 ## P1: New Connectors (DB-Engines Top 50)

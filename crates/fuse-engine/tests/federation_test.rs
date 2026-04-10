@@ -149,7 +149,7 @@ async fn test_mock_connector_execute() {
         group_by: vec![],
         sort: vec![],
         limit: Some(100),
-        passthrough: None,
+        offset: None, passthrough: None,
         having: None,
     };
 
@@ -202,7 +202,7 @@ async fn test_mock_connector_streaming() {
         group_by: vec![],
         sort: vec![],
         limit: None,
-        passthrough: None,
+        offset: None, passthrough: None,
         having: None,
     };
 
@@ -329,7 +329,7 @@ fn test_subquery() -> SubQuery {
         group_by: vec![],
         sort: vec![],
         limit: Some(100),
-        passthrough: None,
+        offset: None, passthrough: None,
         having: None,
     }
 }

@@ -127,7 +127,7 @@ mod tests {
     use fuse_core::connector::{AggFunction, AggregationExpr, SortExpr, SubQuery};
 
     fn base() -> SubQuery {
-        SubQuery { table: "logs".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None }
+        SubQuery { table: "logs".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None }
     }
 
     #[test]

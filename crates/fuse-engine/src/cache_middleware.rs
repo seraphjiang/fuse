@@ -165,7 +165,7 @@ mod tests {
         SubQuery {
             table: "t".into(), projections: vec![], filter: None,
             aggregations: vec![], group_by: vec![], sort: vec![],
-            limit: None, having: None, passthrough: None,
+            limit: None, having: None, offset: None, passthrough: None,
         }
     }
 

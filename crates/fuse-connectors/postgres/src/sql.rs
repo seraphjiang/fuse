@@ -112,7 +112,7 @@ mod tests {
             having: None,
             sort: vec![],
             limit: None,
-            passthrough: None,
+            passthrough: None, offset: None,
         }
     }
 

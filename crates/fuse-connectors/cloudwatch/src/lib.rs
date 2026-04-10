@@ -266,7 +266,7 @@ mod tests {
         SubQuery {
             table: "logs".into(), projections: vec![], filter: None,
             aggregations: vec![], group_by: vec![], having: None,
-            sort: vec![], limit: None, passthrough: None,
+            sort: vec![], limit: None, passthrough: None, offset: None,
         }
     }
 

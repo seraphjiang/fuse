@@ -120,7 +120,7 @@ mod tests {
             group_by: vec![],
             sort: vec![],
             limit: None,
-            having: None, passthrough: None,
+            having: None, passthrough: None, offset: None,
         }
     }
 

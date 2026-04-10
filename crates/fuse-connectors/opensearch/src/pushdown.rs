@@ -197,7 +197,7 @@ mod tests {
             group_by: vec![],
             sort: vec![],
             limit: None,
-            having: None, passthrough: None,
+            having: None, passthrough: None, offset: None,
         }
     }
 
@@ -417,5 +417,23 @@ mod tests {
         assert_eq!(dsl["size"], 0);
         assert!(dsl["aggs"]["total"].is_object());
         assert_eq!(dsl["aggs"]["unique_hosts"]["cardinality"]["field"], "host");
+    }
+
+    // ── #420 OpenSearch native match verification (tester) ──
+
+    #[test]
+    fn test_contains_uses_native_match() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::Comparison {
+                field: "message".into(),
+                op: ComparisonOp::Contains,
+                value: ScalarValue::Utf8("OutOfMemory".into()),
+            }),
+            ..make_query()
+        };
+        let dsl = translate_to_query_dsl(&q);
+        assert!(dsl["query"]["match"]["message"].is_object(),
+            "Contains should use native match query: {:?}", dsl["query"]);
+        assert_eq!(dsl["query"]["match"]["message"]["query"], "OutOfMemory");
     }
 }

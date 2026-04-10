@@ -162,6 +162,7 @@ pub struct SubQuery {
     pub having: Option<FilterExpr>,
     pub sort: Vec<SortExpr>,
     pub limit: Option<u64>,
+    pub offset: Option<u64>,
     pub passthrough: Option<serde_json::Value>,
 }
 

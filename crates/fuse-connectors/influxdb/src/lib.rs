@@ -408,7 +408,7 @@ mod tests {
 
     #[test]
     fn test_subquery_to_influxql_basic() {
-        let q = SubQuery { table: "cpu".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None };
+        let q = SubQuery { table: "cpu".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None };
         assert_eq!(subquery_to_influxql(&q), "SELECT * FROM \"cpu\"");
     }
 
@@ -418,7 +418,7 @@ mod tests {
             table: "cpu".into(),
             projections: vec!["usage".into()],
             filter: Some(FilterExpr::Comparison { field: "host".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("web01".into()) }),
-            aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: Some(10), passthrough: None,
+            aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: Some(10), passthrough: None, offset: None,
         };
         let sql = subquery_to_influxql(&q);
         assert!(sql.contains("WHERE host = 'web01'"));
@@ -427,7 +427,7 @@ mod tests {
 
     #[test]
     fn test_subquery_to_flux_basic() {
-        let q = SubQuery { table: "cpu".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None };
+        let q = SubQuery { table: "cpu".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None };
         let flux = subquery_to_flux(&q, "mybucket");
         assert!(flux.contains("from(bucket: \"mybucket\")"));
         assert!(flux.contains("r._measurement == \"cpu\""));
@@ -477,7 +477,7 @@ mod tests {
 
     #[test]
     fn test_influxql_projections() {
-        let q = SubQuery { table: "cpu".into(), projections: vec!["usage".into(), "host".into()], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None };
+        let q = SubQuery { table: "cpu".into(), projections: vec!["usage".into(), "host".into()], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None };
         let sql = subquery_to_influxql(&q);
         assert!(sql.contains("SELECT usage, host FROM"));
     }
@@ -487,7 +487,7 @@ mod tests {
         let q = SubQuery {
             table: "cpu".into(), projections: vec![],
             filter: Some(FilterExpr::Comparison { field: "host".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("web01".into()) }),
-            aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None,
+            aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None,
         };
         let flux = subquery_to_flux(&q, "metrics");
         assert!(flux.contains("|> filter(fn: (r) =>"));
@@ -496,7 +496,7 @@ mod tests {
 
     #[test]
     fn test_flux_with_limit() {
-        let q = SubQuery { table: "cpu".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: Some(5), passthrough: None };
+        let q = SubQuery { table: "cpu".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: Some(5), passthrough: None, offset: None };
         let flux = subquery_to_flux(&q, "b");
         assert!(flux.contains("|> limit(n: 5)"));
     }

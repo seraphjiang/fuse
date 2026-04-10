@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn test_subquery_to_sql_basic() {
-        let q = SubQuery { table: "events".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: Some(5), passthrough: None };
+        let q = SubQuery { table: "events".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: Some(5), passthrough: None, offset: None };
         let sql = subquery_to_sql(&q);
         assert_eq!(sql, "SELECT * FROM events LIMIT 5");
     }

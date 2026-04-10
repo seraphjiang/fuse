@@ -317,7 +317,7 @@ mod tests {
     #[test]
     fn test_parse_hits_empty() {
         let body = serde_json::json!({"hits": {"hits": []}});
-        let q = SubQuery { table: "idx".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None };
+        let q = SubQuery { table: "idx".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None };
         let result = parse_hits(&body, &q).unwrap();
         assert!(result.is_empty());
     }
@@ -330,7 +330,7 @@ mod tests {
                 {"_source": {"name": "bob", "age": 25}}
             ]}
         });
-        let q = SubQuery { table: "users".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None };
+        let q = SubQuery { table: "users".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None };
         let batches = parse_hits(&body, &q).unwrap();
         assert_eq!(batches[0].num_rows(), 2);
     }
@@ -342,7 +342,7 @@ mod tests {
                 {"_source": {"name": "alice", "age": 30, "email": "a@b.com"}}
             ]}
         });
-        let q = SubQuery { table: "users".into(), projections: vec!["name".into()], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None };
+        let q = SubQuery { table: "users".into(), projections: vec!["name".into()], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None };
         let batches = parse_hits(&body, &q).unwrap();
         assert_eq!(batches[0].num_columns(), 1);
         assert_eq!(batches[0].schema().field(0).name(), "name");
@@ -374,7 +374,7 @@ mod tests {
                 {"_source": {"name": "bob", "score": 80.0, "active": false}}
             ]}
         });
-        let q = SubQuery { table: "t".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None };
+        let q = SubQuery { table: "t".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None };
         let batches = parse_hits(&body, &q).unwrap();
         assert_eq!(batches[0].num_rows(), 2);
         assert!(batches[0].num_columns() >= 3);
@@ -387,7 +387,7 @@ mod tests {
                 {"_source": {"name": "alice", "email": null}}
             ]}
         });
-        let q = SubQuery { table: "t".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None };
+        let q = SubQuery { table: "t".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None };
         let batches = parse_hits(&body, &q).unwrap();
         assert_eq!(batches[0].num_rows(), 1);
     }

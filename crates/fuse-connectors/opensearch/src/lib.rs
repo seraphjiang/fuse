@@ -648,7 +648,7 @@ mod tests {
             having: None,
             sort: vec![],
             limit,
-            passthrough: None,
+            passthrough: None, offset: None,
         }
     }
 
@@ -712,7 +712,7 @@ mod tests {
             table: "logs".into(),
             projections: vec!["metadata.region".into(), "status".into()],
             filter: None, aggregations: vec![], group_by: vec![], having: None,
-            sort: vec![], limit: None, passthrough: None,
+            sort: vec![], limit: None, passthrough: None, offset: None,
         };
         let batch = parse_hits_to_batch(&body, &q).unwrap();
         assert_eq!(batch.num_rows(), 2);

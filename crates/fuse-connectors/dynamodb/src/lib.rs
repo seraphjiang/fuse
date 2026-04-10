@@ -404,7 +404,7 @@ mod tests {
             having: None,
             sort: vec![],
             limit: None,
-            passthrough: None,
+            passthrough: None, offset: None,
         };
 
         let batches = items_to_batch(&[item], &query).unwrap();
@@ -426,7 +426,7 @@ mod tests {
             having: None,
             sort: vec![],
             limit: None,
-            passthrough: None,
+            passthrough: None, offset: None,
         };
         let result = items_to_batch(&[], &query).unwrap();
         assert_eq!(result[0].num_rows(), 0);
@@ -449,7 +449,7 @@ mod tests {
             having: None,
             sort: vec![],
             limit: None,
-            passthrough: None,
+            passthrough: None, offset: None,
         };
 
         let batches = items_to_batch(&[item], &query).unwrap();
@@ -495,7 +495,7 @@ mod tests {
             table: "users".into(),
             projections: vec!["id".into(), "count".into(), "active".into()],
             filter: None, aggregations: vec![], group_by: vec![],
-            having: None, sort: vec![], limit: None, passthrough: None,
+            having: None, sort: vec![], limit: None, passthrough: None, offset: None,
         };
         let batches = items_to_batch(&[item], &query).unwrap();
         assert_eq!(batches[0].num_rows(), 1);

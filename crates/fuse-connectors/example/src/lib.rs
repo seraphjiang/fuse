@@ -217,7 +217,7 @@ mod tests {
             group_by: vec![],
             sort: vec![],
             limit: None,
-            having: None, passthrough: None,
+            having: None, passthrough: None, offset: None,
         };
         let batches = connector().execute(&sq).await.unwrap();
         assert_eq!(batches.len(), 1);
@@ -234,7 +234,7 @@ mod tests {
             group_by: vec![],
             sort: vec![],
             limit: Some(2),
-            having: None, passthrough: None,
+            having: None, passthrough: None, offset: None,
         };
         let batches = connector().execute(&sq).await.unwrap();
         assert_eq!(batches[0].num_rows(), 2);
@@ -251,7 +251,7 @@ mod tests {
             group_by: vec![],
             sort: vec![],
             limit: None,
-            having: None, passthrough: None,
+            having: None, passthrough: None, offset: None,
         };
         connector().execute_streaming(&sq, tx).await.unwrap();
         let batch = rx.recv().await.unwrap().unwrap();

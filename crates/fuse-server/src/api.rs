@@ -394,7 +394,7 @@ pub async fn query_handler(
                     table: isq.table.clone(),
                     projections: vec![isq.inner_column.clone()],
                     filter: None, aggregations: vec![], group_by: vec![],
-                    sort: vec![], limit: None, having: None, passthrough: None,
+                    sort: vec![], limit: None, having: None, offset: None, passthrough: None,
                 }
             });
             if let Ok(batches) = connector.execute(&sq).await {
@@ -695,7 +695,7 @@ async fn execute_union(
             group_by: vec![],
             sort: vec![],
             limit: None,
-            having: None, passthrough: None,
+            having: None, offset: None, passthrough: None,
         });
 
     let mut per_source: Vec<fuse_core::connector::SubQuery> = refs
@@ -708,7 +708,7 @@ async fn execute_union(
             group_by: vec![],
             sort: vec![],
             limit: Some(10_000), // Default limit to avoid scroll for UNION ALL fan-out
-            having: None, passthrough: None,
+            having: None, offset: None, passthrough: None,
         })
         .collect();
     fuse_engine::rewrite::push_down_to_sources(&base_sq, &mut per_source);
@@ -801,7 +801,7 @@ async fn execute_join(
         group_by: vec![],
         sort: vec![],
         limit: Some(10_000), // Default limit to avoid scroll for JOIN fan-out
-        having: None, passthrough: None,
+        having: None, offset: None, passthrough: None,
     };
     let mut sq_b = sq_a.clone();
     sq_b.table = table_b.clone();
@@ -1839,7 +1839,7 @@ pub fn build_sub_query(
                 group_by: vec![],
                 sort: vec![],
                 limit: None,
-                having: None, passthrough: None,
+                having: None, offset: None, passthrough: None,
             })
         }
     }
@@ -2186,7 +2186,7 @@ pub async fn trace_handler(
                 having: None,
                 sort: vec![],
                 limit: Some(1000),
-                passthrough: None,
+                offset: None, passthrough: None,
             };
             let batches = connector.execute(&sub).await.unwrap_or_default();
             (ds_id, batches)
@@ -2344,7 +2344,7 @@ mod tests {
             having: None,
             sort: vec![],
             limit: Some(10),
-            passthrough: None,
+            offset: None, passthrough: None,
         };
         let desc = describe_pushdown(&sq);
         assert!(desc.iter().any(|d| d.contains("projection")));
@@ -2366,7 +2366,7 @@ mod tests {
             having: None,
             sort: vec![],
             limit: None,
-            passthrough: None,
+            offset: None, passthrough: None,
         };
         let desc = describe_pushdown(&sq);
         assert!(desc.is_empty());
@@ -2413,7 +2413,7 @@ mod tests {
             having: None,
             sort: vec![],
             limit: None,
-            passthrough: None,
+            offset: None, passthrough: None,
         };
         // Simulate what execute_single does
         let (start, end, step) = ("2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z", "1m");
