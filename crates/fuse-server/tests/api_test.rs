@@ -2526,3 +2526,30 @@ async fn test_explain_has_cost_estimates() {
     assert!(tree["estimated_rows"].as_u64().is_some());
     assert!(tree["estimated_cost"].as_f64().is_some());
 }
+
+// ── Hash join optimization tests ──
+
+#[tokio::test]
+async fn test_join_profile_shows_build_side() {
+    let (status, json) = post_query_analyze(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs JOIN cluster_b.logs ON cluster_a.logs.host = cluster_b.logs.host",
+        "sql",
+        true,
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let nodes = json["execution_profile"]["nodes"].as_array().unwrap();
+    let join_node = &nodes[0];
+    assert_eq!(join_node["op"], "HashJoin");
+    let children = join_node["children"].as_array().unwrap();
+    assert_eq!(children.len(), 2);
+    // One child should be "build side", other "probe side"
+    let pushdowns: Vec<String> = children.iter()
+        .flat_map(|c| {
+            let arr = c["pushdown"].as_array().cloned().unwrap_or_default();
+            arr.into_iter().map(|p| p.as_str().unwrap_or("").to_string()).collect::<Vec<_>>()
+        })
+        .collect();
+    assert!(pushdowns.iter().any(|p| p.contains("build side")));
+    assert!(pushdowns.iter().any(|p| p.contains("probe side")));
+}
