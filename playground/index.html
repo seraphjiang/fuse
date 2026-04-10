@@ -654,9 +654,10 @@ checkHealth();
 loadDatasources();
 setInterval(checkHealth, 30000);
 
-// === ECharts Integration (#440) + Auto-Visualization (#441) ===
+// === ECharts Integration (#440) + Auto-Visualization (#441) + Core Charts (#442) ===
 let fuseChart = null;
 let currentView = 'table';
+let userChartType = 'auto';
 
 function setView(view) {
   currentView = view;
@@ -664,7 +665,13 @@ function setView(view) {
   document.querySelector(`.view-toggle button:${view === 'table' ? 'first' : 'last'}-child`).classList.add('active');
   $('results').style.display = view === 'table' ? '' : 'none';
   $('chart-container').style.display = view === 'chart' ? 'block' : 'none';
+  $('chart-type').style.display = view === 'chart' ? '' : 'none';
   if (view === 'chart' && lastColumns.length) renderChart();
+}
+
+function onChartTypeChange() {
+  userChartType = $('chart-type').value;
+  if (currentView === 'chart') renderChart();
 }
 
 function detectColumnTypes(columns, rows) {
@@ -689,7 +696,6 @@ function suggestChart(columns, rows) {
   const cats = columns.filter(c => types[c] === 'category' || types[c] === 'datasource');
   const nums = columns.filter(c => types[c] === 'number');
   const times = columns.filter(c => types[c] === 'time');
-
   if (times.length && nums.length) return { type: 'line', x: times[0], y: nums[0], series: cats[0] || null };
   if (cats.length && nums.length) {
     if (nums.length === 1 && rows.length <= 12) return { type: 'pie', label: cats[0], value: nums[0] };
@@ -700,34 +706,81 @@ function suggestChart(columns, rows) {
   return null;
 }
 
+function resolveChartType(autoSuggestion) {
+  if (userChartType === 'auto' || !autoSuggestion) return autoSuggestion;
+  // Override the auto type with user selection, keeping axis assignments
+  const s = { ...autoSuggestion };
+  const t = userChartType;
+  if (t === 'pie') { s.type = 'pie'; s.label = s.label || s.x; s.value = s.value || s.y; }
+  else if (t === 'histogram') { s.type = 'histogram'; }
+  else if (t === 'stacked-bar') { s.type = 'stacked-bar'; }
+  else if (t === 'area') { s.type = 'area'; }
+  else { s.type = t; }
+  return s;
+}
+
 function buildChartOption(suggestion, columns, rows) {
   const ci = col => columns.indexOf(col);
   const vals = col => rows.map(r => r[ci(col)]);
   const numVals = col => rows.map(r => Number(r[ci(col)]));
   const dark = { backgroundColor: '#0d1117', textStyle: { color: '#8b949e' } };
   const tooltip = { trigger: 'axis', backgroundColor: '#161b22', borderColor: '#30363d', textStyle: { color: '#e1e4e8' } };
+  const grid = { left: 60, right: 20, bottom: 40, top: 20 };
+  const axisLabel = { color: '#8b949e' };
 
+  // Histogram: bin first numeric column
+  if (suggestion.type === 'histogram') {
+    const nums = columns.filter((c, i) => rows.slice(0, 50).every(r => !isNaN(Number(r[i]))));
+    const col = suggestion.y || suggestion.x || nums[0];
+    if (!col) return null;
+    const values = numVals(col).filter(v => !isNaN(v));
+    const min = Math.min(...values), max = Math.max(...values);
+    const binCount = Math.min(Math.ceil(Math.sqrt(values.length)), 30);
+    const binSize = (max - min) / binCount || 1;
+    const bins = Array(binCount).fill(0);
+    values.forEach(v => { const idx = Math.min(Math.floor((v - min) / binSize), binCount - 1); bins[idx]++; });
+    const labels = bins.map((_, i) => { const lo = min + i * binSize; return `${lo.toFixed(1)}-${(lo + binSize).toFixed(1)}`; });
+    return { ...dark, tooltip, grid, xAxis: { type: 'category', data: labels, axisLabel: { ...axisLabel, rotate: 30 } },
+      yAxis: { type: 'value', axisLabel }, series: [{ type: 'bar', data: bins, barWidth: '90%', itemStyle: { color: '#58a6ff' } }] };
+  }
+
+  // Pie
   if (suggestion.type === 'pie') {
-    const data = [];
+    const lbl = suggestion.label || suggestion.x;
+    const val = suggestion.value || suggestion.y;
+    if (!lbl || !val) return null;
     const map = {};
-    rows.forEach(r => {
-      const k = String(r[ci(suggestion.label)]);
-      map[k] = (map[k] || 0) + Number(r[ci(suggestion.value)]);
-    });
-    Object.entries(map).forEach(([name, value]) => data.push({ name, value }));
+    rows.forEach(r => { const k = String(r[ci(lbl)]); map[k] = (map[k] || 0) + Number(r[ci(val)]); });
+    const data = Object.entries(map).map(([name, value]) => ({ name, value }));
     return { ...dark, tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: ['35%', '65%'], data, label: { color: '#8b949e' } }] };
   }
 
-  const xData = [...new Set(vals(suggestion.x).map(String))];
-  if (!suggestion.series) {
-    const yData = suggestion.y ? numVals(suggestion.y) : (() => { const m = {}; vals(suggestion.x).forEach(v => m[String(v)] = (m[String(v)]||0)+1); return xData.map(x => m[x]||0); })();
-    return { ...dark, tooltip, xAxis: { type: 'category', data: suggestion.type === 'bar' ? xData : undefined, axisLabel: { color: '#8b949e', rotate: xData.length > 10 ? 30 : 0 } },
-      yAxis: { type: 'value', axisLabel: { color: '#8b949e' } },
-      series: [{ type: suggestion.type === 'scatter' ? 'scatter' : suggestion.type, data: suggestion.y ? xData.map((x, i) => yData[i]) : yData, smooth: suggestion.type === 'line' }],
-      grid: { left: 60, right: 20, bottom: 40, top: 20 } };
+  // Scatter (two numeric axes)
+  if (suggestion.type === 'scatter') {
+    const xv = numVals(suggestion.x), yv = numVals(suggestion.y);
+    const data = xv.map((x, i) => [x, yv[i]]);
+    return { ...dark, tooltip: { trigger: 'item' }, grid,
+      xAxis: { type: 'value', name: suggestion.x, axisLabel }, yAxis: { type: 'value', name: suggestion.y, axisLabel },
+      series: [{ type: 'scatter', data, symbolSize: 8, itemStyle: { color: '#58a6ff' } }] };
   }
 
-  // Grouped series
+  // Line, bar, stacked-bar, area — all category-axis charts
+  const isArea = suggestion.type === 'area';
+  const isStacked = suggestion.type === 'stacked-bar';
+  const echartsType = (isArea || suggestion.type === 'line') ? 'line' : 'bar';
+  const xData = [...new Set(vals(suggestion.x).map(String))];
+  const rotateLabel = xData.length > 10 ? 30 : 0;
+
+  if (!suggestion.series) {
+    const yData = suggestion.y ? (() => { const m = {}; rows.forEach(r => { const x = String(r[ci(suggestion.x)]); m[x] = (m[x]||0) + Number(r[ci(suggestion.y)]); }); return xData.map(x => m[x]||0); })()
+      : (() => { const m = {}; vals(suggestion.x).forEach(v => m[String(v)] = (m[String(v)]||0)+1); return xData.map(x => m[x]||0); })();
+    return { ...dark, tooltip, grid, xAxis: { type: 'category', data: xData, axisLabel: { ...axisLabel, rotate: rotateLabel } },
+      yAxis: { type: 'value', axisLabel },
+      series: [{ type: echartsType, data: yData, smooth: echartsType === 'line', areaStyle: isArea ? { opacity: 0.3 } : undefined,
+        stack: isStacked ? 'total' : undefined, itemStyle: { color: '#58a6ff' } }] };
+  }
+
+  // Grouped/stacked series
   const seriesCol = ci(suggestion.series);
   const groups = {};
   rows.forEach(r => {
@@ -737,12 +790,12 @@ function buildChartOption(suggestion, columns, rows) {
     groups[s][x] = (groups[s][x] || 0) + Number(r[ci(suggestion.y)] || 1);
   });
   const series = Object.entries(groups).map(([name, map]) => ({
-    name, type: suggestion.type, data: xData.map(x => map[x] || 0), smooth: suggestion.type === 'line'
+    name, type: echartsType, data: xData.map(x => map[x] || 0), smooth: echartsType === 'line',
+    areaStyle: isArea ? { opacity: 0.3 } : undefined, stack: isStacked ? 'total' : undefined
   }));
   return { ...dark, tooltip, legend: { textStyle: { color: '#8b949e' }, top: 0 },
-    xAxis: { type: 'category', data: xData, axisLabel: { color: '#8b949e', rotate: xData.length > 10 ? 30 : 0 } },
-    yAxis: { type: 'value', axisLabel: { color: '#8b949e' } }, series,
-    grid: { left: 60, right: 20, bottom: 40, top: 30 } };
+    xAxis: { type: 'category', data: xData, axisLabel: { ...axisLabel, rotate: rotateLabel } },
+    yAxis: { type: 'value', axisLabel }, series, grid: { ...grid, top: 30 } };
 }
 
 function renderChart() {
@@ -752,11 +805,19 @@ function renderChart() {
     $('chart-hint').textContent = '';
     return;
   }
-  const suggestion = suggestChart(lastColumns, lastRows);
+  const autoSuggestion = suggestChart(lastColumns, lastRows);
+  const suggestion = resolveChartType(autoSuggestion);
   if (!suggestion) {
     container.style.display = currentView === 'chart' ? 'block' : 'none';
-    container.innerHTML = '<div class="empty">Cannot auto-visualize these results — try a query with numeric or categorical columns</div>';
+    container.innerHTML = '<div class="empty">Cannot visualize these results — try a query with numeric or categorical columns</div>';
     $('chart-hint').textContent = '';
+    if (fuseChart) { fuseChart.dispose(); fuseChart = null; }
+    return;
+  }
+  const option = buildChartOption(suggestion, lastColumns, lastRows);
+  if (!option) {
+    container.style.display = currentView === 'chart' ? 'block' : 'none';
+    container.innerHTML = '<div class="empty">Not enough data for this chart type</div>';
     if (fuseChart) { fuseChart.dispose(); fuseChart = null; }
     return;
   }
@@ -764,15 +825,15 @@ function renderChart() {
   container.style.display = currentView === 'chart' ? 'block' : 'none';
   if (fuseChart) fuseChart.dispose();
   fuseChart = echarts.init(container, 'dark');
-  fuseChart.setOption(buildChartOption(suggestion, lastColumns, lastRows));
-  $('chart-hint').textContent = `Auto-detected: ${suggestion.type} chart (x: ${suggestion.x}${suggestion.y ? ', y: ' + suggestion.y : ''}${suggestion.series ? ', series: ' + suggestion.series : ''})`;
+  fuseChart.setOption(option);
+  const label = userChartType === 'auto' ? `Auto-detected: ${suggestion.type}` : `Chart: ${suggestion.type}`;
+  $('chart-hint').textContent = `${label} (x: ${suggestion.x || suggestion.label || '-'}${suggestion.y || suggestion.value ? ', y: ' + (suggestion.y || suggestion.value) : ''}${suggestion.series ? ', series: ' + suggestion.series : ''})`;
   $('view-toggle').style.display = 'flex';
+  $('chart-type').style.display = '';
 }
 
-// Resize chart on window resize
 window.addEventListener('resize', () => { if (fuseChart) fuseChart.resize(); });
 
-// Hook into renderTable to show view toggle and auto-render chart
 const _origRenderTable = renderTable;
 renderTable = function(columns, rows) {
   _origRenderTable(columns, rows);
