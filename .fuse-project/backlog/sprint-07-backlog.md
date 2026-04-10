@@ -9,8 +9,8 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 510 | Amazon Redshift connector | explorer | done | IAM GetClusterCredentials, temp creds, fallback direct URL. Commit: 51e9f1a |
-| 511 | DuckDB connector (local compute engine) | general | todo | In-process, Arrow-native |
-| 512 | SQLite connector | general | todo | File-based, embedded |
+| 511 | DuckDB connector (local compute engine) | explorer | done | Already exists, 8 tests. Needs main.rs wiring |
+| 512 | SQLite connector | explorer | done | Already exists in postgres crate. Needs main.rs wiring |
 
 ## P1: Advanced Connectors
 
@@ -34,9 +34,9 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 710 | Wire multi-tenancy into query handler | planner | todo | Connect #620 TenantRegistry to actual query execution |
-| 711 | Wire audit logging into all endpoints | planner | todo | Connect #622 AuditLog to middleware |
-| 712 | Wire query governor into execution | planner | todo | Connect #621 QueryGovernor to query handler |
+| 710 | Wire multi-tenancy into query handler | planner | done | TenantRegistry in AppState, 403 on unauthorized datasource. Commit: f076f4d |
+| 711 | Wire audit logging into all endpoints | planner | done | AuditLog in AppState, AuditEntry on every query. Commit: f076f4d |
+| 712 | Wire query governor into execution | planner | done | check_limits after execution, 429 if exceeded. Commit: f076f4d |
 | 713 | Anomaly detection in playground UI | frontend | done | z-score markers, moving avg overlay, toggle. Commit: 9f9dc72 |
 | 714 | Query advisor in playground UI | frontend | done | Color-coded recommendations, clickable queries. Commit: 9f9dc72 |
 
