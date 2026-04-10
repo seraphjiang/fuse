@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuse Explore</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e1e4e8;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #21262d;background:#161b22}
+header h1{font-size:18px;font-weight:600;color:#58a6ff}
+.nav-tabs{display:flex;gap:0}
+.nav-tab{padding:8px 16px;font-size:13px;color:#8b949e;text-decoration:none;border-bottom:2px solid transparent;transition:color .15s,border-color .15s}
+.nav-tab:hover{color:#e1e4e8}
+.nav-tab.active{color:#58a6ff;border-bottom-color:#58a6ff;font-weight:600}
+.health{display:flex;align-items:center;gap:6px;font-size:13px;color:#8b949e}
+.health-dot{width:10px;height:10px;border-radius:50%;background:#484f58}
+.health-dot.healthy{background:#3fb950}
+select,button,input{background:#21262d;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;padding:6px 12px;font-size:13px;cursor:pointer}
+select:hover,button:hover{border-color:#58a6ff}
+button.primary{background:#238636;border-color:#238636;font-weight:600}
+button.primary:hover{background:#2ea043}
+textarea{width:100%;min-height:80px;background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:"SF Mono",Consolas,monospace;font-size:14px;resize:vertical}
+textarea:focus{outline:none;border-color:#58a6ff}
+main{flex:1;display:flex;flex-direction:column;padding:16px 24px;gap:12px;max-width:1400px;width:100%;margin:0 auto}
+.query-bar{display:flex;gap:8px;align-items:flex-start}
+.query-bar textarea{flex:1}
+.query-bar .controls{display:flex;flex-direction:column;gap:6px;min-width:120px}
+.viz-area{flex:1;display:flex;gap:12px;min-height:400px}
+.chart-pane{flex:2;border:1px solid #21262d;border-radius:6px;background:#0d1117;position:relative;min-height:400px}
+.side-pane{flex:1;display:flex;flex-direction:column;gap:8px;max-width:360px}
+.chart-types{display:flex;flex-wrap:wrap;gap:4px}
+.chart-types button{padding:4px 10px;font-size:11px}
+.chart-types button.active{background:#238636;border-color:#238636}
+.data-preview{flex:1;overflow:auto;border:1px solid #21262d;border-radius:6px;background:#0d1117;font-size:12px}
+.data-preview table{width:100%;border-collapse:collapse}
+.data-preview th{position:sticky;top:0;background:#161b22;text-align:left;padding:4px 8px;border-bottom:1px solid #30363d;color:#8b949e;font-size:10px;text-transform:uppercase}
+.data-preview td{padding:3px 8px;border-bottom:1px solid #21262d;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+.meta-bar{font-size:12px;color:#8b949e;display:flex;gap:16px;align-items:center}
+.col-chips{display:flex;flex-wrap:wrap;gap:4px;padding:4px 0}
+.col-chip{padding:2px 8px;border-radius:4px;font-size:11px;cursor:pointer;border:1px solid #30363d}
+.col-chip:hover{border-color:#58a6ff}
+.col-chip.selected{background:#1f3a5f;border-color:#58a6ff;color:#58a6ff}
+.col-chip .type-badge{font-size:9px;opacity:.7;margin-left:2px}
+.empty{padding:40px;text-align:center;color:#484f58;font-size:14px}
+.error{color:#f85149;padding:12px;background:#1c0d0d;border:1px solid #f8514933;border-radius:6px;font-size:13px}
+.hint{font-size:11px;color:#8b949e;padding:2px 0}
+.section-label{font-size:11px;color:#8b949e;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:4px 0}
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:16px">
+    <h1>Fuse</h1>
+    <nav class="nav-tabs">
+      <a href="/playground" class="nav-tab">Playground</a>
+      <a href="/dashboard" class="nav-tab">Dashboard</a>
+      <a href="/explore" class="nav-tab active">Explore</a>
+    </nav>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <div class="health" id="health"><span class="health-dot" id="health-dot"></span><span id="health-text">connecting…</span></div>
+  </div>
+</header>
+
+<main>
+  <div class="query-bar">
+    <textarea id="editor" placeholder="SELECT service, count(*) as errors FROM cluster_a.application_logs WHERE status >= 500 GROUP BY service ORDER BY errors DESC" spellcheck="false"></textarea>
+    <div class="controls">
+      <select id="format"><option value="sql">SQL</option><option value="ppl">PPL</option></select>
+      <button class="primary" onclick="run()">▶ Run & Visualize</button>
+      <button onclick="addToDashboard()">📊 → Dashboard</button>
+    </div>
+  </div>
+
+  <div id="error-box" class="error" style="display:none"></div>
+  <div class="meta-bar" id="meta" style="display:none">
+    <span id="meta-rows"></span><span id="meta-cols"></span><span id="meta-time"></span>
+  </div>
+
+  <div id="columns-area" style="display:none">
+    <div class="section-label">Columns (click to assign axes)</div>
+    <div class="col-chips" id="col-chips"></div>
+    <div class="hint" id="axis-hint"></div>
+  </div>
+
+  <div class="viz-area" id="viz-area" style="display:none">
+    <div class="chart-pane" id="chart-pane">
+      <div class="empty">Run a query to visualize</div>
+    </div>
+    <div class="side-pane">
+      <div class="section-label">Chart Type</div>
+      <div class="chart-types" id="chart-types">
+        <button class="active" onclick="setType('auto')">Auto</button>
+        <button onclick="setType('line')">Line</button>
+        <button onclick="setType('bar')">Bar</button>
+        <button onclick="setType('stacked-bar')">Stacked</button>
+        <button onclick="setType('pie')">Pie</button>
+        <button onclick="setType('area')">Area</button>
+        <button onclick="setType('scatter')">Scatter</button>
+        <button onclick="setType('histogram')">Histogram</button>
+        <button onclick="setType('heatmap')">Heatmap</button>
+        <button onclick="setType('sankey')">Sankey</button>
+        <button onclick="setType('flame')">Flame</button>
+        <button onclick="setType('timeline')">Timeline</button>
+      </div>
+      <div class="section-label">Data Preview</div>
+      <div class="data-preview" id="data-preview"><div class="empty">No data</div></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const API = window.location.origin;
+const $ = id => document.getElementById(id);
+let chart = null, lastCols = [], lastRows = [], selectedType = 'auto';
+let colTypes = {};
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// Column type detection (same as playground)
+function detectColumnTypes(columns, rows) {
+  const types = {};
+  columns.forEach((col, i) => {
+    const sample = rows.slice(0, 50).map(r => r[i]).filter(v => v != null && v !== '');
+    if (!sample.length) { types[col] = 'unknown'; return; }
+    if (col === '_datasource' || col === 'datasource') { types[col] = 'datasource'; return; }
+    if (/^(timestamp|time|date|created|updated)/i.test(col) || sample.every(v => !isNaN(Date.parse(String(v))))) { types[col] = 'time'; return; }
+    if (sample.every(v => !isNaN(Number(v)))) { types[col] = 'number'; return; }
+    types[col] = new Set(sample.map(String)).size <= 30 ? 'category' : 'string';
+  });
+  return types;
+}
+
+function suggestChart(columns, rows) {
+  const types = detectColumnTypes(columns, rows);
+  const cats = columns.filter(c => types[c] === 'category' || types[c] === 'datasource');
+  const nums = columns.filter(c => types[c] === 'number');
+  const times = columns.filter(c => types[c] === 'time');
+  if (times.length && nums.length) return { type: 'line', x: times[0], y: nums[0], series: cats[0] || null };
+  if (cats.length && nums.length) {
+    if (nums.length === 1 && rows.length <= 12) return { type: 'pie', label: cats[0], value: nums[0] };
+    return { type: 'bar', x: cats[0], y: nums[0], series: cats[1] || null };
+  }
+  if (nums.length >= 2) return { type: 'scatter', x: nums[0], y: nums[1] };
+  if (cats.length >= 1) return { type: 'bar', x: cats[0], y: null };
+  return null;
+}
+
+function resolveType(auto) {
+  if (selectedType === 'auto' || !auto) return auto;
+  const s = { ...auto };
+  if (selectedType === 'pie') { s.type = 'pie'; s.label = s.label || s.x; s.value = s.value || s.y; }
+  else s.type = selectedType;
+  return s;
+}
+
+function buildOption(sug, columns, rows) {
+  const ci = col => columns.indexOf(col);
+  const vals = col => rows.map(r => r[ci(col)]);
+  const numVals = col => rows.map(r => Number(r[ci(col)]));
+  const dark = { backgroundColor: 'transparent', textStyle: { color: '#8b949e' } };
+  const tt = { trigger: 'axis', backgroundColor: '#161b22', borderColor: '#30363d', textStyle: { color: '#e1e4e8' } };
+  const grid = { left: 60, right: 20, bottom: 40, top: 20 };
+  const al = { color: '#8b949e' };
+
+  if (sug.type === 'histogram') {
+    const nums = columns.filter((c, i) => rows.slice(0, 50).every(r => !isNaN(Number(r[i]))));
+    const col = sug.y || sug.x || nums[0]; if (!col) return null;
+    const v = numVals(col).filter(x => !isNaN(x));
+    const mn = Math.min(...v), mx = Math.max(...v), bc = Math.min(Math.ceil(Math.sqrt(v.length)), 30), bs = (mx-mn)/bc||1;
+    const bins = Array(bc).fill(0); v.forEach(x => { bins[Math.min(Math.floor((x-mn)/bs), bc-1)]++; });
+    return { ...dark, tt, grid, xAxis:{type:'category',data:bins.map((_,i)=>`${(mn+i*bs).toFixed(0)}`),axisLabel:{...al,rotate:30}}, yAxis:{type:'value',axisLabel:al}, series:[{type:'bar',data:bins,barWidth:'90%',itemStyle:{color:'#58a6ff'}}] };
+  }
+  if (sug.type === 'heatmap') {
+    const types = detectColumnTypes(columns, rows);
+    const cats = columns.filter(c => types[c]==='category'||types[c]==='datasource'||types[c]==='time');
+    const nums = columns.filter(c => types[c]==='number');
+    const xC = sug.x||cats[0], yC = cats.find(c=>c!==xC)||cats[1], vC = nums[0];
+    if (!xC||!yC) return null;
+    const xL=[...new Set(vals(xC).map(String))], yL=[...new Set(vals(yC).map(String))];
+    const agg={}; let mx=0; rows.forEach(r=>{const k=String(r[ci(xC)])+'|'+String(r[ci(yC)]); agg[k]=(agg[k]||0)+(vC?Number(r[ci(vC)]):1);});
+    const data=[]; xL.forEach((x,xi)=>yL.forEach((y,yi)=>{const v=agg[x+'|'+y]||0; data.push([xi,yi,v]); if(v>mx)mx=v;}));
+    return { ...dark, tooltip:{trigger:'item'}, grid:{left:80,right:40,bottom:40,top:16}, xAxis:{type:'category',data:xL,axisLabel:{...al,rotate:30}}, yAxis:{type:'category',data:yL,axisLabel:al},
+      visualMap:{min:0,max:mx||1,calculable:true,orient:'horizontal',left:'center',bottom:0,inRange:{color:['#0d1117','#1f3a5f','#58a6ff','#f0883e','#f85149']},textStyle:{color:'#8b949e'}}, series:[{type:'heatmap',data,label:{show:data.length<200,color:'#e1e4e8',fontSize:10}}] };
+  }
+  if (sug.type === 'flame') {
+    const types = detectColumnTypes(columns, rows);
+    const catCols = columns.filter(c=>types[c]==='category'||types[c]==='string'||types[c]==='datasource');
+    const numCols = columns.filter(c=>types[c]==='number');
+    const lC = catCols.find(c=>/op|name|func|service|span/i.test(c))||catCols[0]||columns[0];
+    const vC = numCols.find(c=>/dur|ms|time|latency|count|value/i.test(c))||numCols[0];
+    if (!lC||!vC) return null;
+    const sorted = rows.map(r=>({l:String(r[ci(lC)]),v:Number(r[ci(vC)])})).filter(d=>!isNaN(d.v)).sort((a,b)=>b.v-a.v);
+    if (!sorted.length) return null;
+    return { ...dark, tooltip:{trigger:'item'}, grid:{left:120,right:20,bottom:30,top:16}, xAxis:{type:'value',max:sorted[0].v,axisLabel:al}, yAxis:{type:'category',data:sorted.map(d=>d.l),axisLabel:al,inverse:true},
+      series:[{type:'bar',data:sorted.map(d=>d.v),barWidth:'80%',itemStyle:{color:p=>['#f85149','#f0883e','#d29922','#3fb950','#58a6ff','#bc8cff'][p.dataIndex%6]}}] };
+  }
+  if (sug.type === 'timeline') {
+    const types = detectColumnTypes(columns, rows);
+    const timeCols = columns.filter(c=>types[c]==='time'), catCols = columns.filter(c=>types[c]==='category'||types[c]==='string'||types[c]==='datasource');
+    const numCols = columns.filter(c=>types[c]==='number');
+    const startCol = timeCols[0], durCol = numCols.find(c=>/dur|ms|latency|response_time/i.test(c));
+    const labelCol = catCols.find(c=>/service|name|op|span/i.test(c))||catCols[0]||columns[0];
+    if (!startCol&&!durCol) return null;
+    const categories = [...new Set(vals(labelCol).map(String))];
+    const data = []; rows.forEach((r,i)=>{const l=String(r[ci(labelCol)]),idx=categories.indexOf(l); let s,e;
+      if(startCol&&durCol){s=new Date(r[ci(startCol)]).getTime();e=s+Number(r[ci(durCol)]);}else if(durCol){s=i*100;e=s+Number(r[ci(durCol)]);}else return;
+      if(!isNaN(s)&&!isNaN(e))data.push({value:[idx,s,e,l],itemStyle:{color:['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff','#79c0ff'][idx%6]}});});
+    if(!data.length) return null;
+    const allT=data.flatMap(d=>[d.value[1],d.value[2]]);
+    return { ...dark, tooltip:{trigger:'item',formatter:p=>{const d=p.data.value;return `${d[3]}: ${d[2]-d[1]}ms`;}}, grid:{left:120,right:20,bottom:30,top:16},
+      xAxis:{type:'value',min:Math.min(...allT),max:Math.max(...allT),axisLabel:{...al,formatter:v=>new Date(v).toISOString().slice(11,19)}}, yAxis:{type:'category',data:categories,axisLabel:al,inverse:true},
+      series:[{type:'custom',renderItem:(p,api)=>{const c=api.value(0),s=api.coord([api.value(1),c]),e=api.coord([api.value(2),c]),h=api.size([0,1])[1]*0.6;return{type:'rect',shape:{x:s[0],y:s[1]-h/2,width:Math.max(e[0]-s[0],2),height:h},style:api.style()};},encode:{x:[1,2],y:0},data}] };
+  }
+  if (sug.type === 'sankey') {
+    const types = detectColumnTypes(columns, rows);
+    const cats = columns.filter(c=>types[c]==='category'||types[c]==='datasource'||types[c]==='string');
+    const nums = columns.filter(c=>types[c]==='number');
+    const srcC=cats[0], tgtC=cats.find(c=>c!==srcC)||cats[1], vC=nums[0];
+    if(!srcC||!tgtC) return null;
+    const lm={}; rows.forEach(r=>{const s=String(r[ci(srcC)]),t=String(r[ci(tgtC)]); if(s===t)return; const k=s+'→'+t; lm[k]=lm[k]||{source:s,target:t,value:0}; lm[k].value+=(vC?Number(r[ci(vC)]):1);});
+    const links=Object.values(lm); const ns=new Set(); links.forEach(l=>{ns.add(l.source);ns.add(l.target)});
+    if(!links.length) return null;
+    return { ...dark, tooltip:{trigger:'item'}, series:[{type:'sankey',data:[...ns].map(name=>({name})),links,emphasis:{focus:'adjacency'},lineStyle:{color:'gradient',curveness:0.5},label:{color:'#e1e4e8',fontSize:11}}] };
+  }
+  if (sug.type === 'pie') {
+    const lbl=sug.label||sug.x, val=sug.value||sug.y; if(!lbl||!val) return null;
+    const m={}; rows.forEach(r=>{const k=String(r[ci(lbl)]); m[k]=(m[k]||0)+Number(r[ci(val)]);}); const data=Object.entries(m).map(([name,value])=>({name,value}));
+    return { ...dark, tooltip:{trigger:'item'}, series:[{type:'pie',radius:['35%','65%'],data,label:{color:'#8b949e'}}] };
+  }
+  if (sug.type === 'scatter') {
+    const xv=numVals(sug.x), yv=numVals(sug.y);
+    return { ...dark, tooltip:{trigger:'item'}, grid, xAxis:{type:'value',name:sug.x,axisLabel:al}, yAxis:{type:'value',name:sug.y,axisLabel:al}, series:[{type:'scatter',data:xv.map((x,i)=>[x,yv[i]]),symbolSize:8,itemStyle:{color:'#58a6ff'}}] };
+  }
+  // line, bar, stacked-bar, area
+  const isArea=sug.type==='area', isStacked=sug.type==='stacked-bar', eT=(isArea||sug.type==='line')?'line':'bar';
+  const xData=[...new Set(vals(sug.x).map(String))], rot=xData.length>10?30:0;
+  if (!sug.series) {
+    const yData = sug.y ? (()=>{const m={};rows.forEach(r=>{const x=String(r[ci(sug.x)]);m[x]=(m[x]||0)+Number(r[ci(sug.y)]);});return xData.map(x=>m[x]||0);})()
+      : (()=>{const m={};vals(sug.x).forEach(v=>m[String(v)]=(m[String(v)]||0)+1);return xData.map(x=>m[x]||0);})();
+    return { ...dark, tooltip:tt, grid, xAxis:{type:'category',data:xData,axisLabel:{...al,rotate:rot}}, yAxis:{type:'value',axisLabel:al},
+      series:[{type:eT,data:yData,smooth:eT==='line',areaStyle:isArea?{opacity:0.3}:undefined,stack:isStacked?'total':undefined}] };
+  }
+  const sCol=ci(sug.series), groups={};
+  rows.forEach(r=>{const s=String(r[sCol]);if(!groups[s])groups[s]={};const x=String(r[ci(sug.x)]);groups[s][x]=(groups[s][x]||0)+Number(r[ci(sug.y)]||1);});
+  const series=Object.entries(groups).map(([name,m])=>({name,type:eT,data:xData.map(x=>m[x]||0),smooth:eT==='line',areaStyle:isArea?{opacity:0.3}:undefined,stack:isStacked?'total':undefined}));
+  return { ...dark, tooltip:tt, legend:{textStyle:{color:'#8b949e'},top:0}, xAxis:{type:'category',data:xData,axisLabel:{...al,rotate:rot}}, yAxis:{type:'value',axisLabel:al}, series, grid:{...grid,top:30} };
+}
+
+function setType(t) {
+  selectedType = t;
+  document.querySelectorAll('.chart-types button').forEach(b => b.classList.toggle('active', b.textContent.toLowerCase().replace(/ /g,'-') === t || (t === 'auto' && b.textContent === 'Auto') || (t === 'stacked-bar' && b.textContent === 'Stacked')));
+  renderChart();
+}
+
+function renderColumnChips() {
+  colTypes = detectColumnTypes(lastCols, lastRows);
+  const typeColors = { number: '#1f3a5f', category: '#2d1f3a', time: '#1a3a2a', datasource: '#3a2a1a', string: '#21262d', unknown: '#21262d' };
+  $('col-chips').innerHTML = lastCols.map(c => {
+    const t = colTypes[c] || 'unknown';
+    return `<span class="col-chip" style="background:${typeColors[t]}" title="${t}">${esc(c)} <span class="type-badge">${t}</span></span>`;
+  }).join('');
+  $('columns-area').style.display = lastCols.length ? '' : 'none';
+}
+
+function renderDataPreview() {
+  if (!lastCols.length) { $('data-preview').innerHTML = '<div class="empty">No data</div>'; return; }
+  let h = '<table><thead><tr>' + lastCols.map(c => `<th>${esc(c)}</th>`).join('') + '</tr></thead><tbody>';
+  lastRows.slice(0, 50).forEach(r => { h += '<tr>' + r.map(v => `<td title="${esc(v)}">${esc(v)}</td>`).join('') + '</tr>'; });
+  $('data-preview').innerHTML = h + '</tbody></table>';
+}
+
+function renderChart() {
+  const pane = $('chart-pane');
+  if (!lastCols.length || !lastRows.length) { pane.innerHTML = '<div class="empty">Run a query to visualize</div>'; return; }
+  const auto = suggestChart(lastCols, lastRows);
+  const sug = resolveType(auto);
+  if (!sug) { pane.innerHTML = '<div class="empty">Cannot visualize — need numeric or categorical columns</div>'; if (chart) { chart.dispose(); chart = null; } return; }
+  const opt = buildOption(sug, lastCols, lastRows);
+  if (!opt) { pane.innerHTML = '<div class="empty">Not enough data for this chart type</div>'; return; }
+  pane.innerHTML = '';
+  if (chart) chart.dispose();
+  chart = echarts.init(pane, 'dark');
+  chart.setOption(opt);
+  $('axis-hint').textContent = `${sug.type} — x: ${sug.x||sug.label||'-'}, y: ${sug.y||sug.value||'-'}${sug.series ? ', series: '+sug.series : ''}`;
+}
+
+async function run() {
+  $('error-box').style.display = 'none';
+  $('meta').style.display = 'none';
+  try {
+    const t0 = performance.now();
+    const r = await fetch(API + '/api/fuse/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: $('editor').value, format: $('format').value }) });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || r.statusText);
+    const ms = Math.round(performance.now() - t0);
+    lastCols = body.columns; lastRows = body.rows;
+    $('meta-rows').textContent = body.metadata.total_rows + ' rows';
+    $('meta-cols').textContent = body.columns.length + ' columns';
+    $('meta-time').textContent = ms + ' ms';
+    $('meta').style.display = 'flex';
+    $('viz-area').style.display = 'flex';
+    renderColumnChips();
+    renderDataPreview();
+    renderChart();
+  } catch (e) {
+    $('error-box').textContent = e.message;
+    $('error-box').style.display = 'block';
+  }
+}
+
+function addToDashboard() {
+  const q = $('editor').value;
+  if (!q) return;
+  // Store in localStorage for dashboard to pick up
+  const pending = { title: 'From Explore', query: q, format: $('format').value, chartType: selectedType, width: 6 };
+  localStorage.setItem('fuse-explore-to-dashboard', JSON.stringify(pending));
+  window.location.href = '/dashboard#add-from-explore';
+}
+
+async function checkHealth() {
+  try {
+    const r = await fetch(API + '/api/fuse/health');
+    const h = await r.json();
+    $('health-dot').className = 'health-dot ' + h.status;
+    $('health-text').textContent = h.status + ' · v' + h.version;
+  } catch { $('health-dot').className = 'health-dot'; $('health-text').textContent = 'unreachable'; }
+}
+
+$('editor').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); run(); } });
+window.addEventListener('resize', () => { if (chart) chart.resize(); });
+checkHealth();
+</script>
+</body>
+</html>

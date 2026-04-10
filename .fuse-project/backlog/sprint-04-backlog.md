@@ -19,7 +19,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 410 | Temporal bucketing (time_bucket, date_trunc for grouping) | planner | todo | time_bucket('5m', timestamp) for time-series aggregation across sources |
+| 410 | Temporal bucketing (time_bucket, date_trunc for grouping) | planner | done | Via passthrough (#332/#334) + reaggregation (#343). 2 tests. Commit: 259250f |
 | 411 | Top-N / Bottom-N with pushdown | planner | todo | ORDER BY count DESC LIMIT 10 pushed to connectors. Top error-producing services |
 | 412 | Approximate aggregations (HyperLogLog, t-digest) | planner | todo | Pushdown to OpenSearch native approximate aggs for COUNT DISTINCT, percentiles |
 | 413 | Recursive CTEs | planner | todo | Trace dependency chains: find all services in call graph from service X |
@@ -37,7 +37,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 322 | OFFSET pushdown to connectors | planner | todo | Carried from S3. Skip rows at source, not post-fetch |
+| 322 | OFFSET pushdown to connectors | explorer | done | SubQuery.offset field, extract_offset(), all 13 construction sites updated. 3 tests |
 | 323 | Pagination across UNION ALL (global cursor) | planner | todo | Carried from S3. Maintain per-source cursors, merge in order |
 | 324 | Large result streaming with backpressure | explorer | done | Bounded channel (4 slots), client batch_size, row buffering. 8 new tests |
 | 325 | OpenSearch search_after for deep pagination | general | done | Carried from S3. Replace from+size with search_after for >10k results |

@@ -265,27 +265,34 @@ fn error_json(status: StatusCode, msg: impl ToString) -> impl IntoResponse {
 /// Rewrite CONTAINS 'term' → LIKE '%term%' for full-text search syntax.
 /// Also handles MATCH(field, 'term') → field LIKE '%term%'.
 pub fn rewrite_contains(query: &str) -> String {
-    let mut result = query.to_string();
+    let lower = query.to_lowercase();
+    if !lower.contains(" contains '") {
+        return query.to_string();
+    }
 
-    // Handle: field CONTAINS 'term'
-    // Use case-insensitive search on stripped query, apply to original
-    let lower = result.to_lowercase();
-    let mut offset: i64 = 0;
-    let mut search_pos = 0;
-    while let Some(pos) = lower[search_pos..].find(" contains '") {
-        let abs_pos = search_pos + pos;
-        // Find the closing quote
-        let after = abs_pos + 11; // skip " contains '"
-        if let Some(end_quote) = result[after..].find('\'') {
-            let term = &result[after..after + end_quote];
-            let replacement = format!(" LIKE '%{}%'", term);
-            let start = (abs_pos as i64 + offset) as usize;
-            let end = (after + end_quote + 1) as i64 + offset;
-            result = format!("{}{}{}", &result[..start], replacement, &result[end as usize..]);
-            offset += replacement.len() as i64 - (end - start as i64);
+    let mut result = String::with_capacity(query.len());
+    let mut pos = 0;
+
+    while pos < query.len() {
+        if let Some(rel) = lower[pos..].find(" contains '") {
+            let abs = pos + rel;
+            // Copy everything before this match
+            result.push_str(&query[pos..abs]);
+            // Find closing quote after " contains '"
+            let term_start = abs + 11; // skip " contains '"
+            if let Some(end_quote) = query[term_start..].find('\'') {
+                let term = &query[term_start..term_start + end_quote];
+                result.push_str(&format!(" LIKE '%{}%'", term));
+                pos = term_start + end_quote + 1;
+            } else {
+                // No closing quote — copy as-is
+                result.push_str(&query[abs..abs + 11]);
+                pos = term_start;
+            }
+        } else {
+            result.push_str(&query[pos..]);
+            break;
         }
-        search_pos = abs_pos + 1;
-        if search_pos >= lower.len() { break; }
     }
 
     result
