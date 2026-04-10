@@ -21,7 +21,7 @@
 |----|------|-------|--------|-------|
 | 411 | Top-N / Bottom-N with pushdown | planner | done | ORDER BY + LIMIT pushed to sources, min(base, existing). Commit: 62b87c0 |
 | 412 | Approximate aggregations (HyperLogLog, t-digest) | planner | todo | Pushdown to OpenSearch native approximate aggs |
-| 423 | Saved queries / virtual views | planner | todo | CREATE VIEW unified_logs AS SELECT ... Virtual tables |
+| 423 | Saved queries / virtual views | planner | done | CREATE VIEW via SQL + REST API, MaterializedViewRegistry. Commit: ded5492 |
 | 323 | Pagination across UNION ALL (global cursor) | explorer | done | Per-source cursor encoding, backward compatible. Commit: 9ae3506 |
 
 ## P1: New Connectors

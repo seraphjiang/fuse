@@ -1,0 +1,17 @@
+[package]
+name = "fuse-connector-duckdb"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "DuckDB connector for the Fuse federated query engine"
+
+[dependencies]
+fuse-core = { path = "../../fuse-core" }
+arrow = { workspace = true }
+duckdb = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }

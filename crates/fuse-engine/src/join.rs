@@ -34,6 +34,8 @@ use crate::cost::{estimate_remote_cost, CostEstimate, QueryWorkload, TableStats}
 pub enum JoinType {
     Inner,
     Left,
+    /// Right outer join: swap sides then left join
+    Right,
     /// Full outer join: all rows from both sides, NULLs where no match
     Full,
     /// Semi-join: return left rows that have a match in right (EXISTS)
@@ -164,6 +166,11 @@ pub fn hash_join(
     probe_key: &str,
     join_type: JoinType,
 ) -> Result<Vec<RecordBatch>> {
+    // RIGHT JOIN = swap sides + LEFT JOIN
+    if join_type == JoinType::Right {
+        return hash_join(probe_batches, probe_key, build_batches, build_key, JoinType::Left);
+    }
+
     if build_batches.is_empty() || probe_batches.is_empty() {
         return Ok(vec![]);
     }
@@ -717,5 +724,17 @@ mod tests {
         let full = hash_join(&[build], "id", &[probe], "id", JoinType::Full).unwrap();
         assert!(full[0].num_rows() >= inner[0].num_rows(),
             "FULL should have >= INNER rows: {} vs {}", full[0].num_rows(), inner[0].num_rows());
+    }
+
+    #[test]
+    fn test_right_join() {
+        // build={a,c}, probe={a,b} → RIGHT JOIN keeps all build rows
+        // Equivalent to LEFT JOIN with swapped sides
+        let build = build_batch(&["a", "c"], &[100, 300]);
+        let probe = probe_batch(&["a", "b"], &["alice", "bob"]);
+        let result = hash_join(&[build], "id", &[probe], "id", JoinType::Right).unwrap();
+        assert_eq!(result.len(), 1);
+        // "a" matches, "c" has no probe match → 2 rows (like LEFT JOIN on swapped)
+        assert_eq!(result[0].num_rows(), 2);
     }
 }

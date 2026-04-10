@@ -3943,3 +3943,91 @@ async fn test_create_view_via_sql() {
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(json["name"], "test_view");
 }
+
+// ── #540 Visualization platform E2E tests (tester) ──
+
+#[tokio::test]
+async fn test_playground_page_serves_html() {
+    let app = build_test_app();
+    let req = Request::builder().uri("/playground").body(Body::empty()).unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+    let html = String::from_utf8_lossy(&body);
+    assert!(html.contains("echarts"), "playground should include ECharts");
+}
+
+#[tokio::test]
+async fn test_dashboard_page_serves_html() {
+    let app = build_test_app();
+    let req = Request::builder().uri("/dashboard").body(Body::empty()).unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+    let html = String::from_utf8_lossy(&body);
+    assert!(html.contains("dashboard") || html.contains("Dashboard"), "should serve dashboard page");
+}
+
+#[tokio::test]
+async fn test_explore_page_serves_html() {
+    let app = build_test_app();
+    let req = Request::builder().uri("/explore").body(Body::empty()).unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_query_response_has_chart_compatible_format() {
+    // Chart rendering needs columns + rows arrays
+    let (status, json) = post_query(
+        build_test_app(),
+        "SELECT * FROM testds.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(json["columns"].is_array(), "response must have columns array for chart rendering");
+    assert!(json["rows"].is_array(), "response must have rows array for chart rendering");
+    let cols = json["columns"].as_array().unwrap();
+    let rows = json["rows"].as_array().unwrap();
+    assert!(!cols.is_empty());
+    assert!(!rows.is_empty());
+    // Each row should have same length as columns
+    for row in rows {
+        assert_eq!(row.as_array().unwrap().len(), cols.len(),
+            "row length should match column count");
+    }
+}
+
+#[tokio::test]
+async fn test_viz_saved_queries_save_and_list() {
+    let app = build_test_app();
+
+    // Save a query
+    let save_body = serde_json::json!({
+        "name": "test_viz_query",
+        "query": "SELECT * FROM testds.logs LIMIT 5",
+        "format": "sql"
+    });
+    let req = Request::builder()
+        .method("POST").uri("/api/fuse/saved")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_string(&save_body).unwrap())).unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert!(resp.status() == StatusCode::OK || resp.status() == StatusCode::CREATED,
+        "save should succeed: {}", resp.status());
+
+    // List saved queries
+    let app = build_test_app();
+    let req = Request::builder().uri("/api/fuse/saved").body(Body::empty()).unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_root_redirects_to_playground() {
+    let app = build_test_app();
+    let req = Request::builder().uri("/").body(Body::empty()).unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    // Root should serve playground or redirect
+    assert!(resp.status() == StatusCode::OK || resp.status() == StatusCode::TEMPORARY_REDIRECT);
+}
