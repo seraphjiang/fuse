@@ -4105,38 +4105,28 @@ fn test_result_cache_hit_and_miss() {
     use fuse_server::plan_cache::ResultCache;
     let cache = ResultCache::new(300, 100);
     let key = "sql:SELECT * FROM test".to_string();
-    let result = fuse_server::plan_cache::CachedResult {
-        response_json: serde_json::json!({"rows": [], "columns": []}),
-    };
     assert!(cache.get(&key).is_none(), "should miss before insert");
-    cache.insert(key.clone(), result);
+    cache.insert(key.clone(), serde_json::json!({"rows": [], "columns": []}));
     assert!(cache.get(&key).is_some(), "should hit after insert");
     assert!(cache.get("sql:SELECT * FROM other").is_none(), "different query should miss");
 }
 
 #[test]
 fn test_result_cache_key_format() {
-    // Cache key is "format:query" — different formats = different keys
     use fuse_server::plan_cache::ResultCache;
     let cache = ResultCache::new(300, 100);
-    let result = fuse_server::plan_cache::CachedResult {
-        response_json: serde_json::json!({"rows": []}),
-    };
-    cache.insert("sql:SELECT 1".into(), result.clone());
+    cache.insert("sql:SELECT 1".into(), serde_json::json!({"rows": []}));
     assert!(cache.get("sql:SELECT 1").is_some());
     assert!(cache.get("ppl:SELECT 1").is_none(), "different format = different key");
 }
 
 #[test]
 fn test_plan_cache_ttl_expiry() {
-    use fuse_server::plan_cache::PlanCache;
-    // TTL of 0 seconds = immediate expiry
-    let cache = PlanCache::new(0, 100);
-    let plan = fuse_server::plan_cache::CachedPlan {
-        refs: vec![("ds".into(), "table".into())],
-        created: std::time::Instant::now() - std::time::Duration::from_secs(1),
-    };
-    cache.insert("key".into(), plan);
+    use fuse_server::plan_cache::ResultCache;
+    let cache = ResultCache::new(0, 100);
+    cache.insert("key".into(), serde_json::json!({}));
+    // TTL=0 → should expire immediately (or within ms)
+    std::thread::sleep(std::time::Duration::from_millis(10));
     assert!(cache.get("key").is_none(), "expired entry should not be returned");
 }
 

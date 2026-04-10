@@ -26,7 +26,7 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 610 | Natural language to SQL (LLM-powered) | planner | todo | Schema-aware NL→SQL translation via Bedrock/OpenAI |
-| 611 | Auto-suggest queries based on schema | frontend | todo | Suggest interesting queries when user selects a datasource |
+| 611 | Auto-suggest queries based on schema | frontend | done | Contextual suggestions based on column types. Commit: 6f19619 |
 | 612 | Intelligent query optimization (learn from history) | planner | todo | Analyze past queries to suggest index/pushdown improvements |
 
 ## P1: Multi-Tenancy & Enterprise
@@ -34,16 +34,16 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 620 | Multi-tenant isolation | explorer | done | TenantConfig, TenantRegistry, datasource filtering, secure default. Commit: 2026634 |
-| 621 | Query governor (max rows, max time, max memory) | planner | todo | Per-tenant resource limits |
+| 621 | Query governor (max rows, max time, max memory) | planner | done | Per-tenant max_rows, max_time_ms, max_result_bytes. Commit: a534b51 |
 | 622 | Audit logging (who queried what, when) | explorer | done | AuditEntry, 8 action types, bounded FIFO, identity tracking. Commit: 9f1e42e |
 
 ## P1: Ecosystem & Integration
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 630 | Python SDK client | explorer | todo | pip install fuse-client, query(), stream(), trace() |
-| 631 | Grafana datasource plugin | frontend | todo | Fuse as a Grafana datasource for existing Grafana users |
-| 632 | Jupyter notebook integration | docs | todo | %fuse magic command, DataFrame output |
+| 630 | Python SDK client | explorer | done | FuseClient, auto-paginate, trace, zero deps, Python >=3.8. 9 tests |
+| 631 | Grafana datasource plugin | frontend | done | plugin.json, config/query editors, auto field types, health check. Commit: 6f19619 |
+| 632 | Jupyter notebook integration | docs | done | SDK setup, DataFrame helpers, visualization, pagination, trace. Commit: 986b92d |
 
 ## P2: Advanced Connectors
 
@@ -59,7 +59,7 @@
 |----|------|-------|--------|-------|
 | 650 | Chaos testing (connector failures, network partitions) | tester | todo | Verify graceful degradation under failure |
 | 651 | Performance regression CI (automated benchmark on every commit) | tester | todo | Catch perf regressions before deploy |
-| 652 | Accessibility audit (WCAG 2.1 AA) | frontend | todo | Screen reader, keyboard nav, contrast ratios |
+| 652 | Accessibility audit (WCAG 2.1 AA) | frontend | done | ARIA landmarks, skip-to-content, focus-visible, aria-live, role=alert. Commit: a572da1 |
 
 ## P2: Docs & Community
 

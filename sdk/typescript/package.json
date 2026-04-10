@@ -1,0 +1,23 @@
+{
+  "name": "fuse-client",
+  "version": "0.2.0",
+  "description": "TypeScript/JavaScript SDK for the Fuse federated query engine",
+  "license": "Apache-2.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist/", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsc",
+    "test": "node --experimental-vm-modules tests/test_client.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/seraphjiang/fuse.git",
+    "directory": "sdk/typescript"
+  },
+  "keywords": ["fuse", "federated-query", "opensearch", "sql", "observability"],
+  "engines": { "node": ">=18.0.0" },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

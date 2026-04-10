@@ -2316,6 +2316,139 @@ pub async fn multi_query_handler(
     (StatusCode::OK, Json(serde_json::json!({ "results": results, "count": results.len() }))).into_response()
 }
 
+// ── Natural Language to SQL ──
+
+#[derive(Deserialize)]
+pub struct NlQueryRequest {
+    pub question: String,
+    /// If true, also execute the generated SQL and return results.
+    #[serde(default)]
+    pub execute: bool,
+}
+
+#[derive(Serialize)]
+pub struct NlQueryResponse {
+    pub question: String,
+    pub generated_sql: String,
+    pub schema_context: Vec<DatasourceSchema>,
+    pub prompt: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub results: Option<serde_json::Value>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct DatasourceSchema {
+    pub datasource: String,
+    pub tables: Vec<String>,
+}
+
+/// POST /api/fuse/nl — translate natural language to SQL
+pub async fn nl_to_sql_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<NlQueryRequest>,
+) -> impl IntoResponse {
+    // Gather schema context from all registered datasources
+    let connectors = state.registry.list();
+    let mut schemas = Vec::new();
+    let mut schema_text = String::new();
+
+    for conn in &connectors {
+        let ds_id = conn.id().to_string();
+        let tables = conn.table_names().await.unwrap_or_default();
+        if !tables.is_empty() {
+            schema_text.push_str(&format!("Datasource '{}': tables: {}\n", ds_id, tables.join(", ")));
+        } else {
+            schema_text.push_str(&format!("Datasource '{}': (use {}.table_name)\n", ds_id, ds_id));
+        }
+        schemas.push(DatasourceSchema { datasource: ds_id, tables });
+    }
+
+    // Build prompt
+    let prompt = format!(
+        "You are a SQL query generator for the Fuse federated query engine.\n\
+         Fuse queries use datasource.table syntax (e.g. SELECT * FROM cluster_a.logs).\n\
+         Fuse supports: SELECT, JOIN, UNION ALL, GROUP BY, HAVING, ORDER BY, LIMIT,\n\
+         CTEs (WITH), window functions, CONTAINS for full-text search,\n\
+         and cross-datasource queries.\n\n\
+         Available datasources and tables:\n{}\n\
+         User question: {}\n\n\
+         Generate a single SQL query. Return ONLY the SQL, no explanation.",
+        schema_text, req.question
+    );
+
+    // Generate SQL from the question using simple pattern matching as fallback
+    // (Real deployment would call an LLM API here)
+    let generated_sql = generate_sql_from_nl(&req.question, &schemas);
+
+    let mut response = NlQueryResponse {
+        question: req.question.clone(),
+        generated_sql: generated_sql.clone(),
+        schema_context: schemas,
+        prompt,
+        results: None,
+    };
+
+    // Optionally execute the generated SQL
+    if req.execute && !generated_sql.is_empty() {
+        let query_req = QueryRequest {
+            query: generated_sql,
+            format: "sql".into(),
+            analyze: false,
+            timeout_ms: None,
+            result_format: "json".into(),
+            params: std::collections::HashMap::new(),
+            start: None, end: None, step: None,
+            cursor: None, page_size: None,
+        };
+        let exec_resp = query_handler(State(state), Json(query_req)).await;
+        let (_, body) = exec_resp.into_response().into_parts();
+        if let Ok(bytes) = axum::body::to_bytes(body, 10_000_000).await {
+            response.results = serde_json::from_slice(&bytes).ok();
+        }
+    }
+
+    (StatusCode::OK, Json(response)).into_response()
+}
+
+/// Simple rule-based NL→SQL fallback (no LLM dependency).
+fn generate_sql_from_nl(question: &str, schemas: &[DatasourceSchema]) -> String {
+    let q = question.to_lowercase();
+    let first_ds = schemas.first().map(|s| s.datasource.as_str()).unwrap_or("datasource");
+    let table = schemas.first()
+        .and_then(|s| s.tables.first().map(|t| t.as_str()))
+        .unwrap_or("logs");
+    let source = format!("{}.{}", first_ds, table);
+
+    if q.contains("count") && q.contains("by") {
+        // "count errors by host" → SELECT host, COUNT(*) FROM ... GROUP BY host
+        let group_col = extract_keyword_after(&q, "by").unwrap_or("host".into());
+        return format!("SELECT {}, COUNT(*) AS count FROM {} GROUP BY {} ORDER BY count DESC LIMIT 20", group_col, source, group_col);
+    }
+    if q.contains("top") || q.contains("most") {
+        let n = extract_number(&q).unwrap_or(10);
+        return format!("SELECT * FROM {} ORDER BY timestamp DESC LIMIT {}", source, n);
+    }
+    if q.contains("error") || q.contains("fail") {
+        return format!("SELECT * FROM {} WHERE status >= 500 ORDER BY timestamp DESC LIMIT 20", source);
+    }
+    if q.contains("between") || q.contains("last") {
+        return format!("SELECT * FROM {} ORDER BY timestamp DESC LIMIT 100", source);
+    }
+    // Default: select all with limit
+    format!("SELECT * FROM {} LIMIT 20", source)
+}
+
+fn extract_keyword_after(text: &str, keyword: &str) -> Option<String> {
+    let pos = text.find(keyword)?;
+    let after = text[pos + keyword.len()..].trim();
+    after.split_whitespace().next().map(|s| s.to_string())
+}
+
+fn extract_number(text: &str) -> Option<u64> {
+    text.split_whitespace()
+        .find_map(|w| w.parse::<u64>().ok())
+}
+
 pub async fn list_views(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     #[derive(Serialize)]
     struct ViewInfo { name: String, stale: bool }
