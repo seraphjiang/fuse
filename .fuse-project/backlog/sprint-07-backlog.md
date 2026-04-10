@@ -44,7 +44,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 720 | Verify enterprise stack end-to-end | tester | todo | Multi-tenancy + auth + rate limit + audit + governor integration test |
+| 720 | Verify enterprise stack end-to-end | tester | done | 13 tests: multi-tenancy, governor, auth, audit, rate limit, isolation. Commit: 9d379e1 |
 | 721 | SDK integration tests (Python + TypeScript) | tester | todo | Test SDKs against live playground |
 | 722 | Grafana plugin verification | tester | todo | Test Grafana plugin against live Fuse |
 
@@ -52,5 +52,5 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 730 | Release notes v0.6.0 blog post | docs | todo | Announce enterprise features, AI, SDKs |
-| 731 | SDK comparison guide (Python vs TypeScript) | docs | todo | When to use which SDK |
+| 730 | Release notes v0.6.0 blog post | docs | done | Enterprise features, AI, SDKs, by-the-numbers. Commit: 027ae76 |
+| 731 | SDK comparison guide (Python vs TypeScript) | docs | done | Comparison table, use cases, API parity, side-by-side examples. Commit: 565997a |

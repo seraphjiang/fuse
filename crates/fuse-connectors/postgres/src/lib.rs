@@ -334,6 +334,21 @@ impl ConnectorFactory for MysqlConnectorFactory {
 }
 
 /// Redshift is PostgreSQL-compatible — reuses SqlConnector with redshift connector_type.
+/// Supports IAM auth via GetClusterCredentials when `cluster_id` + `db_user` are set.
+///
+/// Config:
+/// ```toml
+/// [[connector]]
+/// id = "warehouse"
+/// connector_type = "redshift"
+/// # Option 1: direct URL
+/// url = "postgres://user:pass@cluster.region.redshift.amazonaws.com:5439/db"
+/// # Option 2: IAM auth
+/// cluster_id = "my-cluster"
+/// db_name = "mydb"
+/// db_user = "admin"
+/// region = "us-west-2"
+/// ```
 #[derive(Debug, Default)]
 pub struct RedshiftConnectorFactory;
 
@@ -341,8 +356,70 @@ pub struct RedshiftConnectorFactory;
 impl ConnectorFactory for RedshiftConnectorFactory {
     fn connector_type(&self) -> &str { "redshift" }
     async fn create(&self, config: &ConnectorConfig) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
+        // If cluster_id is set, use IAM auth to get temporary credentials
+        if let Some(cluster_id) = config.properties.get("cluster_id").and_then(|v| v.as_str()) {
+            let db_name = config.properties.get("db_name").and_then(|v| v.as_str()).unwrap_or("dev");
+            let db_user = config.properties.get("db_user").and_then(|v| v.as_str()).unwrap_or("admin");
+            let region = config.properties.get("region").and_then(|v| v.as_str()).unwrap_or("us-east-1");
+
+            let url = get_redshift_iam_url(cluster_id, db_name, db_user, region).await?;
+            let mut iam_config = config.clone();
+            iam_config.properties.insert("url".into(), toml::Value::String(url));
+            return Ok(Arc::new(SqlConnector::from_config(&iam_config).await?));
+        }
+        // Fallback: direct URL
         Ok(Arc::new(SqlConnector::from_config(config).await?))
     }
+}
+
+/// Fetch temporary credentials via IAM GetClusterCredentials.
+async fn get_redshift_iam_url(
+    cluster_id: &str,
+    db_name: &str,
+    db_user: &str,
+    region: &str,
+) -> Result<String, ConnectorError> {
+    let aws_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+        .region(aws_config::Region::new(region.to_string()))
+        .load()
+        .await;
+    let client = aws_sdk_redshift::Client::new(&aws_config);
+
+    let resp = client.get_cluster_credentials()
+        .cluster_identifier(cluster_id)
+        .db_name(db_name)
+        .db_user(db_user)
+        .send()
+        .await
+        .map_err(|e| ConnectorError::Auth(format!("Redshift IAM auth failed: {e}")))?;
+
+    let temp_user = resp.db_user().unwrap_or(db_user);
+    let temp_pass = resp.db_password().unwrap_or_default();
+
+    // Describe cluster to get endpoint
+    let desc = client.describe_clusters()
+        .cluster_identifier(cluster_id)
+        .send()
+        .await
+        .map_err(|e| ConnectorError::Connection(format!("Redshift describe failed: {e}")))?;
+
+    let cluster = desc.clusters().first()
+        .ok_or_else(|| ConnectorError::Connection(format!("cluster '{}' not found", cluster_id)))?;
+    let endpoint = cluster.endpoint()
+        .ok_or_else(|| ConnectorError::Connection("cluster has no endpoint".into()))?;
+    let host = endpoint.address().unwrap_or("localhost");
+    let port = endpoint.port().unwrap_or(5439);
+
+    // URL-encode password
+    let encoded_pass: String = temp_pass.bytes().map(|b| {
+        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' {
+            format!("{}", b as char)
+        } else {
+            format!("%{:02X}", b)
+        }
+    }).collect();
+
+    Ok(format!("postgres://{}:{}@{}:{}/{}", temp_user, encoded_pass, host, port, db_name))
 }
 
 #[derive(Debug, Default)]
