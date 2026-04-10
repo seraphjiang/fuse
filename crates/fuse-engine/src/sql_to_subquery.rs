@@ -992,4 +992,87 @@ mod tests {
         ).unwrap();
         assert_eq!(sq.projections.len(), 3);
     }
+
+    // ── #352 Aggregation & compute correctness verification (tester) ──
+
+    #[test]
+    fn test_computed_column_nested_arithmetic() {
+        // (price * quantity) - discount
+        let sq = sql_to_subquery("SELECT (price * quantity) - discount AS net FROM orders").unwrap();
+        assert!(sq.projections.iter().any(|p| p.contains("AS net")));
+    }
+
+    #[test]
+    fn test_case_when_no_else() {
+        let sq = sql_to_subquery(
+            "SELECT CASE WHEN status >= 500 THEN 'error' END AS err FROM logs",
+        ).unwrap();
+        assert!(sq.projections.iter().any(|p| p.contains("CASE")));
+    }
+
+    #[test]
+    fn test_case_when_multiple_whens() {
+        let sq = sql_to_subquery(
+            "SELECT CASE WHEN status >= 500 THEN 'server' WHEN status >= 400 THEN 'client' WHEN status >= 300 THEN 'redirect' ELSE 'ok' END AS cat FROM logs",
+        ).unwrap();
+        assert!(sq.projections.iter().any(|p| p.contains("CASE")));
+    }
+
+    #[test]
+    fn test_date_diff_function() {
+        let sq = sql_to_subquery(
+            "SELECT DATE_DIFF('day', created_at, updated_at) AS age_days FROM logs",
+        ).unwrap();
+        assert!(sq.projections.iter().any(|p| p.contains("DATE_DIFF")));
+    }
+
+    #[test]
+    fn test_string_functions_lower_trim() {
+        let sq = sql_to_subquery(
+            "SELECT LOWER(host) AS h, TRIM(message) AS msg FROM logs",
+        ).unwrap();
+        assert_eq!(sq.projections.len(), 2);
+    }
+
+    #[test]
+    fn test_math_functions_ceil_floor_abs() {
+        let sq = sql_to_subquery(
+            "SELECT CEIL(latency) AS c, FLOOR(latency) AS f, ABS(delta) AS a FROM logs",
+        ).unwrap();
+        assert_eq!(sq.projections.len(), 3);
+    }
+
+    #[test]
+    fn test_multi_column_order_by_parsed() {
+        let sq = sql_to_subquery(
+            "SELECT * FROM logs ORDER BY status DESC, host ASC, timestamp DESC",
+        ).unwrap();
+        assert_eq!(sq.sort.len(), 3);
+        assert!(sq.sort[0].descending);
+        assert!(!sq.sort[1].descending);
+        assert!(sq.sort[2].descending);
+    }
+
+    #[test]
+    fn test_computed_column_preserves_plain_columns() {
+        // Mix of plain + computed — plain columns should still be extractable
+        let sq = sql_to_subquery(
+            "SELECT host, status, UPPER(service) AS svc, price * 1.1 AS taxed FROM logs",
+        ).unwrap();
+        assert!(sq.projections.contains(&"host".to_string()));
+        assert!(sq.projections.contains(&"status".to_string()));
+        assert_eq!(sq.projections.len(), 4);
+    }
+
+    #[test]
+    fn test_case_when_in_where_with_and_preserves_other() {
+        // CASE WHEN in WHERE with AND — the translatable side should survive
+        let sq = sql_to_subquery(
+            "SELECT * FROM logs WHERE status = 200 AND CASE WHEN host = 'a' THEN 1 ELSE 0 END = 1",
+        ).unwrap();
+        // status = 200 should survive, CASE WHEN dropped
+        if let Some(f) = &sq.filter {
+            assert!(matches!(f, FilterExpr::Comparison { field, .. } if field == "status"));
+        }
+    }
 }

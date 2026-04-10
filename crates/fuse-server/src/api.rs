@@ -106,6 +106,10 @@ pub struct QueryRequest {
     pub end: Option<String>,
     /// Prometheus range query: step duration (e.g. "15s", "1m").
     pub step: Option<String>,
+    /// Cursor token for pagination. Returned as next_cursor in previous response.
+    pub cursor: Option<String>,
+    /// Page size for cursor pagination. Defaults to LIMIT value or 1000.
+    pub page_size: Option<usize>,
 }
 
 fn default_format() -> String {
@@ -127,6 +131,8 @@ pub struct QueryResponse {
     pub execution_profile: Option<ExecutionProfile>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub partial_errors: Vec<PartialError>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -416,14 +422,20 @@ pub async fn query_handler(
                 batches
             };
 
+            // Apply cursor pagination: cursor offset overrides/adds to SQL OFFSET
+            let cursor_offset = req.cursor.as_deref().and_then(decode_cursor).unwrap_or(0);
+            let effective_offset = offset + cursor_offset;
+            let page_size = req.page_size.or(limit);
+
             // Apply global OFFSET + LIMIT
-            let batches = if offset > 0 || limit.is_some() {
+            let total_available = batches.iter().map(|b| b.num_rows()).sum::<usize>();
+            let batches = if effective_offset > 0 || page_size.is_some() {
                 // Flatten, skip offset, take limit
                 let all_rows: Vec<_> = batches.iter()
                     .flat_map(|b| (0..b.num_rows()).map(move |i| (b, i)))
-                    .skip(offset)
+                    .skip(effective_offset)
                     .collect();
-                let take_n = limit.unwrap_or(all_rows.len());
+                let take_n = page_size.unwrap_or(all_rows.len());
                 let rows_to_take: Vec<_> = all_rows.into_iter().take(take_n).collect();
                 if rows_to_take.is_empty() || batches.is_empty() {
                     vec![]
@@ -500,6 +512,7 @@ pub async fn query_handler(
                         None
                     },
                     partial_errors: fed.partial_errors,
+                    next_cursor: None,
                 })
                 .into_response()
             }
@@ -1018,6 +1031,16 @@ fn add_datasource_column(
         .collect()
 }
 
+/// Encode a cursor offset as a string token.
+fn encode_cursor(offset: usize) -> String {
+    format!("fuse_c_{}", offset)
+}
+
+/// Decode a cursor string back to an offset.
+fn decode_cursor(cursor: &str) -> Option<usize> {
+    cursor.strip_prefix("fuse_c_")?.parse().ok()
+}
+
 /// Describe pushdown operations from a SubQuery for profile display.
 fn describe_pushdown(sq: &fuse_core::connector::SubQuery) -> Vec<String> {
     let mut desc = Vec::new();
@@ -1433,6 +1456,7 @@ pub async fn get_view(
                 metadata: QueryMetadata { total_rows: rows.len() as u64, format: "view".into(), trace_id: format!("v-{:x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()), datasources_queried: None, datasource_stats: None },
                 execution_profile: None,
                 partial_errors: vec![],
+                next_cursor: None,
             }).into_response()
         }
     }

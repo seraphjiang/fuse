@@ -21,8 +21,8 @@
 |----|------|-------|--------|-------|
 | 310 | Demo: JOIN OpenSearch logs + DynamoDB user profiles | planner | todo | Enrich log events with user metadata. Depends: 300 |
 | 311 | Demo: UNION ALL across OpenSearch + CloudWatch + S3 logs | planner | done | 3-source UNION ALL, trace correlation, error agg. Commit: 1f8498c. 2 tests |
-| 312 | Demo: Aggregate Prometheus metrics + OpenSearch events | planner | todo | Correlate metrics spikes with error logs |
-| 313 | Demo: PPL lookup across datasources (logs → user enrichment) | planner | todo | Showcase #235 PPL lookup in production |
+| 312 | Demo: Aggregate Prometheus metrics + OpenSearch events | planner | done | JOIN + UNION ALL correlating metrics + errors. Commit: 802d3f5 |
+| 313 | Demo: PPL lookup across datasources (logs → user enrichment) | planner | done | 4 lookup demo queries. Commit: dfca414 |
 | 314 | Demo data seeding (consistent timestamps, correlated events) | infra | done | 50 users, 200 logs, 200 S3 rows, 50 CW events. Shared user_ids + trace_ids |
 | 315 | Playground UI: demo scenario selector (pre-built queries) | explorer | done | 6 scenarios, auto-execute on click. Commit: 6d85d72 |
 
@@ -50,7 +50,7 @@
 | 335 | String functions (UPPER, LOWER, SUBSTRING, TRIM, REGEXP) | planner | done | Via #332 passthrough. Already tested |
 | 336 | Math functions (ROUND, CEIL, FLOOR, ABS, MOD) | planner | done | Via #332 passthrough. Already tested |
 | 337 | Nested field access (JSON dot notation) | general | todo | SELECT metadata.region FROM ... for nested OpenSearch docs |
-| 338 | UNION (deduplicated) vs UNION ALL | planner | todo | Hash-based dedup for UNION without ALL |
+| 338 | UNION (deduplicated) vs UNION ALL | planner | done | Plain UNION now deduplicates. Commit: e61512e. 2 tests |
 
 ## P2: Cross-Datasource Query Improvements
 
