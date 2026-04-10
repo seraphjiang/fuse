@@ -739,14 +739,22 @@ async fn execute_join(
     let join_key = find_join_key(&schema_a, &schema_b)
         .ok_or_else(|| "no common column found for JOIN key".to_string())?;
 
-    let tagged_a = add_datasource_column(&batches_a, ds_a);
-    let tagged_b = add_datasource_column(&batches_b, ds_b);
+    // Build-side selection: smaller table as build (right) side for memory efficiency
+    let (left_batches, right_batches, left_ds, right_ds, left_rows, right_rows, left_lat, right_lat) =
+        if rows_a >= rows_b {
+            (batches_a, batches_b, ds_a, ds_b, rows_a, rows_b, latency_a, latency_b)
+        } else {
+            (batches_b, batches_a, ds_b, ds_a, rows_b, rows_a, latency_b, latency_a)
+        };
+
+    let tagged_left = add_datasource_column(&left_batches, left_ds);
+    let tagged_right = add_datasource_column(&right_batches, right_ds);
 
     let join_start = std::time::Instant::now();
     let joined = fuse_engine::hash_join(
-        &tagged_a,
+        &tagged_left,
         &join_key,
-        &tagged_b,
+        &tagged_right,
         &join_key,
         fuse_engine::JoinType::Inner,
     )
@@ -754,17 +762,17 @@ async fn execute_join(
     let join_ms = join_start.elapsed().as_millis() as u64;
 
     let join_rows: u64 = joined.iter().map(|b| b.num_rows() as u64).sum();
-    let bytes_a: u64 = batches_a.iter().map(|b| b.get_array_memory_size() as u64).sum();
-    let bytes_b: u64 = batches_b.iter().map(|b| b.get_array_memory_size() as u64).sum();
+    let bytes_left: u64 = left_batches.iter().map(|b| b.get_array_memory_size() as u64).sum();
+    let bytes_right: u64 = right_batches.iter().map(|b| b.get_array_memory_size() as u64).sum();
 
-    let scan_a = ProfileNode::scan(ds_a, rows_a, latency_a, bytes_a, vec![]);
-    let scan_b = ProfileNode::scan(ds_b, rows_b, latency_b, bytes_b, vec![]);
+    let scan_left = ProfileNode::scan(left_ds, left_rows, left_lat, bytes_left, vec!["probe side".into()]);
+    let scan_right = ProfileNode::scan(right_ds, right_rows, right_lat, bytes_right, vec!["build side (smaller)".into()]);
 
     Ok(FederatedResult {
         batches: joined,
         stats: Some(ds_stats),
         datasources: vec![ds_a.clone(), ds_b.clone()],
-        profile_nodes: vec![ProfileNode::parent("HashJoin", join_rows, join_ms, vec![scan_a, scan_b])],
+        profile_nodes: vec![ProfileNode::parent("HashJoin", join_rows, join_ms, vec![scan_left, scan_right])],
         partial_errors: vec![],
     })
 }

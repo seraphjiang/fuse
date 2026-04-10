@@ -356,4 +356,48 @@ mod tests {
         let result = RedisConnector::new("r".into(), "not-a-url", "*".into());
         assert!(result.is_err());
     }
+
+    // ── #303 Redis verification (tester) ──
+
+    #[test]
+    fn test_hashes_to_batch_missing_fields_are_null() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("_key", DataType::Utf8, false),
+            Field::new("name", DataType::Utf8, true),
+            Field::new("email", DataType::Utf8, true),
+        ]));
+        let keys = vec!["user:1".to_string()];
+        let rows = vec![BTreeMap::from([("name".into(), "Alice".into())])]; // no email
+        let batch = RedisConnector::hashes_to_batch(&keys, &rows, &schema).unwrap();
+        assert_eq!(batch.num_rows(), 1);
+        // email column should exist but have null
+        assert!(batch.column(2).is_null(0));
+    }
+
+    #[test]
+    fn test_hashes_to_batch_empty() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("_key", DataType::Utf8, false),
+            Field::new("val", DataType::Utf8, true),
+        ]));
+        let batch = RedisConnector::hashes_to_batch(&[], &[], &schema).unwrap();
+        assert_eq!(batch.num_rows(), 0);
+    }
+
+    #[test]
+    fn test_strings_to_batch_empty() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("_key", DataType::Utf8, false),
+            Field::new("value", DataType::Utf8, false),
+        ]));
+        let batch = RedisConnector::strings_to_batch(&[], &[], &schema).unwrap();
+        assert_eq!(batch.num_rows(), 0);
+    }
+
+    #[test]
+    fn test_new_valid_url_formats() {
+        assert!(RedisConnector::new("r".into(), "redis://localhost", "*".into()).is_ok());
+        assert!(RedisConnector::new("r".into(), "redis://localhost:6379", "*".into()).is_ok());
+        assert!(RedisConnector::new("r".into(), "redis://user:pass@host:6379", "*".into()).is_ok());
+    }
 }

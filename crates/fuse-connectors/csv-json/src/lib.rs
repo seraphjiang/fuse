@@ -435,4 +435,67 @@ mod tests {
         let total: usize = batches.iter().map(|b| b.num_rows()).sum();
         assert_eq!(total, 0);
     }
+
+    // ── #304 CSV/JSON verification (tester) ──
+
+    #[test]
+    fn test_format_detection_ndjson() {
+        assert_eq!(FileFormat::from_key("logs/data.ndjson"), Some(FileFormat::Json));
+    }
+
+    #[test]
+    fn test_format_detection_case_insensitive() {
+        assert_eq!(FileFormat::from_key("data.CSV"), Some(FileFormat::Csv));
+        assert_eq!(FileFormat::from_key("data.JSON"), Some(FileFormat::Json));
+    }
+
+    #[test]
+    fn test_parse_csv_multiple_rows() {
+        let c = tokio::runtime::Runtime::new().unwrap().block_on(
+            CsvJsonConnector::new("t".into(), "us-east-1", "b".into(), "p/".into())
+        );
+        let csv = b"name,age,city\nAlice,30,NYC\nBob,25,LA\nCharlie,35,SF\n";
+        let batches = c.parse_csv(csv).unwrap();
+        let total: usize = batches.iter().map(|b| b.num_rows()).sum();
+        assert_eq!(total, 3);
+        assert_eq!(batches[0].num_columns(), 3);
+    }
+
+    #[test]
+    fn test_parse_json_multiple_objects() {
+        let c = tokio::runtime::Runtime::new().unwrap().block_on(
+            CsvJsonConnector::new("t".into(), "us-east-1", "b".into(), "p/".into())
+        );
+        let json = b"{\"name\":\"Alice\",\"age\":30}\n{\"name\":\"Bob\",\"age\":25}\n";
+        let batches = c.parse_json(json).unwrap();
+        let total: usize = batches.iter().map(|b| b.num_rows()).sum();
+        assert_eq!(total, 2);
+    }
+
+    #[test]
+    fn test_apply_limit_exact() {
+        let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Utf8, false)]));
+        let arr = Arc::new(arrow::array::StringArray::from(vec!["a", "b", "c"]));
+        let batch = RecordBatch::try_new(schema, vec![arr]).unwrap();
+        let result = CsvJsonConnector::apply_limit(vec![batch], Some(2));
+        let total: usize = result.iter().map(|b| b.num_rows()).sum();
+        assert_eq!(total, 2);
+    }
+
+    #[test]
+    fn test_apply_projection_subset() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("a", DataType::Utf8, false),
+            Field::new("b", DataType::Utf8, false),
+            Field::new("c", DataType::Utf8, false),
+        ]));
+        let batch = RecordBatch::try_new(schema, vec![
+            Arc::new(arrow::array::StringArray::from(vec!["1"])),
+            Arc::new(arrow::array::StringArray::from(vec!["2"])),
+            Arc::new(arrow::array::StringArray::from(vec!["3"])),
+        ]).unwrap();
+        let result = CsvJsonConnector::apply_projection(vec![batch], &["b".into()]);
+        assert_eq!(result[0].num_columns(), 1);
+        assert_eq!(result[0].schema().field(0).name(), "b");
+    }
 }

@@ -60,7 +60,7 @@
 | 341 | Semi-join / anti-join (EXISTS, NOT EXISTS) | planner | todo | Efficient existence checks across datasources |
 | 342 | Correlated subqueries | planner | todo | WHERE col IN (SELECT ... FROM other_source) |
 | 343 | Cross-datasource GROUP BY (federated aggregation) | planner | todo | Partial agg at source, merge at engine |
-| 344 | Query cost estimator (pre-execution) | planner | todo | Estimate rows/time before running, show in explain |
+| 344 | Query cost estimator (pre-execution) | planner | done | estimated_rows + estimated_cost on scan/parent nodes. Commit: 7d25e71. Tests: 470→477 |
 
 ## P2: Testing & Quality
 
