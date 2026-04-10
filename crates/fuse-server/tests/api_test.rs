@@ -2901,3 +2901,152 @@ async fn test_reaggregate_three_sources_merges() {
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 2, "3-source GROUP BY should produce 2 groups (h1, h2)");
 }
+
+// ── #350 Cross-datasource integration tests (tester) ──
+
+/// Mock "users" connector — simulates DynamoDB user profiles.
+#[derive(Debug)]
+struct UsersMockConnector { id: String }
+
+#[async_trait]
+impl FederatedConnector for UsersMockConnector {
+    fn id(&self) -> &str { &self.id }
+    fn connector_type(&self) -> &str { "dynamodb" }
+    fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+    async fn health_check(&self) -> ConnectorHealth {
+        ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(5), message: None }
+    }
+    async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
+        Ok(vec![SchemaInfo { name: "users".into(), schema_type: SchemaType::Table, estimated_row_count: Some(3) }])
+    }
+    async fn get_schema(&self, _: &str) -> Result<Schema, ConnectorError> {
+        Ok(Schema::new(vec![
+            Field::new("user_id", DataType::Utf8, false),
+            Field::new("name", DataType::Utf8, false),
+            Field::new("host", DataType::Utf8, false),
+        ]))
+    }
+    async fn execute(&self, _: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("user_id", DataType::Utf8, false),
+            Field::new("name", DataType::Utf8, false),
+            Field::new("host", DataType::Utf8, false),
+        ]));
+        Ok(vec![RecordBatch::try_new(schema, vec![
+            Arc::new(StringArray::from(vec!["u1", "u2", "u3"])),
+            Arc::new(StringArray::from(vec!["Alice", "Bob", "Charlie"])),
+            Arc::new(StringArray::from(vec!["h1", "h2", "h1"])),
+        ]).map_err(ConnectorError::query)?])
+    }
+    async fn execute_streaming(&self, q: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>) -> Result<(), ConnectorError> {
+        for b in self.execute(q).await? { tx.send(Ok(b)).await.map_err(|_| ConnectorError::ChannelClosed)?; }
+        Ok(())
+    }
+}
+
+fn build_cross_ds_app() -> axum::Router {
+    use fuse_server::api::{AppState, RunningQueries};
+    use fuse_core::registry::ConnectorRegistry;
+    let registry = ConnectorRegistry::new();
+    registry.register(Arc::new(MockConnector::new("logs_os"))).unwrap();
+    registry.register(Arc::new(UsersMockConnector { id: "users_ddb".into() })).unwrap();
+    registry.register(Arc::new(MockConnector::new("logs_s3"))).unwrap();
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(fuse_server::history::QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+    });
+    fuse_server::build_router(state)
+}
+
+#[tokio::test]
+async fn test_cross_ds_join_logs_users() {
+    // JOIN OpenSearch logs with DynamoDB users on shared "host" column
+    let (status, json) = post_query(
+        build_cross_ds_app(),
+        "SELECT * FROM logs_os.logs JOIN users_ddb.users ON logs_os.logs.host = users_ddb.users.host",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert!(!rows.is_empty(), "cross-datasource JOIN should produce rows");
+    // Result should have columns from both sources
+    let columns = json["columns"].as_array().unwrap();
+    let col_names: Vec<&str> = columns.iter().filter_map(|c| c.as_str()).collect();
+    assert!(col_names.iter().any(|c| *c == "name" || *c == "user_id"), "should have user columns: {:?}", col_names);
+}
+
+#[tokio::test]
+async fn test_cross_ds_union_all_logs() {
+    // UNION ALL across OpenSearch + S3 logs (same schema)
+    let (status, json) = post_query(
+        build_cross_ds_app(),
+        "SELECT * FROM logs_os.logs UNION ALL SELECT * FROM logs_s3.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 4, "2 rows per source × 2 sources = 4");
+    let columns = json["columns"].as_array().unwrap();
+    assert!(columns.iter().any(|c| c == "_datasource"), "should have provenance column");
+}
+
+#[tokio::test]
+async fn test_cross_ds_union_different_types() {
+    // UNION ALL across different connector types (OpenSearch + DynamoDB)
+    let (status, json) = post_query(
+        build_cross_ds_app(),
+        "SELECT host FROM logs_os.logs UNION ALL SELECT host FROM users_ddb.users",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 5, "2 log rows + 3 user rows = 5");
+}
+
+#[tokio::test]
+async fn test_cross_ds_correlated_subquery() {
+    // WHERE host IN (SELECT host FROM users) — inner from DynamoDB, outer from OpenSearch
+    let (status, json) = post_query(
+        build_cross_ds_app(),
+        "SELECT * FROM logs_os.logs WHERE host IN (SELECT host FROM users_ddb.users)",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert!(!rows.is_empty(), "correlated subquery across datasources should return rows");
+}
+
+#[tokio::test]
+async fn test_cross_ds_three_source_union() {
+    let (status, json) = post_query(
+        build_cross_ds_app(),
+        "SELECT host FROM logs_os.logs UNION ALL SELECT host FROM users_ddb.users UNION ALL SELECT host FROM logs_s3.logs",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 7, "2 + 3 + 2 = 7 rows");
+    let columns = json["columns"].as_array().unwrap();
+    let ds_idx = columns.iter().position(|c| c == "_datasource").unwrap();
+    let sources: std::collections::HashSet<&str> = rows.iter()
+        .filter_map(|r| r[ds_idx].as_str())
+        .collect();
+    assert_eq!(sources.len(), 3, "should have 3 distinct datasources: {:?}", sources);
+}
+
+#[tokio::test]
+async fn test_cross_ds_group_by_across_types() {
+    let (status, json) = post_query(
+        build_cross_ds_app(),
+        "SELECT host, status FROM logs_os.logs UNION ALL SELECT host, status FROM logs_s3.logs GROUP BY host",
+        "sql",
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = json["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2, "GROUP BY host across 2 sources → 2 groups");
+}
