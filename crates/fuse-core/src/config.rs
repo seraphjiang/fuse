@@ -71,7 +71,9 @@ impl ConnectorConfig {
             .map(|n| n as u64)
             .unwrap_or(default)
     }
+}
 
+impl FuseConfig {
     pub fn from_file(path: &str) -> Result<Self, crate::error::FuseError> {
         let content =
             std::fs::read_to_string(path).map_err(|e| crate::error::FuseError::Config(e.to_string()))?;

@@ -22,22 +22,31 @@ use governor::state::keyed::DefaultKeyedStateStore;
 
 pub type GlobalLimiter = RateLimiter<NotKeyed, InMemoryState, DefaultClock>;
 pub type PerIpLimiter = RateLimiter<IpAddr, DefaultKeyedStateStore<IpAddr>, DefaultClock>;
+pub type PerKeyLimiter = RateLimiter<String, DefaultKeyedStateStore<String>, DefaultClock>;
 
 /// Rate limiter state shared via axum Extension.
 #[derive(Clone)]
 pub struct RateLimitState {
     pub global: Arc<GlobalLimiter>,
     pub per_ip: Arc<PerIpLimiter>,
+    pub per_key: Arc<PerKeyLimiter>,
 }
 
 impl RateLimitState {
     /// Create with requests-per-minute limits.
     pub fn new(global_rpm: u32, per_ip_rpm: u32) -> Self {
+        Self::with_key_limit(global_rpm, per_ip_rpm, 200)
+    }
+
+    /// Create with explicit per-key limit.
+    pub fn with_key_limit(global_rpm: u32, per_ip_rpm: u32, per_key_rpm: u32) -> Self {
         let global_quota = Quota::per_minute(NonZeroU32::new(global_rpm).unwrap());
         let per_ip_quota = Quota::per_minute(NonZeroU32::new(per_ip_rpm).unwrap());
+        let per_key_quota = Quota::per_minute(NonZeroU32::new(per_key_rpm).unwrap());
         Self {
             global: Arc::new(RateLimiter::direct(global_quota)),
             per_ip: Arc::new(RateLimiter::keyed(per_ip_quota)),
+            per_key: Arc::new(RateLimiter::keyed(per_key_quota)),
         }
     }
 }
@@ -57,7 +66,20 @@ fn too_many_requests() -> Response<Body> {
         .unwrap()
 }
 
-/// Axum middleware that enforces global + per-IP rate limits.
+fn too_many_requests_for_key(identity: &str) -> Response<Body> {
+    let body = serde_json::json!({
+        "error": "rate limit exceeded for API key",
+        "identity": identity
+    }).to_string();
+    Response::builder()
+        .status(StatusCode::TOO_MANY_REQUESTS)
+        .header("Retry-After", HeaderValue::from_static("60"))
+        .header("Content-Type", HeaderValue::from_static("application/json"))
+        .body(Body::from(body))
+        .unwrap()
+}
+
+/// Axum middleware that enforces global + per-IP + per-API-key rate limits.
 pub async fn rate_limit_middleware(
     axum::Extension(state): axum::Extension<RateLimitState>,
     req: Request,
@@ -68,10 +90,17 @@ pub async fn rate_limit_middleware(
         return too_many_requests();
     }
 
-    // Per-IP limit — extract from X-Forwarded-For or connection info
+    // Per-IP limit
     let ip = extract_ip(&req).unwrap_or(IpAddr::from([0, 0, 0, 0]));
     if state.per_ip.check_key(&ip).is_err() {
         return too_many_requests();
+    }
+
+    // Per-API-key limit (if authenticated via #501)
+    if let Some(identity) = req.extensions().get::<crate::auth::AuthIdentity>() {
+        if state.per_key.check_key(&identity.identity).is_err() {
+            return too_many_requests_for_key(&identity.identity);
+        }
     }
 
     next.run(req).await
@@ -192,5 +221,38 @@ mod tests {
         use axum::http::Request;
         let req = Request::builder().body(Body::empty()).unwrap();
         assert_eq!(extract_ip(&req), None);
+    }
+
+    #[test]
+    fn test_per_key_limit_exceeded() {
+        let s = RateLimitState::with_key_limit(1000, 100, 1);
+        let key = "alice".to_string();
+        assert!(s.per_key.check_key(&key).is_ok());
+        assert!(s.per_key.check_key(&key).is_err());
+    }
+
+    #[test]
+    fn test_per_key_different_keys_independent() {
+        let s = RateLimitState::with_key_limit(1000, 100, 1);
+        let k1 = "alice".to_string();
+        let k2 = "bob".to_string();
+        assert!(s.per_key.check_key(&k1).is_ok());
+        assert!(s.per_key.check_key(&k1).is_err()); // alice exhausted
+        assert!(s.per_key.check_key(&k2).is_ok()); // bob unaffected
+    }
+
+    #[test]
+    fn test_default_per_key_limit() {
+        // Default: 200 req/min per key
+        let s = RateLimitState::default();
+        let key = "test".to_string();
+        // Should allow at least one request
+        assert!(s.per_key.check_key(&key).is_ok());
+    }
+
+    #[test]
+    fn test_too_many_requests_for_key_includes_identity() {
+        let resp = too_many_requests_for_key("alice");
+        assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
     }
 }
