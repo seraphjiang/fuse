@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
 use axum::extract::{Json, Path, State};
@@ -441,9 +442,7 @@ pub async fn query_handler(
     let timeout = std::time::Duration::from_millis(req.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS));
 
     // Register cancellable query
-    let query_id = format!("q-{:016x}", std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()
-        ^ (std::process::id() as u128));
+    let query_id = format!("q-{:016x}", QUERY_COUNTER.fetch_add(1, Ordering::Relaxed));
     let cancel_token = CancellationToken::new();
     state.running_queries.insert(query_id.clone(), cancel_token.clone());
 
@@ -1345,7 +1344,9 @@ fn add_datasource_column(
 
 /// Detect IN (SELECT ...) subquery pattern and extract the inner query.
 /// Returns: Vec<(outer_column, inner_datasource, inner_table, inner_column, inner_filter)>
-/// In-memory connector for CTE materialized results.
+static QUERY_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+
 #[derive(Debug)]
 struct MemoryConnector {
     name: String,
