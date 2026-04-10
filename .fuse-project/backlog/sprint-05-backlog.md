@@ -56,7 +56,7 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 540 | E2E test suite for visualization platform | tester | todo | Test chart rendering, dashboard save/load, export |
-| 541 | Load testing: concurrent query stress test | tester | todo | 50+ concurrent queries, measure p50/p95/p99 latency |
+| 541 | Load testing: concurrent query stress test | tester | done | 100 concurrent, p99 <100ms, 0% errors. Commit: 2563560 |
 | 542 | Connector integration tests against real services | tester | todo | Test against real PostgreSQL, Redis, DynamoDB (not mocks) |
 | 543 | Security audit: SQL injection across all connectors | tester | done | 6 fuzz tests × 13 payloads. 2 vulns found (InfluxDB, Prometheus). Commit: 16f4aff |
 

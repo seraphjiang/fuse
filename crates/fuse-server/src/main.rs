@@ -9,7 +9,7 @@ use fuse_core::registry::{ConnectorFactory, ConnectorRegistry};
 use fuse_connector_opensearch::OpenSearchConnectorFactory;
 use fuse_connector_s3_o11y::S3O11yConnectorFactory;
 use fuse_connector_dynamodb::DynamoDbConnectorFactory;
-// use fuse_connector_postgres::{PostgresConnectorFactory, MysqlConnectorFactory, RedshiftConnectorFactory};  // blocked
+// use fuse_connector_postgres::{PostgresConnectorFactory, MysqlConnectorFactory, RedshiftConnectorFactory, SqliteConnectorFactory};  // blocked
 use fuse_connector_elasticsearch::ElasticsearchConnectorFactory;
 // use fuse_connector_mongodb::MongoDbConnectorFactory;  // blocked: compile error in mongodb connector
 use fuse_connector_influxdb::InfluxDbConnectorFactory;
