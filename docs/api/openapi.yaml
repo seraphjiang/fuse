@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Fuse — Federated Query Engine API
   description: REST API for the Fuse cross-datasource federated query engine.
-  version: 0.1.0
+  version: 0.4.0
   license:
     name: Apache-2.0
     url: https://www.apache.org/licenses/LICENSE-2.0
@@ -319,6 +319,127 @@ paths:
         "400":
           $ref: "#/components/responses/BadRequest"
 
+  /api/fuse/trace/{trace_id}:
+    get:
+      summary: Reconstruct a distributed trace
+      description: |
+        Fans out to all registered datasources, searches for rows matching the
+        given trace_id, and returns a merged timeline sorted by timestamp.
+        Useful for cross-source distributed trace correlation.
+      operationId: traceReconstruct
+      tags: [Trace]
+      parameters:
+        - name: trace_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Trace ID to search across all datasources
+      responses:
+        "200":
+          description: Reconstructed trace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TraceResponse"
+
+  /api/fuse/saved:
+    get:
+      summary: List saved queries
+      operationId: listSavedQueries
+      tags: [Saved Queries]
+      responses:
+        "200":
+          description: Saved query list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SavedQuery"
+    post:
+      summary: Save a named query
+      operationId: saveQuery
+      tags: [Saved Queries]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SavedQuery"
+      responses:
+        "200":
+          description: Query saved
+
+  /api/fuse/saved/{name}:
+    get:
+      summary: Get a saved query
+      operationId: getSavedQuery
+      tags: [Saved Queries]
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Saved query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedQuery"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      summary: Delete a saved query
+      operationId: deleteSavedQuery
+      tags: [Saved Queries]
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/fuse/queries/running:
+    get:
+      summary: List running queries
+      operationId: listRunningQueries
+      tags: [Query]
+      responses:
+        "200":
+          description: Running query IDs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+  /api/fuse/query/{id}/cancel:
+    delete:
+      summary: Cancel a running query
+      operationId: cancelQuery
+      tags: [Query]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Query ID from running queries list
+      responses:
+        "200":
+          description: Cancelled
+        "404":
+          $ref: "#/components/responses/NotFound"
+
 components:
   parameters:
     DatasourceId:
@@ -346,6 +467,25 @@ components:
           type: boolean
           default: false
           description: When true, includes execution_profile with actual timing in response
+        timeout_ms:
+          type: integer
+          default: 30000
+          description: Per-query timeout in milliseconds
+        result_format:
+          type: string
+          enum: [json, csv]
+          default: json
+          description: Response format
+        params:
+          type: object
+          additionalProperties: {}
+          description: Named parameters for $name placeholders
+        page_size:
+          type: integer
+          description: Rows per page (enables cursor pagination). When set, response includes next_cursor if more rows exist.
+        cursor:
+          type: string
+          description: Cursor from previous response's next_cursor field for fetching the next page.
 
     QueryResponse:
       type: object
@@ -384,6 +524,15 @@ components:
               $ref: "#/components/schemas/ExecutionProfile"
               nullable: true
               description: Present when analyze=true
+        next_cursor:
+          type: string
+          nullable: true
+          description: Cursor for fetching the next page. Present when page_size is set and more rows exist.
+        partial_errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/PartialError"
+          description: Errors from individual datasources in UNION ALL (other sources still return data)
 
     DatasourceStat:
       type: object
@@ -567,6 +716,62 @@ components:
       properties:
         error:
           type: string
+
+    PartialError:
+      type: object
+      properties:
+        datasource:
+          type: string
+        error:
+          type: string
+
+    TraceResponse:
+      type: object
+      properties:
+        trace_id:
+          type: string
+        spans:
+          type: array
+          items:
+            $ref: "#/components/schemas/TraceSpan"
+        datasources_searched:
+          type: array
+          items:
+            type: string
+        datasources_matched:
+          type: array
+          items:
+            type: string
+        total_spans:
+          type: integer
+        search_ms:
+          type: integer
+
+    TraceSpan:
+      type: object
+      properties:
+        datasource:
+          type: string
+        timestamp:
+          nullable: true
+          description: Timestamp value from the source row (auto-detected from timestamp/@timestamp/time/ts fields)
+        fields:
+          type: object
+          additionalProperties: {}
+          description: All fields from the matching row
+
+    SavedQuery:
+      type: object
+      required: [name, query]
+      properties:
+        name:
+          type: string
+        query:
+          type: string
+        format:
+          type: string
+          enum: [sql, ppl]
+          default: sql
 
     AlertInfo:
       type: object
