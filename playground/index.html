@@ -954,6 +954,31 @@ function renderChart() {
   if (fuseChart) fuseChart.dispose();
   fuseChart = echarts.init(container, 'dark');
   fuseChart.setOption(option);
+  // Drill-down: click chart element → filter query (#448)
+  fuseChart.on('click', (params) => {
+    const val = params.name || (params.data && params.data.name) || '';
+    if (!val) return;
+    const editor = $('editor');
+    const q = editor.value;
+    const safeVal = val.replace(/'/g, "''");
+    const upper = q.toUpperCase();
+    // Try to determine column from suggestion
+    const col = suggestion.x || suggestion.label || lastColumns.find(c => {
+      const lc = c.toLowerCase();
+      return lc === 'service' || lc === 'status' || lc === '_datasource';
+    }) || lastColumns[0];
+    const filter = `${col} = '${safeVal}'`;
+    if (upper.includes(' WHERE ')) {
+      editor.value = q.replace(/\bWHERE\b/i, `WHERE ${filter} AND`);
+    } else if (upper.includes(' GROUP BY ')) {
+      editor.value = q.replace(/\bGROUP BY\b/i, `WHERE ${filter} GROUP BY`);
+    } else if (upper.includes(' ORDER BY ')) {
+      editor.value = q.replace(/\bORDER BY\b/i, `WHERE ${filter} ORDER BY`);
+    } else if (upper.includes(' LIMIT ')) {
+      editor.value = q.replace(/\bLIMIT\b/i, `WHERE ${filter} LIMIT`);
+    }
+    runQuery();
+  });
   const label = userChartType === 'auto' ? `Auto-detected: ${suggestion.type}` : `Chart: ${suggestion.type}`;
   $('chart-hint').textContent = `${label} (x: ${suggestion.x || suggestion.label || '-'}${suggestion.y || suggestion.value ? ', y: ' + (suggestion.y || suggestion.value) : ''}${suggestion.series ? ', series: ' + suggestion.series : ''})`;
   $('view-toggle').style.display = 'flex';

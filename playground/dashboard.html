@@ -426,6 +426,12 @@ async function executePanel(panel) {
     const chart = echarts.init(el, 'dark');
     chart.setOption(option);
     panelCharts[panel.id] = chart;
+    // Drill-down: click chart element → filter all panels (#448)
+    chart.on('click', (params) => {
+      const drillValue = params.name || params.seriesName || (params.data && params.data.name) || String(params.value);
+      if (!drillValue) return;
+      applyDrillDown(drillValue, res.columns, params);
+    });
   } catch (e) {
     el.innerHTML = '<div class="panel-error">' + esc(e.message) + '</div>';
   }
@@ -610,6 +616,46 @@ const resizeObs = new ResizeObserver(() => {
 });
 resizeObs.observe(document.body);
 
+// === Drill-Down (#448) ===
+let activeDrillDown = null; // { column, value }
+
+function applyDrillDown(value, columns, params) {
+  // Determine which column was clicked based on chart axis
+  let column = null;
+  if (params.dimensionNames && params.encode && params.encode.x) {
+    column = params.dimensionNames[params.encode.x[0]];
+  }
+  if (!column && columns) {
+    // Heuristic: first category column
+    const types = detectColumnTypes(columns, []);
+    column = columns.find(c => {
+      const sample = c.toLowerCase();
+      return sample === 'service' || sample === 'status' || sample === '_datasource' || sample === 'method';
+    }) || columns[0];
+  }
+  activeDrillDown = { column, value };
+  renderDrillDownBar();
+  refreshAll();
+}
+
+function clearDrillDown() {
+  activeDrillDown = null;
+  renderDrillDownBar();
+  refreshAll();
+}
+
+function renderDrillDownBar() {
+  let bar = $('drill-bar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'drill-bar';
+    bar.className = 'var-bar';
+    $('var-bar').after(bar);
+  }
+  if (!activeDrillDown) { bar.innerHTML = ''; return; }
+  bar.innerHTML = `<span>🔍 Drill-down:</span> <span style="color:#58a6ff;font-weight:600">${esc(activeDrillDown.column || '?')} = ${esc(activeDrillDown.value)}</span> <button onclick="clearDrillDown()" style="font-size:11px;padding:2px 8px">✕ Clear</button>`;
+}
+
 // === Variables / Parameters (#447) ===
 // Variable format: { name: 'service', label: 'Service', type: 'custom'|'query', values: ['api-gw','auth'], query: 'SELECT DISTINCT service FROM ...', current: 'api-gw' }
 
@@ -621,6 +667,22 @@ function substituteVars(query) {
     const re = new RegExp('\\$' + v.name + '\\b', 'g');
     q = q.replace(re, v.current || '');
   });
+  // Apply drill-down filter (#448)
+  if (activeDrillDown && activeDrillDown.column && activeDrillDown.value) {
+    const col = activeDrillDown.column;
+    const val = activeDrillDown.value.replace(/'/g, "''");
+    const filter = `${col} = '${val}'`;
+    const upper = q.toUpperCase();
+    if (upper.includes(' WHERE ')) {
+      q = q.replace(/\bWHERE\b/i, `WHERE ${filter} AND`);
+    } else if (upper.includes(' GROUP BY ')) {
+      q = q.replace(/\bGROUP BY\b/i, `WHERE ${filter} GROUP BY`);
+    } else if (upper.includes(' ORDER BY ')) {
+      q = q.replace(/\bORDER BY\b/i, `WHERE ${filter} ORDER BY`);
+    } else if (upper.includes(' LIMIT ')) {
+      q = q.replace(/\bLIMIT\b/i, `WHERE ${filter} LIMIT`);
+    }
+  }
   return q;
 }
 
