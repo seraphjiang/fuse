@@ -4,17 +4,38 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fuse-client"
-version = "0.2.0"
-description = "Python SDK for the Fuse federated query engine"
+version = "0.5.0"
+description = "Python SDK for the Fuse federated query engine — cross-datasource SQL/PPL queries"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.8"
-keywords = ["fuse", "federated-query", "opensearch", "sql", "observability"]
+readme = "README.md"
+authors = [
+    {name = "Fuse Contributors"}
+]
+keywords = ["fuse", "federated-query", "opensearch", "sql", "ppl", "observability", "analytics"]
 classifiers = [
     "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Database",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
 ]
 
 [project.urls]
 Homepage = "https://github.com/seraphjiang/fuse"
 Documentation = "https://seraphjiang.github.io/fuse/"
+Repository = "https://github.com/seraphjiang/fuse"
+Issues = "https://github.com/seraphjiang/fuse/issues"
+
+[tool.setuptools.packages.find]
+include = ["fuse_client*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
