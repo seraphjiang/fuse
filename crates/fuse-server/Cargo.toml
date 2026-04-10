@@ -11,6 +11,9 @@ fuse-engine = { path = "../fuse-engine" }
 fuse-connector-opensearch = { path = "../fuse-connectors/opensearch" }
 fuse-connector-s3-o11y = { path = "../fuse-connectors/s3-o11y" }
 fuse-connector-dynamodb = { path = "../fuse-connectors/dynamodb" }
+fuse-connector-cloudwatch = { path = "../fuse-connectors/cloudwatch" }
+fuse-connector-csv-json = { path = "../fuse-connectors/csv-json" }
+fuse-connector-redis = { path = "../fuse-connectors/redis" }
 arrow = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }
