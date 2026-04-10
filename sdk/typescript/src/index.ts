@@ -55,9 +55,13 @@ export interface FuseClientOptions {
 }
 
 export class FuseError extends Error {
-  constructor(public statusCode: number, public body: string) {
+  statusCode: number;
+  body: string;
+  constructor(statusCode: number, body: string) {
     super(`HTTP ${statusCode}: ${body}`);
     this.name = 'FuseError';
+    this.statusCode = statusCode;
+    this.body = body;
   }
 }
 
