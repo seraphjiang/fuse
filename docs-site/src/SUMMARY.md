@@ -23,6 +23,7 @@
 
 - [Python SDK](./python-sdk.md)
 - [TypeScript SDK](./typescript-sdk.md)
+- [SDK Comparison (Python vs TypeScript)](./sdk-comparison.md)
 - [Jupyter Notebooks](./jupyter-integration.md)
 - [Grafana Plugin](./grafana-plugin.md)
 
