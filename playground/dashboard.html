@@ -941,6 +941,20 @@ refreshDashboardList();
 if (!loadFromURL()) renderGrid();
 else renderGrid();
 resolveQueryVars();
+
+// Pick up panel from Explore page (#449)
+if (window.location.hash === '#add-from-explore') {
+  try {
+    const pending = JSON.parse(localStorage.getItem('fuse-explore-to-dashboard') || 'null');
+    if (pending && pending.query) {
+      dashboard.panels.push({ id: genId(), ...pending });
+      localStorage.removeItem('fuse-explore-to-dashboard');
+      saveDashboardLocal();
+      renderGrid();
+    }
+  } catch {}
+  history.replaceState(null, '', '/dashboard');
+}
 </script>
 </body>
 </html>
