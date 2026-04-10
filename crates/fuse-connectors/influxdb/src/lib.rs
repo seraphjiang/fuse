@@ -536,7 +536,6 @@ mod tests {
         assert_eq!(batches[0].num_rows(), 1);
         assert_eq!(batches[0].num_columns(), 2);
     }
-}
 
     // ── #600 InfluxDB injection fix verification (tester) ──
 

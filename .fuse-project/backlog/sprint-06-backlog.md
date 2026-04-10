@@ -27,7 +27,7 @@
 |----|------|-------|--------|-------|
 | 610 | Natural language to SQL (LLM-powered) | planner | done | POST /api/fuse/nl, provider-agnostic, rule-based fallback, execute mode. Commit: f79ed1f |
 | 611 | Auto-suggest queries based on schema | frontend | done | Contextual suggestions based on column types. Commit: 6f19619 |
-| 612 | Intelligent query optimization (learn from history) | planner | todo | Analyze past queries to suggest index/pushdown improvements |
+| 612 | Intelligent query optimization (learn from history) | planner | done | GET /api/fuse/advisor, 4 categories: missing_limit, high_error, cache_opportunity, missing_filter. Commit: 64c9db6 |
 
 ## P1: Multi-Tenancy & Enterprise
 
@@ -66,5 +66,5 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 660 | Video recording of demo script | docs | done | v3 script, 9 scenes, ~4:30, covers all v0.5.0 features. Commit: 92f932e |
-| 661 | Community Discord/Slack setup | docs | todo | Community channel for users and contributors |
+| 661 | Community Discord/Slack setup | docs | done | Community guide, templates, SUMMARY.md 25 pages in 6 sections. Commit: 4f28364 |
 | 662 | Roadmap page on docs-site | docs | done | Shipped/In Progress/Planned/Community sections. Commit: 05a46d9 |
