@@ -91,6 +91,21 @@ export interface HistoryEntry {
   error?: string;
 }
 
+export interface TraceSpan {
+  datasource: string;
+  timestamp?: string | null;
+  fields: Record<string, unknown>;
+}
+
+export interface TraceResponse {
+  trace_id: string;
+  spans: TraceSpan[];
+  datasources_searched: string[];
+  datasources_matched: string[];
+  total_spans: number;
+  search_ms: number;
+}
+
 export const PLUGIN_ID = 'fuseQuery';
 export const PLUGIN_NAME = 'Fuse Query';
 export const API_BASE = '/api/fuse_query';

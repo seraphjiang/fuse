@@ -13,7 +13,7 @@
 | 402 | HAVING clause on cross-source GROUP BY | planner | done | Post-reaggregation HAVING filter. Commit: 08d4b5f. Tests: 543→551 |
 | 403 | Nested/JSON field access (dot notation) | general | done | get_nested() across OS, ES, MongoDB, ClickHouse. Dot-path traversal |
 | 404 | DISTINCT / COUNT DISTINCT across sources | planner | todo | Deduplicated counts across federated UNION ALL. Cardinality analysis |
-| 405 | FULL OUTER JOIN | planner | todo | Currently only Inner/Left/Semi/Anti. Show all logs + metrics matched or not |
+| 405 | FULL OUTER JOIN | planner | done | Tracks matched build rows, emits unmatched with NULLs. Commit: 2984515. Tests: 551→572 |
 
 ## P1: Compute Depth — Time Series & Aggregation
 
