@@ -31,3 +31,4 @@
 # Blog
 
 - [Introducing Fuse](./blog-introducing-fuse.md)
+- [v0.5.0: Dashboards, 14 Connectors & Production Hardening](./blog-sprint-5-release.md)
