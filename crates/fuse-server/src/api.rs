@@ -2411,7 +2411,7 @@ pub async fn nl_to_sql_handler(
 }
 
 /// Simple rule-based NL→SQL fallback (no LLM dependency).
-fn generate_sql_from_nl(question: &str, schemas: &[DatasourceSchema]) -> String {
+pub fn generate_sql_from_nl(question: &str, schemas: &[DatasourceSchema]) -> String {
     let q = question.to_lowercase();
     let first_ds = schemas.first().map(|s| s.datasource.as_str()).unwrap_or("datasource");
     let table = schemas.first()

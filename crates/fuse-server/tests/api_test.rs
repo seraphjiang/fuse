@@ -4141,3 +4141,46 @@ fn test_approx_percentile_variant_exists() {
         _ => panic!("should be ApproxPercentile"),
     }
 }
+
+// ── NL→SQL tests ──
+
+#[test]
+fn test_nl_generates_count_query() {
+    let schemas = vec![fuse_server::api::DatasourceSchema {
+        datasource: "cluster_a".into(),
+        tables: vec!["logs".into()],
+    }];
+    let sql = fuse_server::api::generate_sql_from_nl("count errors by host", &schemas);
+    assert!(sql.contains("COUNT(*)"));
+    assert!(sql.contains("GROUP BY host"));
+}
+
+#[test]
+fn test_nl_generates_error_query() {
+    let schemas = vec![fuse_server::api::DatasourceSchema {
+        datasource: "os".into(),
+        tables: vec!["logs".into()],
+    }];
+    let sql = fuse_server::api::generate_sql_from_nl("show me recent errors", &schemas);
+    assert!(sql.contains("status >= 500"));
+}
+
+#[test]
+fn test_nl_generates_top_n() {
+    let schemas = vec![fuse_server::api::DatasourceSchema {
+        datasource: "os".into(),
+        tables: vec!["logs".into()],
+    }];
+    let sql = fuse_server::api::generate_sql_from_nl("top 5 events", &schemas);
+    assert!(sql.contains("LIMIT 5"));
+}
+
+#[test]
+fn test_nl_default_fallback() {
+    let schemas = vec![fuse_server::api::DatasourceSchema {
+        datasource: "ds".into(),
+        tables: vec!["data".into()],
+    }];
+    let sql = fuse_server::api::generate_sql_from_nl("what is happening", &schemas);
+    assert!(sql.contains("SELECT * FROM ds.data"));
+}
