@@ -664,7 +664,7 @@ async fn execute_union(
             aggregations: vec![],
             group_by: vec![],
             sort: vec![],
-            limit: None,
+            limit: Some(10_000), // Default limit to avoid scroll for UNION ALL fan-out
             having: None, passthrough: None,
         })
         .collect();
