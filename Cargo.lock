@@ -3705,6 +3705,7 @@ dependencies = [
  "async-stream",
  "async-trait",
  "axum",
+ "criterion",
  "fuse-connector-clickhouse",
  "fuse-connector-cloudwatch",
  "fuse-connector-csv-json",
