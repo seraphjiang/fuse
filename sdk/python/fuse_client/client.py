@@ -26,6 +26,11 @@ class QueryResult:
         """Convert rows to list of dicts."""
         return [dict(zip(self.columns, row)) for row in self.rows]
 
+    def to_dataframe(self):
+        """Convert to pandas DataFrame. Requires pandas."""
+        import pandas as pd
+        return pd.DataFrame(self.rows, columns=self.columns)
+
 
 @dataclass
 class TraceResult:
@@ -135,6 +140,36 @@ class FuseClient:
     def history(self) -> List[Dict[str, Any]]:
         """Get query history."""
         return self._request("GET", "/api/fuse/history")
+
+    def saved_queries(self) -> List[Dict[str, Any]]:
+        """List saved queries."""
+        return self._request("GET", "/api/fuse/saved")
+
+    def save_query(self, name: str, sql: str, description: str = "") -> Dict[str, Any]:
+        """Save a query."""
+        return self._request("POST", "/api/fuse/saved", {"name": name, "query": sql, "description": description})
+
+    def get_saved_query(self, name: str) -> Dict[str, Any]:
+        """Get a saved query by name."""
+        return self._request("GET", f"/api/fuse/saved/{name}")
+
+    def delete_saved_query(self, name: str) -> Dict[str, Any]:
+        """Delete a saved query."""
+        return self._request("DELETE", f"/api/fuse/saved/{name}")
+
+    def query_stream(self, sql: str, format: str = "sql") -> Iterator[Dict[str, Any]]:
+        """Stream query results as NDJSON lines."""
+        import urllib.request
+        body = json.dumps({"query": sql, "format": format, "result_format": "ndjson"}).encode()
+        req = urllib.request.Request(
+            f"{self.base_url}/api/fuse/query",
+            data=body, headers=self._headers(), method="POST",
+        )
+        with urllib.request.urlopen(req) as resp:
+            for line in resp:
+                line = line.strip()
+                if line:
+                    yield json.loads(line)
 
 
 class FuseError(Exception):

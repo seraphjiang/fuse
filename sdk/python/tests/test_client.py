@@ -1,3 +1,4 @@
+import pytest
 # SPDX-License-Identifier: Apache-2.0
 
 """Tests for fuse_client — unit tests (no server required)."""
@@ -63,3 +64,30 @@ def test_fuse_error():
 def test_query_result_cursor():
     r = QueryResult(columns=["x"], rows=[[1]], total_rows=1, format="sql", trace_id="t", next_cursor="fuse_c_1")
     assert r.next_cursor == "fuse_c_1"
+
+
+def test_query_result_to_dataframe():
+    """Test to_dataframe with pandas."""
+    pytest.importorskip("pandas")
+    import pandas as pd
+    r = QueryResult(columns=["x", "y"], rows=[[1, "a"], [2, "b"]], total_rows=2, format="sql", trace_id="t")
+    df = r.to_dataframe()
+    assert isinstance(df, pd.DataFrame)
+    assert list(df.columns) == ["x", "y"]
+    assert len(df) == 2
+
+
+def test_saved_queries_methods_exist():
+    """Verify saved query methods are defined."""
+    c = FuseClient()
+    assert hasattr(c, "saved_queries")
+    assert hasattr(c, "save_query")
+    assert hasattr(c, "get_saved_query")
+    assert hasattr(c, "delete_saved_query")
+
+
+def test_query_stream_method_exists():
+    """Verify streaming method is defined."""
+    c = FuseClient()
+    assert hasattr(c, "query_stream")
+    assert callable(c.query_stream)
