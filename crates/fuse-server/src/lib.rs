@@ -30,6 +30,7 @@ pub mod export;
 pub mod explain_cache;
 pub mod federation;
 pub mod fingerprint;
+pub mod flattener;
 pub mod formatter;
 pub mod grouper;
 pub mod health;
