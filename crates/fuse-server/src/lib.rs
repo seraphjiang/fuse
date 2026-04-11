@@ -9,6 +9,7 @@ pub mod anomaly;
 pub mod anomaly_alert;
 pub mod async_query;
 pub mod audit;
+pub mod audit_meta;
 pub mod auth;
 pub mod auto_suggest;
 pub mod autocomplete;
