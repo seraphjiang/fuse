@@ -9,6 +9,7 @@ pub mod metrics;
 pub mod plan_cache;
 pub mod rate_limit;
 pub mod redis_cache;
+pub mod refresh_scheduler;
 pub mod saved_queries;
 pub mod streaming;
 pub mod tenant;
