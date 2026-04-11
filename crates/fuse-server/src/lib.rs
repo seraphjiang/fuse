@@ -15,6 +15,7 @@ pub mod auto_suggest;
 pub mod autocomplete;
 pub mod complexity;
 pub mod column_stats;
+pub mod capability_summary;
 pub mod config_watch;
 pub mod cors;
 pub mod cost_tracker;
