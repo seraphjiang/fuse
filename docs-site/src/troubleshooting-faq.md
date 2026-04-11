@@ -229,3 +229,30 @@ curl -s -X POST http://localhost:9400/api/fuse/query/explain \
 # Recent query history (check for errors)
 curl -s http://localhost:9400/api/fuse/history | python3 -m json.tool
 ```
+
+### Federation: "datasource not found" on remote instance
+
+The Fuse-to-Fuse connector routes queries to remote instances. If the remote datasource doesn't exist:
+1. Check `GET /api/fuse/federation` to see registered instances
+2. Verify the remote instance is healthy and has the datasource configured
+3. Check network connectivity between Fuse instances
+
+### Async query: job stuck in "running"
+
+Long-running async jobs may appear stuck:
+1. Check `GET /api/fuse/query/async/{job_id}` for status
+2. Cancel with `DELETE /api/fuse/query/async/{job_id}`
+3. Jobs auto-expire after TTL (default 1 hour)
+
+### NL-to-SQL: generated SQL is incorrect
+
+The LLM may generate invalid SQL:
+1. Check `POST /api/fuse/query/nl` with `"execute": false` to see generated SQL without running it
+2. Verify the LLM backend is configured in `[engine.nl]`
+3. Only SELECT/EXPLAIN queries are auto-executed (safety check)
+
+### WASM plugin: "fuel exhausted"
+
+WASM plugins have a fuel limit (10M units) to prevent infinite loops:
+1. Optimize the plugin to use fewer instructions
+2. The fuel limit is a security measure and cannot be increased via config
