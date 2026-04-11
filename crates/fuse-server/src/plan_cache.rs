@@ -282,6 +282,22 @@ impl ResultCache {
             created: std::time::Instant::now(),
         });
     }
+
+    /// Invalidate all cached results that reference a specific datasource.
+    pub fn invalidate_by_datasource(&self, datasource: &str) {
+        let mut entries = self.entries.lock().unwrap();
+        entries.retain(|key, _| !key.contains(datasource));
+    }
+
+    /// Clear all cached results.
+    pub fn clear(&self) {
+        self.entries.lock().unwrap().clear();
+    }
+
+    /// Current cache size.
+    pub fn len(&self) -> usize {
+        self.entries.lock().unwrap().len()
+    }
 }
 
 #[cfg(test)]
@@ -299,5 +315,25 @@ mod result_cache_tests {
     fn test_result_cache_miss() {
         let cache = ResultCache::new(60, 10);
         assert!(cache.get("missing").is_none());
+    }
+
+    #[test]
+    fn test_invalidate_by_datasource() {
+        let cache = ResultCache::new(60, 10);
+        cache.insert("sql:SELECT * FROM cluster_a.logs".into(), serde_json::json!({}));
+        cache.insert("sql:SELECT * FROM dynamodb.users".into(), serde_json::json!({}));
+        assert_eq!(cache.len(), 2);
+        cache.invalidate_by_datasource("cluster_a");
+        assert_eq!(cache.len(), 1);
+        assert!(cache.get("sql:SELECT * FROM dynamodb.users").is_some());
+    }
+
+    #[test]
+    fn test_clear() {
+        let cache = ResultCache::new(60, 10);
+        cache.insert("a".into(), serde_json::json!({}));
+        cache.insert("b".into(), serde_json::json!({}));
+        cache.clear();
+        assert_eq!(cache.len(), 0);
     }
 }
