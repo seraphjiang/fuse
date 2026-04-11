@@ -22,6 +22,7 @@ pub mod wasm_plugin;
 pub mod saved_queries;
 pub mod shared_state;
 pub mod streaming;
+pub mod telemetry;
 pub mod tenant;
 pub mod transaction;
 pub mod tracing_ctx;
@@ -116,6 +117,18 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 }
 
 /// Build the Fuse API router with custom rate limits (useful for testing).
+/// Build alert rules CRUD routes with AlertMonitor state.
+fn build_alert_routes(_state: Arc<api::AppState>) -> Router<Arc<api::AppState>> {
+    let monitor = Arc::new(alert_monitor::AlertMonitor::new());
+    Router::new()
+        .route("/", get(alert_api::list_rules).post(alert_api::create_rule))
+        .route("/{id}", axum::routing::delete(alert_api::delete_rule))
+        .route("/{id}/acknowledge", post(alert_api::acknowledge_alert))
+        .route("/active", get(alert_api::list_active_alerts))
+        .route("/history", get(alert_api::list_alert_history))
+        .with_state(monitor)
+}
+
 pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitState) -> Router {
     Router::new()
         .route("/", get(playground))
@@ -163,6 +176,8 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/api/fuse/views/{name}/refresh", post(api::refresh_view))
         .route("/api/fuse/trace/{trace_id}", get(api::trace_handler))
         .route("/metrics", get(metrics::metrics_handler))
+        // Alert rules CRUD — nested with AlertMonitor state
+        .nest("/api/fuse/alert-rules", build_alert_routes(state.clone()))
         .layer(middleware::from_fn(rate_limit::rate_limit_middleware))
         .layer(axum::Extension(rl))
         .layer(middleware::from_fn(auth::auth_middleware))
