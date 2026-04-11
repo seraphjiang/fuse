@@ -149,6 +149,50 @@ func (c *Client) Datasources() ([]Datasource, error) {
 	return result, json.Unmarshal(data, &result)
 }
 
+
+// AsyncSubmitResponse from submitting an async query.
+type AsyncSubmitResponse struct {
+	JobID string `json:"job_id"`
+}
+
+// AsyncJobStatus from polling an async query.
+type AsyncJobStatus struct {
+	JobID  string      `json:"job_id"`
+	Status string      `json:"status"`
+	Result interface{} `json:"result,omitempty"`
+	Error  string      `json:"error,omitempty"`
+}
+
+// SubmitAsync submits a query for async execution. Returns job ID.
+func (c *Client) SubmitAsync(sql, format string) (string, error) {
+	body := map[string]interface{}{"query": sql, "format": format}
+	data, err := c.do("POST", "/api/fuse/query/async", body)
+	if err != nil {
+		return "", err
+	}
+	var resp AsyncSubmitResponse
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return "", err
+	}
+	return resp.JobID, nil
+}
+
+// PollAsync polls the status of an async query.
+func (c *Client) PollAsync(jobID string) (*AsyncJobStatus, error) {
+	data, err := c.do("GET", "/api/fuse/query/async/"+jobID, nil)
+	if err != nil {
+		return nil, err
+	}
+	var status AsyncJobStatus
+	return &status, json.Unmarshal(data, &status)
+}
+
+// CancelAsync cancels an async query.
+func (c *Client) CancelAsync(jobID string) error {
+	_, err := c.do("DELETE", "/api/fuse/query/async/"+jobID, nil)
+	return err
+}
+
 // ToDicts converts rows to a slice of maps keyed by column name.
 func (r *QueryResult) ToDicts() []map[string]interface{} {
 	out := make([]map[string]interface{}, len(r.Rows))

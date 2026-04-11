@@ -91,3 +91,11 @@ def test_query_stream_method_exists():
     c = FuseClient()
     assert hasattr(c, "query_stream")
     assert callable(c.query_stream)
+
+
+def test_async_methods_exist():
+    c = FuseClient()
+    assert hasattr(c, "submit_async")
+    assert hasattr(c, "poll_async")
+    assert hasattr(c, "cancel_async")
+    assert hasattr(c, "wait_async")

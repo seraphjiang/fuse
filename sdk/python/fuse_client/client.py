@@ -172,6 +172,32 @@ class FuseClient:
                     yield json.loads(line)
 
 
+    def submit_async(self, sql: str, format: str = "sql") -> str:
+        """Submit an async query. Returns job_id."""
+        resp = self._request("POST", "/api/fuse/query/async", {"query": sql, "format": format})
+        return resp["job_id"]
+
+    def poll_async(self, job_id: str) -> Dict[str, Any]:
+        """Poll async query status. Returns job with status/result."""
+        return self._request("GET", f"/api/fuse/query/async/{job_id}")
+
+    def cancel_async(self, job_id: str) -> Dict[str, Any]:
+        """Cancel an async query."""
+        return self._request("DELETE", f"/api/fuse/query/async/{job_id}")
+
+    def wait_async(self, job_id: str, poll_interval: float = 0.5, timeout: float = 30.0) -> Dict[str, Any]:
+        """Poll until async query completes or times out."""
+        import time
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            result = self.poll_async(job_id)
+            status = result.get("status", "")
+            if status in ("completed", "failed", "cancelled"):
+                return result
+            time.sleep(poll_interval)
+        raise TimeoutError(f"async query {job_id} did not complete within {timeout}s")
+
+
 class FuseError(Exception):
     """Error from the Fuse API."""
     def __init__(self, status_code: int, body: str):

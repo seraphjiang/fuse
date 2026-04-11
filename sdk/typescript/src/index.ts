@@ -186,6 +186,23 @@ export class FuseClient {
     return this.request('DELETE', `/api/fuse/saved/${name}`);
   }
 
+
+  /** Submit an async query. Returns job_id. */
+  async submitAsync(sql: string, format = 'sql'): Promise<{ jobId: string }> {
+    const resp = await this.request<{ job_id: string }>('POST', '/api/fuse/query/async', { query: sql, format });
+    return { jobId: resp.job_id };
+  }
+
+  /** Poll async query status. */
+  async pollAsync(jobId: string): Promise<{ status: string; result?: unknown; error?: string }> {
+    return this.request('GET', `/api/fuse/query/async/${jobId}`);
+  }
+
+  /** Cancel an async query. */
+  async cancelAsync(jobId: string): Promise<unknown> {
+    return this.request('DELETE', `/api/fuse/query/async/${jobId}`);
+  }
+
   async history(): Promise<unknown[]> {
     return this.request('GET', '/api/fuse/history');
   }

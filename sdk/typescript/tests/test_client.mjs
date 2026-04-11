@@ -135,4 +135,29 @@ await testAsync('deleteSavedQuery calls DELETE', async () => {
   assert.equal(method, 'DELETE');
 });
 
+
+await testAsync('submitAsync returns jobId', async () => {
+  const c = new FuseClient({ fetch: mockFetch(200, { job_id: 'j-123' }) });
+  const resp = await c.submitAsync('SELECT 1');
+  assert.equal(resp.jobId, 'j-123');
+});
+
+await testAsync('pollAsync returns status', async () => {
+  const c = new FuseClient({ fetch: mockFetch(200, { job_id: 'j-123', status: 'completed', result: {} }) });
+  const resp = await c.pollAsync('j-123');
+  assert.equal(resp.status, 'completed');
+});
+
+await testAsync('cancelAsync calls DELETE', async () => {
+  let method;
+  const c = new FuseClient({
+    fetch: async (url, opts) => {
+      method = opts.method;
+      return { ok: true, status: 200, json: async () => ({ ok: true }), text: async () => '{}' };
+    },
+  });
+  await c.cancelAsync('j-123');
+  assert.equal(method, 'DELETE');
+});
+
 console.log(`\n${passed} tests passed.`);
