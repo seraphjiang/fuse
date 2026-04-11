@@ -18,6 +18,7 @@ pub mod registry;
 pub mod optimizer;
 pub mod plan_builder;
 pub mod plan_compare;
+pub mod plan_merge;
 pub mod plan_printer;
 pub mod plan_rules;
 pub mod plan_serde;
