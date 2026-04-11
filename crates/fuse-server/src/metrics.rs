@@ -36,6 +36,22 @@ pub fn record_connector_health(connector_id: &str, healthy: bool) {
     metrics::gauge!("fuse_connector_healthy", "connector" => connector_id.to_string()).set(val);
 }
 
+/// Record plan cache stats.
+pub fn record_cache_stats(hits: u64, misses: u64) {
+    metrics::gauge!("fuse_plan_cache_hits").set(hits as f64);
+    metrics::gauge!("fuse_plan_cache_misses").set(misses as f64);
+}
+
+/// Record connector count.
+pub fn set_connector_count(count: usize) {
+    metrics::gauge!("fuse_connectors_total").set(count as f64);
+}
+
+/// Record tenant count.
+pub fn set_tenant_count(count: usize) {
+    metrics::gauge!("fuse_tenants_total").set(count as f64);
+}
+
 /// GET /metrics — Prometheus scrape endpoint.
 pub async fn metrics_handler(
     State(state): State<Arc<AppState>>,
