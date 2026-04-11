@@ -3,6 +3,7 @@
 
 pub mod alerting;
 pub mod config;
+pub mod config_validator;
 pub mod connector;
 pub mod cost_model;
 pub mod dependency_graph;
