@@ -3390,6 +3390,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuse-connector-delta-lake"
+version = "1.0.0"
+dependencies = [
+ "arrow",
+ "async-trait",
+ "fuse-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "fuse-connector-duckdb"
 version = "1.0.0"
 dependencies = [
@@ -3450,6 +3463,20 @@ dependencies = [
 
 [[package]]
 name = "fuse-connector-fuse"
+version = "1.0.0"
+dependencies = [
+ "arrow",
+ "async-trait",
+ "fuse-core",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "fuse-connector-iceberg"
 version = "1.0.0"
 dependencies = [
  "arrow",
@@ -3636,6 +3663,19 @@ dependencies = [
  "fuse-core",
  "reqwest 0.12.28",
  "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "fuse-connector-spark"
+version = "1.0.0"
+dependencies = [
+ "arrow",
+ "async-trait",
+ "fuse-core",
+ "reqwest 0.12.28",
  "serde_json",
  "tokio",
  "tracing",
@@ -9419,18 +9459,18 @@ dependencies = [
 
 [[package]]
 name = "zstd-safe"
-version = "7.2.4"
+version = "7.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f49c4d5f0abb602a93fb8736af2a4f4dd9512e36f7f570d66e65ff867ed3b9d"
+checksum = "54a3ab4db68cea366acc5c897c7b4d4d1b8994a9cd6e6f841f8964566a419059"
 dependencies = [
  "zstd-sys",
 ]
 
 [[package]]
 name = "zstd-sys"
-version = "2.0.16+zstd.1.5.7"
+version = "2.0.13+zstd.1.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91e19ebc2adc8f83e43039e79776e3fda8ca919132d68a1fed6a5faca2683748"
+checksum = "38ff0f21cfee8f97d94cef41359e0c89aa6113028ab0291aa8ca0038995a95aa"
 dependencies = [
  "cc",
  "pkg-config",
