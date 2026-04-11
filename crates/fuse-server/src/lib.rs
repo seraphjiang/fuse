@@ -56,7 +56,7 @@ pub mod rewrite;
 pub mod row_limit;
 pub mod shutdown;
 pub mod slow_query;
-pub mod wasm_plugin;
+pub mod sorter;pub mod wasm_plugin;
 pub mod ws_streaming;
 pub mod saved_queries;
 pub mod sanitize;
