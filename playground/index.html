@@ -1471,6 +1471,8 @@ syncHighlight();
 
 // === Schema-Aware Autocomplete ===
 const SQL_KEYWORDS = ['SELECT','FROM','WHERE','AND','OR','NOT','IN','BETWEEN','LIKE','IS','NULL','JOIN','LEFT','RIGHT','INNER','CROSS','ON','GROUP','BY','ORDER','ASC','DESC','LIMIT','OFFSET','HAVING','UNION','ALL','AS','DISTINCT','COUNT','SUM','AVG','MIN','MAX','INSERT','UPDATE','DELETE','CREATE','DROP','ALTER','TABLE','INDEX','VIEW','WITH','CASE','WHEN','THEN','ELSE','END','EXISTS','EXPLAIN','ANALYZE'];
+const PPL_KEYWORDS = ['source','where','stats','head','sort','lookup','dedup','eval','fields','rename','top','rare','parse','grok','patterns','trendline','fillnull','flatten','expand','describe','ad','kmeans','ml'];
+const SQL_FUNCTIONS = ['COUNT','SUM','AVG','MIN','MAX','COALESCE','CAST','NULLIF','IFNULL','CONCAT','LENGTH','LOWER','UPPER','TRIM','SUBSTRING','REPLACE','NOW','DATE','EXTRACT','ROW_NUMBER','RANK','DENSE_RANK','LAG','LEAD','FIRST_VALUE','LAST_VALUE','NTILE','OVER','PARTITION','ARRAY_AGG','STRING_AGG','ROUND','ABS','CEIL','FLOOR','MOD','POWER','SQRT','LOG','LN'];
 let acSchema = {}; // { datasource: { table: [field, ...] } }
 let acItems = [];
 let acIdx = -1;
@@ -1524,8 +1526,11 @@ function getCompletions(word) {
     }
   }
 
-  // General: keywords, datasources, tables, fields
-  SQL_KEYWORDS.forEach(k => { if (k.toLowerCase().startsWith(w)) results.push({ label: k, type: 'keyword' }); });
+  // General: keywords, functions, datasources, tables, fields
+  const isPPL = $('format').value === 'ppl';
+  const keywords = isPPL ? PPL_KEYWORDS : SQL_KEYWORDS;
+  keywords.forEach(k => { if (k.toLowerCase().startsWith(w)) results.push({ label: k, type: 'keyword' }); });
+  if (!isPPL) SQL_FUNCTIONS.forEach(k => { if (k.toLowerCase().startsWith(w)) results.push({ label: k + '()', type: 'function' }); });
   Object.keys(acSchema).forEach(ds => {
     if (ds.toLowerCase().startsWith(w)) results.push({ label: ds, type: 'datasource' });
     Object.keys(acSchema[ds]).forEach(tbl => {
@@ -1557,7 +1562,7 @@ function showAc() {
   const dd = $('ac-dropdown');
   dd.innerHTML = acItems.map((item, i) =>
     `<div class="ac-item${i === 0 ? ' selected' : ''}" onmousedown="applyAc(${i})" onmouseenter="acIdx=${i};renderAcSelection()">` +
-    `<span class="ac-label">${esc(item.label)}</span><span class="ac-type">${item.type}</span></div>`
+    `<span class="ac-label">${esc(item.label)}</span><span class="ac-type">${{keyword:'🔤',datasource:'📦',table:'📋',field:'🏷️',function:'ƒ'}[item.type]||''} ${item.type}</span></div>`
   ).join('');
   dd.classList.add('open');
 }
