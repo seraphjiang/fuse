@@ -56,6 +56,7 @@ pub mod telemetry;
 pub mod tenant;
 pub mod transaction;
 pub mod type_infer;
+pub mod validate;
 pub mod tracing_ctx;
 
 use std::sync::Arc;
