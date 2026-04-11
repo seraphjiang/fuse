@@ -74,7 +74,7 @@ impl PolicyEngine {
             .iter()
             .filter(|p| {
                 p.datasource == datasource
-                    && p.index.as_ref().map_or(true, |i| i == index)
+                    && p.index.as_ref().is_none_or(|i| i == index)
             })
             .collect()
     }
@@ -181,7 +181,7 @@ impl ResultFilter {
                     })
                     .collect();
                 RecordBatch::try_new(new_schema.clone(), columns)
-                    .map_err(|e| FuseError::Arrow(e))
+                    .map_err(FuseError::Arrow)
             })
             .collect()
     }
