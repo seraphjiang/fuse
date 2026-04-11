@@ -1,0 +1,11 @@
+{{- if and .Values.autoscaling.enabled (gt (int .Values.autoscaling.minReplicas) 1) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "fuse.fullname" . }}
+  labels: {{- include "fuse.labels" . | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {{- include "fuse.selectorLabels" . | nindent 6 }}
+{{- end }}

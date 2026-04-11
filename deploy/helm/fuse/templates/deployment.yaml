@@ -19,6 +19,10 @@ spec:
       labels: {{- include "fuse.selectorLabels" . | nindent 8 }}
     spec:
       serviceAccountName: {{ include "fuse.serviceAccountName" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       containers:
         - name: fuse-server
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -32,6 +36,12 @@ spec:
               value: /etc/fuse/fuse.toml
             - name: RUST_LOG
               value: info
+            {{- if .Values.telemetry.enabled }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.telemetry.otlp_endpoint | quote }}
+            - name: OTEL_SERVICE_NAME
+              value: fuse-server
+            {{- end }}
             {{- if .Values.redis.enabled }}
             - name: FUSE_REDIS_URL
               value: {{ .Values.redis.url | quote }}
@@ -40,6 +50,17 @@ spec:
             - name: config
               mountPath: /etc/fuse
               readOnly: true
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          startupProbe:
+            httpGet:
+              path: /api/fuse/health
+              port: http
+            failureThreshold: 30
+            periodSeconds: 2
           livenessProbe:
             httpGet:
               path: /api/fuse/health
@@ -55,6 +76,7 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
           resources: {{- toYaml .Values.resources | nindent 12 }}
+      terminationGracePeriodSeconds: 30
       volumes:
         - name: config
           configMap:
