@@ -43,6 +43,7 @@
 - [Horizontal Scaling](./horizontal-scaling.md)
 - [Security Hardening](./security-hardening.md)
 - [Federation Architecture](./federation-architecture.md)
+- [Deployment Patterns](./deployment-patterns.md)
 
 # Developer
 
@@ -54,6 +55,8 @@
 # Blog & Roadmap
 
 - [Roadmap](./roadmap.md)
+- [API Stability Guarantee](./api-stability.md)
+- [v1.0.0: General Availability](./blog-v100-ga.md)
 - [v0.6.0: Enterprise, AI & SDKs](./blog-v060-release.md)
 - [v0.5.0 Release](./blog-sprint-5-release.md)
 - [Introducing Fuse](./blog-introducing-fuse.md)
