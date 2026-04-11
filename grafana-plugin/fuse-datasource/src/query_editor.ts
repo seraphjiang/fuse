@@ -2,7 +2,7 @@
 
 import React, { ChangeEvent } from 'react';
 import { QueryEditorProps } from '@grafana/data';
-import { InlineField, Input, Select } from '@grafana/ui';
+import { InlineField, Input, Select, TextArea } from '@grafana/ui';
 import { FuseDatasource } from './datasource';
 import { FuseQuery, FuseDataSourceOptions, defaultQuery } from './types';
 
@@ -38,12 +38,13 @@ export const FuseQueryEditor: React.FC<Props> = ({ query, onChange, onRunQuery }
         />
       </InlineField>
       <InlineField label="Query" labelWidth={8} grow>
-        <Input
+        <TextArea
           value={q.queryText || ''}
-          onChange={onQueryTextChange}
+          onChange={(e: ChangeEvent<HTMLTextAreaElement>) => onChange({ ...q, queryText: e.target.value })}
           onKeyDown={onKeyDown}
           onBlur={onRunQuery}
           placeholder="SELECT * FROM cluster_a.application_logs LIMIT 20"
+          rows={3}
         />
       </InlineField>
     </div>

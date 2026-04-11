@@ -29,7 +29,7 @@ export const FuseConfigEditor: React.FC<Props> = ({ options, onOptionsChange }) 
   return (
     <div className="gf-form-group">
       <InlineField label="Fuse URL" labelWidth={14} tooltip="Base URL of the Fuse server">
-        <Input width={40} value={jsonData.url || ''} onChange={onUrlChange} placeholder="http://localhost:3000" />
+        <Input width={40} value={jsonData.url || ''} onChange={onUrlChange} placeholder="http://localhost:9400" />
       </InlineField>
       <InlineField label="API Key" labelWidth={14} tooltip="Optional API key for authentication">
         <SecretInput width={40} isConfigured={!!jsonData.apiKey} value={jsonData.apiKey || ''} onChange={onApiKeyChange} onReset={onApiKeyReset} placeholder="fuse_..." />

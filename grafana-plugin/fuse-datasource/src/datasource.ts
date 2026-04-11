@@ -8,7 +8,7 @@ import {
   MutableDataFrame,
   FieldType,
 } from '@grafana/data';
-import { getBackendSrv } from '@grafana/runtime';
+import { getBackendSrv, getTemplateSrv } from '@grafana/runtime';
 import { FuseQuery, FuseDataSourceOptions } from './types';
 
 interface FuseApiResponse {
@@ -30,19 +30,20 @@ export class FuseDatasource extends DataSourceApi<FuseQuery, FuseDataSourceOptio
   async query(options: DataQueryRequest<FuseQuery>): Promise<DataQueryResponse> {
     const promises = options.targets
       .filter(t => !t.hide && t.queryText)
-      .map(target => this.runQuery(target));
+      .map(target => this.runQuery(target, options.scopedVars));
 
     const data = await Promise.all(promises);
     return { data };
   }
 
-  private async runQuery(target: FuseQuery): Promise<MutableDataFrame> {
+  private async runQuery(target: FuseQuery, scopedVars?: Record<string, any>): Promise<MutableDataFrame> {
+    const queryText = getTemplateSrv().replace(target.queryText, scopedVars);
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (this.apiKey) headers['X-API-Key'] = this.apiKey;
 
     const response = await getBackendSrv().post<FuseApiResponse>(
       `${this.url}/api/fuse/query`,
-      { query: target.queryText, format: target.format || 'sql' },
+      { query: queryText, format: target.format || 'sql' },
       { headers }
     );
 
