@@ -81,6 +81,12 @@ function esc(s: string): string {
 
 // ── Commands ──
 
+// Inline result decoration
+const inlineDecorationType = vscode.window.createTextEditorDecorationType({
+  after: { margin: '0 0 0 2em', color: '#8b949e', fontStyle: 'italic' },
+  isWholeLine: true,
+});
+
 async function runQuery() {
   const editor = vscode.window.activeTextEditor;
   if (!editor) { return; }
@@ -88,15 +94,37 @@ async function runQuery() {
   const query = getQueryText(editor);
   const format = getFormat(editor.document.languageId, cfg);
 
+  // Show inline "running…" indicator
+  const lastLine = editor.selection.isEmpty ? editor.document.lineCount - 1 : editor.selection.end.line;
+  editor.setDecorations(inlineDecorationType, [{
+    range: new vscode.Range(lastLine, 0, lastLine, 0),
+    renderOptions: { after: { contentText: '⏳ Running…' } },
+  }]);
+
   try {
+    const start = Date.now();
     const res = await request(`${cfg.serverUrl}/api/fuse/query`, 'POST', JSON.stringify({ query, format }));
+    const elapsed = Date.now() - start;
     if (res.error) {
+      editor.setDecorations(inlineDecorationType, [{
+        range: new vscode.Range(lastLine, 0, lastLine, 0),
+        renderOptions: { after: { contentText: `❌ ${res.error}`, color: '#f85149' } },
+      }]);
       showResults('Fuse Error', `<div class="error">${esc(res.error)}</div>`);
     } else {
+      const rows = (res.rows || []).length;
+      editor.setDecorations(inlineDecorationType, [{
+        range: new vscode.Range(lastLine, 0, lastLine, 0),
+        renderOptions: { after: { contentText: `✅ ${rows} rows · ${elapsed}ms` } },
+      }]);
       showResults('Fuse Results', renderTable(res));
-      historyProvider.addEntry(query, format, (res.rows || []).length);
+      historyProvider.addEntry(query, format, rows);
     }
   } catch (e: any) {
+    editor.setDecorations(inlineDecorationType, [{
+      range: new vscode.Range(lastLine, 0, lastLine, 0),
+      renderOptions: { after: { contentText: `❌ ${e.message}`, color: '#f85149' } },
+    }]);
     vscode.window.showErrorMessage(`Fuse: ${e.message}`);
   }
 }
