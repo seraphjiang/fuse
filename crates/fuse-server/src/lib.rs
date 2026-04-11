@@ -13,6 +13,7 @@ pub mod federation;
 pub mod health;
 pub mod history;
 pub mod metrics;
+pub mod nl_query;
 pub mod plan_cache;
 pub mod prepared;
 pub mod rate_limit;
