@@ -275,6 +275,8 @@ pub struct ExplainResponse {
     pub plan_tree: Option<fuse_engine::plan::PlanNode>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub execution_profile: Option<ExecutionProfile>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub complexity: Option<crate::complexity::ComplexityScore>,
 }
 
 #[derive(Serialize)]
@@ -1704,10 +1706,12 @@ pub async fn explain_handler(
             };
 
             let plan_text = plan_tree.to_text(0);
+            let complexity = crate::complexity::score_query(&req.query);
             Json(ExplainResponse {
                 plan: plan_text,
                 plan_tree: Some(plan_tree),
                 execution_profile,
+                complexity: Some(complexity),
             })
             .into_response()
         }
