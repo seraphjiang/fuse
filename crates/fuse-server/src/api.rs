@@ -867,7 +867,6 @@ pub async fn query_handler(
     let timeout = std::time::Duration::from_millis(effective_timeout_ms);
 
     // Register cancellable query
-    let query_id = format!("q-{:016x}", QUERY_COUNTER.fetch_add(1, Ordering::Relaxed));
     let cancel_token = CancellationToken::new();
     state.running_queries.insert(query_id.clone(), cancel_token.clone());
 
