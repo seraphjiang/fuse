@@ -116,6 +116,11 @@ fn build_app(connectors: Vec<Arc<dyn FederatedConnector>>) -> axum::Router {
         audit_log: Arc::new(fuse_server::audit::AuditLog::new(100)),
         tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::new(vec![])),
         result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 100)),
+        prepared_statements: fuse_server::prepared::new_store(),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
     });
     fuse_server::build_router(state)
 }

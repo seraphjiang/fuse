@@ -17,14 +17,28 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 900 | EXPLAIN ANALYZE with execution stats | ai-lead | done | execution_profile, per-node timing/rows/bytes, 5 new tests. Commit: d871977 |
-| 903 | Prepared statements with parameter binding | ai-lead | in-progress | PREPARE/EXECUTE, prevent SQL injection |
+| 903 | Prepared statements with parameter binding | ai-lead | done | PREPARE/EXECUTE, positional $N binding, safe escaping, 19 tests. Commit: 54981ad |
 
-## P1: Security Hardening (security)
+## P1: Security Hardening (security → reassigned)
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 920 | TLS/mTLS for connector connections | security | in-progress | rustls, per-connector cert config |
-| 922 | Secret management (connector credentials) | security | todo | AWS Secrets Manager, no plaintext |
+| 920 | TLS/mTLS for connector connections | security | unresponsive | rustls, per-connector cert config — TlsConfig exists in tls.rs |
+| 921 | RBAC fine-grained permissions | pm | done | DatasourceRbac with Read/Write/Admin, 8 tests. Commit: 823dad6 |
+| 922 | Secret management (connector credentials) | ai-lead | in-progress | Reassigned from security |
+
+## P1: Continuous Monitoring (pm)
+
+| ID | Item | Owner | Status | Notes |
+|----|------|-------|--------|-------|
+| 910 | Anomaly detection alerts (continuous) | pm | done | AlertMonitor, webhook, background loop, 9 tests. Commit: 61bf654 |
+| 911 | Alert rules management API | pm | done | CRUD handlers, 5 tests. Commit: 486819f |
+
+## P1: Horizontal Scaling (sde)
+
+| ID | Item | Owner | Status | Notes |
+|----|------|-------|--------|-------|
+| 800 | Stateless server mode | sde | in-progress | SharedSavedQueries + SharedQueryHistory + SharedAuditLog. Wiring into AppState |
 
 ## P1: Frontend — Query Visualization (fee)
 

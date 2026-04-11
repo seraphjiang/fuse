@@ -64,6 +64,11 @@ fn build_app() -> axum::Router {
         plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
         result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 100)),
         audit_log: Arc::new(fuse_server::audit::AuditLog::new(100)),
+        prepared_statements: fuse_server::prepared::new_store(),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
         tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::new(vec![])),
     });
     fuse_server::build_router(state)
