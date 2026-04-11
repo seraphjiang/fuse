@@ -11,6 +11,7 @@ pub mod health_history;
 pub mod materialized_view;
 pub mod metadata_cache;
 pub mod registry;
+pub mod query_stats;
 pub mod schema_compat;
 pub mod secrets;
 pub mod security;
