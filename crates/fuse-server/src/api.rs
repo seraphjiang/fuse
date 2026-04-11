@@ -13,6 +13,7 @@ use tokio_util::sync::CancellationToken;
 use fuse_core::registry::ConnectorRegistry;
 use fuse_core::alerting::{AlertEvaluator, AlertRule};
 use fuse_engine::materialized::MaterializedViewRegistry;
+use crate::shared_state::{SharedSavedQueries, SharedQueryHistory, SharedAuditLog};
 use crate::history::QueryHistory;
 use crate::saved_queries::SavedQueryRegistry;
 use crate::plan_cache::{PlanCache, CachedPlan};
@@ -73,6 +74,11 @@ pub struct AppState {
     pub audit_log: Arc<crate::audit::AuditLog>,
     pub prepared_statements: crate::prepared::PreparedStatementStore,
     pub adaptive_timeout: Arc<crate::adaptive_timeout::AdaptiveTimeout>,
+    /// Redis-backed shared stores for stateless horizontal scaling.
+    /// When FUSE_REDIS_URL is set, these use Redis; otherwise in-memory fallback.
+    pub shared_saved_queries: SharedSavedQueries,
+    pub shared_history: SharedQueryHistory,
+    pub shared_audit_log: SharedAuditLog,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.

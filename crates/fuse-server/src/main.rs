@@ -129,6 +129,9 @@ async fn main() -> anyhow::Result<()> {
         audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
         adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
         prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
     });
 
     // Initialize metrics
