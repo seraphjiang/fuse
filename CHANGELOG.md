@@ -8,6 +8,64 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-04-11
+
+### Added
+
+**Connectors (6 new → 20 total)**
+- Amazon Athena connector — full SQL pushdown, Glue catalog, async polling
+- Amazon Timestream connector — SQL pushdown, type-aware Arrow conversion
+- Snowflake connector — SQL API, async polling, bearer token auth
+- Google BigQuery connector — Jobs API, backtick-quoted table refs
+- Apache Kafka connector — rskafka, JSON extraction, metadata fields
+- Fuse-to-Fuse connector — federate across Fuse instances via REST API
+
+**Federation**
+- Fuse-to-Fuse federation — connect multiple Fuse instances, cross-cluster JOINs
+- Cross-cluster query routing — automatic datasource resolution across instances
+- Federation topology API and playground page
+
+**Write Path**
+- CREATE TABLE AS SELECT (CTAS) — materialize query results into writable connectors
+- INSERT INTO ... SELECT — write query results to writable connectors
+- Transaction support — BEGIN/COMMIT/ROLLBACK with buffered writes
+
+**Query Intelligence**
+- EXPLAIN ANALYZE with per-node execution stats (timing, rows, bytes)
+- Prepared statements with positional parameter binding ($1, $2)
+- Flame graph visualization for EXPLAIN ANALYZE in playground
+- Query plan DAG visualization in playground
+
+**Security**
+- TLS/mTLS for all connector connections (rustls)
+- Datasource-level RBAC with Read/Write/Admin permissions
+- Secret management via AWS Secrets Manager (secret:// URIs, recursive resolution)
+- Error message sanitization — no internal details leaked to clients
+- Structured error codes (FUSE-1000 through FUSE-7001)
+
+**Horizontal Scaling**
+- Stateless server mode — Redis-backed shared state with in-memory fallback
+- Shared tenant registry with Redis hot-reload
+- NDJSON chunked streaming for large result sets
+- Adaptive query timeout — per-datasource p95-based timeout learning
+
+**Infrastructure**
+- Configuration validation on startup with fail-fast diagnostics
+- Plugin manifest discovery for WASM connectors
+- Continuous alert monitor with webhook notifications
+- Alert rules CRUD API
+- Connection pooling verified across all 14 original connectors
+
+**Frontend**
+- Mobile responsive layout across all 12 playground pages
+- Alert history filters (status, search)
+- Federation topology page with canvas diagram
+- VS Code extension fixes (port, PPL IntelliSense)
+- Terminal verification and version fix
+
+### Tests
+- 1000+ tests (up from ~980 in v1.0.0), 0 failures
+
 ## [0.5.0] — 2026-04-10
 
 ### Added
