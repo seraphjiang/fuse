@@ -58,16 +58,6 @@ impl RunningQueries {
     }
 }
 
-/// A prepared statement: query template with $N parameter placeholders.
-#[derive(Debug, Clone)]
-pub struct PreparedStatement {
-    pub query: String,
-    pub param_count: usize,
-}
-
-/// Thread-safe store for prepared statements.
-pub type PreparedStatementStore = Arc<std::sync::Mutex<std::collections::HashMap<String, PreparedStatement>>>;
-
 /// Shared application state passed to all handlers.
 pub struct AppState {
     pub registry: Arc<ConnectorRegistry>,
@@ -81,7 +71,8 @@ pub struct AppState {
     pub result_cache: Arc<crate::plan_cache::ResultCache>,
     pub tenant_registry: Arc<TenantRegistry>,
     pub audit_log: Arc<crate::audit::AuditLog>,
-    pub prepared_statements: PreparedStatementStore,
+    pub prepared_statements: crate::prepared::PreparedStatementStore,
+    pub adaptive_timeout: Arc<crate::adaptive_timeout::AdaptiveTimeout>,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.
@@ -594,8 +585,14 @@ pub async fn query_handler(
         }
     }
 
-    // Apply tenant timeout limit
-    let base_timeout_ms = req.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS);
+    // Apply timeout: explicit > adaptive (per-datasource p95) > default
+    let base_timeout_ms = if let Some(ms) = req.timeout_ms {
+        ms
+    } else if let Some(first_ds) = refs.first().map(|(id, _)| id.as_str()) {
+        state.adaptive_timeout.timeout_ms_for(first_ds)
+    } else {
+        DEFAULT_TIMEOUT_MS
+    };
     let effective_timeout_ms = if let Some(ref tid) = tenant_id {
         state.tenant_registry.get(tid)
             .map(|c| QueryGovernor::effective_timeout_ms(c, base_timeout_ms))
@@ -811,6 +808,10 @@ pub async fn query_handler(
                 row_count: total_rows,
                 error: None,
             });
+            // Record per-datasource latency for adaptive timeout
+            for ds in &fed.datasources {
+                state.adaptive_timeout.record(ds, elapsed_ms);
+            }
             state.audit_log.record(crate::audit::AuditEntry {
                 timestamp: crate::history::now_secs(),
                 identity: tenant_id.clone().unwrap_or_else(|| "anonymous".into()),
