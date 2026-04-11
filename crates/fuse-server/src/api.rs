@@ -287,10 +287,19 @@ pub struct ErrorResponse {
 }
 
 fn error_json(status: StatusCode, msg: impl ToString) -> impl IntoResponse {
+    let message = msg.to_string();
+    // For server errors, log the full detail but return a sanitized message to the client.
+    // This prevents leaking internal URLs, credentials, or stack traces.
+    let client_message = if status.is_server_error() {
+        tracing::error!(status = %status, detail = %message, "internal error");
+        "internal server error".to_string()
+    } else {
+        message
+    };
     (
         status,
         Json(ErrorResponse {
-            error: msg.to_string(),
+            error: client_message,
         }),
     )
 }
