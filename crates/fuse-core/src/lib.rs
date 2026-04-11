@@ -14,6 +14,7 @@ pub mod materialized_view;
 pub mod metadata_cache;
 pub mod registry;
 pub mod optimizer;
+pub mod plan_serde;
 pub mod planner;
 pub mod pushdown;
 pub mod query_stats;
