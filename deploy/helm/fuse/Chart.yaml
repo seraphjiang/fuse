@@ -1,0 +1,14 @@
+apiVersion: v2
+name: fuse
+description: Fuse — federated query engine for distributed datasources
+type: application
+version: 1.0.0
+appVersion: "0.6.0"
+keywords:
+  - fuse
+  - federated-query
+  - opensearch
+  - sql
+home: https://github.com/seraphjiang/fuse
+sources:
+  - https://github.com/seraphjiang/fuse
