@@ -440,6 +440,141 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/fuse/multi:
+    post:
+      summary: Execute multiple SQL statements in one request
+      description: |
+        Splits the query string by semicolons and executes each statement
+        sequentially. Returns an array of results, one per statement.
+        Single statements are delegated to the normal query handler.
+      operationId: multiQuery
+      tags: [Query]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryRequest"
+      responses:
+        "200":
+          description: Array of query results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/QueryResponse"
+
+  /api/fuse/nl:
+    post:
+      summary: Natural language to SQL
+      description: |
+        Converts a natural language question into a SQL query using schema
+        context from all registered datasources. Optionally executes the
+        generated query and returns results.
+      operationId: nlToSql
+      tags: [Query]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question:
+                  type: string
+                  description: Natural language question
+                execute:
+                  type: boolean
+                  default: false
+                  description: If true, execute the generated SQL and return results
+      responses:
+        "200":
+          description: Generated SQL and optional results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sql:
+                    type: string
+                  results:
+                    $ref: "#/components/schemas/QueryResponse"
+
+  /api/fuse/advisor:
+    get:
+      summary: Query optimization advice
+      description: |
+        Analyzes recent query history and returns optimization recommendations
+        (e.g., missing indexes, repeated full scans, slow queries).
+      operationId: queryAdvisor
+      tags: [Query]
+      responses:
+        "200":
+          description: Advisor recommendations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  advice:
+                    type: array
+                    items:
+                      type: string
+                  analyzed_queries:
+                    type: integer
+
+  /api/fuse/stats:
+    get:
+      summary: Query statistics
+      description: Aggregate statistics from query history (total queries, avg latency, error rate).
+      operationId: queryStats
+      tags: [Query]
+      responses:
+        "200":
+          description: Statistics object
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/fuse/federation:
+    get:
+      summary: Federation topology
+      description: |
+        Returns the topology of connected Fuse instances in a federated
+        deployment, including their datasources and health status.
+      operationId: federationTopology
+      tags: [Federation]
+      responses:
+        "200":
+          description: Federation topology
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  instances:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        url:
+                          type: string
+                        status:
+                          type: string
+                          enum: [ok, degraded, unreachable]
+                        datasources:
+                          type: array
+                          items:
+                            type: string
+
 components:
   parameters:
     DatasourceId:
