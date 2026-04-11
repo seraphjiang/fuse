@@ -8,6 +8,7 @@ pub mod alert_monitor;
 pub mod agg_functions;
 pub mod aggregator;
 pub mod alias;
+pub mod arrow_export;
 pub mod api;
 pub mod anomaly;
 pub mod anomaly_alert;
