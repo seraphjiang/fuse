@@ -51,7 +51,7 @@ pub mod rate_limit;
 pub mod rate_monitor;pub mod redis_cache;
 pub mod refresh_scheduler;
 pub mod request_id;
-pub mod response_builder;
+pub mod renamer;pub mod response_builder;
 pub mod result_filter;pub mod retry;
 pub mod rewrite;
 pub mod row_limit;
