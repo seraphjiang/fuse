@@ -2695,6 +2695,12 @@ pub async fn stats_handler(State(state): State<Arc<AppState>>) -> impl IntoRespo
     }))
 }
 
+/// DELETE /api/fuse/cache — flush result and plan caches.
+pub async fn clear_cache_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    state.result_cache.clear();
+    Json(serde_json::json!({"cleared": true}))
+}
+
 /// GET /api/fuse/federation — return federation topology.
 pub async fn federation_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let registry = crate::federation::FederationRegistry::new();
