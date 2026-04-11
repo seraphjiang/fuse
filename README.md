@@ -173,6 +173,8 @@ curl http://localhost:9400/api/fuse/datasources/cluster_a/schemas/application_lo
 | Snowflake | `snowflake` | Bearer token | Full SQL pushdown, async polling |
 | BigQuery | `bigquery` | Service account | Full SQL pushdown, Jobs API |
 | Fuse | `fuse` | Bearer token | Full query forwarding (federation) |
+| DuckDB | `duckdb` | None (local file) | Full SQL pushdown (native SQL) |
+| Arrow Flight | `arrow-flight` | Bearer token (optional) | Flight SQL pushdown, ticket-based streaming |
 
 ### Configuration (fuse.toml)
 
