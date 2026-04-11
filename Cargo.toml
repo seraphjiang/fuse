@@ -23,6 +23,7 @@ members = [
     "crates/fuse-connectors/timestream",
     "crates/fuse-connectors/snowflake",
     "crates/fuse-connectors/bigquery",
+    "crates/fuse-connectors/arrow-flight",
     "crates/fuse-connectors/duckdb",
     "crates/fuse-connector-sdk",
     "crates/fuse-server",
@@ -39,6 +40,7 @@ repository = "https://github.com/seraphjiang/fuse"
 [workspace.dependencies]
 # Arrow & DataFusion
 arrow = { version = "58", features = ["json"] }
+arrow-flight = { version = "58", features = ["flight-sql-experimental"] }
 arrow-csv = "58"
 arrow-json = "58"
 datafusion = "53"
