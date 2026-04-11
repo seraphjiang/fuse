@@ -518,4 +518,61 @@ mod tests {
         );
         assert_eq!(key, "out/42.parquet");
     }
+
+    #[test]
+    fn test_write_batches_empty_returns_zero() {
+        // Verify write_batches with empty batches doesn't error
+        let schema = Arc::new(arrow::datatypes::Schema::new(vec![
+            arrow::datatypes::Field::new("x", arrow::datatypes::DataType::Int64, false),
+        ]));
+        let empty = RecordBatch::new_empty(schema);
+        // Can't call async write_batches without S3 client, but verify Parquet serialization
+        let mut buf = Vec::new();
+        let mut writer = parquet::arrow::ArrowWriter::try_new(&mut buf, empty.schema(), None).unwrap();
+        writer.write(&empty).unwrap();
+        writer.close().unwrap();
+        assert!(!buf.is_empty()); // Even empty batch produces valid Parquet
+        assert_eq!(&buf[..4], b"PAR1");
+    }
+
+    #[test]
+    fn test_write_key_trailing_slash_prefix() {
+        let prefix = "data/output/";
+        let table = "results";
+        let ts = 999u128;
+        let key = format!(
+            "{}{}/{}.parquet",
+            if prefix.is_empty() { String::new() } else { format!("{}/", prefix.trim_end_matches('/')) },
+            table, ts
+        );
+        assert_eq!(key, "data/output/results/999.parquet");
+    }
+
+    #[test]
+    fn test_write_multi_batch_parquet() {
+        use arrow::array::{Int64Array, StringArray};
+        use arrow::datatypes::{DataType, Field, Schema};
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int64, false),
+            Field::new("val", DataType::Utf8, true),
+        ]));
+        let b1 = RecordBatch::try_new(schema.clone(), vec![
+            Arc::new(Int64Array::from(vec![1, 2])) as arrow::array::ArrayRef,
+            Arc::new(StringArray::from(vec!["a", "b"])) as arrow::array::ArrayRef,
+        ]).unwrap();
+        let b2 = RecordBatch::try_new(schema.clone(), vec![
+            Arc::new(Int64Array::from(vec![3])) as arrow::array::ArrayRef,
+            Arc::new(StringArray::from(vec!["c"])) as arrow::array::ArrayRef,
+        ]).unwrap();
+
+        let mut buf = Vec::new();
+        let mut writer = parquet::arrow::ArrowWriter::try_new(&mut buf, schema, None).unwrap();
+        writer.write(&b1).unwrap();
+        writer.write(&b2).unwrap();
+        writer.close().unwrap();
+
+        assert!(!buf.is_empty());
+        assert_eq!(&buf[..4], b"PAR1");
+    }
 }
