@@ -28,6 +28,12 @@ main{max-width:1200px;width:100%;margin:0 auto;padding:24px;display:flex;flex-di
 .conn-dot.degraded{background:#d29922}
 .conn-dot.error{background:#f85149}
 .conn-dot.unknown{background:#484f58}
+.timeline-row{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.timeline-label{width:100px;font-size:12px;color:#e1e4e8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.timeline-bar{display:flex;gap:1px;flex:1}
+.timeline-bar span{width:6px;height:16px;border-radius:2px}
+.tl-ok{background:#3fb950}.tl-degraded{background:#d29922}.tl-error{background:#f85149}.tl-unknown{background:#21262d}
+body.light .timeline-label{color:#1f2328}body.light .tl-unknown{background:#eaeef2}
 .conn-meta{font-size:11px;color:#8b949e;margin-top:4px}
 .stat-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #21262d;font-size:13px}
 .stat-row:last-child{border-bottom:none}
@@ -97,12 +103,20 @@ body.light .nav-tab.active{color:#0969da;border-bottom-color:#0969da}
     <h3>⚡ Active Queries</h3>
     <div id="running-body"><div class="empty">Loading…</div></div>
   </div>
+
+  <!-- Health Timeline -->
+  <div class="card">
+    <h3>📈 Health Timeline <span style="font-size:11px;font-weight:400;color:#8b949e">(last 60 checks)</span></h3>
+    <div id="timeline-body"><div class="empty">Collecting data…</div></div>
+  </div>
 </main>
 
 <script>
 const API = window.location.origin;
 const $ = id => document.getElementById(id);
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+const healthHistory = {}; // { connectorName: ['ok','ok','error',...] }
+const MAX_HISTORY = 60;
 
 async function fetchJSON(path) {
   const r = await fetch(API + path);
@@ -119,6 +133,7 @@ async function refreshHealth() {
 
     const connectors = Object.entries(h.connectors || {});
     $('sys-connectors').textContent = connectors.length;
+    recordHealth(connectors);
 
     if (!connectors.length) {
       $('conn-grid').innerHTML = '<div class="empty">No connectors</div>';
@@ -130,6 +145,25 @@ async function refreshHealth() {
         <div class="conn-meta">${c.latency_ms != null ? c.latency_ms + 'ms' : '—'}${c.message ? ' · ' + esc(c.message) : ''}</div></div>`;
     }).join('');
   } catch { $('conn-grid').innerHTML = '<div class="empty err">Failed to fetch health</div>'; }
+}
+
+function recordHealth(connectors) {
+  for (const [name, c] of connectors) {
+    if (!healthHistory[name]) healthHistory[name] = [];
+    const st = c.status === 'ok' || c.status === 'connected' ? 'ok' : c.status === 'degraded' || c.status === 'slow' ? 'degraded' : 'error';
+    healthHistory[name].push(st);
+    if (healthHistory[name].length > MAX_HISTORY) healthHistory[name].shift();
+  }
+  renderTimeline();
+}
+
+function renderTimeline() {
+  const names = Object.keys(healthHistory);
+  if (!names.length) return;
+  $('timeline-body').innerHTML = names.map(name => {
+    const bars = healthHistory[name].map(s => `<span class="tl-${s}" title="${s}"></span>`).join('');
+    return `<div class="timeline-row"><span class="timeline-label" title="${esc(name)}">${esc(name)}</span><div class="timeline-bar">${bars}</div></div>`;
+  }).join('');
 }
 
 async function refreshStats() {
