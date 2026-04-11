@@ -32,6 +32,9 @@ pub struct AsyncJob {
     pub status: JobStatus,
     pub query: String,
     pub format: String,
+    /// Identity of the user who submitted this job.
+    #[serde(skip_serializing)]
+    pub owner: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -64,6 +67,7 @@ impl JobStore {
             status: JobStatus::Pending,
             query,
             format,
+            owner: None,
             result: None,
             error: None,
             submitted_at: now,
@@ -148,10 +152,15 @@ fn now_epoch() -> u64 {
 }
 
 fn generate_job_id() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(1);
     let t = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
-    format!("job-{:x}-{:x}", t.as_secs(), t.subsec_nanos())
+    let c = COUNTER.fetch_add(1, Ordering::Relaxed);
+    // Mix timestamp + counter + pseudo-random bits to prevent enumeration
+    let rand_bits = t.as_nanos() as u64 ^ (c.wrapping_mul(6364136223846793005));
+    format!("job-{:016x}{:08x}", rand_bits, c as u32)
 }
 
 /// Submit request for async query.

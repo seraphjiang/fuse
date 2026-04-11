@@ -2919,6 +2919,8 @@ pub struct NlQueryResponse {
     pub prompt: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub results: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -2972,24 +2974,30 @@ pub async fn nl_to_sql_handler(
         schema_context: schemas,
         prompt,
         results: None,
+        error: None,
     };
 
-    // Optionally execute the generated SQL
+    // Optionally execute the generated SQL — only allow SELECT/EXPLAIN
     if req.execute && !generated_sql.is_empty() {
-        let query_req = QueryRequest {
-            query: generated_sql,
-            format: "sql".into(),
-            analyze: false,
-            timeout_ms: None,
-            result_format: "json".into(),
-            params: std::collections::HashMap::new(),
-            start: None, end: None, step: None,
-            cursor: None, page_size: None,
-        };
-        let exec_resp = query_handler(State(state), auth_identity, Json(query_req)).await;
-        let (_, body) = exec_resp.into_response().into_parts();
-        if let Ok(bytes) = axum::body::to_bytes(body, 10_000_000).await {
-            response.results = serde_json::from_slice(&bytes).ok();
+        let sql_trimmed = generated_sql.trim_start().to_uppercase();
+        if !sql_trimmed.starts_with("SELECT") && !sql_trimmed.starts_with("EXPLAIN") {
+            response.error = Some("generated SQL rejected: only SELECT/EXPLAIN queries can be auto-executed".into());
+        } else {
+            let query_req = QueryRequest {
+                query: generated_sql,
+                format: "sql".into(),
+                analyze: false,
+                timeout_ms: None,
+                result_format: "json".into(),
+                params: std::collections::HashMap::new(),
+                start: None, end: None, step: None,
+                cursor: None, page_size: None,
+            };
+            let exec_resp = query_handler(State(state), auth_identity, Json(query_req)).await;
+            let (_, body) = exec_resp.into_response().into_parts();
+            if let Ok(bytes) = axum::body::to_bytes(body, 10_000_000).await {
+                response.results = serde_json::from_slice(&bytes).ok();
+            }
         }
     }
 
@@ -2998,30 +3006,37 @@ pub async fn nl_to_sql_handler(
 
 /// Simple rule-based NL→SQL fallback (no LLM dependency).
 pub fn generate_sql_from_nl(question: &str, schemas: &[DatasourceSchema]) -> String {
+    use fuse_core::sql::quote_ident;
+
     let q = question.to_lowercase();
     let first_ds = schemas.first().map(|s| s.datasource.as_str()).unwrap_or("datasource");
     let table = schemas.first()
         .and_then(|s| s.tables.first().map(|t| t.as_str()))
         .unwrap_or("logs");
-    let source = format!("{}.{}", first_ds, table);
+    let source = format!("{}.{}", quote_ident(first_ds), quote_ident(table));
 
     if q.contains("count") && q.contains("by") {
-        // "count errors by host" → SELECT host, COUNT(*) FROM ... GROUP BY host
         let group_col = extract_keyword_after(&q, "by").unwrap_or("host".into());
-        return format!("SELECT {}, COUNT(*) AS count FROM {} GROUP BY {} ORDER BY count DESC LIMIT 20", group_col, source, group_col);
+        let col = quote_ident(&sanitize_nl_identifier(&group_col));
+        return format!("SELECT {col}, COUNT(*) AS count FROM {source} GROUP BY {col} ORDER BY count DESC LIMIT 20");
     }
     if q.contains("top") || q.contains("most") {
-        let n = extract_number(&q).unwrap_or(10);
-        return format!("SELECT * FROM {} ORDER BY timestamp DESC LIMIT {}", source, n);
+        let n = extract_number(&q).unwrap_or(10).min(1000);
+        return format!("SELECT * FROM {source} ORDER BY timestamp DESC LIMIT {n}");
     }
     if q.contains("error") || q.contains("fail") {
-        return format!("SELECT * FROM {} WHERE status >= 500 ORDER BY timestamp DESC LIMIT 20", source);
+        return format!("SELECT * FROM {source} WHERE status >= 500 ORDER BY timestamp DESC LIMIT 20");
     }
     if q.contains("between") || q.contains("last") {
-        return format!("SELECT * FROM {} ORDER BY timestamp DESC LIMIT 100", source);
+        return format!("SELECT * FROM {source} ORDER BY timestamp DESC LIMIT 100");
     }
-    // Default: select all with limit
-    format!("SELECT * FROM {} LIMIT 20", source)
+    format!("SELECT * FROM {source} LIMIT 20")
+}
+
+/// Strip non-identifier characters from NL-extracted column names.
+fn sanitize_nl_identifier(s: &str) -> String {
+    let clean: String = s.chars().filter(|c| c.is_alphanumeric() || *c == '_').collect();
+    if clean.is_empty() { "_".to_string() } else { clean }
 }
 
 fn extract_keyword_after(text: &str, keyword: &str) -> Option<String> {
