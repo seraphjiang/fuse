@@ -135,6 +135,9 @@ impl FuseConfig {
                     errors.push(format!("{label}: tls: {e}"));
                 }
             }
+
+            // Validate secret:// references are well-formed
+            errors.extend(crate::secrets::validate_secret_refs(&cc.id, &cc.properties));
         }
 
         if errors.is_empty() {
@@ -396,5 +399,38 @@ type = "bogus"
         let msg = err.to_string();
         // Should report all errors, not just the first
         assert!(msg.contains("3 error(s)"));
+    }
+
+    #[test]
+    fn test_validate_empty_secret_ref() {
+        let toml = r#"
+[engine]
+bind = "0.0.0.0:9400"
+max_concurrent_queries = 64
+
+[[connector]]
+id = "pg"
+type = "postgres"
+url = "secret://"
+"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        let err = cfg.validate(KNOWN).unwrap_err();
+        assert!(err.to_string().contains("empty secret://"));
+    }
+
+    #[test]
+    fn test_validate_valid_secret_ref() {
+        let toml = r#"
+[engine]
+bind = "0.0.0.0:9400"
+max_concurrent_queries = 64
+
+[[connector]]
+id = "pg"
+type = "postgres"
+url = "secret://fuse/prod/pg-url"
+"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        assert!(cfg.validate(KNOWN).is_ok());
     }
 }
