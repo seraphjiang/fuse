@@ -12,19 +12,20 @@
 - Post-GA: 25+ items (v1.2.0 foundations)
 
 ## Final Numbers
-- **551 commits**
-- **836+ core tests** (142 fuse-core, 246 fuse-engine, 448 fuse-server)
+- **560 commits**
+- **874+ core tests** (147 fuse-core, 246 fuse-engine, 481 fuse-server)
 - **22 connectors** covering all major data platforms
-- **68 modules** (14 core + 54 server)
-- **3 release tags** (v1.1.0, v1.1.1, v1.1.2)
+- **76 modules** (15 core + 61 server)
+- **4 release tags** (v1.1.0, v1.1.1, v1.1.2, v1.1.3)
 - **0 clippy warnings**
 
-## PM Contributions (22 new modules)
-### fuse-core (2 new)
+## PM Contributions (28 new modules)
+### fuse-core (4 new)
 - `url.rs` — ConnectorUrl parser
 - `health_history.rs` — Health history with uptime/latency tracking
+- `metadata_cache.rs` — Datasource schema discovery cache
 
-### fuse-server (20 new)
+### fuse-server (24 new)
 - `cors.rs` — CORS configuration
 - `retry.rs` — Exponential backoff retry
 - `shutdown.rs` — Graceful shutdown with query draining
@@ -45,6 +46,13 @@
 - `pool_stats.rs` — Connection pool statistics
 - `type_infer.rs` — Column type inference
 - `formatter.rs` — CSV and text table output
+- `explain_cache.rs` — EXPLAIN result cache
+- `cost_tracker.rs` — Per-tenant query cost tracking
+- `query_policy.rs` — Query allowlist/denylist
+- `sampling.rs` — Reservoir sampling and head/tail preview
+- `fingerprint.rs` — Query fingerprinting for pattern identification
+- `column_stats.rs` — Column statistics (min/max/count/nulls/distinct)
+- `validate.rs` — Query request parameter validation
 
 ## Team Performance
 | Agent | Total Items | Key Contributions |
