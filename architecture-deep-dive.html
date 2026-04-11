@@ -1,0 +1,660 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Architecture Deep Dive - Fuse — Federated Query Engine</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "navy";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="what-is-fuse.html"><strong aria-hidden="true">1.</strong> What is Fuse?</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">2.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">3.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="sql-reference.html"><strong aria-hidden="true">4.</strong> SQL Reference</a></li><li class="chapter-item expanded "><a href="ppl-reference.html"><strong aria-hidden="true">5.</strong> PPL Reference</a></li><li class="chapter-item expanded "><a href="connectors.html"><strong aria-hidden="true">6.</strong> Connectors</a></li><li class="chapter-item expanded "><a href="dashboard-guide.html"><strong aria-hidden="true">7.</strong> Dashboard Guide</a></li><li class="chapter-item expanded "><a href="data-provenance.html"><strong aria-hidden="true">8.</strong> Data Provenance</a></li><li class="chapter-item expanded "><a href="explain-analyze.html"><strong aria-hidden="true">9.</strong> EXPLAIN / ANALYZE</a></li><li class="chapter-item expanded "><a href="performance-tuning.html"><strong aria-hidden="true">10.</strong> Performance Tuning</a></li><li class="chapter-item expanded "><a href="query-optimization.html"><strong aria-hidden="true">11.</strong> Query Optimization</a></li><li class="chapter-item expanded "><a href="cookbook.html"><strong aria-hidden="true">12.</strong> Cookbook (20 Recipes)</a></li><li class="chapter-item expanded "><a href="migration-guide.html"><strong aria-hidden="true">13.</strong> Migration from OpenSearch</a></li><li class="chapter-item expanded "><a href="troubleshooting.html"><strong aria-hidden="true">14.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="troubleshooting-faq.html"><strong aria-hidden="true">15.</strong> Troubleshooting FAQ</a></li><li class="chapter-item expanded affix "><li class="part-title">SDKs & Integrations</li><li class="chapter-item expanded "><a href="python-sdk.html"><strong aria-hidden="true">16.</strong> Python SDK</a></li><li class="chapter-item expanded "><a href="typescript-sdk.html"><strong aria-hidden="true">17.</strong> TypeScript SDK</a></li><li class="chapter-item expanded "><a href="sdk-comparison.html"><strong aria-hidden="true">18.</strong> SDK Comparison (Python vs TypeScript)</a></li><li class="chapter-item expanded "><a href="jupyter-integration.html"><strong aria-hidden="true">19.</strong> Jupyter Notebooks</a></li><li class="chapter-item expanded "><a href="grafana-plugin.html"><strong aria-hidden="true">20.</strong> Grafana Plugin</a></li><li class="chapter-item expanded "><a href="vscode-extension.html"><strong aria-hidden="true">21.</strong> VS Code Extension</a></li><li class="chapter-item expanded "><a href="cli-reference.html"><strong aria-hidden="true">22.</strong> CLI Reference</a></li><li class="chapter-item expanded affix "><li class="part-title">API</li><li class="chapter-item expanded "><a href="api-reference.html"><strong aria-hidden="true">23.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="api-reference-guide.html"><strong aria-hidden="true">24.</strong> API Guide (curl examples)</a></li><li class="chapter-item expanded affix "><li class="part-title">Administration</li><li class="chapter-item expanded "><a href="admin-guide.html"><strong aria-hidden="true">25.</strong> Admin Guide</a></li><li class="chapter-item expanded "><a href="horizontal-scaling.html"><strong aria-hidden="true">26.</strong> Horizontal Scaling</a></li><li class="chapter-item expanded "><a href="security-hardening.html"><strong aria-hidden="true">27.</strong> Security Hardening</a></li><li class="chapter-item expanded "><a href="federation-architecture.html"><strong aria-hidden="true">28.</strong> Federation Architecture</a></li><li class="chapter-item expanded "><a href="deployment-patterns.html"><strong aria-hidden="true">29.</strong> Deployment Patterns</a></li><li class="chapter-item expanded affix "><li class="part-title">Developer</li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">30.</strong> Contributing</a></li><li class="chapter-item expanded "><a href="connector-development.html"><strong aria-hidden="true">31.</strong> Connector Development</a></li><li class="chapter-item expanded "><a href="plugin-development.html"><strong aria-hidden="true">32.</strong> Plugin Development (WASM)</a></li><li class="chapter-item expanded "><a href="architecture-deep-dive.html" class="active"><strong aria-hidden="true">33.</strong> Architecture Deep Dive</a></li><li class="chapter-item expanded "><a href="community-guide.html"><strong aria-hidden="true">34.</strong> Community</a></li><li class="chapter-item expanded affix "><li class="part-title">Blog & Roadmap</li><li class="chapter-item expanded "><a href="roadmap.html"><strong aria-hidden="true">35.</strong> Roadmap</a></li><li class="chapter-item expanded "><a href="api-stability.html"><strong aria-hidden="true">36.</strong> API Stability Guarantee</a></li><li class="chapter-item expanded "><a href="blog-v100-ga.html"><strong aria-hidden="true">37.</strong> v1.0.0: General Availability</a></li><li class="chapter-item expanded "><a href="blog-v060-release.html"><strong aria-hidden="true">38.</strong> v0.6.0: Enterprise, AI & SDKs</a></li><li class="chapter-item expanded "><a href="blog-sprint-5-release.html"><strong aria-hidden="true">39.</strong> v0.5.0 Release</a></li><li class="chapter-item expanded "><a href="blog-introducing-fuse.html"><strong aria-hidden="true">40.</strong> Introducing Fuse</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Fuse — Federated Query Engine</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/seraphjiang/fuse" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/seraphjiang/fuse/edit/main/docs-site/src/src/architecture-deep-dive.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="architecture-deep-dive"><a class="header" href="#architecture-deep-dive">Architecture Deep Dive</a></h1>
+<p>Internals of the Fuse federated query engine for contributors and advanced users.</p>
+<h2 id="1-request-lifecycle"><a class="header" href="#1-request-lifecycle">1. Request Lifecycle</a></h2>
+<pre><code>HTTP Request
+    │
+    ▼
+┌─────────────────────────────────────────────────────────┐
+│ Middleware Pipeline                                      │
+│  auth → rate_limit → tenant_check → timeout → audit     │
+└────────────────────────┬────────────────────────────────┘
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│ Parse                                                    │
+│  SQL → DataFusion LogicalPlan                           │
+│  PPL → PPL AST → DataFusion LogicalPlan                 │
+└────────────────────────┬────────────────────────────────┘
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│ Plan                                                     │
+│  1. Identify datasource references (datasource.table)   │
+│  2. Check tenant access (can_access per datasource)     │
+│  3. Build SubQuery per connector                        │
+│  4. Apply pushdown (filter, projection, agg, sort, limit)│
+│  5. Cost estimation → join order, build/probe selection  │
+└────────────────────────┬────────────────────────────────┘
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│ Fan-Out                                                  │
+│  tokio::spawn per SubQuery → connectors execute parallel │
+│  Each connector translates SubQuery → native query       │
+│  (Query DSL, SQL, PromQL, FilterExpression, BSON, etc.) │
+└────────────────────────┬────────────────────────────────┘
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│ Merge                                                    │
+│  Hash join / UNION ALL / re-aggregate / sort / limit    │
+│  All operations on Arrow RecordBatch in memory          │
+└────────────────────────┬────────────────────────────────┘
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│ Response                                                 │
+│  Serialize → JSON (rows + columns + metadata)           │
+│  Cache result (Redis or in-memory LRU)                  │
+│  Record audit entry                                      │
+└─────────────────────────────────────────────────────────┘
+</code></pre>
+<h3 id="timing-budget-typical-cross-datasource-join"><a class="header" href="#timing-budget-typical-cross-datasource-join">Timing Budget (typical cross-datasource JOIN)</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Phase</th><th>Time</th><th>Notes</th></tr></thead><tbody>
+<tr><td>Middleware</td><td>&lt; 1ms</td><td>Auth lookup, rate limit check</td></tr>
+<tr><td>Parse</td><td>1–5ms</td><td>DataFusion SQL parser</td></tr>
+<tr><td>Plan</td><td>1–3ms</td><td>SubQuery construction, pushdown</td></tr>
+<tr><td>Fan-out</td><td>10–100ms</td><td>Dominated by slowest connector</td></tr>
+<tr><td>Merge</td><td>1–20ms</td><td>Hash join, sort</td></tr>
+<tr><td>Serialize</td><td>1–5ms</td><td>JSON encoding</td></tr>
+<tr><td><strong>Total</strong></td><td><strong>15–130ms</strong></td><td></td></tr>
+</tbody></table>
+</div>
+<h2 id="2-connector-trait-design"><a class="header" href="#2-connector-trait-design">2. Connector Trait Design</a></h2>
+<p>Every datasource implements <code>FederatedConnector</code>:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[async_trait]
+pub trait FederatedConnector: Send + Sync + Debug {
+    fn id(&amp;self) -&gt; &amp;str;
+    fn connector_type(&amp;self) -&gt; &amp;str;
+    fn capabilities(&amp;self) -&gt; ConnectorCapabilities;
+    async fn health_check(&amp;self) -&gt; ConnectorHealth;
+    async fn discover_schemas(&amp;self) -&gt; Result&lt;Vec&lt;SchemaInfo&gt;, ConnectorError&gt;;
+    async fn get_schema(&amp;self, table: &amp;str) -&gt; Result&lt;Schema, ConnectorError&gt;;
+    async fn execute(&amp;self, query: &amp;SubQuery) -&gt; Result&lt;Vec&lt;RecordBatch&gt;, ConnectorError&gt;;
+    async fn execute_streaming(&amp;self, query: &amp;SubQuery, tx: Sender&lt;Result&lt;RecordBatch, ConnectorError&gt;&gt;) -&gt; Result&lt;(), ConnectorError&gt;;
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="subquery"><a class="header" href="#subquery">SubQuery</a></h3>
+<p>The planner's output — a connector-agnostic query fragment:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct SubQuery {
+    pub table: String,
+    pub projections: Vec&lt;String&gt;,       // SELECT columns
+    pub filter: Option&lt;FilterExpr&gt;,     // WHERE (tree of And/Or/Not/Comparison/In/IsNull)
+    pub aggregations: Vec&lt;AggregationExpr&gt;,  // GROUP BY aggregates
+    pub group_by: Vec&lt;String&gt;,
+    pub having: Option&lt;FilterExpr&gt;,
+    pub sort: Vec&lt;SortExpr&gt;,
+    pub limit: Option&lt;u64&gt;,
+    pub offset: Option&lt;u64&gt;,
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Each connector translates <code>SubQuery</code> into its native language:</p>
+<div class="table-wrapper"><table><thead><tr><th>Connector</th><th>SubQuery.filter →</th><th>SubQuery.aggregations →</th></tr></thead><tbody>
+<tr><td>OpenSearch</td><td>Query DSL <code>bool.filter</code></td><td><code>aggs</code> with <code>terms</code>/<code>avg</code>/<code>sum</code></td></tr>
+<tr><td>PostgreSQL</td><td>SQL <code>WHERE</code> clause</td><td>SQL <code>GROUP BY</code> + aggregate functions</td></tr>
+<tr><td>DynamoDB</td><td><code>FilterExpression</code> + <code>ExpressionAttributeValues</code></td><td>Client-side (no pushdown)</td></tr>
+<tr><td>Prometheus</td><td>PromQL label matchers + time range</td><td>PromQL <code>rate()</code>, <code>sum()</code></td></tr>
+<tr><td>MongoDB</td><td>BSON <code>$match</code> pipeline stage</td><td><code>$group</code> pipeline stage</td></tr>
+<tr><td>S3 Parquet</td><td>Arrow predicate pushdown on row groups</td><td>Client-side</td></tr>
+</tbody></table>
+</div>
+<h3 id="connectorcapabilities"><a class="header" href="#connectorcapabilities">ConnectorCapabilities</a></h3>
+<p>Declares what the planner can push down:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct ConnectorCapabilities {
+    pub supports_filtering: bool,
+    pub supports_projection: bool,
+    pub supports_aggregation: bool,
+    pub supports_sorting: bool,
+    pub supports_limit: bool,
+    pub supports_join: bool,          // false for all current connectors
+    pub max_concurrent_queries: usize,
+    pub supports_streaming: bool,
+    pub latency_class: LatencyClass,  // Low, Medium, High
+}
+<span class="boring">}</span></code></pre></pre>
+<p>The planner checks capabilities before adding operations to the SubQuery. Unsupported operations stay in the merge phase.</p>
+<h3 id="connectorfactory"><a class="header" href="#connectorfactory">ConnectorFactory</a></h3>
+<p>Connectors are registered via factories:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub trait ConnectorFactory: Send + Sync {
+    fn connector_type(&amp;self) -&gt; &amp;str;
+    fn create(&amp;self, id: &amp;str, config: &amp;serde_json::Value) -&gt; Result&lt;Arc&lt;dyn FederatedConnector&gt;&gt;;
+}
+<span class="boring">}</span></code></pre></pre>
+<p><code>main.rs</code> registers all factories at startup. The <code>ConnectorRegistry</code> maps datasource IDs to connector instances.</p>
+<h2 id="3-query-planner-internals"><a class="header" href="#3-query-planner-internals">3. Query Planner Internals</a></h2>
+<h3 id="parse--logicalplan"><a class="header" href="#parse--logicalplan">Parse → LogicalPlan</a></h3>
+<p>SQL and PPL both produce a DataFusion <code>LogicalPlan</code>:</p>
+<pre><code>SQL: "SELECT service, count(*) FROM cluster_a.logs WHERE status &gt;= 500 GROUP BY service"
+                    ↓ DataFusion parser
+PPL: "source = cluster_a.logs | where status &gt;= 500 | stats count() by service"
+                    ↓ PPL parser → DataFusion plan
+                    
+LogicalPlan::Aggregate {
+    input: LogicalPlan::Filter {
+        predicate: col("status") &gt;= lit(500),
+        input: LogicalPlan::TableScan { table: "cluster_a.logs" }
+    },
+    group_expr: [col("service")],
+    aggr_expr: [count(*)]
+}
+</code></pre>
+<h3 id="rewrite-rules"><a class="header" href="#rewrite-rules">Rewrite Rules</a></h3>
+<p>The optimizer applies rewrite rules before SubQuery construction:</p>
+<ol>
+<li><strong>Predicate pushdown</strong> — move filters as close to the scan as possible</li>
+<li><strong>Projection pruning</strong> — remove unused columns from scans</li>
+<li><strong>Aggregation pushdown</strong> — push GROUP BY to connectors that support it</li>
+<li><strong>Limit pushdown</strong> — push LIMIT to connectors (respecting sort order)</li>
+<li><strong>Sort elimination</strong> — remove sorts that are redundant after a later sort</li>
+<li><strong>Top-N pushdown</strong> — combine ORDER BY + LIMIT into a single pushdown</li>
+</ol>
+<p>Each rule checks <code>ConnectorCapabilities</code> before applying. If a connector doesn't support aggregation, the GROUP BY stays in the merge phase.</p>
+<h3 id="cost-estimation"><a class="header" href="#cost-estimation">Cost Estimation</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct CostEstimate {
+    pub cpu_cost: f64,      // local compute cost
+    pub network_cost: f64,  // data transfer cost
+}
+
+pub fn estimate_remote_cost(
+    caps: &amp;ConnectorCapabilities,
+    stats: &amp;TableStats,
+    workload: &amp;QueryWorkload,
+) -&gt; CostEstimate
+<span class="boring">}</span></code></pre></pre>
+<p>Cost factors:</p>
+<ul>
+<li><strong>Selectivity</strong> — estimated fraction of rows matching filters (default: 0.1 for equality, 0.33 for range)</li>
+<li><strong>Network</strong> — <code>estimated_rows × avg_row_bytes</code> (reduced by projection and filter pushdown)</li>
+<li><strong>Latency class</strong> — Low (1x), Medium (3x), High (10x) multiplier on network cost</li>
+<li><strong>Concurrency</strong> — <code>max_concurrent_queries</code> limits parallel fan-out</li>
+</ul>
+<p>The planner uses costs to decide:</p>
+<ul>
+<li><strong>Join order</strong> — smaller (cheaper) side becomes the build side</li>
+<li><strong>Build vs probe</strong> — build the hash table from the side with fewer estimated rows</li>
+<li><strong>Pushdown depth</strong> — push more operations to high-latency connectors to reduce network cost</li>
+</ul>
+<h2 id="4-join-engine"><a class="header" href="#4-join-engine">4. Join Engine</a></h2>
+<p>Located in <code>crates/fuse-engine/src/join.rs</code>.</p>
+<h3 id="join-types"><a class="header" href="#join-types">Join Types</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Type</th><th>Behavior</th><th>SQL</th></tr></thead><tbody>
+<tr><td><code>Inner</code></td><td>Rows matching in both sides</td><td><code>JOIN</code></td></tr>
+<tr><td><code>Left</code></td><td>All left rows + matching right (NULL if no match)</td><td><code>LEFT JOIN</code></td></tr>
+<tr><td><code>Right</code></td><td>Swaps sides, executes as Left</td><td><code>RIGHT JOIN</code></td></tr>
+<tr><td><code>Full</code></td><td>All rows from both sides, NULLs where no match</td><td><code>FULL OUTER JOIN</code></td></tr>
+<tr><td><code>Semi</code></td><td>Left rows that have a match in right</td><td><code>WHERE EXISTS (...)</code></td></tr>
+<tr><td><code>Anti</code></td><td>Left rows that have NO match in right</td><td><code>WHERE NOT EXISTS (...)</code></td></tr>
+</tbody></table>
+</div>
+<h3 id="join-strategies"><a class="header" href="#join-strategies">Join Strategies</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub enum JoinStrategy {
+    HashJoin,       // Build hash table from build side, probe with probe side
+    SemiJoinPush,   // Extract keys → push IN-list filter → hash join filtered results
+}
+<span class="boring">}</span></code></pre></pre>
+<p><strong>HashJoin flow:</strong></p>
+<ol>
+<li>Collect all RecordBatches from the build side</li>
+<li>Build a <code>HashMap&lt;key_value, Vec&lt;row_index&gt;&gt;</code> from the join key column</li>
+<li>For each probe-side batch, look up each key in the hash table</li>
+<li>Emit matched rows (with NULL padding for outer joins)</li>
+</ol>
+<p><strong>SemiJoinPush flow</strong> (the key Fuse optimization):</p>
+<ol>
+<li>Execute the build side query</li>
+<li>Extract distinct join key values from the result</li>
+<li>Construct an <code>IN (key1, key2, ...)</code> filter</li>
+<li>Push the IN-list filter to the probe side's SubQuery</li>
+<li>Execute the probe side (now filtered — much less data)</li>
+<li>Hash join the two filtered result sets</li>
+</ol>
+<p>SemiJoinPush is chosen when:</p>
+<ul>
+<li>The build side has &lt; 10,000 distinct keys</li>
+<li>The probe-side connector supports <code>IN</code> filter pushdown</li>
+<li>Estimated probe-side reduction &gt; 10x</li>
+</ul>
+<h3 id="build-side-selection"><a class="header" href="#build-side-selection">Build Side Selection</a></h3>
+<p>The planner picks the smaller side as the build side:</p>
+<pre><code>estimated_rows(left) &lt; estimated_rows(right)
+    → left = build, right = probe
+    
+estimated_rows(right) &lt; estimated_rows(left)
+    → right = build, left = probe
+</code></pre>
+<p>For <code>RIGHT JOIN</code>, the engine swaps sides and executes as <code>LEFT JOIN</code>.</p>
+<h2 id="5-caching-layer"><a class="header" href="#5-caching-layer">5. Caching Layer</a></h2>
+<p>Two-tier cache: plan cache (parsed query plans) and result cache (query results).</p>
+<h3 id="plan-cache"><a class="header" href="#plan-cache">Plan Cache</a></h3>
+<p>In-memory LRU. Key: <code>"{format}:{query_text}"</code>. Stores the parsed LogicalPlan and SubQuery list. Avoids re-parsing identical queries.</p>
+<h3 id="result-cache"><a class="header" href="#result-cache">Result Cache</a></h3>
+<p><strong>Single-instance mode:</strong> In-memory LRU with configurable max entries.</p>
+<p><strong>Stateless mode:</strong> Redis with TTL.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub enum RedisResultCache {
+    Redis { pool: Pool&lt;RedisConnectionManager&gt;, ttl: u64 },
+    InMemory { cache: Mutex&lt;LruCache&lt;String, Value&gt;&gt;, ttl: u64 },
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Cache key: <code>"{format}:{query_text}"</code> — same query with different format (sql vs ppl) gets separate cache entries.</p>
+<p>Cache invalidation:</p>
+<ul>
+<li><strong>TTL-based</strong> — entries expire after <code>cache_ttl_secs</code></li>
+<li><strong>Materialized view refresh</strong> — replaces the cached result</li>
+<li><strong>No explicit invalidation</strong> — underlying data changes are not tracked (eventual consistency)</li>
+</ul>
+<h3 id="materialized-view-cache"><a class="header" href="#materialized-view-cache">Materialized View Cache</a></h3>
+<p>Materialized views use a separate <code>MaterializedViewRegistry</code>:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct MaterializedViewRegistry {
+    views: RwLock&lt;HashMap&lt;String, ViewEntry&gt;&gt;,  // name → (def, batches, last_refreshed, status)
+}
+<span class="boring">}</span></code></pre></pre>
+<ul>
+<li>Views store Arrow <code>RecordBatch</code> directly (no serialization overhead)</li>
+<li>Refresh is background: <code>views_needing_refresh()</code> returns stale views, executor re-runs the query</li>
+<li><code>get_stale_ok()</code> serves stale data during refresh (degraded mode)</li>
+<li>In stateless mode, results are serialized to Redis; leader election via <code>SET NX</code> prevents duplicate refreshes</li>
+</ul>
+<h2 id="6-enterprise-middleware-pipeline"><a class="header" href="#6-enterprise-middleware-pipeline">6. Enterprise Middleware Pipeline</a></h2>
+<p>Requests pass through an ordered middleware chain:</p>
+<pre><code>Request → Auth → RateLimit → TenantCheck → Timeout → [Handler] → Audit → Response
+</code></pre>
+<h3 id="auth-authrs"><a class="header" href="#auth-authrs">Auth (<code>auth.rs</code>)</a></h3>
+<ol>
+<li>Extract key from <code>x-api-key</code> header or <code>Authorization: Bearer</code> header</li>
+<li>Look up <code>AuthIdentity { identity, role }</code> from API key registry</li>
+<li>Attach identity to request extensions for downstream use</li>
+<li>Public endpoints (<code>/health</code>, <code>/metrics</code>) skip auth</li>
+</ol>
+<h3 id="rate-limiter-rate_limitrs"><a class="header" href="#rate-limiter-rate_limitrs">Rate Limiter (<code>rate_limit.rs</code>)</a></h3>
+<p>Uses the <code>governor</code> crate (token bucket algorithm):</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Two limiters:
+RateLimiter&lt;NotKeyed, InMemoryState, DefaultClock&gt;           // global
+RateLimiter&lt;String, DefaultKeyedStateStore&lt;String&gt;, DefaultClock&gt;  // per-IP
+<span class="boring">}</span></code></pre></pre>
+<p>IP detection: <code>X-Forwarded-For</code> → <code>X-Real-IP</code> → socket address. Returns 429 with <code>Retry-After</code> header.</p>
+<h3 id="tenant-check-tenantrs"><a class="header" href="#tenant-check-tenantrs">Tenant Check (<code>tenant.rs</code>)</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn can_access(&amp;self, datasource_id: &amp;str) -&gt; bool {
+    self.allowed_datasources.is_empty() || self.allowed_datasources.contains(datasource_id)
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Empty allowlist = admin (access to everything). The check runs after parsing, before fan-out — rejected datasources return 403 without touching the connector.</p>
+<h3 id="query-governor"><a class="header" href="#query-governor">Query Governor</a></h3>
+<p>Per-tenant limits applied during execution:</p>
+<ul>
+<li><code>max_time_ms</code> → sets a <code>tokio::time::timeout</code> wrapper around the query</li>
+<li><code>max_rows</code> → <code>min(query.limit, tenant.max_rows)</code> applied to SubQuery</li>
+<li><code>max_result_bytes</code> → checked after execution, returns error if exceeded</li>
+</ul>
+<h3 id="audit-auditrs"><a class="header" href="#audit-auditrs">Audit (<code>audit.rs</code>)</a></h3>
+<p>Records every API action as a structured entry:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct AuditEntry {
+    pub timestamp: u64,
+    pub identity: String,
+    pub action: AuditAction,    // Query, Explain, Validate, ListDatasources, ...
+    pub status: AuditStatus,    // Success, Error, Denied
+    pub duration_ms: u64,
+    pub row_count: Option&lt;u64&gt;,
+    pub query: Option&lt;String&gt;,
+    pub error: Option&lt;String&gt;,
+    pub client_ip: Option&lt;String&gt;,
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Emitted via <code>tracing</code> as structured JSON. Also stored in an in-memory ring buffer for the <code>/api/fuse/history</code> endpoint.</p>
+<h2 id="7-wasm-plugin-sandbox"><a class="header" href="#7-wasm-plugin-sandbox">7. WASM Plugin Sandbox</a></h2>
+<p>Plugins run in a wasmtime WebAssembly runtime with strict isolation:</p>
+<pre><code>┌─────────────────────────────────────┐
+│ Fuse Server Process                 │
+│                                     │
+│  ┌───────────────────────────────┐  │
+│  │ wasmtime Runtime              │  │
+│  │  ┌─────────────────────────┐  │  │
+│  │  │ Plugin Instance         │  │  │
+│  │  │  - 256MB memory limit   │  │  │
+│  │  │  - No filesystem access │  │  │
+│  │  │  - No raw network       │  │  │
+│  │  │  - SDK host functions   │  │  │
+│  │  └─────────────────────────┘  │  │
+│  └───────────────────────────────┘  │
+│                                     │
+│  Host functions exposed to WASM:    │
+│  - http_get(url) → bytes           │
+│  - http_post(url, body) → bytes    │
+│  - log(level, message)             │
+└─────────────────────────────────────┘
+</code></pre>
+<h3 id="plugin-loading"><a class="header" href="#plugin-loading">Plugin Loading</a></h3>
+<ol>
+<li>Scan <code>plugins/</code> directory for <code>manifest.toml</code> files</li>
+<li>Parse manifest: name, version, connector_type, wasm path, config schema</li>
+<li>Compile <code>.wasm</code> module with wasmtime (cached after first compile)</li>
+<li>Instantiate with memory limits and host function imports</li>
+<li>Call <code>init(config)</code> with datasource config from <code>fuse.toml</code></li>
+<li>Register as a <code>FederatedConnector</code> in the <code>ConnectorRegistry</code></li>
+</ol>
+<h3 id="execution-flow"><a class="header" href="#execution-flow">Execution Flow</a></h3>
+<pre><code>SubQuery → serialize to JSON → call plugin.execute(json) via WASM
+         → plugin translates to native query
+         → plugin calls http_get/http_post (host function)
+         → plugin returns Arrow IPC bytes
+         → deserialize to RecordBatch
+</code></pre>
+<p>Plugins execute on a blocking thread (<code>tokio::task::spawn_blocking</code>) since WASM execution is synchronous.</p>
+<h2 id="8-extension-points-for-contributors"><a class="header" href="#8-extension-points-for-contributors">8. Extension Points for Contributors</a></h2>
+<h3 id="add-a-new-built-in-connector"><a class="header" href="#add-a-new-built-in-connector">Add a New Built-In Connector</a></h3>
+<ol>
+<li>Create <code>crates/fuse-connectors/my-source/</code></li>
+<li>Implement <code>FederatedConnector</code> trait</li>
+<li>Implement <code>ConnectorFactory</code> trait</li>
+<li>Register factory in <code>main.rs</code></li>
+<li>Add integration tests in <code>crates/fuse-connectors/my-source/tests/</code></li>
+</ol>
+<p>Key files to modify:</p>
+<ul>
+<li><code>Cargo.toml</code> (workspace members)</li>
+<li><code>crates/fuse-server/src/main.rs</code> (factory registration)</li>
+<li><code>docs-site/src/connectors.md</code> (documentation)</li>
+</ul>
+<p>See <a href="./connector-development-guide.html">Connector Development Guide</a>.</p>
+<h3 id="add-a-new-sql-function"><a class="header" href="#add-a-new-sql-function">Add a New SQL Function</a></h3>
+<ol>
+<li>Register the function in <code>crates/fuse-engine/src/</code> via DataFusion's UDF API</li>
+<li>Add pushdown translation in relevant connectors (if the function maps to a native operation)</li>
+<li>Add tests</li>
+</ol>
+<h3 id="add-a-new-rewrite-rule"><a class="header" href="#add-a-new-rewrite-rule">Add a New Rewrite Rule</a></h3>
+<ol>
+<li>Add rule in <code>crates/fuse-engine/src/optimizer.rs</code></li>
+<li>Rules implement DataFusion's <code>OptimizerRule</code> trait</li>
+<li>Check <code>ConnectorCapabilities</code> before applying pushdown</li>
+<li>Add cost model adjustments in <code>crates/fuse-engine/src/cost.rs</code></li>
+</ol>
+<h3 id="add-a-new-api-endpoint"><a class="header" href="#add-a-new-api-endpoint">Add a New API Endpoint</a></h3>
+<ol>
+<li>Add handler in <code>crates/fuse-server/src/api.rs</code></li>
+<li>Add route in <code>crates/fuse-server/src/lib.rs</code></li>
+<li>Add audit action variant in <code>crates/fuse-server/src/audit.rs</code></li>
+<li>Add role check if the endpoint requires specific permissions</li>
+<li>Update OpenAPI spec at <code>docs/api/openapi.yaml</code></li>
+</ol>
+<h3 id="crate-map"><a class="header" href="#crate-map">Crate Map</a></h3>
+<pre><code>crates/
+├── fuse-core/           ← traits, types, config, error (no business logic)
+│   ├── connector.rs     ← FederatedConnector, SubQuery, FilterExpr
+│   ├── registry.rs      ← ConnectorRegistry, ConnectorFactory
+│   ├── config.rs        ← FuseConfig, EngineConfig
+│   └── materialized_view.rs ← MaterializedViewRegistry
+├── fuse-engine/         ← query planning and execution
+│   ├── planner.rs       ← LogicalPlan → SubQuery conversion
+│   ├── optimizer.rs     ← pushdown rules
+│   ├── cost.rs          ← cost estimation
+│   ├── join.rs          ← HashJoin, SemiJoinPush
+│   ├── merger.rs        ← UNION ALL, re-aggregation
+│   ├── rewrite.rs       ← SQL rewrite rules
+│   ├── anomaly.rs       ← anomaly detection primitives
+│   └── plan.rs          ← PlanNode (EXPLAIN output)
+├── fuse-server/         ← HTTP server, middleware, API
+│   ├── api.rs           ← all endpoint handlers
+│   ├── auth.rs          ← API key auth, RBAC
+│   ├── tenant.rs        ← multi-tenancy isolation
+│   ├── audit.rs         ← audit logging
+│   ├── rate_limit.rs    ← governor-based rate limiting
+│   ├── redis_cache.rs   ← Redis/in-memory result cache
+│   └── main.rs          ← startup, factory registration
+└── fuse-connectors/     ← one sub-crate per connector type
+    ├── opensearch/
+    ├── postgres/        ← also MySQL, Redshift, SQLite
+    ├── dynamodb/
+    ├── s3/
+    ├── prometheus/
+    └── ...
+</code></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="plugin-development.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="community-guide.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="plugin-development.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="community-guide.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>
