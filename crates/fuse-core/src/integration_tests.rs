@@ -404,3 +404,160 @@ mod edge_case_tests {
         assert!(!plan_printer::print_plan(&optimized.root, 0).contains("Limit"));
     }
 }
+
+
+#[cfg(test)]
+mod advanced_tests {
+    use crate::plan_builder::PlanBuilder;
+    use crate::plan_visitor;
+    use crate::plan_merge::{MergedPlan, SubPlan};
+    use crate::plan_builder::PlanOp;
+    use crate::predicate::Predicate;
+    use crate::scalar_expr::ScalarExpr;
+    use crate::cost_model;
+    use crate::plan_compare;
+    use crate::type_map::{self, DataType};
+    use crate::expr::{self, CompareOp};
+    use serde_json::json;
+
+    #[test]
+    fn test_plan_chain_all_ops() {
+        let plan = PlanBuilder::scan("ds", "t")
+            .filter(&Predicate::gt("x", "0"))
+            .project(vec!["x", "y"])
+            .sort("x", false)
+            .limit(100)
+            .build();
+        assert_eq!(plan_visitor::node_count(&plan.root), 5);
+        assert!(plan_visitor::has_filter(&plan.root));
+    }
+
+    #[test]
+    fn test_merged_plan_three_way_union() {
+        let plan = MergedPlan::union(vec![
+            SubPlan { datasource: "a".into(), plan: PlanOp::Scan { datasource: "a".into(), table: "t".into() } },
+            SubPlan { datasource: "b".into(), plan: PlanOp::Scan { datasource: "b".into(), table: "t".into() } },
+            SubPlan { datasource: "c".into(), plan: PlanOp::Scan { datasource: "c".into(), table: "t".into() } },
+        ]);
+        assert_eq!(plan.datasource_count(), 3);
+    }
+
+    #[test]
+    fn test_cost_join_vs_scan() {
+        let scan = cost_model::scan_cost(100, 3);
+        let join = cost_model::join_cost(1000, 500);
+        assert!(join.estimated_cost > scan.estimated_cost);
+    }
+
+    #[test]
+    fn test_cheapest_single() {
+        let plans = vec![cost_model::scan_cost(100, 5)];
+        assert_eq!(plan_compare::cheapest(&plans), Some(0));
+    }
+
+    #[test]
+    fn test_scalar_nested_binary() {
+        let expr = ScalarExpr::col("a").gt(ScalarExpr::lit("5"));
+        let sql = expr.to_sql();
+        assert!(sql.contains(">"));
+    }
+
+    #[test]
+    fn test_predicate_and_empty() {
+        let p = Predicate::and(vec![]);
+        assert_eq!(p.to_sql(), "");
+    }
+
+    #[test]
+    fn test_type_same_compatible() {
+        assert!(type_map::types_compatible(&DataType::Utf8, &DataType::Utf8));
+        assert!(type_map::types_compatible(&DataType::Boolean, &DataType::Boolean));
+    }
+
+    #[test]
+    fn test_type_int_float_compatible() {
+        assert!(type_map::types_compatible(&DataType::Int32, &DataType::Float64));
+    }
+
+    #[test]
+    fn test_compare_lt() {
+        assert!(expr::compare(&json!(5), &CompareOp::Lt, &json!(10)));
+        assert!(!expr::compare(&json!(10), &CompareOp::Lt, &json!(5)));
+    }
+
+    #[test]
+    fn test_compare_gte() {
+        assert!(expr::compare(&json!(10), &CompareOp::Gte, &json!(10)));
+        assert!(expr::compare(&json!(11), &CompareOp::Gte, &json!(10)));
+    }
+
+    #[test]
+    fn test_compare_lte() {
+        assert!(expr::compare(&json!(10), &CompareOp::Lte, &json!(10)));
+        assert!(!expr::compare(&json!(11), &CompareOp::Lte, &json!(10)));
+    }
+
+    #[test]
+    fn test_url_parse_mongodb() {
+        let u = crate::url::ConnectorUrl::parse("mongodb://host:27017/mydb").unwrap();
+        assert_eq!(u.scheme, "mongodb");
+        assert_eq!(u.port, Some(27017));
+    }
+
+    #[test]
+    fn test_schema_compat_empty() {
+        assert!(crate::schema_compat::check_compatibility(&[], &[]).compatible);
+    }
+
+    #[test]
+    fn test_schema_compat_superset() {
+        let left = vec!["a".into(), "b".into(), "c".into()];
+        let right = vec!["a".into(), "b".into()];
+        let r = crate::schema_compat::check_compatibility(&left, &right);
+        assert!(!r.compatible);
+        assert_eq!(r.left_only.len(), 1);
+    }
+
+    #[test]
+    fn test_dependency_graph_self_join() {
+        let g = crate::dependency_graph::DependencyGraph::new();
+        g.record(&["ds".into(), "ds".into()]);
+        assert!(g.top_pairs(10).is_empty()); // deduped, no pair
+    }
+
+    #[test]
+    fn test_metadata_cache_invalidate() {
+        let c = crate::metadata_cache::MetadataCache::new(60);
+        c.set_tables("pg", vec!["t".into()]);
+        c.invalidate("pg");
+        assert!(c.get_tables("pg").is_none());
+    }
+
+    #[test]
+    fn test_health_history_avg_latency() {
+        let h = crate::health_history::HealthHistory::new(10);
+        h.record("ds", true, Some(10));
+        h.record("ds", true, Some(30));
+        assert_eq!(h.avg_latency("ds"), Some(20));
+    }
+
+    #[test]
+    fn test_query_stats_multiple_ds() {
+        let s = crate::query_stats::StatsCollector::new();
+        s.record("a", true, 10, 5);
+        s.record("b", false, 0, 100);
+        assert_eq!(s.all().len(), 2);
+    }
+
+    #[test]
+    fn test_config_validator_postgres() {
+        let mut props = std::collections::HashMap::new();
+        props.insert("url".into(), "postgresql://localhost/db".into());
+        assert!(crate::config_validator::validate_connector_config("pg", "postgres", &props).is_empty());
+    }
+
+    #[test]
+    fn test_limit_pushdown_offset() {
+        assert_eq!(crate::limit_pushdown::offset_fetch_limit(50, 100), 150);
+    }
+}
