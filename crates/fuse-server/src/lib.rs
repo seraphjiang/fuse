@@ -20,6 +20,7 @@ pub mod autocomplete;
 pub mod complexity;
 pub mod coercer;
 pub mod column_stats;
+pub mod cache_key;
 pub mod capability_summary;
 pub mod circuit_breaker;pub mod config_watch;
 pub mod cors;
