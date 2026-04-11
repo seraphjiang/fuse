@@ -81,6 +81,8 @@ pub struct AppState {
     pub shared_history: SharedQueryHistory,
     pub shared_audit_log: SharedAuditLog,
     pub transactions: Arc<TransactionStore>,
+    /// Global max result size in bytes (0 = unlimited). From engine.max_result_bytes.
+    pub max_result_bytes: u64,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.
@@ -1058,6 +1060,17 @@ pub async fn query_handler(
             let total_rows = row_count as u64;
             let result_bytes: u64 = batches.iter().map(|b| b.get_array_memory_size() as u64).sum();
             let elapsed_ms = t0.elapsed().as_millis() as u64;
+
+            // Global result size limit
+            if state.max_result_bytes > 0 && result_bytes > state.max_result_bytes {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({
+                        "error": format!("result size {} bytes exceeds max_result_bytes limit of {} bytes", result_bytes, state.max_result_bytes),
+                        "query_id": query_id,
+                    })),
+                ).into_response();
+            }
 
             // Query governor: enforce tenant resource limits
             if let Some(ref tid) = tenant_id {
@@ -2517,6 +2530,24 @@ pub fn build_sub_query(
 }
 
 /// Convert Arrow RecordBatches to JSON columns + rows.
+/// Estimate total size of record batches in bytes.
+fn estimate_batches_size(batches: &[arrow::record_batch::RecordBatch]) -> u64 {
+    batches.iter().map(|b| {
+        b.columns().iter().map(|a| a.get_array_memory_size() as u64).sum::<u64>()
+    }).sum()
+}
+
+/// Check if result exceeds max_result_bytes. Returns Err with message if exceeded.
+fn check_result_size(batches: &[arrow::record_batch::RecordBatch], max_bytes: u64) -> Result<(), String> {
+    if max_bytes == 0 { return Ok(()); }
+    let size = estimate_batches_size(batches);
+    if size > max_bytes {
+        Err(format!("result size {} bytes exceeds max_result_bytes limit of {} bytes", size, max_bytes))
+    } else {
+        Ok(())
+    }
+}
+
 fn batches_to_json(
     batches: &[arrow::record_batch::RecordBatch],
 ) -> (Vec<String>, Vec<Vec<serde_json::Value>>) {
@@ -2605,6 +2636,25 @@ pub async fn history_handler(State(state): State<Arc<AppState>>) -> impl IntoRes
 /// GET /api/fuse/stats — aggregated query statistics.
 pub async fn stats_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     Json(state.history.stats())
+}
+
+/// GET /api/fuse/federation — return federation topology.
+pub async fn federation_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let registry = crate::federation::FederationRegistry::new();
+    for conn in state.registry.list() {
+        if conn.connector_type() == "fuse" {
+            registry.register(crate::federation::FederatedInstance {
+                id: conn.id().to_string(),
+                name: Some(conn.id().to_string()),
+                url: String::new(),
+                status: crate::federation::InstanceStatus::Healthy,
+                datasources: vec![],
+                latency_ms: None,
+                last_checked: None,
+            });
+        }
+    }
+    Json(registry.topology())
 }
 
 // ── Saved query handlers ──

@@ -175,6 +175,7 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/api/fuse/views/{name}", get(api::get_view).delete(api::delete_view))
         .route("/api/fuse/views/{name}/refresh", post(api::refresh_view))
         .route("/api/fuse/trace/{trace_id}", get(api::trace_handler))
+        .route("/api/fuse/federation", get(api::federation_handler))
         .route("/metrics", get(metrics::metrics_handler))
         // Alert rules CRUD — nested with AlertMonitor state
         .nest("/api/fuse/alert-rules", build_alert_routes(state.clone()))
