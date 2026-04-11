@@ -963,3 +963,36 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+
+  /api/fuse/info:
+    get:
+      summary: Server info
+      description: Returns server version, uptime, connector count, and feature flags
+      operationId: getInfo
+      responses:
+        "200":
+          description: Server information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version: { type: string }
+                  uptime_secs: { type: integer }
+                  connectors: { type: integer }
+                  features: { type: object }
+
+  /api/fuse/cache:
+    delete:
+      summary: Clear result cache
+      description: Flush all cached query results
+      operationId: clearCache
+      responses:
+        "200":
+          description: Cache cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cleared: { type: boolean }
