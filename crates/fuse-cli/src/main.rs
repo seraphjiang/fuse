@@ -274,4 +274,40 @@ mod tests {
         let cli = Cli::parse_from(["fuse", "--url", "http://fuse:9400", "health"]);
         assert_eq!(cli.url, "http://fuse:9400");
     }
+
+    #[test]
+    fn test_cli_no_subcommand_fails() {
+        let result = Cli::try_parse_from(["fuse"]);
+        assert!(result.is_err(), "missing subcommand should fail");
+    }
+
+    #[test]
+    fn test_cli_query_missing_arg_fails() {
+        let result = Cli::try_parse_from(["fuse", "query"]);
+        assert!(result.is_err(), "query without string should fail");
+    }
+
+    #[test]
+    fn test_cli_explain_missing_arg_fails() {
+        let result = Cli::try_parse_from(["fuse", "explain"]);
+        assert!(result.is_err(), "explain without string should fail");
+    }
+
+    #[test]
+    fn test_cli_unknown_subcommand_fails() {
+        let result = Cli::try_parse_from(["fuse", "bogus"]);
+        assert!(result.is_err(), "unknown subcommand should fail");
+    }
+
+    #[test]
+    fn test_cli_datasources_table_without_ds() {
+        // Can't provide table without datasource (positional order)
+        let cli = Cli::parse_from(["fuse", "datasources", "myds"]);
+        if let Command::Datasources { datasource, table } = cli.command {
+            assert_eq!(datasource.as_deref(), Some("myds"));
+            assert!(table.is_none());
+        } else {
+            panic!("expected Datasources");
+        }
+    }
 }
