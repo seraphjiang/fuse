@@ -24,6 +24,9 @@ pub struct EngineConfig {
     pub rate_limit_global: u32,
     #[serde(default = "default_rate_limit_per_ip")]
     pub rate_limit_per_ip: u32,
+    /// Allowed CORS origins. Empty = same-origin only. Use ["*"] for any origin.
+    #[serde(default)]
+    pub cors_origins: Vec<String>,
 }
 
 fn default_bind() -> String {

@@ -6,6 +6,7 @@ pub mod alert_monitor;
 pub mod api;
 pub mod audit;
 pub mod auth;
+pub mod cors;
 pub mod federation;
 pub mod health;
 pub mod history;
