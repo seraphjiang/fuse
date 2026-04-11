@@ -51,7 +51,7 @@
       "properties": {
         "fuse.serverUrl": {
           "type": "string",
-          "default": "http://localhost:3000",
+          "default": "http://localhost:9400",
           "description": "Fuse server URL"
         },
         "fuse.defaultFormat": {

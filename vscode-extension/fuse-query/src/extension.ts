@@ -7,7 +7,7 @@ import * as https from 'https';
 function getConfig() {
   const cfg = vscode.workspace.getConfiguration('fuse');
   return {
-    serverUrl: cfg.get<string>('serverUrl', 'http://localhost:3000'),
+    serverUrl: cfg.get<string>('serverUrl', 'http://localhost:9400'),
     defaultFormat: cfg.get<string>('defaultFormat', 'sql'),
   };
 }
@@ -271,7 +271,7 @@ class FuseCompletionProvider implements vscode.CompletionItemProvider {
 
     // PPL commands
     if (doc.languageId === 'fuseppl') {
-      for (const cmd of ['source', 'search', 'where', 'fields', 'stats', 'sort', 'dedup', 'eval', 'head', 'top', 'rare', 'rename', 'parse', 'grok']) {
+      for (const cmd of ['source', 'search', 'where', 'fields', 'stats', 'sort', 'dedup', 'eval', 'head', 'top', 'rare', 'rename', 'parse', 'grok', 'lookup']) {
         const item = new vscode.CompletionItem(cmd, vscode.CompletionItemKind.Function);
         item.detail = 'PPL command';
         items.push(item);

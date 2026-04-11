@@ -31,7 +31,7 @@ Query editor for the Fuse federated query engine with syntax highlighting, execu
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `fuse.serverUrl` | `http://localhost:3000` | Fuse server URL |
+| `fuse.serverUrl` | `http://localhost:9400` | Fuse server URL |
 | `fuse.defaultFormat` | `sql` | Default query format (`sql` or `ppl`) |
 
 ## Development
