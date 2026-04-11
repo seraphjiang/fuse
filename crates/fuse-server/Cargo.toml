@@ -21,6 +21,7 @@ fuse-connector-cloudwatch = { path = "../fuse-connectors/cloudwatch" }
 fuse-connector-csv-json = { path = "../fuse-connectors/csv-json" }
 fuse-connector-redis = { path = "../fuse-connectors/redis" }
 redis = { workspace = true }
+wasmtime = { workspace = true }
 arrow = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }
@@ -41,3 +42,5 @@ anyhow = { workspace = true }
 async-trait = { workspace = true }
 
 [dev-dependencies]
+fuse-connector-kafka = { path = "../fuse-connectors/kafka" }
+toml = { workspace = true }
