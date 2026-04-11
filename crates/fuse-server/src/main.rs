@@ -11,8 +11,8 @@ use fuse_connector_s3_o11y::S3O11yConnectorFactory;
 use fuse_connector_dynamodb::DynamoDbConnectorFactory;
 use fuse_connector_postgres::{PostgresConnectorFactory, MysqlConnectorFactory, RedshiftConnectorFactory, SqliteConnectorFactory};
 use fuse_connector_elasticsearch::ElasticsearchConnectorFactory;
-// use fuse_connector_mongodb::MongoDbConnectorFactory;  // blocked
-// use fuse_connector_influxdb  // blocked::InfluxDbConnectorFactory;
+use fuse_connector_mongodb::MongoDbConnectorFactory;
+use fuse_connector_influxdb::InfluxDbConnectorFactory;
 use fuse_connector_clickhouse::ClickHouseConnectorFactory;
 use fuse_connector_cloudwatch::CloudWatchConnectorFactory;
 use fuse_connector_csv_json::CsvJsonConnectorFactory;
@@ -66,8 +66,8 @@ async fn main() -> anyhow::Result<()> {
         Box::new(RedshiftConnectorFactory),
         Box::new(SqliteConnectorFactory),
         Box::new(ElasticsearchConnectorFactory),
-        // Box::new(MongoDbConnectorFactory),  // blocked
-        // Box::new(InfluxDbConnectorFactory),  // blocked
+        Box::new(MongoDbConnectorFactory),
+        Box::new(InfluxDbConnectorFactory),
         Box::new(ClickHouseConnectorFactory),
         Box::new(CloudWatchConnectorFactory),
         Box::new(CsvJsonConnectorFactory),

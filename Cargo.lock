@@ -3162,6 +3162,7 @@ dependencies = [
  "fuse-connector-duckdb",
  "fuse-connector-dynamodb",
  "fuse-connector-elasticsearch",
+ "fuse-connector-influxdb",
  "fuse-connector-mongodb",
  "fuse-connector-opensearch",
  "fuse-connector-postgres",

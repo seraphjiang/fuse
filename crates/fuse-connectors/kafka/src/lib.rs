@@ -5,7 +5,6 @@
 //! - JSON message parsing with field extraction
 //! - Filter by key, timestamp range
 //! - Projection pushdown (select specific JSON fields)
-//! - Configurable: brokers, SASL auth
 
 use std::fmt;
 use std::sync::Arc;
@@ -15,7 +14,7 @@ use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use async_trait::async_trait;
 use rskafka::client::ClientBuilder;
-use rskafka::client::partition::OffsetAt;
+use rskafka::client::partition::{OffsetAt, UnknownTopicHandling};
 use tokio::sync::mpsc;
 use tracing::debug;
 
@@ -23,8 +22,6 @@ use fuse_core::config::ConnectorConfig;
 use fuse_core::connector::*;
 use fuse_core::error::ConnectorError;
 use fuse_core::registry::ConnectorFactory;
-
-// ── Connector ─────────────────────────────────────────────────────────────────
 
 pub struct KafkaConnector {
     id: String,
@@ -41,9 +38,19 @@ impl KafkaConnector {
     pub fn from_config(config: &ConnectorConfig) -> Result<Self, ConnectorError> {
         let brokers_str = config.properties.get("brokers")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ConnectorError::Config("kafka: 'brokers' required".into()))?;
+            .ok_or_else(|| ConnectorError::Connection("kafka: 'brokers' required".into()))?;
         let brokers: Vec<String> = brokers_str.split(',').map(|s| s.trim().to_string()).collect();
         Ok(Self { id: config.id.clone(), brokers })
+    }
+
+    fn kafka_schema() -> Schema {
+        Schema::new(vec![
+            Field::new("_key", DataType::Utf8, true),
+            Field::new("_partition", DataType::Int64, false),
+            Field::new("_offset", DataType::Int64, false),
+            Field::new("_timestamp", DataType::Int64, false),
+            Field::new("_payload", DataType::Utf8, true),
+        ])
     }
 
     async fn consume_topic(
@@ -53,16 +60,13 @@ impl KafkaConnector {
         filter: &Option<FilterExpr>,
         limit: Option<u64>,
     ) -> Result<Vec<RecordBatch>, ConnectorError> {
-        let client = ClientBuilder::new(self.brokers.clone())
-            .build()
-            .await
-            .map_err(|e| ConnectorError::Connection(format!("kafka connect: {e}")))?;
+        let client = ClientBuilder::new(self.brokers.clone()).build().await
+            .map_err(|e| ConnectorError::Connection(format!("kafka: {e}")))?;
 
-        // Get partition count
         let topics = client.list_topics().await
-            .map_err(|e| ConnectorError::Connection(format!("kafka list topics: {e}")))?;
+            .map_err(|e| ConnectorError::Connection(format!("kafka topics: {e}")))?;
         let topic_info = topics.iter().find(|t| t.name == topic)
-            .ok_or_else(|| ConnectorError::Query(format!("topic '{}' not found", topic)))?;
+            .ok_or_else(|| ConnectorError::QueryFailed(format!("topic '{}' not found", topic)))?;
 
         let max_msgs = limit.unwrap_or(1000) as usize;
         let mut keys: Vec<Option<String>> = Vec::new();
@@ -71,38 +75,33 @@ impl KafkaConnector {
         let mut timestamps_col: Vec<i64> = Vec::new();
         let mut payloads: Vec<Option<String>> = Vec::new();
 
-        // Consume from each partition
         for pid in 0..topic_info.partitions.len() as i32 {
             if keys.len() >= max_msgs { break; }
 
-            let pc = client.partition_client(topic, pid, Default::default()).await
+            let pc = client.partition_client(topic, pid, UnknownTopicHandling::Error).await
                 .map_err(|e| ConnectorError::Connection(format!("kafka partition {pid}: {e}")))?;
 
             let start = pc.get_offset(OffsetAt::Earliest).await.unwrap_or(0);
             let end = pc.get_offset(OffsetAt::Latest).await.unwrap_or(0);
             if start >= end { continue; }
 
-            let remaining = max_msgs - keys.len();
-            let fetch_count = ((end - start) as usize).min(remaining).min(10_000);
-            if fetch_count == 0 { continue; }
+            let remaining = (max_msgs - keys.len()) as i32;
+            let records = pc.fetch_records(start, 1..1_048_576, remaining).await
+                .map_err(|e| ConnectorError::QueryFailed(format!("kafka fetch: {e}")))?;
 
-            let records = pc.fetch_records(start, 1..1_048_576, fetch_count as i32)
-                .await
-                .map_err(|e| ConnectorError::Query(format!("kafka fetch: {e}")))?;
-
-            for (record, offset) in records.0.iter().zip(records.1.iter()) {
+            for rao in &records.0 {
                 if keys.len() >= max_msgs { break; }
 
-                let key = record.key.as_ref().map(|k| String::from_utf8_lossy(k).to_string());
-                let ts = record.timestamp.timestamp_millis();
-                let payload = record.value.as_ref().map(|v| String::from_utf8_lossy(v).to_string());
+                let key = rao.record.key.as_ref().map(|k| String::from_utf8_lossy(k).to_string());
+                let ts = rao.record.timestamp.timestamp_millis();
+                let payload = rao.record.value.as_ref().map(|v| String::from_utf8_lossy(v).to_string());
 
                 if let Some(ref f) = filter {
                     if !matches_filter(f, key.as_deref(), ts) { continue; }
                 }
 
                 keys.push(key);
-                offsets_col.push(*offset);
+                offsets_col.push(rao.offset);
                 partitions_col.push(pid as i64);
                 timestamps_col.push(ts);
                 payloads.push(payload);
@@ -111,7 +110,6 @@ impl KafkaConnector {
 
         if keys.is_empty() { return Ok(vec![]); }
 
-        // Build Arrow batch
         let mut fields = Vec::new();
         let mut columns: Vec<ArrayRef> = Vec::new();
         let all = projections.is_empty();
@@ -155,12 +153,11 @@ impl KafkaConnector {
 
         let schema = Arc::new(Schema::new(fields));
         let batch = RecordBatch::try_new(schema, columns)
-            .map_err(|e| ConnectorError::Internal(format!("arrow: {e}")))?;
+            .map_err(|e| ConnectorError::QueryFailed(format!("arrow: {e}")))?;
         Ok(vec![batch])
     }
 }
 
-/// Simple filter matching on key and timestamp.
 fn matches_filter(filter: &FilterExpr, key: Option<&str>, timestamp: i64) -> bool {
     match filter {
         FilterExpr::Comparison { field, op, value } => match field.as_str() {
@@ -201,20 +198,25 @@ impl FederatedConnector for KafkaConnector {
 
     fn capabilities(&self) -> ConnectorCapabilities {
         ConnectorCapabilities {
-            filter_pushdown: true,
-            projection_pushdown: true,
-            limit_pushdown: true,
-            ..Default::default()
+            supports_filtering: true,
+            supports_projection: true,
+            supports_aggregation: false,
+            supports_sorting: false,
+            supports_limit: true,
+            supports_join: false,
+            max_concurrent_queries: 8,
+            supports_streaming: true,
+            latency_class: LatencyClass::Medium,
         }
     }
 
     async fn health_check(&self) -> ConnectorHealth {
         match ClientBuilder::new(self.brokers.clone()).build().await {
             Ok(c) => match c.list_topics().await {
-                Ok(_) => ConnectorHealth::healthy(),
-                Err(e) => ConnectorHealth::unhealthy(format!("kafka: {e}")),
+                Ok(_) => ConnectorHealth { status: HealthStatus::Healthy, latency_ms: None, message: None },
+                Err(e) => ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some(format!("{e}")) },
             },
-            Err(e) => ConnectorHealth::unhealthy(format!("kafka: {e}")),
+            Err(e) => ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some(format!("{e}")) },
         }
     }
 
@@ -224,18 +226,14 @@ impl FederatedConnector for KafkaConnector {
         let topics = client.list_topics().await
             .map_err(|e| ConnectorError::Connection(format!("kafka: {e}")))?;
 
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("_key", DataType::Utf8, true),
-            Field::new("_partition", DataType::Int64, false),
-            Field::new("_offset", DataType::Int64, false),
-            Field::new("_timestamp", DataType::Int64, false),
-            Field::new("_payload", DataType::Utf8, true),
-        ]));
-
         Ok(topics.iter()
             .filter(|t| !t.name.starts_with("__"))
-            .map(|t| SchemaInfo { name: t.name.clone(), schema: schema.clone() })
+            .map(|t| SchemaInfo { name: t.name.clone(), schema_type: SchemaType::Table, estimated_row_count: None })
             .collect())
+    }
+
+    async fn get_schema(&self, _table: &str) -> Result<Schema, ConnectorError> {
+        Ok(Self::kafka_schema())
     }
 
     async fn execute(&self, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
@@ -255,8 +253,6 @@ impl FederatedConnector for KafkaConnector {
     }
 }
 
-// ── Factory ───────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Default)]
 pub struct KafkaConnectorFactory;
 
@@ -267,8 +263,6 @@ impl ConnectorFactory for KafkaConnectorFactory {
         Ok(Arc::new(KafkaConnector::from_config(config)?))
     }
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -311,9 +305,19 @@ mod tests {
     fn test_capabilities() {
         let c = KafkaConnector::from_config(&test_config("localhost:9092")).unwrap();
         let caps = c.capabilities();
-        assert!(caps.filter_pushdown);
-        assert!(caps.projection_pushdown);
-        assert!(caps.limit_pushdown);
+        assert!(caps.supports_filtering);
+        assert!(caps.supports_projection);
+        assert!(caps.supports_limit);
+        assert!(caps.supports_streaming);
+        assert!(!caps.supports_aggregation);
+    }
+
+    #[test]
+    fn test_get_schema() {
+        let schema = KafkaConnector::kafka_schema();
+        assert_eq!(schema.fields().len(), 5);
+        assert!(schema.field_with_name("_key").is_ok());
+        assert!(schema.field_with_name("_payload").is_ok());
     }
 
     #[test]

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuse — Terminal</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;background:#0d1117;color:#e1e4e8;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;padding:8px 16px;border-bottom:1px solid #21262d;background:#161b22;font-family:-apple-system,BlinkMacSystemFont,sans-serif}
+header h1{font-size:16px;font-weight:600;color:#58a6ff}
+.nav-tabs{display:flex;gap:0;margin-left:16px}.nav-tab{padding:6px 14px;font-size:12px;color:#8b949e;text-decoration:none;border-bottom:2px solid transparent;font-family:-apple-system,sans-serif}.nav-tab:hover{color:#e1e4e8}.nav-tab.active{color:#58a6ff;border-bottom-color:#58a6ff;font-weight:600}
+#terminal{flex:1;padding:12px 16px;overflow-y:auto;font-size:13px;line-height:1.6}
+.line{white-space:pre-wrap;word-break:break-all}
+.prompt{color:#3fb950}.cmd{color:#e1e4e8}.out{color:#8b949e}.err{color:#f85149}.info{color:#58a6ff}.success{color:#3fb950}
+.table-out{border-collapse:collapse;margin:4px 0;font-size:12px}
+.table-out th{text-align:left;padding:2px 12px;border-bottom:1px solid #30363d;color:#58a6ff}
+.table-out td{padding:2px 12px;border-bottom:1px solid #21262d}
+#input-line{display:flex;align-items:center;padding:8px 16px;border-top:1px solid #21262d;background:#161b22}
+#input-line .prompt{margin-right:8px;white-space:nowrap}
+#cmd-input{flex:1;background:transparent;border:none;color:#e1e4e8;font-family:inherit;font-size:13px;outline:none;caret-color:#58a6ff}
+#autocomplete{position:fixed;background:#161b22;border:1px solid #30363d;border-radius:4px;font-size:12px;display:none;z-index:10;max-height:200px;overflow-y:auto}
+#autocomplete div{padding:4px 12px;cursor:pointer}
+#autocomplete div:hover,#autocomplete div.sel{background:#21262d;color:#58a6ff}
+body.light{background:#fff;color:#1f2328}
+body.light header{background:#f6f8fa;border-color:#d1d9e0}
+body.light #input-line{background:#f6f8fa;border-color:#d1d9e0}
+body.light #cmd-input{color:#1f2328}
+body.light .out{color:#656d76}
+body.light .prompt{color:#1a7f37}
+body.light .table-out th{color:#0969da}
+@media(max-width:768px){#terminal{padding:8px}#input-line{padding:6px 8px}}
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:0">
+    <h1>Fuse</h1>
+    <nav class="nav-tabs">
+      <a href="/playground" class="nav-tab">Playground</a>
+      <a href="/dashboard" class="nav-tab">Dashboard</a>
+      <a href="/terminal" class="nav-tab active">Terminal</a>
+      <a href="/status" class="nav-tab">Status</a>
+      <a href="/help" class="nav-tab">Help</a>
+    </nav>
+  </div>
+  <button onclick="toggleTheme()" style="margin-left:auto;background:none;border:1px solid #30363d;color:#8b949e;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;font-family:-apple-system,sans-serif">🌓</button>
+</header>
+
+<div id="terminal"></div>
+<div id="autocomplete"></div>
+
+<div id="input-line">
+  <span class="prompt">fuse&gt;</span>
+  <input id="cmd-input" autofocus spellcheck="false" placeholder="Type a command... (try 'help')">
+</div>
+
+<script>
+const term = document.getElementById('terminal');
+const input = document.getElementById('cmd-input');
+const ac = document.getElementById('autocomplete');
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+let history = [], histIdx = -1, acIdx = -1;
+
+// Theme
+(function(){const t=localStorage.getItem("fuse-theme");if(t==="light")document.body.classList.add("light");else if(!t&&window.matchMedia("(prefers-color-scheme:light)").matches)document.body.classList.add("light");})();
+function toggleTheme(){document.body.classList.toggle("light");localStorage.setItem("fuse-theme",document.body.classList.contains("light")?"light":"dark");}
+
+function out(text, cls='out') { term.innerHTML += `<div class="line ${cls}">${text}</div>`; term.scrollTop = term.scrollHeight; }
+function outTable(columns, rows) {
+  let h = '<table class="table-out"><tr>' + columns.map(c => `<th>${esc(c)}</th>`).join('') + '</tr>';
+  rows.slice(0, 100).forEach(r => { h += '<tr>' + r.map(v => `<td>${esc(String(v ?? ''))}</td>`).join('') + '</tr>'; });
+  h += '</table>';
+  if (rows.length > 100) h += `<div class="out">... ${rows.length - 100} more rows</div>`;
+  out(h);
+}
+
+// Commands
+const COMMANDS = {
+  'help': { desc: 'Show available commands', fn: cmdHelp },
+  'query': { desc: 'Execute SQL/PPL query', fn: cmdQuery },
+  'explain': { desc: 'Explain query plan', fn: cmdExplain },
+  'validate': { desc: 'Validate query syntax', fn: cmdValidate },
+  'health': { desc: 'Check server health', fn: cmdHealth },
+  'datasources': { desc: 'List datasources', fn: cmdDatasources },
+  'schemas': { desc: 'List tables for datasource', fn: cmdSchemas },
+  'fields': { desc: 'List fields for table', fn: cmdFields },
+  'history': { desc: 'Show query history', fn: cmdHistory },
+  'stats': { desc: 'Show query statistics', fn: cmdStats },
+  'views': { desc: 'List materialized views', fn: cmdViews },
+  'alerts': { desc: 'Evaluate alert rules', fn: cmdAlerts },
+  'clear': { desc: 'Clear terminal', fn: () => { term.innerHTML = ''; } },
+  'version': { desc: 'Show version', fn: () => out('Fuse v0.6.0', 'info') },
+};
+
+async function api(url, method='GET', body) {
+  const opts = { method };
+  if (body) { opts.headers = { 'Content-Type': 'application/json' }; opts.body = JSON.stringify(body); }
+  const r = await fetch(url, opts);
+  return r.json();
+}
+
+function cmdHelp() {
+  out('Available commands:', 'info');
+  Object.entries(COMMANDS).forEach(([name, c]) => out(`  <span class="info">${name.padEnd(14)}</span> ${c.desc}`));
+  out('');
+  out('Usage: <span class="info">query</span> SELECT * FROM mydata.logs LIMIT 10');
+  out('       <span class="info">schemas</span> mydata');
+  out('       <span class="info">fields</span> mydata logs');
+}
+
+async function cmdQuery(args) {
+  if (!args) { out('Usage: query <SQL or PPL>', 'err'); return; }
+  const format = args.toLowerCase().startsWith('source ') ? 'ppl' : 'sql';
+  try {
+    const res = await api('/api/fuse/query', 'POST', { query: args, format });
+    if (res.error) { out(res.error, 'err'); return; }
+    outTable(res.columns || [], res.rows || []);
+    const m = res.metadata || {};
+    out(`${(res.rows||[]).length} rows${m.elapsed_ms ? ' in ' + m.elapsed_ms + 'ms' : ''}`, 'success');
+  } catch (e) { out(e.message, 'err'); }
+}
+
+async function cmdExplain(args) {
+  if (!args) { out('Usage: explain <query>', 'err'); return; }
+  const format = args.toLowerCase().startsWith('source ') ? 'ppl' : 'sql';
+  try {
+    const res = await api('/api/fuse/query/explain', 'POST', { query: args, format });
+    if (res.plan_tree) {
+      out(esc(JSON.stringify(res.plan_tree, null, 2)), 'out');
+    } else { out(esc(res.plan || JSON.stringify(res)), 'out'); }
+  } catch (e) { out(e.message, 'err'); }
+}
+
+async function cmdValidate(args) {
+  if (!args) { out('Usage: validate <query>', 'err'); return; }
+  try {
+    const res = await api('/api/fuse/query/validate', 'POST', { query: args, format: 'sql' });
+    out(res.valid ? '✓ Valid' : '✗ ' + (res.error || 'Invalid'), res.valid ? 'success' : 'err');
+  } catch (e) { out(e.message, 'err'); }
+}
+
+async function cmdHealth() {
+  try {
+    const res = await api('/api/fuse/health');
+    out(`Status: <span class="success">${res.status}</span>  Version: ${res.version || '?'}`, 'info');
+    if (res.connectors) {
+      Object.entries(res.connectors).forEach(([name, c]) => {
+        out(`  ${c.status === 'ok' ? '🟢' : '🔴'} ${name.padEnd(20)} ${c.latency_ms || '?'}ms${c.message ? ' — ' + c.message : ''}`);
+      });
+    }
+  } catch (e) { out(e.message, 'err'); }
+}
+
+async function cmdDatasources() {
+  try {
+    const ds = await api('/api/fuse/datasources');
+    if (!ds.length) { out('No datasources configured', 'info'); return; }
+    ds.forEach(d => out(`  📦 ${(d.name || d.id).padEnd(20)} ${(d.connector_type || '').padEnd(15)} ${(d.capabilities || []).join(', ')}`));
+  } catch (e) { out(e.message, 'err'); }
+}
+
+async function cmdSchemas(args) {
+  if (!args) { out('Usage: schemas <datasource>', 'err'); return; }
+  try {
+    const tables = await api(`/api/fuse/datasources/${encodeURIComponent(args.trim())}/schemas`);
+    if (!tables.length) { out('No tables found', 'info'); return; }
+    tables.forEach(t => out(`  📋 ${typeof t === 'string' ? t : t.name}`));
+  } catch (e) { out(e.message, 'err'); }
+}
+
+async function cmdFields(args) {
+  const parts = (args || '').trim().split(/\s+/);
+  if (parts.length < 2) { out('Usage: fields <datasource> <table>', 'err'); return; }
+  try {
+    const fields = await api(`/api/fuse/datasources/${encodeURIComponent(parts[0])}/schemas/${encodeURIComponent(parts[1])}/fields`);
+    fields.forEach(f => {
+      const name = typeof f === 'string' ? f : f.name;
+      const type = typeof f === 'string' ? '' : f.field_type || f.type || '';
+      out(`  ${name.padEnd(24)} <span class="info">${type}</span>`);
+    });
+  } catch (e) { out(e.message, 'err'); }
+}
+
+async function cmdHistory() {
+  try {
+    const h = await api('/api/fuse/history');
+    (h || []).slice(0, 20).forEach(e => out(`  ${new Date(e.timestamp || 0).toLocaleTimeString()} ${(e.format || 'sql').padEnd(4)} ${esc((e.query || '').substring(0, 80))}`));
+  } catch (e) { out(e.message, 'err'); }
+}
+
+async function cmdStats() {
+  try {
+    const s = await api('/api/fuse/stats');
+    Object.entries(s).forEach(([k, v]) => out(`  ${k.padEnd(24)} ${JSON.stringify(v)}`));
+  } catch (e) { out(e.message, 'err'); }
+}
+
+async function cmdViews() {
+  try {
+    const v = await api('/api/fuse/views');
+    if (!v.length) { out('No materialized views', 'info'); return; }
+    v.forEach(view => out(`  ${view.stale ? '⏳' : '✓'} ${view.name}`));
+  } catch (e) { out(e.message, 'err'); }
+}
+
+async function cmdAlerts() {
+  try {
+    const res = await api('/api/fuse/alerts/evaluate', 'POST');
+    const firing = res.firing || [];
+    out(firing.length ? `🔴 ${firing.length} alert(s) firing:` : '🟢 No alerts firing', firing.length ? 'err' : 'success');
+    firing.forEach(a => out(`  ${a.name || a.rule}: ${a.row_count || 0} rows`));
+  } catch (e) { out(e.message, 'err'); }
+}
+
+// Input handling
+async function exec(line) {
+  const trimmed = line.trim();
+  if (!trimmed) return;
+  out(`<span class="prompt">fuse&gt;</span> <span class="cmd">${esc(trimmed)}</span>`);
+  history.unshift(trimmed);
+  if (history.length > 100) history.length = 100;
+  histIdx = -1;
+
+  const spaceIdx = trimmed.indexOf(' ');
+  const cmd = spaceIdx > 0 ? trimmed.substring(0, spaceIdx) : trimmed;
+  const args = spaceIdx > 0 ? trimmed.substring(spaceIdx + 1) : '';
+
+  const handler = COMMANDS[cmd.toLowerCase()];
+  if (handler) {
+    await handler.fn(args);
+  } else {
+    // Treat as raw query
+    await cmdQuery(trimmed);
+  }
+}
+
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    hideAc();
+    exec(input.value);
+    input.value = '';
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (ac.style.display === 'block') { moveAc(-1); return; }
+    if (histIdx < history.length - 1) { histIdx++; input.value = history[histIdx]; }
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (ac.style.display === 'block') { moveAc(1); return; }
+    if (histIdx > 0) { histIdx--; input.value = history[histIdx]; } else { histIdx = -1; input.value = ''; }
+  } else if (e.key === 'Tab') {
+    e.preventDefault();
+    if (ac.style.display === 'block') { acceptAc(); } else { showAc(); }
+  } else if (e.key === 'Escape') {
+    hideAc();
+  }
+});
+
+input.addEventListener('input', () => { if (input.value.length > 0) showAc(); else hideAc(); });
+
+// Autocomplete
+function showAc() {
+  const val = input.value.trim().toLowerCase();
+  if (!val) { hideAc(); return; }
+  const matches = Object.keys(COMMANDS).filter(c => c.startsWith(val));
+  if (!matches.length || (matches.length === 1 && matches[0] === val)) { hideAc(); return; }
+  acIdx = 0;
+  const rect = input.getBoundingClientRect();
+  ac.style.left = rect.left + 'px';
+  ac.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+  ac.style.display = 'block';
+  ac.innerHTML = matches.map((m, i) => `<div class="${i === 0 ? 'sel' : ''}" onmousedown="input.value='${m} ';hideAc();input.focus()">${m} <span style="color:#484f58;font-size:11px">${COMMANDS[m].desc}</span></div>`).join('');
+}
+
+function hideAc() { ac.style.display = 'none'; acIdx = -1; }
+
+function moveAc(dir) {
+  const items = ac.querySelectorAll('div');
+  if (!items.length) return;
+  items[acIdx]?.classList.remove('sel');
+  acIdx = Math.max(0, Math.min(items.length - 1, acIdx + dir));
+  items[acIdx]?.classList.add('sel');
+}
+
+function acceptAc() {
+  const sel = ac.querySelector('.sel');
+  if (sel) { input.value = sel.textContent.split(' ')[0] + ' '; }
+  hideAc();
+}
+
+// Welcome
+out('╔══════════════════════════════════════╗', 'info');
+out('║     <span class="success">Fuse Query Engine v0.6.0</span>        ║', 'info');
+out('║     Web Terminal                     ║', 'info');
+out('╚══════════════════════════════════════╝', 'info');
+out('');
+out('Type <span class="info">help</span> for commands, or enter a SQL query directly.', 'out');
+out('');
+</script>
+<script>
+(function(){var t=localStorage.getItem("fuse-theme");if(t==="light")document.body.classList.add("light");else if(!t&&window.matchMedia("(prefers-color-scheme:light)").matches)document.body.classList.add("light");})();
+</script>
+<script>fetch("/feedback-widget").then(r=>r.text()).then(h=>{const d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d);const s=d.querySelectorAll("script");s.forEach(sc=>{const n=document.createElement("script");n.textContent=sc.textContent;document.body.appendChild(n);});})</script>
+</body>
+</html>
