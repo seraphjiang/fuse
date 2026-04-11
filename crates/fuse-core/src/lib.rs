@@ -35,7 +35,7 @@ pub mod tls;
 pub mod url;
 pub mod type_map;
 pub mod version;
-
+mod integration_tests;
 // Re-export commonly used types at crate root for convenience
 pub use connector::{
     ConnectorCapabilities, ConnectorHealth, ConnectorType, FederatedConnector, HealthStatus,
