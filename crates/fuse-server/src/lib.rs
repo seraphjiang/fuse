@@ -44,6 +44,7 @@ pub mod rate_limit;
 pub mod redis_cache;
 pub mod refresh_scheduler;
 pub mod request_id;
+pub mod response_builder;
 pub mod retry;
 pub mod rewrite;
 pub mod row_limit;
