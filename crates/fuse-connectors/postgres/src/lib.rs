@@ -182,6 +182,33 @@ impl FederatedConnector for SqlConnector {
         }
         Ok(())
     }
+
+    async fn write_batches(
+        &self,
+        table: &str,
+        batches: Vec<RecordBatch>,
+    ) -> Result<u64, ConnectorError> {
+        let mut total = 0u64;
+        for batch in &batches {
+            if batch.num_rows() == 0 { continue; }
+            let schema = batch.schema();
+            let cols: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
+            let col_list = cols.iter().map(|c| format!("\"{}\"", c)).collect::<Vec<_>>().join(", ");
+
+            match &self.pool {
+                Pool::Postgres(pool) => {
+                    total += write_pg(pool, table, &col_list, batch).await?;
+                }
+                Pool::Mysql(pool) => {
+                    total += write_my(pool, table, &col_list, batch).await?;
+                }
+                Pool::Sqlite(pool) => {
+                    total += write_sqlite(pool, table, &col_list, batch).await?;
+                }
+            }
+        }
+        Ok(total)
+    }
 }
 
 // ── Query execution ───────────────────────────────────────────────────────────
@@ -310,6 +337,68 @@ fn sql_type_to_arrow(sql_type: &str) -> DataType {
 }
 
 // ── Factory ───────────────────────────────────────────────────────────────────
+
+/// Extract a cell value as a SQL literal string for INSERT.
+fn cell_to_sql_literal(batch: &RecordBatch, col: usize, row: usize) -> String {
+    use arrow::array::{self as aa};
+    let arr = batch.column(col);
+    if arr.is_null(row) { return "NULL".into(); }
+    match arr.data_type() {
+        DataType::Int64 => arr.as_any().downcast_ref::<aa::Int64Array>().map(|a| a.value(row).to_string()).unwrap_or_else(|| "NULL".into()),
+        DataType::Int32 => arr.as_any().downcast_ref::<aa::Int32Array>().map(|a| a.value(row).to_string()).unwrap_or_else(|| "NULL".into()),
+        DataType::Float64 => arr.as_any().downcast_ref::<aa::Float64Array>().map(|a| a.value(row).to_string()).unwrap_or_else(|| "NULL".into()),
+        DataType::Float32 => arr.as_any().downcast_ref::<aa::Float32Array>().map(|a| a.value(row).to_string()).unwrap_or_else(|| "NULL".into()),
+        DataType::Boolean => arr.as_any().downcast_ref::<aa::BooleanArray>().map(|a| a.value(row).to_string()).unwrap_or_else(|| "NULL".into()),
+        _ => {
+            let s = arr.as_any().downcast_ref::<aa::StringArray>()
+                .map(|a| a.value(row).to_string())
+                .unwrap_or_else(|| format!("{:?}", arr));
+            format!("'{}'", s.replace('\'', "''"))
+        }
+    }
+}
+
+async fn write_pg(pool: &sqlx::PgPool, table: &str, col_list: &str, batch: &RecordBatch) -> Result<u64, ConnectorError> {
+    let num_cols = batch.num_columns();
+    // Build batch INSERT: INSERT INTO table (cols) VALUES (row1), (row2), ...
+    // Use literal values (safe for internal use; table/col names already quoted)
+    let mut values_clauses = Vec::with_capacity(batch.num_rows());
+    for row in 0..batch.num_rows() {
+        let vals: Vec<String> = (0..num_cols).map(|c| cell_to_sql_literal(batch, c, row)).collect();
+        values_clauses.push(format!("({})", vals.join(", ")));
+    }
+    let sql = format!("INSERT INTO {} ({}) VALUES {}", table, col_list, values_clauses.join(", "));
+    let result = sqlx::query(&sql).execute(pool).await
+        .map_err(|e| ConnectorError::query(e.to_string()))?;
+    Ok(result.rows_affected())
+}
+
+async fn write_my(pool: &sqlx::MySqlPool, table: &str, col_list: &str, batch: &RecordBatch) -> Result<u64, ConnectorError> {
+    let num_cols = batch.num_columns();
+    let mut values_clauses = Vec::with_capacity(batch.num_rows());
+    for row in 0..batch.num_rows() {
+        let vals: Vec<String> = (0..num_cols).map(|c| cell_to_sql_literal(batch, c, row)).collect();
+        values_clauses.push(format!("({})", vals.join(", ")));
+    }
+    let sql = format!("INSERT INTO {} ({}) VALUES {}", table, col_list, values_clauses.join(", "));
+    let result = sqlx::query(&sql).execute(pool).await
+        .map_err(|e| ConnectorError::query(e.to_string()))?;
+    Ok(result.rows_affected())
+}
+
+async fn write_sqlite(pool: &sqlx::SqlitePool, table: &str, col_list: &str, batch: &RecordBatch) -> Result<u64, ConnectorError> {
+    let num_cols = batch.num_columns();
+    let mut total = 0u64;
+    // SQLite has a limit on compound INSERT size, so insert row-by-row
+    for row in 0..batch.num_rows() {
+        let vals: Vec<String> = (0..num_cols).map(|c| cell_to_sql_literal(batch, c, row)).collect();
+        let sql = format!("INSERT INTO {} ({}) VALUES ({})", table, col_list, vals.join(", "));
+        let result = sqlx::query(&sql).execute(pool).await
+            .map_err(|e| ConnectorError::query(e.to_string()))?;
+        total += result.rows_affected();
+    }
+    Ok(total)
+}
 
 #[derive(Debug, Default)]
 pub struct PostgresConnectorFactory;
@@ -466,5 +555,41 @@ mod tests {
         assert_eq!(sql_type_to_arrow("text"), DataType::Utf8);
         assert_eq!(sql_type_to_arrow("varchar"), DataType::Utf8);
         assert_eq!(sql_type_to_arrow("timestamp"), DataType::Utf8);
+    }
+
+    #[test]
+    fn test_cell_to_sql_literal_int() {
+        let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, true)]));
+        let batch = RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(vec![Some(42), None]))]).unwrap();
+        assert_eq!(cell_to_sql_literal(&batch, 0, 0), "42");
+        assert_eq!(cell_to_sql_literal(&batch, 0, 1), "NULL");
+    }
+
+    #[test]
+    fn test_cell_to_sql_literal_float() {
+        let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Float64, true)]));
+        let batch = RecordBatch::try_new(schema, vec![Arc::new(Float64Array::from(vec![3.14]))]).unwrap();
+        assert_eq!(cell_to_sql_literal(&batch, 0, 0), "3.14");
+    }
+
+    #[test]
+    fn test_cell_to_sql_literal_string() {
+        let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Utf8, true)]));
+        let batch = RecordBatch::try_new(schema, vec![Arc::new(StringArray::from(vec!["hello"]))]).unwrap();
+        assert_eq!(cell_to_sql_literal(&batch, 0, 0), "'hello'");
+    }
+
+    #[test]
+    fn test_cell_to_sql_literal_string_escapes_quotes() {
+        let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Utf8, true)]));
+        let batch = RecordBatch::try_new(schema, vec![Arc::new(StringArray::from(vec!["it's"]))]).unwrap();
+        assert_eq!(cell_to_sql_literal(&batch, 0, 0), "'it''s'");
+    }
+
+    #[test]
+    fn test_cell_to_sql_literal_bool() {
+        let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Boolean, true)]));
+        let batch = RecordBatch::try_new(schema, vec![Arc::new(BooleanArray::from(vec![true]))]).unwrap();
+        assert_eq!(cell_to_sql_literal(&batch, 0, 0), "true");
     }
 }
