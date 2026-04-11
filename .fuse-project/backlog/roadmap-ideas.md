@@ -1,36 +1,54 @@
-# Sprint 6+ Roadmap Ideas (Draft)
+# Roadmap — Post v1.1.0
 
-## Production Readiness
-- Multi-tenancy: tenant isolation, per-tenant resource limits
-- Query governor: max rows, max execution time, max memory per query
-- Audit logging: who queried what, when, from where
-- TLS/mTLS for connector connections
-- Health dashboard: connector status, query latency p50/p95/p99, error rates
-- Horizontal scaling: stateless server behind ALB, shared query cache (Redis)
+All items from the original Sprint 6+ roadmap are **COMPLETE** as of v1.1.0.
 
-## Advanced Query
-- Materialized views with refresh schedules
-- Query federation across Fuse instances (Fuse-to-Fuse connector)
-- Prepared statements with parameter binding
-- Query plan visualization in playground (integrate #224 into web UI)
-- EXPLAIN ANALYZE with flame graph in playground
+## ✅ Completed (Sprints 12-16)
 
-## Connectors
-- Apache Kafka connector (streaming data source)
-- Amazon Timestream connector (time-series)
-- Google BigQuery connector
-- Snowflake connector
-- Apache Cassandra connector
+### Production Readiness — ALL DONE
+- ✅ Multi-tenancy with per-tenant resource limits
+- ✅ Query governor (max rows, time, memory, rate limit)
+- ✅ Audit logging with NDJSON export
+- ✅ TLS/mTLS for all 22 connectors
+- ✅ Health dashboard with timeline
+- ✅ Horizontal scaling (stateless server, Redis-backed)
+- ✅ CORS, graceful shutdown, config validation
 
-## AI/ML Integration
-- Natural language to SQL (LLM-powered query generation)
-- Auto-suggest queries based on schema
-- Intelligent query optimization (learn from past queries)
-- Anomaly detection alerts (continuous monitoring)
+### Advanced Query — ALL DONE
+- ✅ Materialized views with refresh
+- ✅ Fuse-to-Fuse federation with cost-based routing
+- ✅ Prepared statements with parameter binding
+- ✅ Query plan visualization (flame graph + DAG)
+- ✅ EXPLAIN ANALYZE
+- ✅ Async query API (submit/poll)
 
-## Community & Ecosystem
-- Plugin system for custom connectors (WASM or dynamic loading)
-- REST API SDK (Python, JavaScript, Go clients)
-- Jupyter notebook integration
-- Grafana datasource plugin
-- VS Code extension for Fuse queries
+### Connectors — ALL DONE (22 total)
+- ✅ Kafka, Timestream, BigQuery, Snowflake, Cassandra, DuckDB, Arrow Flight, Athena
+
+### AI/ML — ALL DONE
+- ✅ NL-to-SQL (LLM-powered)
+- ✅ Auto-suggest queries
+- ✅ Query optimization advisor (7 rules)
+- ✅ Anomaly detection
+
+### Ecosystem — ALL DONE
+- ✅ WASM plugin system with sandboxing
+- ✅ Python SDK (DataFrame, streaming, saved queries)
+- ✅ Go SDK (stdlib-only)
+- ✅ TypeScript SDK (saved queries CRUD)
+- ✅ Jupyter magic (%fuse / %%fuse)
+- ✅ Grafana datasource plugin
+- ✅ VS Code extension (inline results)
+- ✅ OSD plugin (synced with v1.1 API)
+
+## Future Ideas (v1.2.0+)
+
+- Apache Spark connector
+- Delta Lake / Iceberg table format support
+- Query result caching with invalidation (CDC-based)
+- Multi-region federation with geo-routing
+- Role-based access control UI in playground
+- Query scheduling (cron-based recurring queries)
+- Data lineage tracking across federated queries
+- WebSocket streaming for real-time query results
+- OpenAPI client generation (auto-generate SDKs)
+- Helm chart for Kubernetes deployment
