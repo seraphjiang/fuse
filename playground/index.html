@@ -382,6 +382,7 @@ button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #58a
     <button id="explain-btn" onclick="explainQuery()">Explain</button>
     <button id="validate-btn" onclick="validateQuery()">Validate</button>
     <button onclick="prettifyQuery()">✨ Format</button>
+    <button onclick="shareQuery()">🔗 Share</button>
     <button class="help-toggle" onclick="toggleAdvisor()">💡 Advisor</button>
     <button class="help-toggle" onclick="toggleHelp()">📖 Docs &amp; Examples ▾</button>
     <button class="help-toggle" onclick="toggleSchema()">📋 Schema ▾</button>
@@ -406,6 +407,7 @@ button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #58a
       <button class="tab" onclick="switchTab('docs')">📖 Docs</button>
       <button class="tab" onclick="switchTab('api')">API</button>
       <button class="tab" onclick="switchTab('history');loadHistory()">🕐 History</button>
+      <button class="tab" onclick="switchTab('saved');loadSaved()">💾 Saved</button>
     </div>
 
     <!-- EXAMPLES TAB -->
@@ -539,6 +541,14 @@ button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #58a
         </select>
       </div>
       <div id="history-list"><div style="color:#8b949e;padding:8px 0">Loading…</div></div>
+    </div>
+
+    <!-- SAVED TAB -->
+    <div class="tab-content" id="tab-saved">
+      <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">
+        <button onclick="saveCurrentQuery()" style="font-size:12px;padding:4px 10px">💾 Save Current</button>
+      </div>
+      <div id="saved-list"><div style="color:#8b949e;padding:8px 0">Loading…</div></div>
     </div>
   </div>
 
@@ -1596,6 +1606,74 @@ $('editor').addEventListener('keydown', e => {
 });
 
 loadSchema();
+
+// === Query Sharing via URL ===
+
+// === Saved Queries ===
+async function loadSaved() {
+  const el = $('saved-list');
+  try {
+    const saved = await api('/api/fuse/saved');
+    if (!saved.length) { el.innerHTML = '<div style="color:#8b949e;padding:8px 0">No saved queries. Click 💾 Save Current to save one.</div>'; return; }
+    el.innerHTML = saved.map(s => {
+      const name = typeof s === 'string' ? s : s.name;
+      return `<div class="hist-item" style="display:flex;justify-content:space-between;align-items:center">
+        <div style="cursor:pointer;flex:1" onclick="loadSavedQuery('${esc(name)}')">
+          <div class="hist-query">${esc(name)}</div>
+          ${s.query ? '<div class="hist-meta">' + esc(s.query.substring(0, 80)) + '</div>' : ''}
+        </div>
+        <button onclick="deleteSavedQuery('${esc(name)}')" style="font-size:11px;padding:2px 8px;color:#f85149;background:none;border:1px solid #30363d;border-radius:4px;cursor:pointer">✕</button>
+      </div>`;
+    }).join('');
+  } catch { el.innerHTML = '<div style="color:#f85149">Failed to load saved queries</div>'; }
+}
+async function saveCurrentQuery() {
+  const q = $('editor').value.trim();
+  if (!q) return;
+  const name = prompt('Save query as:');
+  if (!name) return;
+  try {
+    await api('/api/fuse/saved', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, query: q, format: $('format').value }) });
+    loadSaved();
+  } catch (e) { alert('Failed to save: ' + e.message); }
+}
+async function loadSavedQuery(name) {
+  try {
+    const s = await api('/api/fuse/saved/' + encodeURIComponent(name));
+    $('editor').value = s.query || '';
+    if (s.format) $('format').value = s.format;
+    if (typeof highlightEditor === 'function') highlightEditor();
+  } catch (e) { alert('Failed to load: ' + e.message); }
+}
+async function deleteSavedQuery(name) {
+  if (!confirm('Delete "' + name + '"?')) return;
+  try {
+    await api('/api/fuse/saved/' + encodeURIComponent(name), { method: 'DELETE' });
+    loadSaved();
+  } catch (e) { alert('Failed to delete: ' + e.message); }
+}
+
+function shareQuery() {
+  const q = $('editor').value.trim();
+  if (!q) return;
+  const params = new URLSearchParams({ q, f: $('format').value });
+  const url = location.origin + location.pathname + '#' + params.toString();
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = event.target;
+    btn.textContent = '✅ Copied!';
+    setTimeout(() => { btn.textContent = '🔗 Share'; }, 2000);
+  }).catch(() => { prompt('Share this URL:', url); });
+}
+(function loadFromHash() {
+  if (!location.hash) return;
+  try {
+    const params = new URLSearchParams(location.hash.slice(1));
+    const q = params.get('q');
+    const f = params.get('f');
+    if (q) { $('editor').value = q; if (typeof highlightEditor === 'function') highlightEditor(); }
+    if (f) $('format').value = f;
+  } catch {}
+})();
 
 // === Schema Explorer ===
 let schemaLoaded = false;
