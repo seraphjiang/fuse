@@ -50,6 +50,8 @@ async fn main() -> anyhow::Result<()> {
                 default_timeout: "30s".to_string(),
                 rate_limit_global: 1000,
                 rate_limit_per_ip: 100,
+                cors_origins: vec![],
+                max_result_bytes: 104_857_600,
             },
             connector: vec![],
         }
