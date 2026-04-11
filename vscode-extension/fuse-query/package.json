@@ -1,0 +1,85 @@
+{
+  "name": "fuse-query",
+  "displayName": "Fuse Query",
+  "description": "SQL/PPL query editor for Fuse federated query engine — syntax highlighting, execution, results panel, IntelliSense",
+  "version": "0.1.0",
+  "publisher": "fuse-team",
+  "engines": { "vscode": "^1.80.0" },
+  "categories": ["Programming Languages", "Other"],
+  "activationEvents": ["onLanguage:fusesql", "onLanguage:fuseppl", "onCommand:fuse.runQuery"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "fusesql",
+        "aliases": ["Fuse SQL", "fusesql"],
+        "extensions": [".fsql", ".fuse"],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "fuseppl",
+        "aliases": ["Fuse PPL", "fuseppl"],
+        "extensions": [".fppl"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "fusesql",
+        "scopeName": "source.fusesql",
+        "path": "./syntaxes/fusesql.tmLanguage.json"
+      },
+      {
+        "language": "fuseppl",
+        "scopeName": "source.fuseppl",
+        "path": "./syntaxes/fuseppl.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      { "command": "fuse.runQuery", "title": "Fuse: Run Query", "icon": "$(play)" },
+      { "command": "fuse.explainQuery", "title": "Fuse: Explain Query" },
+      { "command": "fuse.validateQuery", "title": "Fuse: Validate Query" },
+      { "command": "fuse.showDatasources", "title": "Fuse: Show Datasources" }
+    ],
+    "keybindings": [
+      { "command": "fuse.runQuery", "key": "ctrl+enter", "when": "editorLangId == fusesql || editorLangId == fuseppl" },
+      { "command": "fuse.explainQuery", "key": "ctrl+shift+e", "when": "editorLangId == fusesql || editorLangId == fuseppl" },
+      { "command": "fuse.validateQuery", "key": "ctrl+shift+v", "when": "editorLangId == fusesql || editorLangId == fuseppl" }
+    ],
+    "configuration": {
+      "title": "Fuse Query",
+      "properties": {
+        "fuse.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:3000",
+          "description": "Fuse server URL"
+        },
+        "fuse.defaultFormat": {
+          "type": "string",
+          "enum": ["sql", "ppl"],
+          "default": "sql",
+          "description": "Default query format"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "fuse-explorer", "title": "Fuse", "icon": "$(database)" }
+      ]
+    },
+    "views": {
+      "fuse-explorer": [
+        { "id": "fuseDatasources", "name": "Datasources" },
+        { "id": "fuseHistory", "name": "Query History" }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.0.0"
+  }
+}
