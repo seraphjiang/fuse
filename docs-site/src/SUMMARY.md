@@ -27,6 +27,8 @@
 
 - [Python SDK](./python-sdk.md)
 - [TypeScript SDK](./typescript-sdk.md)
+- [Go SDK](./go-sdk.md)
+- [Jupyter Magic](./jupyter-magic.md)
 - [SDK Comparison (Python vs TypeScript)](./sdk-comparison.md)
 - [Jupyter Notebooks](./jupyter-integration.md)
 - [Grafana Plugin](./grafana-plugin.md)
@@ -37,6 +39,9 @@
 
 - [API Reference](./api-reference.md)
 - [API Guide (curl examples)](./api-reference-guide.md)
+
+- [Async Query API](./async-query-api.md)
+- [Natural Language Queries](./nl-to-sql.md)
 
 # Administration
 
@@ -58,6 +63,7 @@
 
 - [Roadmap](./roadmap.md)
 - [API Stability Guarantee](./api-stability.md)
+- [v1.1.0: 22 Connectors & Federation](./blog-v110-release.md)
 - [v1.0.0: General Availability](./blog-v100-ga.md)
 - [v0.6.0: Enterprise, AI & SDKs](./blog-v060-release.md)
 - [v0.5.0 Release](./blog-sprint-5-release.md)
