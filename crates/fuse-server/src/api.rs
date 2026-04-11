@@ -2680,7 +2680,19 @@ pub async fn history_handler(State(state): State<Arc<AppState>>) -> impl IntoRes
 
 /// GET /api/fuse/stats — aggregated query statistics.
 pub async fn stats_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    Json(state.history.stats())
+    let history_stats = state.history.stats();
+    let cache_size = state.result_cache.len();
+    let connector_count = state.registry.list().len();
+    let running = state.running_queries.count();
+    let audit_count = state.audit_log.count().await;
+
+    Json(serde_json::json!({
+        "history": history_stats,
+        "cache_size": cache_size,
+        "connectors": connector_count,
+        "running_queries": running,
+        "audit_entries": audit_count,
+    }))
 }
 
 /// GET /api/fuse/federation — return federation topology.
