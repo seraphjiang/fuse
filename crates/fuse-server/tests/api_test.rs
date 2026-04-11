@@ -144,7 +144,7 @@ fn build_test_app() -> axum::Router {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(),
     });
     fuse_server::build_router(state)
 }
@@ -451,7 +451,7 @@ fn build_capturing_app() -> (axum::Router, Arc<CapturingConnector>) {
     let connector = Arc::new(CapturingConnector::new("capds"));
     let registry = ConnectorRegistry::new();
     registry.register(connector.clone()).unwrap();
-    let state = Arc::new(AppState { registry: Arc::new(registry), alert_rules: vec![], view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()), history: Arc::new(QueryHistory::new()), running_queries: Arc::new(RunningQueries::new()), saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)) });
+    let state = Arc::new(AppState { registry: Arc::new(registry), alert_rules: vec![], view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()), history: Arc::new(QueryHistory::new()), running_queries: Arc::new(RunningQueries::new()), saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store() });
     (fuse_server::build_router(state), connector)
 }
 
@@ -511,7 +511,7 @@ fn build_federation_app() -> axum::Router {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(),
     });
     fuse_server::build_router(state)
 }
@@ -722,7 +722,7 @@ async fn test_view_lifecycle() {
         view_registry: view_registry.clone(),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(),
     });
     let app = fuse_server::build_router(state);
 
@@ -1009,7 +1009,7 @@ async fn test_history_records_query() {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: history.clone(),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(),
     });
     let app = fuse_server::build_router(state);
 
@@ -1061,7 +1061,7 @@ fn build_rate_limited_app(global_rpm: u32, per_ip_rpm: u32) -> axum::Router {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(),
     });
     fuse_server::build_router_with_limits(
         state,
@@ -1275,7 +1275,7 @@ async fn test_timeout_zero_ms_times_out() {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(),
     });
     let app = fuse_server::build_router(state);
 
@@ -1344,7 +1344,7 @@ async fn test_cancel_slow_query() {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(),
     });
     let running = state.running_queries.clone();
     let app = fuse_server::build_router(state);
@@ -1613,7 +1613,7 @@ async fn test_union_partial_failure_returns_partial_results() {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(),
     });
     let app = fuse_server::build_router(state);
 
@@ -1644,7 +1644,7 @@ async fn test_union_all_fail_returns_error() {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(),
     });
     let app = fuse_server::build_router(state);
 
@@ -2202,7 +2202,7 @@ fn build_three_source_app() -> axum::Router {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
-        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(),
     });
     fuse_server::build_router(state)
 }
@@ -2741,7 +2741,7 @@ fn build_asymmetric_app() -> axum::Router {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
-        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(),
     });
     fuse_server::build_router(state)
 }
@@ -3033,7 +3033,7 @@ fn build_cross_ds_app() -> axum::Router {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
-        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(),
     });
     fuse_server::build_router(state)
 }
@@ -3329,7 +3329,7 @@ fn build_empty_source_app() -> axum::Router {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
-        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(),
     });
     fuse_server::build_router(state)
 }
@@ -3397,7 +3397,7 @@ async fn test_connector_error_single_source_returns_error() {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
-        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(),
     });
     let (status, json) = post_query(
         fuse_server::build_router(state),
@@ -3424,7 +3424,7 @@ async fn test_connector_error_union_partial_graceful() {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
-        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(),
     });
     let (status, json) = post_query(
         fuse_server::build_router(state),
@@ -3953,7 +3953,7 @@ async fn test_partial_failure_returns_good_source_data() {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
-        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(),
     });
     let (status, json) = post_query(
         fuse_server::build_router(state),
@@ -3980,7 +3980,7 @@ async fn test_all_sources_fail_returns_error() {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
-        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(),
     });
     let (status, json) = post_query(
         fuse_server::build_router(state),
@@ -4331,6 +4331,8 @@ fn build_enterprise_app() -> axum::Router {
         result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 100)),
         audit_log: Arc::new(AuditLog::new(100)),
         tenant_registry: Arc::new(tenant_registry),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
     });
     fuse_server::build_router(state)
 }
@@ -4515,4 +4517,57 @@ async fn test_explain_analyze_join() {
     let profile = &json["execution_profile"];
     assert!(profile.is_object(), "execution_profile missing for JOIN EXPLAIN ANALYZE");
     assert!(profile["total_ms"].as_u64().is_some());
+}
+
+// ── #903 Prepared statements with parameter binding ──
+
+#[tokio::test]
+async fn test_prepare_and_execute() {
+    let app = build_test_app();
+    // PREPARE
+    let (status, json) = post_query(app, "PREPARE get_logs AS SELECT * FROM testds.logs WHERE host = $1", "sql").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["prepared"], "get_logs");
+    assert_eq!(json["param_count"], 1);
+
+    // EXECUTE
+    let app2 = build_test_app();
+    // First prepare again (new app instance)
+    post_query(app2.clone(), "PREPARE get_logs AS SELECT * FROM testds.logs WHERE host = $1", "sql").await;
+    let (status, json) = post_query(app2, "EXECUTE get_logs USING 'web-01'", "sql").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(json["columns"].as_array().is_some());
+}
+
+#[tokio::test]
+async fn test_execute_unknown_statement() {
+    let (status, json) = post_query(build_test_app(), "EXECUTE nonexistent USING 1", "sql").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(json["error"].as_str().unwrap().contains("not found"));
+}
+
+#[tokio::test]
+async fn test_prepare_multiple_params() {
+    let app = build_test_app();
+    let (status, json) = post_query(app, "PREPARE multi AS SELECT * FROM testds.logs WHERE host = $1 AND status = $2", "sql").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["param_count"], 2);
+}
+
+#[tokio::test]
+async fn test_execute_wrong_param_count() {
+    let app = build_test_app();
+    post_query(app.clone(), "PREPARE p1 AS SELECT * FROM testds.logs WHERE host = $1 AND status = $2", "sql").await;
+    let (status, json) = post_query(app, "EXECUTE p1 USING 'a'", "sql").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(json["error"].as_str().unwrap().contains("expected 2"));
+}
+
+#[tokio::test]
+async fn test_execute_no_params_zero_placeholders() {
+    let app = build_test_app();
+    post_query(app.clone(), "PREPARE simple AS SELECT * FROM testds.logs", "sql").await;
+    let (status, json) = post_query(app, "EXECUTE simple", "sql").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(json["columns"].as_array().is_some());
 }

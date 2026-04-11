@@ -126,8 +126,9 @@ async fn main() -> anyhow::Result<()> {
         plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
         result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
         tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
-        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), prepared_statements: fuse_server::prepared::new_store(),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
         adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
     });
 
     // Initialize metrics

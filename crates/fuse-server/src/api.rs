@@ -411,6 +411,45 @@ pub async fn query_handler(
         bind_params(&req.query, &req.params)
     };
 
+    // Handle PREPARE <name> AS <query> — store template, return confirmation
+    if let Some((name, template)) = crate::prepared::parse_prepare(&query) {
+        let param_count = crate::prepared::count_params(&template);
+        let stmt = crate::prepared::PreparedStatement {
+            query: template.clone(),
+            param_count,
+        };
+        state.prepared_statements.lock().unwrap().insert(name.clone(), stmt);
+        return Json(serde_json::json!({
+            "prepared": name,
+            "param_count": param_count,
+            "template": template,
+        })).into_response();
+    }
+
+    // Handle EXECUTE <name> USING <params> — resolve template, bind params, continue
+    let query = if let Some((name, params)) = crate::prepared::parse_execute(&query) {
+        let stmt = state.prepared_statements.lock().unwrap().get(&name).cloned();
+        match stmt {
+            Some(s) => {
+                if !params.is_empty() && params.len() != s.param_count {
+                    return error_json(
+                        StatusCode::BAD_REQUEST,
+                        format!("expected {} parameters, got {}", s.param_count, params.len()),
+                    ).into_response();
+                }
+                crate::prepared::bind_positional(&s.query, &params)
+            }
+            None => {
+                return error_json(
+                    StatusCode::NOT_FOUND,
+                    format!("prepared statement '{}' not found", name),
+                ).into_response();
+            }
+        }
+    } else {
+        query
+    };
+
     // Rewrite CONTAINS 'term' → LIKE '%term%' for full-text search
     let query = rewrite_contains(&query);
 
