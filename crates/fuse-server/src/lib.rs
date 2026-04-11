@@ -34,6 +34,7 @@ pub mod fingerprint;
 pub mod flattener;
 pub mod formatter;
 pub mod grouper;
+pub mod having;
 pub mod health;
 pub mod joiner;
 pub mod health_monitor;
