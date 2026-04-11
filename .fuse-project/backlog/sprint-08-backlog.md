@@ -17,7 +17,7 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 640 | Apache Kafka connector | explorer | todo | Consume topics, filter by key/timestamp/offset, JSON/Avro |
+| 640 | Apache Kafka connector | explorer | done | rskafka, JSON extraction, metadata fields, 11 tests. Commit: a957953 |
 | 641 | Amazon Timestream connector | general | todo | Time-series queries, SQL pushdown |
 | 642 | Snowflake connector | general | todo | OAuth/key-pair auth, SQL pushdown, warehouse selection |
 | 810 | Apache Cassandra connector | general | todo | CQL, partition-aware queries |
@@ -28,7 +28,7 @@
 |----|------|-------|--------|-------|
 | 820 | CREATE MATERIALIZED VIEW syntax | planner | todo | Parse, store definition, execute on create |
 | 821 | REFRESH MATERIALIZED VIEW | planner | todo | Re-execute and replace cached result |
-| 822 | Auto-refresh scheduler (cron-based) | explorer | todo | Background task, configurable interval |
+| 822 | Auto-refresh scheduler (cron-based) | explorer | done | Background poll, stale detection, graceful shutdown. Commit: a25453e |
 
 ## P1: Plugin System
 
