@@ -1043,7 +1043,9 @@ async function runQuery() {
   const t0 = performance.now();
   try {
     const analyze = $('analyze-cb').checked;
-    const body = { query: $('editor').value, format: $('format').value, analyze };
+    const ed = $('editor');
+    const queryText = getEditorQuery();
+    const body = { query: queryText, format: $('format').value, analyze };
     const res = await api('/api/fuse/query', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1071,10 +1073,14 @@ async function runQuery() {
   }
 }
 
+function getEditorQuery() {
+  const ed = $('editor');
+  return ed.selectionStart !== ed.selectionEnd ? ed.value.substring(ed.selectionStart, ed.selectionEnd) : ed.value;
+}
 async function explainQuery() {
   clearOutput();
   try {
-    const body = { query: $('editor').value, format: $('format').value };
+    const body = { query: getEditorQuery(), format: $('format').value };
     const res = await api('/api/fuse/query/explain', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1351,7 +1357,7 @@ function renderExplainTree(tree) {
 async function validateQuery() {
   clearOutput();
   try {
-    const body = { query: $('editor').value, format: $('format').value };
+    const body = { query: getEditorQuery(), format: $('format').value };
     const res = await api('/api/fuse/query/validate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
