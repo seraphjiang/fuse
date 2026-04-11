@@ -276,3 +276,95 @@ mod tests {
         assert_eq!(filter_to_sql(&f), "(a = 1 OR b = 2)");
     }
 }
+
+#[cfg(test)]
+mod edge_tests {
+    use super::*;
+
+    fn sq(table: &str) -> SubQuery {
+        SubQuery { table: table.into(), projections: vec![], filter: None, aggregations: vec![],
+            group_by: vec![], sort: vec![], limit: None, having: None, passthrough: None, offset: None }
+    }
+
+    #[test]
+    fn test_nested_and_or_filter() {
+        let mut q = sq("t");
+        q.filter = Some(FilterExpr::And(
+            Box::new(FilterExpr::Or(
+                Box::new(FilterExpr::Comparison { field: "a".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(1) }),
+                Box::new(FilterExpr::Comparison { field: "b".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(2) }),
+            )),
+            Box::new(FilterExpr::IsNotNull("c".into())),
+        ));
+        q.limit = Some(10);
+        let sql = build_spark_sql(&q, "db");
+        assert!(sql.contains("((a = 1 OR b = 2) AND c IS NOT NULL)"));
+    }
+
+    #[test]
+    fn test_having_clause() {
+        let mut q = sq("events");
+        q.projections = vec!["host".into(), "count(*)".into()];
+        q.group_by = vec!["host".into()];
+        q.having = Some(FilterExpr::Comparison { field: "count(*)".into(), op: ComparisonOp::Gt, value: ScalarValue::Int64(10) });
+        q.limit = Some(50);
+        let sql = build_spark_sql(&q, "db");
+        assert!(sql.contains("HAVING count(*) > 10"));
+    }
+
+    #[test]
+    fn test_offset() {
+        let mut q = sq("t");
+        q.limit = Some(10);
+        q.offset = Some(20);
+        let sql = build_spark_sql(&q, "db");
+        assert!(sql.contains("LIMIT 10"));
+        assert!(sql.contains("OFFSET 20"));
+    }
+
+    #[test]
+    fn test_special_chars_in_string() {
+        let mut q = sq("t");
+        q.filter = Some(FilterExpr::Comparison {
+            field: "name".into(), op: ComparisonOp::Eq,
+            value: ScalarValue::Utf8("O'Brien".into()),
+        });
+        q.limit = Some(1);
+        let sql = build_spark_sql(&q, "db");
+        assert!(sql.contains("O''Brien"), "should escape single quotes: {}", sql);
+    }
+
+    #[test]
+    fn test_in_clause() {
+        let mut q = sq("t");
+        q.filter = Some(FilterExpr::In {
+            field: "status".into(),
+            values: vec![ScalarValue::Utf8("active".into()), ScalarValue::Utf8("pending".into())],
+        });
+        q.limit = Some(100);
+        let sql = build_spark_sql(&q, "db");
+        assert!(sql.contains("status IN ('active', 'pending')"));
+    }
+
+    #[test]
+    fn test_multiple_sort_columns() {
+        let mut q = sq("t");
+        q.sort = vec![
+            SortExpr { field: "created_at".into(), descending: true },
+            SortExpr { field: "id".into(), descending: false },
+        ];
+        q.limit = Some(10);
+        let sql = build_spark_sql(&q, "db");
+        assert!(sql.contains("ORDER BY created_at DESC, id"));
+    }
+
+    #[test]
+    fn test_null_scalar() {
+        assert_eq!(scalar_to_sql(&ScalarValue::Null), "NULL");
+    }
+
+    #[test]
+    fn test_float_scalar() {
+        assert_eq!(scalar_to_sql(&ScalarValue::Float64(3.14)), "3.14");
+    }
+}

@@ -243,3 +243,74 @@ mod tests {
         assert!(parse_delta_schema("not json").is_err());
     }
 }
+
+#[cfg(test)]
+mod edge_tests {
+    use super::*;
+
+    #[test]
+    fn test_multi_version_log_resolution() {
+        let entries = vec![
+            DeltaLogEntry { add: Some(AddAction { path: "v0/a.parquet".into(), size: Some(100), partition_values: None }), remove: None, metadata: None },
+            DeltaLogEntry { add: Some(AddAction { path: "v0/b.parquet".into(), size: Some(200), partition_values: None }), remove: None, metadata: None },
+            // Version 1: compact a+b into c, remove a and b
+            DeltaLogEntry { add: None, remove: Some(RemoveAction { path: "v0/a.parquet".into() }), metadata: None },
+            DeltaLogEntry { add: None, remove: Some(RemoveAction { path: "v0/b.parquet".into() }), metadata: None },
+            DeltaLogEntry { add: Some(AddAction { path: "v1/c.parquet".into(), size: Some(300), partition_values: None }), remove: None, metadata: None },
+        ];
+        let files = resolve_active_files(&entries);
+        assert_eq!(files.len(), 1);
+        assert!(files.contains(&"v1/c.parquet".to_string()));
+    }
+
+    #[test]
+    fn test_concurrent_add_remove_same_file() {
+        let entries = vec![
+            DeltaLogEntry { add: Some(AddAction { path: "x.parquet".into(), size: Some(100), partition_values: None }), remove: None, metadata: None },
+            DeltaLogEntry { add: None, remove: Some(RemoveAction { path: "x.parquet".into() }), metadata: None },
+            DeltaLogEntry { add: Some(AddAction { path: "x.parquet".into(), size: Some(200), partition_values: None }), remove: None, metadata: None },
+        ];
+        let files = resolve_active_files(&entries);
+        assert_eq!(files.len(), 1); // re-added
+    }
+
+    #[test]
+    fn test_schema_all_types() {
+        let json = r#"{"type":"struct","fields":[
+            {"name":"a","type":"int","nullable":false},
+            {"name":"b","type":"long","nullable":true},
+            {"name":"c","type":"float","nullable":true},
+            {"name":"d","type":"double","nullable":true},
+            {"name":"e","type":"boolean","nullable":true},
+            {"name":"f","type":"string","nullable":true},
+            {"name":"g","type":"binary","nullable":true}
+        ]}"#;
+        let schema = parse_delta_schema(json).unwrap();
+        assert_eq!(schema.fields().len(), 7);
+        assert_eq!(*schema.field(0).data_type(), DataType::Int32);
+        assert_eq!(*schema.field(4).data_type(), DataType::Boolean);
+        assert_eq!(*schema.field(6).data_type(), DataType::Utf8); // binary falls back to Utf8
+    }
+
+    #[test]
+    fn test_schema_empty_fields() {
+        let json = r#"{"type":"struct","fields":[]}"#;
+        let schema = parse_delta_schema(json).unwrap();
+        assert_eq!(schema.fields().len(), 0);
+    }
+
+    #[test]
+    fn test_metadata_action_parsing() {
+        let entry: DeltaLogEntry = serde_json::from_str(r#"{
+            "metadata": {
+                "name": "my_table",
+                "schemaString": "{\"type\":\"struct\",\"fields\":[{\"name\":\"id\",\"type\":\"long\",\"nullable\":false}]}"
+            }
+        }"#).unwrap();
+        assert!(entry.metadata.is_some());
+        let meta = entry.metadata.unwrap();
+        assert_eq!(meta.name.as_deref(), Some("my_table"));
+        let schema = parse_delta_schema(meta.schema_string.as_deref().unwrap()).unwrap();
+        assert_eq!(schema.fields().len(), 1);
+    }
+}

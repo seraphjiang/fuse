@@ -240,3 +240,60 @@ mod tests {
         assert!(!c.capabilities().supports_aggregation);
     }
 }
+
+#[cfg(test)]
+mod edge_tests {
+    use super::*;
+
+    #[test]
+    fn test_schema_with_timestamp_types() {
+        let json = serde_json::json!({
+            "fields": [
+                {"id": 1, "name": "ts", "type": "timestamp", "required": false},
+                {"id": 2, "name": "tsz", "type": "timestamptz", "required": false},
+                {"id": 3, "name": "d", "type": "date", "required": false}
+            ]
+        });
+        let schema = parse_iceberg_schema(&json).unwrap();
+        assert_eq!(schema.fields().len(), 3);
+        assert_eq!(*schema.field(2).data_type(), DataType::Date32);
+    }
+
+    #[test]
+    fn test_schema_empty() {
+        let json = serde_json::json!({"fields": []});
+        let schema = parse_iceberg_schema(&json).unwrap();
+        assert_eq!(schema.fields().len(), 0);
+    }
+
+    #[test]
+    fn test_schema_required_vs_optional() {
+        let json = serde_json::json!({
+            "fields": [
+                {"id": 1, "name": "pk", "type": "long", "required": true},
+                {"id": 2, "name": "val", "type": "string", "required": false}
+            ]
+        });
+        let schema = parse_iceberg_schema(&json).unwrap();
+        assert!(!schema.field(0).is_nullable()); // required
+        assert!(schema.field(1).is_nullable()); // optional
+    }
+
+    #[test]
+    fn test_manifest_paths_with_metadata() {
+        let snap = serde_json::json!({
+            "manifests": [
+                {"manifest_path": "s3://b/m1.avro", "added_data_files_count": 5},
+                {"manifest_path": "s3://b/m2.avro", "added_data_files_count": 3}
+            ]
+        });
+        let paths = extract_manifest_paths(&snap);
+        assert_eq!(paths.len(), 2);
+    }
+
+    #[test]
+    fn test_table_url_construction() {
+        let c = IcebergConnector::new("t".into(), reqwest::Client::new(), "http://cat:8181".into(), "analytics".into());
+        assert_eq!(c.table_url("events"), "http://cat:8181/v1/namespaces/analytics/tables/events");
+    }
+}
