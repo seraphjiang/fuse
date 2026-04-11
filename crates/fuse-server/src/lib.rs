@@ -29,6 +29,7 @@ pub mod formatter;
 pub mod health;
 pub mod health_monitor;
 pub mod history;
+pub mod history_analytics;
 pub mod lineage;
 pub mod metrics;
 pub mod nl_query;
