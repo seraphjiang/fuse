@@ -46,7 +46,7 @@ pub mod prepared;
 pub mod query_advisor;
 pub mod query_diff;
 pub mod rate_limit;
-pub mod redis_cache;
+pub mod rate_monitor;pub mod redis_cache;
 pub mod refresh_scheduler;
 pub mod request_id;
 pub mod response_builder;
