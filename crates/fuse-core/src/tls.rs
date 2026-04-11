@@ -139,6 +139,47 @@ impl TlsConfig {
         }
         Ok(builder)
     }
+
+    /// Build a `rustls::ClientConfig` from this TLS config.
+    ///
+    /// Requires the `rustls-tls` feature on fuse-core.
+    #[cfg(feature = "rustls-tls")]
+    pub fn build_rustls_config(&self) -> Result<rustls::ClientConfig, FuseError> {
+        use std::io::BufReader;
+
+        let mut root_store = rustls::RootCertStore::empty();
+
+        if let Some(ca_bytes) = self.read_ca_cert()? {
+            let certs = rustls_pemfile::certs(&mut BufReader::new(ca_bytes.as_slice()))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| FuseError::config(format!("invalid ca_cert PEM: {e}")))?;
+            for cert in certs {
+                root_store.add(cert).map_err(|e| {
+                    FuseError::config(format!("failed to add CA cert: {e}"))
+                })?;
+            }
+        } else {
+            root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        }
+
+        let builder = rustls::ClientConfig::builder()
+            .with_root_certificates(root_store);
+
+        let config = if let Some((cert_bytes, key_bytes)) = self.read_identity()? {
+            let certs = rustls_pemfile::certs(&mut BufReader::new(cert_bytes.as_slice()))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| FuseError::config(format!("invalid client_cert PEM: {e}")))?;
+            let key = rustls_pemfile::private_key(&mut BufReader::new(key_bytes.as_slice()))
+                .map_err(|e| FuseError::config(format!("invalid client_key PEM: {e}")))?
+                .ok_or_else(|| FuseError::config("no private key found in client_key PEM"))?;
+            builder.with_client_auth_cert(certs, key)
+                .map_err(|e| FuseError::config(format!("invalid client identity: {e}")))?
+        } else {
+            builder.with_no_client_auth()
+        };
+
+        Ok(config)
+    }
 }
 
 fn check_file_exists(path: &Path, field: &str) -> Result<(), FuseError> {

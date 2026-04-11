@@ -6,7 +6,7 @@ license.workspace = true
 description = "Apache Kafka connector for the Fuse federated query engine"
 
 [dependencies]
-fuse-core = { path = "../../fuse-core" }
+fuse-core = { path = "../../fuse-core", features = ["rustls-tls"] }
 arrow = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
@@ -15,4 +15,5 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 toml = { workspace = true }
-rskafka = "0.6"
+rskafka = { version = "0.6", features = ["transport-tls"] }
+rustls = "0.23"

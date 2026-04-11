@@ -103,6 +103,17 @@ impl CassandraConnector {
             .unwrap_or("default")
             .to_string();
 
+        // Validate TLS config at startup (fail-fast) even though scylla
+        // TLS requires the `ssl` feature + openssl at compile time.
+        if let Some(tls) = config.tls_config() {
+            tls.validate().map_err(|e| ConnectorError::Connection(e.to_string()))?;
+            tracing::warn!(
+                connector = %config.id,
+                "TLS configured but Cassandra connector requires scylla 'ssl' feature + openssl. \
+                 TLS settings validated but not applied — connections will be unencrypted."
+            );
+        }
+
         let host_list: Vec<&str> = hosts.split(',').map(|h| h.trim()).collect();
         let session = scylla::SessionBuilder::new()
             .known_nodes(&host_list)

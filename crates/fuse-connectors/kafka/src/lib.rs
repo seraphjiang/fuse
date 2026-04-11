@@ -26,11 +26,16 @@ use fuse_core::registry::ConnectorFactory;
 pub struct KafkaConnector {
     id: String,
     brokers: Vec<String>,
+    tls_config: Option<Arc<rustls::ClientConfig>>,
 }
 
 impl fmt::Debug for KafkaConnector {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("KafkaConnector").field("id", &self.id).field("brokers", &self.brokers).finish()
+        f.debug_struct("KafkaConnector")
+            .field("id", &self.id)
+            .field("brokers", &self.brokers)
+            .field("tls", &self.tls_config.is_some())
+            .finish()
     }
 }
 
@@ -40,7 +45,25 @@ impl KafkaConnector {
             .and_then(|v| v.as_str())
             .ok_or_else(|| ConnectorError::Connection("kafka: 'brokers' required".into()))?;
         let brokers: Vec<String> = brokers_str.split(',').map(|s| s.trim().to_string()).collect();
-        Ok(Self { id: config.id.clone(), brokers })
+
+        let tls_config = if let Some(tls) = config.tls_config() {
+            tls.validate().map_err(|e| ConnectorError::Connection(e.to_string()))?;
+            let rc = tls.build_rustls_config()
+                .map_err(|e| ConnectorError::Connection(e.to_string()))?;
+            Some(Arc::new(rc))
+        } else {
+            None
+        };
+
+        Ok(Self { id: config.id.clone(), brokers, tls_config })
+    }
+
+    fn client_builder(&self) -> ClientBuilder {
+        let mut builder = ClientBuilder::new(self.brokers.clone());
+        if let Some(ref tls) = self.tls_config {
+            builder = builder.tls_config(Arc::clone(tls));
+        }
+        builder
     }
 
     fn kafka_schema() -> Schema {
@@ -60,7 +83,7 @@ impl KafkaConnector {
         filter: &Option<FilterExpr>,
         limit: Option<u64>,
     ) -> Result<Vec<RecordBatch>, ConnectorError> {
-        let client = ClientBuilder::new(self.brokers.clone()).build().await
+        let client = self.client_builder().build().await
             .map_err(|e| ConnectorError::Connection(format!("kafka: {e}")))?;
 
         let topics = client.list_topics().await
@@ -211,7 +234,7 @@ impl FederatedConnector for KafkaConnector {
     }
 
     async fn health_check(&self) -> ConnectorHealth {
-        match ClientBuilder::new(self.brokers.clone()).build().await {
+        match self.client_builder().build().await {
             Ok(c) => match c.list_topics().await {
                 Ok(_) => ConnectorHealth { status: HealthStatus::Healthy, latency_ms: None, message: None },
                 Err(e) => ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some(format!("{e}")) },
@@ -221,7 +244,7 @@ impl FederatedConnector for KafkaConnector {
     }
 
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
-        let client = ClientBuilder::new(self.brokers.clone()).build().await
+        let client = self.client_builder().build().await
             .map_err(|e| ConnectorError::Connection(format!("kafka: {e}")))?;
         let topics = client.list_topics().await
             .map_err(|e| ConnectorError::Connection(format!("kafka: {e}")))?;
@@ -366,5 +389,11 @@ mod tests {
     #[test]
     fn test_factory_type() {
         assert_eq!(KafkaConnectorFactory.connector_type(), "kafka");
+    }
+
+    #[test]
+    fn test_tls_config_none_when_not_set() {
+        let c = KafkaConnector::from_config(&test_config("localhost:9092")).unwrap();
+        assert!(c.tls_config.is_none());
     }
 }
