@@ -65,6 +65,7 @@ pub mod telemetry;
 pub mod tenant;
 pub mod transaction;
 pub mod type_infer;
+pub mod timeout_tracker;
 pub mod validate;
 pub mod tracing_ctx;
 
