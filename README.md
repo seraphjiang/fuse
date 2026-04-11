@@ -244,6 +244,15 @@ fuse/
 │   │   ├── mongodb/            # MongoDB (BSON filter pushdown)
 │   │   ├── influxdb/           # InfluxDB 1.x/2.x
 │   │   ├── clickhouse/         # ClickHouse (HTTP, full SQL pushdown)
+│   │   ├── kafka/              # Kafka (rskafka, JSON extraction)
+│   │   ├── athena/             # Amazon Athena (Glue catalog)
+│   │   ├── timestream/         # Amazon Timestream (time-series)
+│   │   ├── snowflake/          # Snowflake (SQL API, async polling)
+│   │   ├── bigquery/           # Google BigQuery (Jobs API)
+│   │   ├── cassandra/          # Apache Cassandra (CQL, scylla driver)
+│   │   ├── duckdb/             # DuckDB (embedded SQL)
+│   │   ├── arrow-flight/       # Arrow Flight (zero-copy streaming)
+│   │   ├── fuse/               # Fuse-to-Fuse (federation)
 │   │   └── example/            # Minimal connector template
 │   ├── fuse-connector-sdk/     # SDK for third-party connectors
 │   └── fuse-server/            # REST API (axum) + embedded playground
