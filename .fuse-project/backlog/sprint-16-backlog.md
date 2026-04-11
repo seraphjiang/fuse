@@ -2,7 +2,7 @@
 
 **Sprint:** 16
 **PM:** pm
-**Status:** Nearly Complete (1 item in-flight)
+**Status:** ✅ COMPLETE
 
 ## Live Site Testing — ✅ COMPLETE
 
@@ -41,4 +41,4 @@
 
 | ID | Item | Owner | Status | Commit |
 |----|------|-------|--------|--------|
-| 1620 | TLS/mTLS verification | security | 🔄 in-progress | — |
+| 1620 | TLS/mTLS verification | security | ✅ done | dfc3248 |
