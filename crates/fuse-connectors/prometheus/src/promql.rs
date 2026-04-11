@@ -13,7 +13,7 @@ pub fn build_promql(query: &SubQuery) -> String {
     let matchers = query
         .filter
         .as_ref()
-        .map(|f| extract_label_matchers(f))
+        .map(extract_label_matchers)
         .unwrap_or_default();
 
     let matcher_str = if matchers.is_empty() {

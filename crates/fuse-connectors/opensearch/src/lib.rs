@@ -62,12 +62,12 @@ impl OpenSearchConnector {
             .body(dsl)
             .send()
             .await
-            .map_err(|e| ConnectorError::query(e))?;
+            .map_err(ConnectorError::query)?;
 
         let mut body = resp
             .json::<serde_json::Value>()
             .await
-            .map_err(|e| ConnectorError::query(e))?;
+            .map_err(ConnectorError::query)?;
 
         let mut batches = Vec::new();
         let mut collected: usize = 0;
@@ -80,7 +80,7 @@ impl OpenSearchConnector {
             }
             collected += batch.num_rows();
             batches.push(batch);
-            if limit.map_or(false, |l| collected >= l as usize) {
+            if limit.is_some_and(|l| collected >= l as usize) {
                 break;
             }
 
@@ -96,12 +96,12 @@ impl OpenSearchConnector {
                 .body(serde_json::json!({"scroll": "1m", "scroll_id": scroll_id}))
                 .send()
                 .await
-                .map_err(|e| ConnectorError::query(e))?;
+                .map_err(ConnectorError::query)?;
 
             body = scroll_resp
                 .json::<serde_json::Value>()
                 .await
-                .map_err(|e| ConnectorError::query(e))?;
+                .map_err(ConnectorError::query)?;
         }
 
         Ok(batches)
@@ -133,17 +133,17 @@ impl OpenSearchConnector {
                 .search(opensearch::SearchParts::Index(&[&query.table]))
                 .body(dsl)
                 .send().await
-                .map_err(|e| ConnectorError::query(e))?;
+                .map_err(ConnectorError::query)?;
 
             let body = resp.json::<serde_json::Value>().await
-                .map_err(|e| ConnectorError::query(e))?;
+                .map_err(ConnectorError::query)?;
 
             let batch = parse_hits_to_batch(&body, query)?;
             if batch.num_rows() == 0 { break; }
 
             collected += batch.num_rows();
             batches.push(batch);
-            if limit.map_or(false, |l| collected >= l as usize) { break; }
+            if limit.is_some_and(|l| collected >= l as usize) { break; }
 
             // Extract sort values from last hit for next page cursor
             let hits = body.pointer("/hits/hits").and_then(|v| v.as_array());
@@ -353,18 +353,18 @@ impl FederatedConnector for OpenSearchConnector {
             .get_mapping(opensearch::indices::IndicesGetMappingParts::Index(&[table]))
             .send()
             .await
-            .map_err(|e| ConnectorError::schema(e))?;
+            .map_err(ConnectorError::schema)?;
 
         let body = resp
             .json::<serde_json::Value>()
             .await
-            .map_err(|e| ConnectorError::schema(e))?;
+            .map_err(ConnectorError::schema)?;
 
         schema::mapping_to_arrow_schema(&body)
     }
 
     async fn execute(&self, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
-        let use_deep_pagination = query.limit.map_or(true, |l| l > SCROLL_THRESHOLD);
+        let use_deep_pagination = query.limit.is_none_or(|l| l > SCROLL_THRESHOLD);
 
         if use_deep_pagination && query.aggregations.is_empty() {
             // Prefer search_after (stateless) when sort is present, scroll otherwise
@@ -384,12 +384,12 @@ impl FederatedConnector for OpenSearchConnector {
             .body(dsl)
             .send()
             .await
-            .map_err(|e| ConnectorError::query(e))?;
+            .map_err(ConnectorError::query)?;
 
         let body = resp
             .json::<serde_json::Value>()
             .await
-            .map_err(|e| ConnectorError::query(e))?;
+            .map_err(ConnectorError::query)?;
 
         parse_search_response(&body, query)
     }
@@ -409,12 +409,12 @@ impl FederatedConnector for OpenSearchConnector {
             .body(dsl)
             .send()
             .await
-            .map_err(|e| ConnectorError::query(e))?;
+            .map_err(ConnectorError::query)?;
 
         let mut body = resp
             .json::<serde_json::Value>()
             .await
-            .map_err(|e| ConnectorError::query(e))?;
+            .map_err(ConnectorError::query)?;
 
         loop {
             let batch = parse_hits_to_batch(&body, query)?;
@@ -437,12 +437,12 @@ impl FederatedConnector for OpenSearchConnector {
                 .body(serde_json::json!({"scroll": "1m", "scroll_id": scroll_id}))
                 .send()
                 .await
-                .map_err(|e| ConnectorError::query(e))?;
+                .map_err(ConnectorError::query)?;
 
             body = scroll_resp
                 .json::<serde_json::Value>()
                 .await
-                .map_err(|e| ConnectorError::query(e))?;
+                .map_err(ConnectorError::query)?;
         }
 
         Ok(())
@@ -537,7 +537,7 @@ fn parse_hits_to_batch(
         })
         .collect();
 
-    RecordBatch::try_new(schema, arrays).map_err(|e| ConnectorError::query(e))
+    RecordBatch::try_new(schema, arrays).map_err(ConnectorError::query)
 }
 
 /// Parse aggregation response into RecordBatch.
@@ -589,7 +589,7 @@ fn parse_agg_response(
         }
 
         let schema = Arc::new(Schema::new(fields));
-        let batch = RecordBatch::try_new(schema, arrays).map_err(|e| ConnectorError::query(e))?;
+        let batch = RecordBatch::try_new(schema, arrays).map_err(ConnectorError::query)?;
         return Ok(vec![batch]);
     }
 
@@ -612,7 +612,7 @@ fn parse_agg_response(
         .map(|v| Arc::new(StringArray::from(vec![v])) as Arc<dyn arrow::array::Array>)
         .collect();
 
-    let batch = RecordBatch::try_new(schema, arrays).map_err(|e| ConnectorError::query(e))?;
+    let batch = RecordBatch::try_new(schema, arrays).map_err(ConnectorError::query)?;
     Ok(vec![batch])
 }
 
@@ -655,25 +655,25 @@ mod tests {
     #[test]
     fn test_scroll_threshold_no_limit_uses_scroll() {
         let q = sq(None);
-        assert!(q.limit.map_or(true, |l| l > SCROLL_THRESHOLD));
+        assert!(q.limit.is_none_or(|l| l > SCROLL_THRESHOLD));
     }
 
     #[test]
     fn test_scroll_threshold_small_limit_no_scroll() {
         let q = sq(Some(100));
-        assert!(!q.limit.map_or(true, |l| l > SCROLL_THRESHOLD));
+        assert!(q.limit.is_some_and(|l| l <= SCROLL_THRESHOLD));
     }
 
     #[test]
     fn test_scroll_threshold_exactly_at_boundary() {
         let q = sq(Some(SCROLL_THRESHOLD));
-        assert!(!q.limit.map_or(true, |l| l > SCROLL_THRESHOLD));
+        assert!(q.limit.is_some_and(|l| l <= SCROLL_THRESHOLD));
     }
 
     #[test]
     fn test_scroll_threshold_above_boundary() {
         let q = sq(Some(SCROLL_THRESHOLD + 1));
-        assert!(q.limit.map_or(true, |l| l > SCROLL_THRESHOLD));
+        assert!(q.limit.is_none_or(|l| l > SCROLL_THRESHOLD));
     }
 
     #[test]

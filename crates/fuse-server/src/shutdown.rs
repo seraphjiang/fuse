@@ -34,6 +34,12 @@ pub struct ShutdownCoordinator {
     rx: watch::Receiver<bool>,
 }
 
+impl Default for ShutdownCoordinator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ShutdownCoordinator {
     pub fn new() -> Self {
         let (tx, rx) = watch::channel(false);

@@ -39,8 +39,8 @@ pub fn partition_matches(filter: &FilterExpr, partitions: &HashMap<String, Strin
             // Conservative: only prune if inner is a provable equality mismatch
             match inner.as_ref() {
                 FilterExpr::Comparison { field, op: ComparisonOp::Eq, value } => {
-                    !partitions.get(field).map_or(false, |pv| {
-                        scalar_to_str(value).map_or(false, |fv| pv == &fv)
+                    !partitions.get(field).is_some_and(|pv| {
+                        scalar_to_str(value).is_some_and(|fv| pv == &fv)
                     })
                 }
                 _ => true,
@@ -59,7 +59,7 @@ pub fn partition_matches(filter: &FilterExpr, partitions: &HashMap<String, Strin
             let Some(pv) = partitions.get(field) else {
                 return true;
             };
-            values.iter().any(|v| scalar_to_str(v).map_or(true, |fv| fv == *pv))
+            values.iter().any(|v| scalar_to_str(v).is_none_or(|fv| fv == *pv))
         }
         FilterExpr::IsNull(field) => {
             // Partition values are never null in Hive paths

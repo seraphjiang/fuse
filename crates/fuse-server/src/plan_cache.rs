@@ -83,6 +83,10 @@ impl PlanCache {
         self.entries.lock().unwrap().len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.entries.lock().unwrap().is_empty()
+    }
+
     pub fn clear(&self) {
         self.entries.lock().unwrap().clear();
     }

@@ -319,17 +319,17 @@ mod tests {
     #[test]
     fn test_min_max_conditions() {
         let batch = make_batch(vec![5.0, 10.0, 15.0]);
-        assert_eq!(AlertEvaluator::evaluate(&rule(ConditionOp::Lt, 6.0, "min"), &[batch.clone()]).state, AlertState::Firing);
-        assert_eq!(AlertEvaluator::evaluate(&rule(ConditionOp::Gt, 14.0, "max"), &[batch]).state, AlertState::Firing);
+        assert_eq!(AlertEvaluator::evaluate(&rule(ConditionOp::Lt, 6.0, "min"), std::slice::from_ref(&batch)).state, AlertState::Firing);
+        assert_eq!(AlertEvaluator::evaluate(&rule(ConditionOp::Gt, 14.0, "max"), std::slice::from_ref(&batch)).state, AlertState::Firing);
     }
 
     #[test]
     fn test_eq_neq_operators() {
         let batch = make_batch(vec![1.0, 2.0, 3.0]);
         // count=3, eq 3 → firing
-        assert_eq!(AlertEvaluator::evaluate(&rule(ConditionOp::Eq, 3.0, "count"), &[batch.clone()]).state, AlertState::Firing);
+        assert_eq!(AlertEvaluator::evaluate(&rule(ConditionOp::Eq, 3.0, "count"), std::slice::from_ref(&batch)).state, AlertState::Firing);
         // count=3, neq 3 → ok
-        assert_eq!(AlertEvaluator::evaluate(&rule(ConditionOp::Neq, 3.0, "count"), &[batch]).state, AlertState::Ok);
+        assert_eq!(AlertEvaluator::evaluate(&rule(ConditionOp::Neq, 3.0, "count"), std::slice::from_ref(&batch)).state, AlertState::Ok);
     }
 
     #[test]

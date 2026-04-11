@@ -84,7 +84,7 @@ impl FederatedConnector for MongoDbConnector {
 
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
         let names = self.db().list_collection_names().await
-            .map_err(|e| ConnectorError::schema(e))?;
+            .map_err(ConnectorError::schema)?;
         Ok(names.into_iter().map(|name| SchemaInfo {
             name,
             schema_type: SchemaType::Table,
@@ -96,7 +96,7 @@ impl FederatedConnector for MongoDbConnector {
         // Sample one document to infer schema
         let coll = self.db().collection::<Document>(table);
         let doc = coll.find_one(doc! {}).await
-            .map_err(|e| ConnectorError::schema(e))?
+            .map_err(ConnectorError::schema)?
             .ok_or_else(|| ConnectorError::schema(format!("collection '{table}' is empty or not found")))?;
 
         let fields: Vec<Field> = doc.iter()
@@ -131,11 +131,11 @@ impl FederatedConnector for MongoDbConnector {
         }
 
         let mut cursor = coll.find(filter).with_options(opts).await
-            .map_err(|e| ConnectorError::query(e))?;
+            .map_err(ConnectorError::query)?;
 
         let mut docs = Vec::new();
-        while cursor.advance().await.map_err(|e| ConnectorError::query(e))? {
-            docs.push(cursor.deserialize_current().map_err(|e| ConnectorError::query(e))?);
+        while cursor.advance().await.map_err(ConnectorError::query)? {
+            docs.push(cursor.deserialize_current().map_err(ConnectorError::query)?);
         }
 
         if docs.is_empty() { return Ok(vec![]); }
@@ -266,7 +266,7 @@ fn docs_to_batch(docs: &[Document], query: &SubQuery) -> Result<Vec<RecordBatch>
     }
 
     let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays)
-        .map_err(|e| ConnectorError::query(e))?;
+        .map_err(ConnectorError::query)?;
     Ok(vec![batch])
 }
 
@@ -407,7 +407,7 @@ mod tests {
     fn test_filter_is_null_not_exists() {
         let doc = filter_to_bson(&FilterExpr::IsNull("email".into()));
         let inner = doc.get_document("email").unwrap();
-        assert_eq!(inner.get_bool("$exists").unwrap(), false);
+        assert!(!inner.get_bool("$exists").unwrap());
     }
 
     #[test]

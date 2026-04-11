@@ -3,7 +3,6 @@
 //! Run with: FUSE_LIVE_URL=http://localhost:9400 cargo test -p fuse-server --test cross_join_live_test
 //! Skipped if FUSE_LIVE_URL is not set.
 
-use std::collections::HashMap;
 
 fn fuse_url() -> Option<String> {
     std::env::var("FUSE_LIVE_URL").ok()

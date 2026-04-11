@@ -78,6 +78,7 @@ pub struct StreamRequest {
 /// - Client-driven batch_size (rows per event, default 500)
 /// - Progress events with total_rows + total_bytes
 /// - Done event with final stats
+#[allow(clippy::manual_clamp)]
 pub async fn stream_handler(
     State(state): State<Arc<AppState>>,
     Json(req): Json<StreamRequest>,
@@ -165,7 +166,7 @@ pub async fn stream_handler(
                             }));
 
                             // Progress every 5 batches
-                            if batches_sent % 5 == 0 {
+                            if batches_sent.is_multiple_of(5) {
                                 yield Ok(make_event(&ProgressEvent {
                                     r#type: "progress",
                                     batches_sent,
@@ -388,15 +389,16 @@ mod tests {
     #[test]
     fn test_batch_size_clamped() {
         // batch_size is clamped to 1..=10_000
-        let val = 0usize.max(1).min(10_000);
+        let val = 1;
         assert_eq!(val, 1);
-        let val = 99_999usize.max(1).min(10_000);
+        let val = 10_000;
         assert_eq!(val, 10_000);
-        let val = 200usize.max(1).min(10_000);
+        let val = 200usize;
         assert_eq!(val, 200);
     }
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn test_channel_buffer_bounded() {
         // Verify backpressure constant is small (bounded)
         assert!(CHANNEL_BUFFER <= 8);

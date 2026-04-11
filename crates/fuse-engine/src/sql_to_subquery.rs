@@ -49,7 +49,7 @@ pub fn sql_to_subquery(sql: &str) -> Result<SubQuery, ConnectorError> {
 
     let table = extract_table_name(&select.from)?;
     let (projections, aggregations) = extract_projections_and_aggs(&select.projection);
-    let outer_filter = select.selection.as_ref().and_then(|e| translate_expr(e));
+    let outer_filter = select.selection.as_ref().and_then(translate_expr);
 
     // Merge inner and outer filters with AND
     let filter = match (outer_filter, inner_filter) {
@@ -59,7 +59,7 @@ pub fn sql_to_subquery(sql: &str) -> Result<SubQuery, ConnectorError> {
     };
 
     let group_by = extract_group_by(&select.group_by);
-    let having = select.having.as_ref().and_then(|e| translate_expr(e));
+    let having = select.having.as_ref().and_then(translate_expr);
     let sort = query
         .order_by
         .as_ref()
@@ -97,7 +97,7 @@ fn extract_inner_filter(from: &[ast::TableWithJoins]) -> Option<FilterExpr> {
                 SetExpr::Select(s) => *s,
                 _ => return None,
             };
-            inner.selection.as_ref().and_then(|e| translate_expr(e))
+            inner.selection.as_ref().and_then(translate_expr)
         }
         _ => None,
     }
@@ -431,7 +431,7 @@ fn value_to_scalar(v: &Value) -> Option<ScalarValue> {
 fn extract_group_by(group_by: &GroupByExpr) -> Vec<String> {
     match group_by {
         GroupByExpr::Expressions(exprs, _) => {
-            exprs.iter().filter_map(|e| expr_to_column_name(e)).collect()
+            exprs.iter().filter_map(expr_to_column_name).collect()
         }
         GroupByExpr::All(_) => vec![],
     }
@@ -454,7 +454,7 @@ fn extract_order_by(order_by: &OrderBy) -> Vec<SortExpr> {
 fn extract_limit(clause: &LimitClause) -> Option<u64> {
     match clause {
         LimitClause::LimitOffset { limit, .. } => {
-            limit.as_ref().and_then(|e| expr_to_u64(e))
+            limit.as_ref().and_then(expr_to_u64)
         }
         LimitClause::OffsetCommaLimit { limit, .. } => expr_to_u64(limit),
     }

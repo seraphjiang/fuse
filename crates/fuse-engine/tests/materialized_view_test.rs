@@ -6,7 +6,7 @@ use std::time::Duration;
 use arrow::array::{ArrayRef, Int64Array};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use fuse_engine::materialized::{MaterializedViewDef, MaterializedView, MaterializedViewRegistry};
+use fuse_engine::materialized::{MaterializedViewDef, MaterializedViewRegistry};
 
 fn make_batch(val: i64) -> Vec<RecordBatch> {
     let schema = Arc::new(Schema::new(vec![Field::new("count", DataType::Int64, false)]));

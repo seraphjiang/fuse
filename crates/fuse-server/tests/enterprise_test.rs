@@ -173,7 +173,6 @@ async fn test_audit_log_respects_max_entries() {
 fn test_rate_limit_state_creation() {
     let rl = fuse_server::rate_limit::RateLimitState::default();
     // Default state should exist without panic
-    assert!(true, "rate limit state created successfully");
     let _ = rl; // use it
 }
 

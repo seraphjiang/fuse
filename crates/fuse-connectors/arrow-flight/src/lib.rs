@@ -24,7 +24,7 @@
 
 use std::sync::Arc;
 
-use arrow::datatypes::{DataType, Field, Schema};
+use arrow::datatypes::Schema;
 use arrow::record_batch::RecordBatch;
 use arrow_flight::sql::client::FlightSqlServiceClient;
 use arrow_flight::{FlightClient, FlightDescriptor, Ticket};

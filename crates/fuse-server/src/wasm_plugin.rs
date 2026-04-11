@@ -30,7 +30,7 @@ use fuse_core::error::ConnectorError;
 /// Maximum fuel per WASM function call (prevents infinite loops).
 const WASM_FUEL_LIMIT: u64 = 10_000_000;
 /// Maximum WASM linear memory in bytes (64 MiB).
-const WASM_MEMORY_LIMIT: usize = 64 * 1024 * 1024;
+const _WASM_MEMORY_LIMIT: usize = 64 * 1024 * 1024;
 /// Maximum input size for WASM function calls (1 MiB).
 const WASM_MAX_INPUT_SIZE: usize = 1024 * 1024;
 
@@ -321,7 +321,7 @@ pub fn load_plugins_from_dir(dir: &Path) -> Vec<WasmPlugin> {
         }
 
         // Case 2: bare .wasm file (original behavior)
-        if path.extension().map_or(false, |e| e == "wasm") {
+        if path.extension().is_some_and(|e| e == "wasm") {
             let id = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
             match WasmPlugin::load(&id, &path) {
                 Ok(plugin) => {

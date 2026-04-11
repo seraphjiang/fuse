@@ -142,12 +142,12 @@ impl PrometheusConnector {
             .query(&[("query", promql)])
             .send()
             .await
-            .map_err(|e| ConnectorError::query(e))?;
+            .map_err(ConnectorError::query)?;
 
         let body: serde_json::Value = resp
             .json()
             .await
-            .map_err(|e| ConnectorError::query(e))?;
+            .map_err(ConnectorError::query)?;
 
         if body.get("status").and_then(|s| s.as_str()) != Some("success") {
             let err = body
@@ -182,12 +182,12 @@ impl PrometheusConnector {
             ])
             .send()
             .await
-            .map_err(|e| ConnectorError::query(e))?;
+            .map_err(ConnectorError::query)?;
 
         let body: serde_json::Value = resp
             .json()
             .await
-            .map_err(|e| ConnectorError::query(e))?;
+            .map_err(ConnectorError::query)?;
 
         if body.get("status").and_then(|s| s.as_str()) != Some("success") {
             let err = body
@@ -258,12 +258,12 @@ impl FederatedConnector for PrometheusConnector {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ConnectorError::schema(e))?;
+            .map_err(ConnectorError::schema)?;
 
         let body: serde_json::Value = resp
             .json()
             .await
-            .map_err(|e| ConnectorError::schema(e))?;
+            .map_err(ConnectorError::schema)?;
 
         let names = body
             .pointer("/data")
@@ -379,7 +379,7 @@ fn parse_vector_results(
             Arc::new(Float64Array::from(values)),
         ],
     )
-    .map_err(|e| ConnectorError::query(e))?;
+    .map_err(ConnectorError::query)?;
 
     Ok(vec![batch])
 }
@@ -445,7 +445,7 @@ fn parse_matrix_results(
             Arc::new(Float64Array::from(values)),
         ],
     )
-    .map_err(|e| ConnectorError::query(e))?;
+    .map_err(ConnectorError::query)?;
 
     Ok(vec![batch])
 }

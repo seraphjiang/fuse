@@ -67,7 +67,7 @@ impl RedisConnector {
     /// Scan keys matching the pattern.
     async fn scan_keys(&self, limit: Option<u64>) -> Result<Vec<String>, ConnectorError> {
         let mut conn = self.get_connection().await?;
-        let inner: &mut redis::aio::MultiplexedConnection = &mut *conn;
+        let inner: &mut redis::aio::MultiplexedConnection = &mut conn;
         let mut keys = Vec::new();
         let max = limit.unwrap_or(10_000) as usize;
 
@@ -137,6 +137,7 @@ impl RedisConnector {
         for (i, row) in rows.iter().enumerate() {
             // First column is _key
             columns[0].push(Some(keys[i].clone()));
+            #[allow(clippy::needless_range_loop)]
             for col_idx in 1..num_cols {
                 let field_name = schema.field(col_idx).name();
                 columns[col_idx].push(row.get(field_name).cloned());

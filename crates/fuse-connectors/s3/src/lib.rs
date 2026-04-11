@@ -94,7 +94,7 @@ impl S3ParquetConnector {
             let resp = req
                 .send()
                 .await
-                .map_err(|e| ConnectorError::schema(e))?;
+                .map_err(ConnectorError::schema)?;
 
             for obj in resp.contents() {
                 if let Some(key) = obj.key() {
@@ -123,13 +123,13 @@ impl S3ParquetConnector {
             .key(key)
             .send()
             .await
-            .map_err(|e| ConnectorError::query(e))?;
+            .map_err(ConnectorError::query)?;
 
         resp.body
             .collect()
             .await
             .map(|agg| agg.into_bytes())
-            .map_err(|e| ConnectorError::query(e))
+            .map_err(ConnectorError::query)
     }
 
     /// Derive a "table name" from an S3 key by stripping prefix and extension.
@@ -229,9 +229,7 @@ impl FederatedConnector for S3ParquetConnector {
             *tables.entry(name).or_default() += 1;
         }
 
-        Ok(tables
-            .into_iter()
-            .map(|(name, _count)| SchemaInfo {
+        Ok(tables.into_keys().map(|name| SchemaInfo {
                 name,
                 schema_type: SchemaType::Bucket,
                 estimated_row_count: None, // would need to read footers

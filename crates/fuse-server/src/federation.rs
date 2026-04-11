@@ -35,6 +35,12 @@ pub struct FederationRegistry {
     instances: Mutex<HashMap<String, FederatedInstance>>,
 }
 
+impl Default for FederationRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FederationRegistry {
     pub fn new() -> Self {
         Self {
@@ -377,7 +383,7 @@ mod tests {
             async fn execute(&self, _: &SubQuery) -> Result<Vec<arrow::record_batch::RecordBatch>, fuse_core::error::ConnectorError> { Ok(vec![]) }
             async fn execute_streaming(&self, _: &SubQuery, _: tokio::sync::mpsc::Sender<Result<arrow::record_batch::RecordBatch, fuse_core::error::ConnectorError>>) -> Result<(), fuse_core::error::ConnectorError> { Ok(()) }
         }
-        local.register(std::sync::Arc::new(MockConn));
+        let _ = local.register(std::sync::Arc::new(MockConn));
         assert_eq!(reg.cost_based_route("local_ds", &local), RouteTarget::Local);
     }
 
@@ -399,6 +405,6 @@ mod tests {
         inst.latency_ms = Some(50);
         inst.datasources = vec!["a".into(), "b".into()];
         let cost = route_cost(&inst);
-        assert_eq!(cost, 50 + 0 + 2); // latency + healthy penalty + 2 datasources
+        assert_eq!(cost, 50 + 2); // latency + healthy penalty + 2 datasources
     }
 }

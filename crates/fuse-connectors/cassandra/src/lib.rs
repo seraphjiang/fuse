@@ -8,7 +8,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use arrow::array::{ArrayRef, Float64Array, Int64Array, StringArray};
+use arrow::array::{ArrayRef, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use scylla::Session;
@@ -150,9 +150,9 @@ impl CassandraConnector {
 
         let mut col_values: Vec<Vec<Option<String>>> = (0..num_cols).map(|_| Vec::new()).collect();
         for row in &rows {
-            for i in 0..num_cols {
+            for (i, col_val) in col_values.iter_mut().enumerate() {
                 let val: Option<String> = row.columns[i].as_ref().map(|c| format!("{:?}", c));
-                col_values[i].push(val);
+                col_val.push(val);
             }
         }
 

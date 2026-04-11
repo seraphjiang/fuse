@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -128,6 +128,10 @@ impl JobStore {
 
     pub fn len(&self) -> usize {
         self.jobs.lock().unwrap().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.jobs.lock().unwrap().is_empty()
     }
 
     fn evict_expired(&self, jobs: &mut HashMap<String, AsyncJob>) {

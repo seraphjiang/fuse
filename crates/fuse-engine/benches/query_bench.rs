@@ -105,9 +105,9 @@ fn bench_hash_join(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, _| {
             b.iter(|| {
                 hash_join(
-                    black_box(&[build.clone()]),
+                    black_box(std::slice::from_ref(&build)),
                     "id",
-                    black_box(&[probe.clone()]),
+                    black_box(std::slice::from_ref(&probe)),
                     "id",
                     JoinType::Inner,
                 )
@@ -123,7 +123,7 @@ fn bench_extract_keys(c: &mut Criterion) {
     for size in [1_000, 10_000, 100_000] {
         let batch = make_batch(size);
         group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, _| {
-            b.iter(|| extract_join_keys(black_box(&[batch.clone()]), "id").unwrap())
+            b.iter(|| extract_join_keys(black_box(std::slice::from_ref(&batch)), "id").unwrap())
         });
     }
     group.finish();

@@ -28,7 +28,7 @@ use tracing::debug;
 
 use fuse_core::config::ConnectorConfig;
 use fuse_core::connector::{
-    ConnectorCapabilities, ConnectorHealth, FederatedConnector, HealthStatus, LatencyClass,
+    ConnectorCapabilities, ConnectorHealth, FederatedConnector, HealthStatus,
     SchemaInfo, SchemaType, SubQuery,
 };
 use fuse_core::error::ConnectorError;
@@ -125,7 +125,7 @@ impl FederatedConnector for FuseConnector {
     }
 
     async fn health_check(&self) -> ConnectorHealth {
-        match self.client.get(&self.health_url()).send().await {
+        match self.client.get(self.health_url()).send().await {
             Ok(resp) if resp.status().is_success() => ConnectorHealth {
                 status: HealthStatus::Healthy,
                 latency_ms: None,
@@ -147,7 +147,7 @@ impl FederatedConnector for FuseConnector {
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
         let resp = self
             .client
-            .get(&self.datasources_url())
+            .get(self.datasources_url())
             .send()
             .await
             .map_err(|e| ConnectorError::Connection(e.to_string()))?;
@@ -163,7 +163,7 @@ impl FederatedConnector for FuseConnector {
                     // Fetch tables for each remote datasource
                     let tables_resp = self
                         .client
-                        .get(&self.schemas_url(id))
+                        .get(self.schemas_url(id))
                         .send()
                         .await
                         .map_err(|e| ConnectorError::Connection(e.to_string()))?;
@@ -198,7 +198,7 @@ impl FederatedConnector for FuseConnector {
 
         let resp = self
             .client
-            .get(&self.fields_url(ds, tbl))
+            .get(self.fields_url(ds, tbl))
             .send()
             .await
             .map_err(|e| ConnectorError::Connection(e.to_string()))?;
@@ -226,7 +226,7 @@ impl FederatedConnector for FuseConnector {
 
         let resp = self
             .client
-            .post(&self.query_url())
+            .post(self.query_url())
             .json(&serde_json::json!({
                 "query": sql,
                 "format": "sql"
@@ -321,7 +321,7 @@ fn build_remote_sql(query: &SubQuery) -> String {
 }
 
 fn filter_to_sql(f: &fuse_core::connector::FilterExpr) -> String {
-    use fuse_core::connector::{ComparisonOp, FilterExpr, ScalarValue};
+    use fuse_core::connector::{ComparisonOp, FilterExpr};
     match f {
         FilterExpr::And(l, r) => format!("({} AND {})", filter_to_sql(l), filter_to_sql(r)),
         FilterExpr::Or(l, r) => format!("({} OR {})", filter_to_sql(l), filter_to_sql(r)),

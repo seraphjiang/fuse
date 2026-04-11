@@ -22,6 +22,12 @@ pub struct AdaptiveTimeout {
     fallback_ms: u64,
 }
 
+impl Default for AdaptiveTimeout {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AdaptiveTimeout {
     pub fn new() -> Self {
         Self {
@@ -172,7 +178,7 @@ mod tests {
         let samples: Vec<u64> = (1..=100).collect();
         let p95 = percentile(&samples, 95);
         // p95 of 1..=100 should be around 95-96
-        assert!(p95 >= 95 && p95 <= 96, "p95 was {p95}");
+        assert!((95..=96).contains(&p95), "p95 was {p95}");
     }
 
     #[test]

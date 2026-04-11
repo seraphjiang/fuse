@@ -230,6 +230,7 @@ pub fn dedup_batches(
     if num_rows > 0 {
         keep[0] = true;
     }
+    #[allow(clippy::needless_range_loop)]
     for row in 1..num_rows {
         let mut differs = false;
         for &col_idx in &col_indices {

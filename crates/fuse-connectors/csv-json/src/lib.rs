@@ -19,7 +19,7 @@ use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Instant;
 
-use arrow::datatypes::{DataType, Field, Schema};
+use arrow::datatypes::Schema;
 use arrow::record_batch::RecordBatch;
 use async_trait::async_trait;
 use aws_sdk_s3::Client as S3Client;
@@ -135,13 +135,13 @@ impl CsvJsonConnector {
             &mut BufReader::new(Cursor::new(data)), None,
         ).map_err(|e| ConnectorError::QueryFailed(format!("JSON schema infer: {e}")))?;
 
-        let mut reader = arrow_json::ReaderBuilder::new(Arc::new(schema))
+        let reader = arrow_json::ReaderBuilder::new(Arc::new(schema))
             .with_batch_size(8192)
             .build(BufReader::new(Cursor::new(data)))
             .map_err(|e| ConnectorError::QueryFailed(format!("JSON build: {e}")))?;
 
         let mut batches = Vec::new();
-        while let Some(batch) = reader.next() {
+        for batch in reader {
             batches.push(batch.map_err(|e| ConnectorError::QueryFailed(format!("JSON read: {e}")))?);
         }
         Ok(batches)
@@ -304,6 +304,7 @@ impl ConnectorFactory for CsvJsonConnectorFactory {
 }
 
 #[cfg(test)]
+#[allow(clippy::assertions_on_constants)]
 mod tests {
     use super::*;
 

@@ -84,8 +84,8 @@ impl ClickHouseConnector {
             .post(&self.base_url)
             .query(&[("database", &self.database)])
             .body(query)
-            .send().await.map_err(|e| ConnectorError::query(e))?
-            .text().await.map_err(|e| ConnectorError::query(e))
+            .send().await.map_err(ConnectorError::query)?
+            .text().await.map_err(ConnectorError::query)
     }
 }
 
@@ -251,7 +251,7 @@ fn parse_json_each_row(text: &str) -> Result<Vec<RecordBatch>, ConnectorError> {
     }
 
     let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays)
-        .map_err(|e| ConnectorError::query(e))?;
+        .map_err(ConnectorError::query)?;
     Ok(vec![batch])
 }
 

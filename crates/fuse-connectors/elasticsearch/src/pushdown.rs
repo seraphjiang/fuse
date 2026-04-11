@@ -80,7 +80,6 @@ fn translate_aggs(aggs: &[fuse_core::connector::AggregationExpr], group_by: &[St
                 AggFunction::Max => serde_json::json!({"max": {"field": field}}),
                 AggFunction::ApproxCountDistinct => serde_json::json!({"cardinality": {"field": field}}),
                 AggFunction::ApproxPercentile(p) => serde_json::json!({"percentiles": {"field": field, "percents": [p * 100.0]}}),
-                AggFunction::ApproxPercentile(p) => serde_json::json!({"percentiles": {"field": field, "percents": [p]}}),
             };
             inner.insert(agg.alias.clone(), agg_body);
         }
@@ -99,7 +98,6 @@ fn translate_aggs(aggs: &[fuse_core::connector::AggregationExpr], group_by: &[St
                 AggFunction::Max => serde_json::json!({"max": {"field": field}}),
                 AggFunction::ApproxCountDistinct => serde_json::json!({"cardinality": {"field": field}}),
                 AggFunction::ApproxPercentile(p) => serde_json::json!({"percentiles": {"field": field, "percents": [p * 100.0]}}),
-                AggFunction::ApproxPercentile(p) => serde_json::json!({"percentiles": {"field": field, "percents": [p]}}),
             };
             result.insert(agg.alias.clone(), agg_body);
         }

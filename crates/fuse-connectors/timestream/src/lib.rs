@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use arrow::array::{ArrayRef, Float64Array, Int64Array, StringArray};
-use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
+use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use tokio::sync::mpsc;
 use tracing::debug;
@@ -82,7 +82,8 @@ fn ts_type_to_arrow(ts_type: &str) -> DataType {
         "BIGINT" => DataType::Int64,
         "DOUBLE" => DataType::Float64,
         "BOOLEAN" => DataType::Boolean,
-        "TIMESTAMP" | "DATE" | "TIME" | "VARCHAR" | _ => DataType::Utf8,
+        "TIMESTAMP" | "DATE" | "TIME" | "VARCHAR" => DataType::Utf8,
+        _ => DataType::Utf8,
     }
 }
 

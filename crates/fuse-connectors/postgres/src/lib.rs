@@ -117,15 +117,15 @@ impl FederatedConnector for SqlConnector {
         let names: Vec<String> = match &self.pool {
             Pool::Postgres(p) => {
                 let sql = "SELECT table_name FROM information_schema.tables WHERE table_schema NOT IN ('information_schema','pg_catalog') ORDER BY table_name";
-                sqlx::query_scalar(sql).fetch_all(p).await.map_err(|e| ConnectorError::schema(e))?
+                sqlx::query_scalar(sql).fetch_all(p).await.map_err(ConnectorError::schema)?
             }
             Pool::Mysql(p) => {
                 let sql = "SELECT table_name FROM information_schema.tables WHERE table_schema NOT IN ('information_schema','performance_schema','sys') ORDER BY table_name";
-                sqlx::query_scalar(sql).fetch_all(p).await.map_err(|e| ConnectorError::schema(e))?
+                sqlx::query_scalar(sql).fetch_all(p).await.map_err(ConnectorError::schema)?
             }
             Pool::Sqlite(p) => {
                 let sql = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name";
-                sqlx::query_scalar(sql).fetch_all(p).await.map_err(|e| ConnectorError::schema(e))?
+                sqlx::query_scalar(sql).fetch_all(p).await.map_err(ConnectorError::schema)?
             }
         };
         Ok(names.into_iter().map(|name| SchemaInfo {
@@ -139,17 +139,17 @@ impl FederatedConnector for SqlConnector {
         let rows: Vec<(String, String)> = match &self.pool {
             Pool::Postgres(p) => {
                 let sql = "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = $1 ORDER BY ordinal_position";
-                sqlx::query_as(sql).bind(table).fetch_all(p).await.map_err(|e| ConnectorError::schema(e))?
+                sqlx::query_as(sql).bind(table).fetch_all(p).await.map_err(ConnectorError::schema)?
             }
             Pool::Mysql(p) => {
                 let sql = "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = ? ORDER BY ordinal_position";
-                sqlx::query_as(sql).bind(table).fetch_all(p).await.map_err(|e| ConnectorError::schema(e))?
+                sqlx::query_as(sql).bind(table).fetch_all(p).await.map_err(ConnectorError::schema)?
             }
             Pool::Sqlite(p) => {
                 // SQLite PRAGMA returns (cid, name, type, notnull, dflt_value, pk)
                 let sql = format!("PRAGMA table_info({table})");
                 let rows: Vec<(i64, String, String, i64, Option<String>, i64)> =
-                    sqlx::query_as(&sql).fetch_all(p).await.map_err(|e| ConnectorError::schema(e))?;
+                    sqlx::query_as(&sql).fetch_all(p).await.map_err(ConnectorError::schema)?;
                 rows.into_iter().map(|(_, name, typ, _, _, _)| (name, typ)).collect()
             }
         };
@@ -215,21 +215,21 @@ impl FederatedConnector for SqlConnector {
 
 async fn execute_pg(pool: &sqlx::PgPool, sql: &str) -> Result<Vec<RecordBatch>, ConnectorError> {
     let rows = sqlx::query(sql).fetch_all(pool).await
-        .map_err(|e| ConnectorError::query(e))?;
+        .map_err(ConnectorError::query)?;
     if rows.is_empty() { return Ok(vec![]); }
     pg_rows_to_batch(&rows)
 }
 
 async fn execute_my(pool: &sqlx::MySqlPool, sql: &str) -> Result<Vec<RecordBatch>, ConnectorError> {
     let rows = sqlx::query(sql).fetch_all(pool).await
-        .map_err(|e| ConnectorError::query(e))?;
+        .map_err(ConnectorError::query)?;
     if rows.is_empty() { return Ok(vec![]); }
     my_rows_to_batch(&rows)
 }
 
 async fn execute_sqlite(pool: &sqlx::SqlitePool, sql: &str) -> Result<Vec<RecordBatch>, ConnectorError> {
     let rows = sqlx::query(sql).fetch_all(pool).await
-        .map_err(|e| ConnectorError::query(e))?;
+        .map_err(ConnectorError::query)?;
     if rows.is_empty() { return Ok(vec![]); }
     sqlite_rows_to_batch(&rows)
 }
@@ -260,7 +260,7 @@ fn sqlite_rows_to_batch(rows: &[sqlx::sqlite::SqliteRow]) -> Result<Vec<RecordBa
     }
 
     let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays)
-        .map_err(|e| ConnectorError::query(e))?;
+        .map_err(ConnectorError::query)?;
     Ok(vec![batch])
 }
 
@@ -295,7 +295,7 @@ fn pg_rows_to_batch(rows: &[sqlx::postgres::PgRow]) -> Result<Vec<RecordBatch>, 
     }
 
     let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays)
-        .map_err(|e| ConnectorError::query(e))?;
+        .map_err(ConnectorError::query)?;
     Ok(vec![batch])
 }
 
@@ -323,7 +323,7 @@ fn my_rows_to_batch(rows: &[sqlx::mysql::MySqlRow]) -> Result<Vec<RecordBatch>, 
     }
 
     let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays)
-        .map_err(|e| ConnectorError::query(e))?;
+        .map_err(ConnectorError::query)?;
     Ok(vec![batch])
 }
 

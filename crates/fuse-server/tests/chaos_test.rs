@@ -89,6 +89,7 @@ impl FederatedConnector for HangingConnector {
 
 /// Connector that panics on execute.
 #[derive(Debug)]
+#[allow(dead_code)]
 struct PanicConnector(String);
 #[async_trait]
 impl FederatedConnector for PanicConnector {
@@ -154,7 +155,7 @@ async fn test_union_one_healthy_one_refused() {
         Arc::new(HealthyConnector("good".into())),
         Arc::new(ConnectionRefusedConnector("bad".into())),
     ]);
-    let (status, json) = query(app, "SELECT host, status FROM good.logs UNION ALL SELECT host, status FROM bad.logs").await;
+    let (_status, json) = query(app, "SELECT host, status FROM good.logs UNION ALL SELECT host, status FROM bad.logs").await;
     // Should return partial results or clear error — not crash
     let has_data = json["rows"].as_array().map(|r| !r.is_empty()).unwrap_or(false);
     let has_error = json["error"].is_string() || json["partial_errors"].is_array();

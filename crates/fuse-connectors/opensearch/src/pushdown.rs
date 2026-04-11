@@ -160,9 +160,6 @@ fn translate_single_agg(agg: &AggregationExpr) -> serde_json::Value {
         AggFunction::Min => serde_json::json!({"min": {"field": agg.field.as_deref().unwrap_or("_id")}}),
         AggFunction::Max => serde_json::json!({"max": {"field": agg.field.as_deref().unwrap_or("_id")}}),
         AggFunction::ApproxPercentile(p) => serde_json::json!({"percentiles": {"field": agg.field.as_deref().unwrap_or("_id"), "percents": [p]}}),
-        AggFunction::ApproxPercentile(p) => {
-            serde_json::json!({"percentiles": {"field": agg.field.as_deref().unwrap_or("_id"), "percents": [p * 100.0]}})
-        }
     }
 }
 

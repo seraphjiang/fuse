@@ -101,7 +101,7 @@ pub fn records_to_batch(
         .collect();
 
     RecordBatch::try_new(Arc::new(proj_schema), arrays)
-        .map_err(|e| ConnectorError::query(e))
+        .map_err(ConnectorError::query)
 }
 
 /// Apply a simple client-side limit to records.

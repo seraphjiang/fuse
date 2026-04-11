@@ -176,7 +176,7 @@ pub fn build_openai_request(prompt: &str, model: &str, max_tokens: u32) -> serde
 pub fn parse_openai_response(json: &serde_json::Value) -> Option<String> {
     json["choices"][0]["message"]["content"]
         .as_str()
-        .map(|s| extract_sql(s))
+        .map(extract_sql)
 }
 
 #[cfg(test)]

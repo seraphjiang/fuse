@@ -14,7 +14,7 @@ pub mod expr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use arrow::array::{ArrayRef, BooleanArray, Float64Array, Int64Array, StringArray};
+use arrow::array::{ArrayRef, BooleanArray, Float64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use async_trait::async_trait;
@@ -129,7 +129,7 @@ impl FederatedConnector for DynamoDbConnector {
             if let Some(ref k) = last_key {
                 req = req.exclusive_start_table_name(k);
             }
-            let resp = req.send().await.map_err(|e| ConnectorError::schema(e))?;
+            let resp = req.send().await.map_err(ConnectorError::schema)?;
             for name in resp.table_names() {
                 let fuse_name = if self.table_prefix.is_empty() {
                     name.to_string()
@@ -156,7 +156,7 @@ impl FederatedConnector for DynamoDbConnector {
             .table_name(&ddb_table)
             .send()
             .await
-            .map_err(|e| ConnectorError::schema(e))?;
+            .map_err(ConnectorError::schema)?;
 
         let table_desc = resp.table()
             .ok_or_else(|| ConnectorError::schema("DescribeTable returned no table"))?;
@@ -215,7 +215,7 @@ impl FederatedConnector for DynamoDbConnector {
                 for (k, v) in pnames { req = req.expression_attribute_names(k, v); }
             }
 
-            req.send().await.map_err(|e| ConnectorError::query(e))?.items().to_vec()
+            req.send().await.map_err(ConnectorError::query)?.items().to_vec()
         } else {
             // Use Scan API
             let mut req = self.client.scan().table_name(&ddb_table);
@@ -235,7 +235,7 @@ impl FederatedConnector for DynamoDbConnector {
                 for (k, v) in pnames { req = req.expression_attribute_names(k, v); }
             }
 
-            req.send().await.map_err(|e| ConnectorError::query(e))?.items().to_vec()
+            req.send().await.map_err(ConnectorError::query)?.items().to_vec()
         };
 
         if items.is_empty() {
@@ -322,7 +322,7 @@ fn items_to_batch(
 
     let schema = Arc::new(Schema::new(fields));
     let batch = RecordBatch::try_new(schema, arrays)
-        .map_err(|e| ConnectorError::query(e))?;
+        .map_err(ConnectorError::query)?;
     Ok(vec![batch])
 }
 
@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn test_ddb_table_with_prefix() {
-        use aws_sdk_dynamodb::config::Builder;
+        
         // Can't construct Client without credentials in unit test — test the logic directly
         let prefix = "prod_";
         let table = "users";

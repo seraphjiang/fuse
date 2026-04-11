@@ -55,6 +55,7 @@ impl BigQueryConnector {
         Self { id, client, project_id, dataset, location, max_results }
     }
 
+    #[allow(dead_code)]
     fn jobs_url(&self) -> String {
         format!("{}/projects/{}/jobs", BQ_API_BASE, self.project_id)
     }
@@ -87,7 +88,7 @@ impl BigQueryConnector {
             body["location"] = serde_json::Value::String(loc.clone());
         }
 
-        let resp = self.client.post(&self.query_url())
+        let resp = self.client.post(self.query_url())
             .json(&body).send().await
             .map_err(|e| ConnectorError::Connection(e.to_string()))?;
 
@@ -217,7 +218,7 @@ impl FederatedConnector for BigQueryConnector {
     fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
 
     async fn health_check(&self) -> ConnectorHealth {
-        match self.client.get(&self.tables_url()).query(&[("maxResults", "1")]).send().await {
+        match self.client.get(self.tables_url()).query(&[("maxResults", "1")]).send().await {
             Ok(r) if r.status().is_success() => ConnectorHealth { status: HealthStatus::Healthy, latency_ms: None, message: None },
             Ok(r) => ConnectorHealth { status: HealthStatus::Degraded, latency_ms: None, message: Some(format!("HTTP {}", r.status())) },
             Err(e) => ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some(e.to_string()) },
@@ -225,7 +226,7 @@ impl FederatedConnector for BigQueryConnector {
     }
 
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
-        let resp = self.client.get(&self.tables_url()).send().await
+        let resp = self.client.get(self.tables_url()).send().await
             .map_err(|e| ConnectorError::Connection(e.to_string()))?;
         let json: serde_json::Value = resp.json().await
             .map_err(|e| ConnectorError::query(e.to_string()))?;
@@ -239,7 +240,7 @@ impl FederatedConnector for BigQueryConnector {
     }
 
     async fn get_schema(&self, table: &str) -> Result<Schema, ConnectorError> {
-        let resp = self.client.get(&self.table_url(table)).send().await
+        let resp = self.client.get(self.table_url(table)).send().await
             .map_err(|e| ConnectorError::Connection(e.to_string()))?;
         let json: serde_json::Value = resp.json().await
             .map_err(|e| ConnectorError::query(e.to_string()))?;

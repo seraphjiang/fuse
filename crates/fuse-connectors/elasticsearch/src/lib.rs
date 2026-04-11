@@ -38,6 +38,7 @@ pub struct ElasticsearchConnector {
     id: String,
     client: reqwest::Client,
     base_url: String,
+    #[allow(dead_code)]
     version: EsVersion,
 }
 
@@ -105,18 +106,18 @@ impl ElasticsearchConnector {
     async fn get_json(&self, path: &str) -> Result<serde_json::Value, ConnectorError> {
         let url = format!("{}{}", self.base_url, path);
         self.client.get(&url).send().await
-            .map_err(|e| ConnectorError::query(e))?
+            .map_err(ConnectorError::query)?
             .json().await
-            .map_err(|e| ConnectorError::query(e))
+            .map_err(ConnectorError::query)
     }
 
     async fn post_json(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, ConnectorError> {
         let url = format!("{}{}", self.base_url, path);
         debug!(url = url.as_str(), "Elasticsearch POST");
         self.client.post(&url).json(&body).send().await
-            .map_err(|e| ConnectorError::query(e))?
+            .map_err(ConnectorError::query)?
             .json().await
-            .map_err(|e| ConnectorError::query(e))
+            .map_err(ConnectorError::query)
     }
 }
 
@@ -286,7 +287,7 @@ fn parse_hits(body: &serde_json::Value, query: &SubQuery) -> Result<Vec<RecordBa
     }
 
     let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays)
-        .map_err(|e| ConnectorError::query(e))?;
+        .map_err(ConnectorError::query)?;
     Ok(vec![batch])
 }
 

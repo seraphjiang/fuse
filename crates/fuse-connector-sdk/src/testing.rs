@@ -195,7 +195,7 @@ impl FederatedConnector for MockConnector {
             .collect();
 
         let mut batch =
-            RecordBatch::try_new(schema, arrays).map_err(|e| ConnectorError::query(e))?;
+            RecordBatch::try_new(schema, arrays).map_err(ConnectorError::query)?;
 
         // Apply limit
         if let Some(limit) = query.limit {

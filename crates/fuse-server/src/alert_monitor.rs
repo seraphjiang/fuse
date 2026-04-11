@@ -55,6 +55,12 @@ pub struct AlertMonitor {
     active: Mutex<HashMap<String, FiredAlert>>,
 }
 
+impl Default for AlertMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AlertMonitor {
     pub fn new() -> Self {
         Self {

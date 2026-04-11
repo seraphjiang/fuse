@@ -34,6 +34,12 @@ impl Default for DatasourceStats {
     }
 }
 
+impl Default for AdaptiveParallelism {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AdaptiveParallelism {
     pub fn new() -> Self {
         Self { stats: Mutex::new(HashMap::new()) }

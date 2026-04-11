@@ -8,7 +8,6 @@
 //! - Percentile estimation via sorted sampling
 
 use std::collections::HashSet;
-use std::hash::{Hash, Hasher};
 
 /// Approximate count distinct using a hash-based estimator.
 /// For small cardinalities (< 10k), uses exact count.

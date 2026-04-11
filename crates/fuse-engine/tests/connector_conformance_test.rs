@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use arrow::array::StringArray;
-use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
+use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use async_trait::async_trait;
 use tokio::sync::mpsc;

@@ -652,9 +652,9 @@ mod tests {
         // Semi + Anti should equal total probe rows
         let build = build_batch(&["a", "c"], &[1, 3]);
         let probe = probe_batch(&["a", "b", "c", "d"], &["a1", "b1", "c1", "d1"]);
-        let semi: usize = hash_join(&[build.clone()], "id", &[probe.clone()], "id", JoinType::Semi)
+        let semi: usize = hash_join(std::slice::from_ref(&build), "id", std::slice::from_ref(&probe), "id", JoinType::Semi)
             .unwrap().iter().map(|b| b.num_rows()).sum();
-        let anti: usize = hash_join(&[build], "id", &[probe], "id", JoinType::Anti)
+        let anti: usize = hash_join(std::slice::from_ref(&build), "id", std::slice::from_ref(&probe), "id", JoinType::Anti)
             .unwrap().iter().map(|b| b.num_rows()).sum();
         assert_eq!(semi + anti, 4, "semi ({}) + anti ({}) should equal probe rows (4)", semi, anti);
     }
@@ -720,8 +720,8 @@ mod tests {
     fn test_full_outer_join_superset_of_inner() {
         let build = build_batch(&["a", "c"], &[100, 300]);
         let probe = probe_batch(&["a", "b"], &["alice", "bob"]);
-        let inner = hash_join(&[build.clone()], "id", &[probe.clone()], "id", JoinType::Inner).unwrap();
-        let full = hash_join(&[build], "id", &[probe], "id", JoinType::Full).unwrap();
+        let inner = hash_join(std::slice::from_ref(&build), "id", std::slice::from_ref(&probe), "id", JoinType::Inner).unwrap();
+        let full = hash_join(std::slice::from_ref(&build), "id", std::slice::from_ref(&probe), "id", JoinType::Full).unwrap();
         assert!(full[0].num_rows() >= inner[0].num_rows(),
             "FULL should have >= INNER rows: {} vs {}", full[0].num_rows(), inner[0].num_rows());
     }

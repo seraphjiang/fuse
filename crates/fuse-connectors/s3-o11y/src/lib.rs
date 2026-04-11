@@ -63,7 +63,7 @@ impl S3O11yConnector {
             let mut req = self.client.list_objects_v2()
                 .bucket(&self.bucket).prefix(&self.prefix);
             if let Some(t) = &token { req = req.continuation_token(t); }
-            let resp = req.send().await.map_err(|e| ConnectorError::schema(e))?;
+            let resp = req.send().await.map_err(ConnectorError::schema)?;
             for obj in resp.contents() {
                 if let Some(key) = obj.key() {
                     if key.ends_with(".json.gz") || key.ends_with(".ndjson.gz")
@@ -109,10 +109,10 @@ impl S3O11yConnector {
         debug!(key, "Downloading S3 object");
         let resp = self.client.get_object()
             .bucket(&self.bucket).key(key)
-            .send().await.map_err(|e| ConnectorError::query(e))?;
+            .send().await.map_err(ConnectorError::query)?;
         let bytes = resp.body.collect().await
             .map(|agg| agg.into_bytes())
-            .map_err(|e| ConnectorError::query(e))?;
+            .map_err(ConnectorError::query)?;
         ndjson::decompress(&bytes)
     }
 }
@@ -158,7 +158,7 @@ impl FederatedConnector for S3O11yConnector {
         for key in &keys {
             *tables.entry(Self::key_to_table(key, &self.prefix)).or_default() += 1;
         }
-        Ok(tables.into_iter().map(|(name, _)| SchemaInfo {
+        Ok(tables.into_keys().map(|name| SchemaInfo {
             name, schema_type: SchemaType::Bucket, estimated_row_count: None,
         }).collect())
     }
@@ -197,7 +197,7 @@ impl FederatedConnector for S3O11yConnector {
         let mut sent = 0usize;
         let limit = query.limit.map(|n| n as usize);
         for key in &keys {
-            if limit.map_or(false, |l| sent >= l) { break; }
+            if limit.is_some_and(|l| sent >= l) { break; }
             let data = self.read_object(key).await?;
             let mut records = ndjson::parse_lines(&data);
             if let Some(l) = limit { records.truncate(l - sent); }

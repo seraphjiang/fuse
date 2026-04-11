@@ -27,6 +27,12 @@ pub struct RunningQueries {
     inner: std::sync::Mutex<std::collections::HashMap<String, CancellationToken>>,
 }
 
+impl Default for RunningQueries {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RunningQueries {
     pub fn new() -> Self {
         Self { inner: std::sync::Mutex::new(std::collections::HashMap::new()) }
@@ -1040,6 +1046,7 @@ pub async fn query_handler(
                     // Rebuild batches from selected rows
                     let schema = batches[0].schema();
                     let mut result_cols: Vec<Vec<arrow::array::ArrayRef>> = (0..schema.fields().len()).map(|_| Vec::new()).collect();
+            #[allow(clippy::needless_range_loop)]
                     for (batch, row_idx) in &rows_to_take {
                         for col_idx in 0..schema.fields().len() {
                             result_cols[col_idx].push(batch.column(col_idx).slice(*row_idx, 1));
@@ -1107,7 +1114,7 @@ pub async fn query_handler(
                 status: crate::audit::AuditStatus::Success,
                 error: None,
                 client_ip: None,
-            });
+            }).await;
             crate::metrics::record_query(&req.format, true, elapsed_ms);
             tracing::info!(
                 query_id = %query_id,
@@ -2149,12 +2156,14 @@ fn decode_cursor(cursor: &str) -> Option<usize> {
 
 /// Encode a UNION ALL cursor with per-source offsets.
 /// Format: fuse_u_<ds1>:<offset1>,<ds2>:<offset2>,...|<global_offset>
+#[allow(dead_code)]
 fn encode_union_cursor(per_source: &[(String, usize)], global_offset: usize) -> String {
     let parts: Vec<String> = per_source.iter().map(|(ds, off)| format!("{}:{}", ds, off)).collect();
     format!("fuse_u_{}|{}", parts.join(","), global_offset)
 }
 
 /// Decode a UNION ALL cursor. Returns (per-source offsets, global offset).
+#[allow(dead_code)]
 fn decode_union_cursor(cursor: &str) -> Option<(Vec<(String, usize)>, usize)> {
     let rest = cursor.strip_prefix("fuse_u_")?;
     let (sources_part, global_part) = rest.rsplit_once('|')?;
@@ -2183,6 +2192,7 @@ fn describe_pushdown(sq: &fuse_core::connector::SubQuery) -> Vec<String> {
     if !sq.group_by.is_empty() {
         desc.push(format!("group_by: {}", sq.group_by.join(", ")));
     }
+    #[allow(clippy::unnecessary_unwrap)]
     if sq.limit.is_some() {
         desc.push(format!("limit: {}", sq.limit.unwrap()));
     }
@@ -2448,7 +2458,7 @@ fn parse_order_by(query: &str) -> Vec<(String, bool)> {
 
     clause.split(',')
         .filter_map(|part| {
-            let tokens: Vec<&str> = part.trim().split_whitespace().collect();
+            let tokens: Vec<&str> = part.split_whitespace().collect();
             if tokens.is_empty() { return None; }
             let col = tokens[0].trim_matches(|c: char| !c.is_alphanumeric() && c != '_').to_string();
             if col.is_empty() { return None; }
@@ -2535,6 +2545,7 @@ pub fn build_sub_query(
 
 /// Convert Arrow RecordBatches to JSON columns + rows.
 /// Estimate total size of record batches in bytes.
+#[allow(dead_code)]
 fn estimate_batches_size(batches: &[arrow::record_batch::RecordBatch]) -> u64 {
     batches.iter().map(|b| {
         b.columns().iter().map(|a| a.get_array_memory_size() as u64).sum::<u64>()
@@ -2542,6 +2553,7 @@ fn estimate_batches_size(batches: &[arrow::record_batch::RecordBatch]) -> u64 {
 }
 
 /// Check if result exceeds max_result_bytes. Returns Err with message if exceeded.
+#[allow(dead_code)]
 fn check_result_size(batches: &[arrow::record_batch::RecordBatch], max_bytes: u64) -> Result<(), String> {
     if max_bytes == 0 { return Ok(()); }
     let size = estimate_batches_size(batches);
@@ -3458,8 +3470,7 @@ mod tests {
 
     #[test]
     fn test_trace_span_sort_by_timestamp() {
-        let mut spans = vec![
-            TraceSpan {
+        let mut spans = [TraceSpan {
                 datasource: "b".into(),
                 timestamp: Some(serde_json::json!("2024-01-01T00:00:05Z")),
                 fields: Default::default(),
@@ -3473,8 +3484,7 @@ mod tests {
                 datasource: "c".into(),
                 timestamp: None,
                 fields: Default::default(),
-            },
-        ];
+            }];
         spans.sort_by(|a, b| {
             let ta = a.timestamp.as_ref().and_then(|v| v.as_str()).unwrap_or("");
             let tb = b.timestamp.as_ref().and_then(|v| v.as_str()).unwrap_or("");

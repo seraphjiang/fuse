@@ -11,7 +11,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use arrow::array::{ArrayRef, BooleanArray, Float64Array, Int64Array, StringArray};
+use arrow::array::{ArrayRef, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use async_trait::async_trait;
@@ -45,6 +45,7 @@ impl DuckDbConnector {
         Self::new(config.id.clone(), path)
     }
 
+    #[allow(dead_code)]
     fn open(&self) -> Result<duckdb::Connection, ConnectorError> {
         duckdb::Connection::open(&self.path)
             .map_err(|e| ConnectorError::Connection(e.to_string()))
@@ -90,15 +91,15 @@ impl FederatedConnector for DuckDbConnector {
         let path = self.path.clone();
         let names = tokio::task::spawn_blocking(move || -> Result<Vec<String>, ConnectorError> {
             let conn = duckdb::Connection::open(&path)
-                .map_err(|e| ConnectorError::schema(e))?;
+                .map_err(ConnectorError::schema)?;
             let mut stmt = conn.prepare("SELECT table_name FROM information_schema.tables WHERE table_schema = 'main' ORDER BY table_name")
-                .map_err(|e| ConnectorError::schema(e))?;
+                .map_err(ConnectorError::schema)?;
             let names: Vec<String> = stmt.query_map([], |row| row.get(0))
-                .map_err(|e| ConnectorError::schema(e))?
+                .map_err(ConnectorError::schema)?
                 .filter_map(|r| r.ok())
                 .collect();
             Ok(names)
-        }).await.map_err(|e| ConnectorError::schema(e))??;
+        }).await.map_err(ConnectorError::schema)??;
 
         Ok(names.into_iter().map(|name| SchemaInfo {
             name,
@@ -113,15 +114,15 @@ impl FederatedConnector for DuckDbConnector {
         let table2 = table.clone();
         let fields = tokio::task::spawn_blocking(move || -> Result<Vec<(String, String)>, ConnectorError> {
             let conn = duckdb::Connection::open(&path)
-                .map_err(|e| ConnectorError::schema(e))?;
+                .map_err(ConnectorError::schema)?;
             let sql = format!("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '{}' ORDER BY ordinal_position", table.replace('\'', "''"));
-            let mut stmt = conn.prepare(&sql).map_err(|e| ConnectorError::schema(e))?;
+            let mut stmt = conn.prepare(&sql).map_err(ConnectorError::schema)?;
             let rows: Vec<(String, String)> = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-                .map_err(|e| ConnectorError::schema(e))?
+                .map_err(ConnectorError::schema)?
                 .filter_map(|r| r.ok())
                 .collect();
             Ok(rows)
-        }).await.map_err(|e| ConnectorError::schema(e))??;
+        }).await.map_err(ConnectorError::schema)??;
 
         if fields.is_empty() {
             return Err(ConnectorError::schema(format!("table '{table2}' not found")));
@@ -136,10 +137,10 @@ impl FederatedConnector for DuckDbConnector {
 
         tokio::task::spawn_blocking(move || -> Result<Vec<RecordBatch>, ConnectorError> {
             let conn = duckdb::Connection::open(&path)
-                .map_err(|e| ConnectorError::query(e))?;
-            let mut stmt = conn.prepare(&sql).map_err(|e| ConnectorError::query(e))?;
+                .map_err(ConnectorError::query)?;
+            let mut stmt = conn.prepare(&sql).map_err(ConnectorError::query)?;
 
-            let mut rows = stmt.query([]).map_err(|e| ConnectorError::query(e))?;
+            let mut rows = stmt.query([]).map_err(ConnectorError::query)?;
 
             // Get column info from statement after query() is called
             let (col_count, col_names) = match rows.as_ref() {
@@ -148,7 +149,8 @@ impl FederatedConnector for DuckDbConnector {
             };
 
             let mut col_data: Vec<Vec<Option<String>>> = vec![vec![]; col_count];
-            while let Some(row) = rows.next().map_err(|e| ConnectorError::query(e))? {
+            #[allow(clippy::needless_range_loop)]
+            while let Some(row) = rows.next().map_err(ConnectorError::query)? {
                 for i in 0..col_count {
                     let val: Option<String> = row.get::<_, Option<String>>(i)
                         .or_else(|_| row.get::<_, Option<i64>>(i).map(|v| v.map(|n| n.to_string())))
@@ -166,9 +168,9 @@ impl FederatedConnector for DuckDbConnector {
                 .collect();
 
             let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays)
-                .map_err(|e| ConnectorError::query(e))?;
+                .map_err(ConnectorError::query)?;
             Ok(vec![batch])
-        }).await.map_err(|e| ConnectorError::query(e))?
+        }).await.map_err(ConnectorError::query)?
     }
 
     async fn execute_streaming(
@@ -193,7 +195,7 @@ impl FederatedConnector for DuckDbConnector {
 
         tokio::task::spawn_blocking(move || -> Result<u64, ConnectorError> {
             let conn = duckdb::Connection::open(&path)
-                .map_err(|e| ConnectorError::query(e))?;
+                .map_err(ConnectorError::query)?;
             let mut total = 0u64;
 
             for batch in &batches {
@@ -213,11 +215,11 @@ impl FederatedConnector for DuckDbConnector {
                 }
 
                 let sql = format!("INSERT INTO {} ({}) VALUES {}", table, col_list, value_rows.join(", "));
-                conn.execute_batch(&sql).map_err(|e| ConnectorError::query(e))?;
+                conn.execute_batch(&sql).map_err(ConnectorError::query)?;
                 total += batch.num_rows() as u64;
             }
             Ok(total)
-        }).await.map_err(|e| ConnectorError::query(e))?
+        }).await.map_err(ConnectorError::query)?
     }
 }
 
@@ -317,7 +319,7 @@ mod tests {
 
     #[test]
     fn test_cell_to_sql_types() {
-        use arrow::array::{Int64Array, Float64Array, StringArray, BooleanArray};
+        use arrow::array::{Int64Array, StringArray, BooleanArray};
         use arrow::datatypes::Field;
 
         // Int64

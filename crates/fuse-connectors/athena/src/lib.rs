@@ -9,10 +9,10 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use arrow::array::{ArrayRef, StringArray};
-use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
+use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use tokio::sync::mpsc;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use fuse_core::config::ConnectorConfig;
 use fuse_core::connector::*;
@@ -220,9 +220,9 @@ impl AthenaConnector {
 
         for row in &data_rows {
             let data = row.data();
-            for col_idx in 0..num_cols {
+            for (col_idx, builder) in col_builders.iter_mut().enumerate() {
                 let val = data.get(col_idx).and_then(|d| d.var_char_value().map(|s| s.to_string()));
-                col_builders[col_idx].push(val);
+                builder.push(val);
             }
         }
 

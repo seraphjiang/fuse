@@ -16,7 +16,6 @@ use async_trait::async_trait;
 use rskafka::client::ClientBuilder;
 use rskafka::client::partition::{OffsetAt, UnknownTopicHandling};
 use tokio::sync::mpsc;
-use tracing::debug;
 
 use fuse_core::config::ConnectorConfig;
 use fuse_core::connector::*;

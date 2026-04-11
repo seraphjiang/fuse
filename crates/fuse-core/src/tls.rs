@@ -91,6 +91,7 @@ impl TlsConfig {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     /// Read the client identity (cert + key) as PEM bytes.
     pub fn read_identity(&self) -> Result<Option<(Vec<u8>, Vec<u8>)>, FuseError> {
         match (&self.client_cert, &self.client_key) {

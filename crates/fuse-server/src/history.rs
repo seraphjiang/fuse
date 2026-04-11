@@ -53,6 +53,10 @@ impl QueryHistory {
         self.entries.lock().unwrap().len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.entries.lock().unwrap().is_empty()
+    }
+
     /// Compute aggregate stats from history.
     pub fn stats(&self) -> QueryStats {
         let q = self.entries.lock().unwrap();

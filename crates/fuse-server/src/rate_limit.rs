@@ -33,6 +33,12 @@ pub struct DatasourceLimiter {
     semaphores: Mutex<HashMap<String, Arc<tokio::sync::Semaphore>>>,
 }
 
+impl Default for DatasourceLimiter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DatasourceLimiter {
     pub fn new() -> Self {
         Self { semaphores: Mutex::new(HashMap::new()) }

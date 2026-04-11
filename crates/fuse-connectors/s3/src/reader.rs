@@ -13,7 +13,7 @@ use fuse_core::error::ConnectorError;
 /// Read the Arrow schema from Parquet file bytes (footer only).
 pub fn read_schema(data: &Bytes) -> Result<Schema, ConnectorError> {
     let builder = ParquetRecordBatchReaderBuilder::try_new(data.clone())
-        .map_err(|e| ConnectorError::schema(e))?;
+        .map_err(ConnectorError::schema)?;
     Ok(builder.schema().as_ref().clone())
 }
 
@@ -24,7 +24,7 @@ pub fn read_batches(
     batch_size: usize,
 ) -> Result<Vec<RecordBatch>, ConnectorError> {
     let mut builder = ParquetRecordBatchReaderBuilder::try_new(data.clone())
-        .map_err(|e| ConnectorError::query(e))?;
+        .map_err(ConnectorError::query)?;
 
     // Apply projection if specified
     if !projections.is_empty() {
@@ -48,17 +48,17 @@ pub fn read_batches(
     let reader = builder
         .with_batch_size(batch_size)
         .build()
-        .map_err(|e| ConnectorError::query(e))?;
+        .map_err(ConnectorError::query)?;
 
     reader
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| ConnectorError::query(e))
+        .map_err(ConnectorError::query)
 }
 
 /// Returns the number of row groups in a Parquet file.
 pub fn row_group_count(data: &Bytes) -> Result<usize, ConnectorError> {
     let builder = ParquetRecordBatchReaderBuilder::try_new(data.clone())
-        .map_err(|e| ConnectorError::query(e))?;
+        .map_err(ConnectorError::query)?;
     Ok(builder.metadata().num_row_groups())
 }
 
@@ -71,7 +71,7 @@ pub fn read_row_group(
     batch_size: usize,
 ) -> Result<Vec<RecordBatch>, ConnectorError> {
     let mut builder = ParquetRecordBatchReaderBuilder::try_new(data.clone())
-        .map_err(|e| ConnectorError::query(e))?;
+        .map_err(ConnectorError::query)?;
 
     let total = builder.metadata().num_row_groups();
     if row_group >= total {
@@ -95,9 +95,9 @@ pub fn read_row_group(
         .with_row_groups(vec![row_group])
         .with_batch_size(batch_size)
         .build()
-        .map_err(|e| ConnectorError::query(e))?;
+        .map_err(ConnectorError::query)?;
 
-    reader.collect::<Result<Vec<_>, _>>().map_err(|e| ConnectorError::query(e))
+    reader.collect::<Result<Vec<_>, _>>().map_err(ConnectorError::query)
 }
 
 #[cfg(test)]

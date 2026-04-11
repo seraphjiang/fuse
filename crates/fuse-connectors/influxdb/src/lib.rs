@@ -98,8 +98,8 @@ impl InfluxDbConnector {
         self.client
             .get(format!("{}/query", self.base_url))
             .query(&[("db", &self.bucket), ("q", &influxql.to_string())])
-            .send().await.map_err(|e| ConnectorError::query(e))?
-            .json().await.map_err(|e| ConnectorError::query(e))
+            .send().await.map_err(ConnectorError::query)?
+            .json().await.map_err(ConnectorError::query)
     }
 
     async fn query_v2(&self, flux: &str) -> Result<String, ConnectorError> {
@@ -110,8 +110,8 @@ impl InfluxDbConnector {
             .query(&[("org", &self.org)])
             .header("Accept", "application/csv")
             .json(&body)
-            .send().await.map_err(|e| ConnectorError::query(e))?;
-        resp.text().await.map_err(|e| ConnectorError::query(e))
+            .send().await.map_err(ConnectorError::query)?;
+        resp.text().await.map_err(ConnectorError::query)
     }
 }
 
@@ -162,7 +162,7 @@ impl FederatedConnector for InfluxDbConnector {
                 Ok(names.into_iter().map(|name| SchemaInfo { name, schema_type: SchemaType::MetricName, estimated_row_count: None }).collect())
             }
             InfluxVersion::V2 => {
-                let flux = format!("buckets() |> filter(fn: (r) => r.name == \"{}\") |> yield()", self.bucket);
+                let _flux = format!("buckets() |> filter(fn: (r) => r.name == \"{}\") |> yield()", self.bucket);
                 // For schema discovery, list measurements via Flux schema package
                 let flux = format!("import \"influxdata/influxdb/schema\"\nschema.measurements(bucket: \"{}\")", self.bucket);
                 let csv = self.query_v2(&flux).await?;
@@ -373,7 +373,7 @@ fn parse_v1_response(body: &serde_json::Value) -> Result<Vec<RecordBatch>, Conne
     }
 
     let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays)
-        .map_err(|e| ConnectorError::query(e))?;
+        .map_err(ConnectorError::query)?;
     Ok(vec![batch])
 }
 
@@ -402,7 +402,7 @@ fn parse_flux_csv(csv: &str) -> Result<Vec<RecordBatch>, ConnectorError> {
         .collect();
 
     let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays)
-        .map_err(|e| ConnectorError::query(e))?;
+        .map_err(ConnectorError::query)?;
     Ok(vec![batch])
 }
 

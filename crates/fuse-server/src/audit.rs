@@ -5,7 +5,6 @@
 //! Records who queried what, when, with what result.
 //! Integrates with auth.rs AuthIdentity for identity tracking.
 
-use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::Mutex;
 

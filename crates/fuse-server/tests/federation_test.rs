@@ -137,7 +137,7 @@ async fn test_cross_cluster_join_with_analyze() {
     let bytes = axum::body::to_bytes(resp.into_body(), 10_000_000).await.unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert!(json["execution_profile"].is_object(), "should have profile");
-    assert!(json["rows"].as_array().unwrap().len() > 0);
+    assert!(!json["rows"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]

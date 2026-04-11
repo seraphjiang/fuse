@@ -4,7 +4,7 @@
 //!
 //! When a federated join is too large for local hash-join execution (both sides
 //! > 100k rows or total > 1M rows), the join can be delegated to an external
-//! Spark cluster. This module defines:
+//! > Spark cluster. This module defines:
 //!
 //! - [`SparkBackend`] trait — interface for submitting SQL to Spark
 //! - [`should_delegate_to_spark`] — delegation rule based on table stats
