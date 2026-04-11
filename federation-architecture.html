@@ -1,0 +1,411 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Federation Architecture - Fuse — Federated Query Engine</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "navy";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="what-is-fuse.html"><strong aria-hidden="true">1.</strong> What is Fuse?</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">2.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">3.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="sql-reference.html"><strong aria-hidden="true">4.</strong> SQL Reference</a></li><li class="chapter-item expanded "><a href="ppl-reference.html"><strong aria-hidden="true">5.</strong> PPL Reference</a></li><li class="chapter-item expanded "><a href="connectors.html"><strong aria-hidden="true">6.</strong> Connectors</a></li><li class="chapter-item expanded "><a href="dashboard-guide.html"><strong aria-hidden="true">7.</strong> Dashboard Guide</a></li><li class="chapter-item expanded "><a href="data-provenance.html"><strong aria-hidden="true">8.</strong> Data Provenance</a></li><li class="chapter-item expanded "><a href="explain-analyze.html"><strong aria-hidden="true">9.</strong> EXPLAIN / ANALYZE</a></li><li class="chapter-item expanded "><a href="performance-tuning.html"><strong aria-hidden="true">10.</strong> Performance Tuning</a></li><li class="chapter-item expanded "><a href="query-optimization.html"><strong aria-hidden="true">11.</strong> Query Optimization</a></li><li class="chapter-item expanded "><a href="migration-guide.html"><strong aria-hidden="true">12.</strong> Migration from OpenSearch</a></li><li class="chapter-item expanded "><a href="troubleshooting.html"><strong aria-hidden="true">13.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="troubleshooting-faq.html"><strong aria-hidden="true">14.</strong> Troubleshooting FAQ</a></li><li class="chapter-item expanded affix "><li class="part-title">SDKs & Integrations</li><li class="chapter-item expanded "><a href="python-sdk.html"><strong aria-hidden="true">15.</strong> Python SDK</a></li><li class="chapter-item expanded "><a href="typescript-sdk.html"><strong aria-hidden="true">16.</strong> TypeScript SDK</a></li><li class="chapter-item expanded "><a href="sdk-comparison.html"><strong aria-hidden="true">17.</strong> SDK Comparison (Python vs TypeScript)</a></li><li class="chapter-item expanded "><a href="jupyter-integration.html"><strong aria-hidden="true">18.</strong> Jupyter Notebooks</a></li><li class="chapter-item expanded "><a href="grafana-plugin.html"><strong aria-hidden="true">19.</strong> Grafana Plugin</a></li><li class="chapter-item expanded "><a href="vscode-extension.html"><strong aria-hidden="true">20.</strong> VS Code Extension</a></li><li class="chapter-item expanded "><a href="cli-reference.html"><strong aria-hidden="true">21.</strong> CLI Reference</a></li><li class="chapter-item expanded affix "><li class="part-title">API</li><li class="chapter-item expanded "><a href="api-reference.html"><strong aria-hidden="true">22.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="api-reference-guide.html"><strong aria-hidden="true">23.</strong> API Guide (curl examples)</a></li><li class="chapter-item expanded affix "><li class="part-title">Administration</li><li class="chapter-item expanded "><a href="admin-guide.html"><strong aria-hidden="true">24.</strong> Admin Guide</a></li><li class="chapter-item expanded "><a href="horizontal-scaling.html"><strong aria-hidden="true">25.</strong> Horizontal Scaling</a></li><li class="chapter-item expanded "><a href="security-hardening.html"><strong aria-hidden="true">26.</strong> Security Hardening</a></li><li class="chapter-item expanded "><a href="federation-architecture.html" class="active"><strong aria-hidden="true">27.</strong> Federation Architecture</a></li><li class="chapter-item expanded "><a href="deployment-patterns.html"><strong aria-hidden="true">28.</strong> Deployment Patterns</a></li><li class="chapter-item expanded affix "><li class="part-title">Developer</li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">29.</strong> Contributing</a></li><li class="chapter-item expanded "><a href="connector-development.html"><strong aria-hidden="true">30.</strong> Connector Development</a></li><li class="chapter-item expanded "><a href="plugin-development.html"><strong aria-hidden="true">31.</strong> Plugin Development (WASM)</a></li><li class="chapter-item expanded "><a href="community-guide.html"><strong aria-hidden="true">32.</strong> Community</a></li><li class="chapter-item expanded affix "><li class="part-title">Blog & Roadmap</li><li class="chapter-item expanded "><a href="roadmap.html"><strong aria-hidden="true">33.</strong> Roadmap</a></li><li class="chapter-item expanded "><a href="api-stability.html"><strong aria-hidden="true">34.</strong> API Stability Guarantee</a></li><li class="chapter-item expanded "><a href="blog-v100-ga.html"><strong aria-hidden="true">35.</strong> v1.0.0: General Availability</a></li><li class="chapter-item expanded "><a href="blog-v060-release.html"><strong aria-hidden="true">36.</strong> v0.6.0: Enterprise, AI & SDKs</a></li><li class="chapter-item expanded "><a href="blog-sprint-5-release.html"><strong aria-hidden="true">37.</strong> v0.5.0 Release</a></li><li class="chapter-item expanded "><a href="blog-introducing-fuse.html"><strong aria-hidden="true">38.</strong> Introducing Fuse</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Fuse — Federated Query Engine</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/seraphjiang/fuse" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/seraphjiang/fuse/edit/main/docs-site/src/src/federation-architecture.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="federation-architecture-guide"><a class="header" href="#federation-architecture-guide">Federation Architecture Guide</a></h1>
+<p>Design multi-cluster Fuse deployments with routing, topology patterns, and cross-region federation.</p>
+<h2 id="topologies"><a class="header" href="#topologies">Topologies</a></h2>
+<h3 id="single-instance"><a class="header" href="#single-instance">Single Instance</a></h3>
+<pre><code>Client → Fuse → [OpenSearch, DynamoDB, S3, Prometheus]
+</code></pre>
+<p>Simplest setup. One Fuse server connects to all datasources directly. Good for development and small teams.</p>
+<h3 id="horizontally-scaled-shared-nothing"><a class="header" href="#horizontally-scaled-shared-nothing">Horizontally Scaled (Shared-Nothing)</a></h3>
+<pre><code>Client → Load Balancer → Fuse 1 ──┐
+                         Fuse 2 ──┤→ Redis (cache/tenants)
+                         Fuse 3 ──┘
+                           │
+                    [All Datasources]
+</code></pre>
+<p>Multiple stateless Fuse instances behind a load balancer. All instances connect to all datasources. Redis provides shared cache and tenant registry. See <a href="./horizontal-scaling-guide.html">Horizontal Scaling Guide</a>.</p>
+<h3 id="hub-and-spoke-federation"><a class="header" href="#hub-and-spoke-federation">Hub-and-Spoke Federation</a></h3>
+<pre><code>                    ┌──────────────┐
+                    │   Hub Fuse   │  ← client-facing, routes queries
+                    └──────┬───────┘
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+        ┌──────────┐ ┌──────────┐ ┌──────────┐
+        │ Spoke A  │ │ Spoke B  │ │ Spoke C  │
+        │ (US-East)│ │ (EU-West)│ │ (AP-NE)  │
+        └────┬─────┘ └────┬─────┘ └────┬─────┘
+             │             │             │
+        [US sources]  [EU sources]  [AP sources]
+</code></pre>
+<p>A hub Fuse instance routes queries to regional spoke instances. Each spoke manages its local datasources. The hub merges results.</p>
+<p><strong>Hub config (<code>fuse.toml</code>):</strong></p>
+<pre><code class="language-toml"># Spoke A appears as a datasource of type "fuse" (upstream federation)
+[[datasource]]
+id = "us_east"
+type = "fuse"
+url = "https://spoke-a.internal:9400"
+api_key = "spoke-a-key"
+
+[[datasource]]
+id = "eu_west"
+type = "fuse"
+url = "https://spoke-b.internal:9400"
+api_key = "spoke-b-key"
+
+[[datasource]]
+id = "ap_northeast"
+type = "fuse"
+url = "https://spoke-c.internal:9400"
+api_key = "spoke-c-key"
+</code></pre>
+<p><strong>Query through the hub:</strong></p>
+<pre><code class="language-sql">-- Federated across 3 regions
+SELECT region, service, count(*) as errors
+FROM us_east.logs
+UNION ALL
+SELECT region, service, count(*) as errors
+FROM eu_west.logs
+UNION ALL
+SELECT region, service, count(*) as errors
+FROM ap_northeast.logs
+ORDER BY errors DESC
+</code></pre>
+<p>The hub fans out to all three spokes in parallel, each spoke queries its local datasources, and the hub merges the results.</p>
+<h3 id="tiered-federation"><a class="header" href="#tiered-federation">Tiered Federation</a></h3>
+<pre><code>        ┌──────────────┐
+        │  Global Hub  │
+        └──────┬───────┘
+        ┌──────┴───────┐
+        ▼              ▼
+   ┌─────────┐   ┌─────────┐
+   │ US Hub  │   │ EU Hub  │
+   └────┬────┘   └────┬────┘
+   ┌────┴────┐   ┌────┴────┐
+   ▼         ▼   ▼         ▼
+ Spoke     Spoke Spoke   Spoke
+ US-E      US-W  EU-W    EU-C
+</code></pre>
+<p>For large organizations: regional hubs aggregate local spokes, a global hub aggregates regional hubs. Each tier adds latency but enables organizational isolation.</p>
+<h2 id="routing"><a class="header" href="#routing">Routing</a></h2>
+<h3 id="datasource-based-routing"><a class="header" href="#datasource-based-routing">Datasource-Based Routing</a></h3>
+<p>Queries are routed based on the datasource prefix:</p>
+<pre><code class="language-sql">-- Routes to spoke-a (us_east datasource)
+SELECT * FROM us_east.application_logs WHERE status &gt;= 500
+
+-- Routes to spoke-b (eu_west datasource)
+SELECT * FROM eu_west.application_logs WHERE status &gt;= 500
+
+-- Routes to both (hub merges)
+SELECT * FROM us_east.application_logs
+UNION ALL
+SELECT * FROM eu_west.application_logs
+</code></pre>
+<h3 id="cross-region-joins"><a class="header" href="#cross-region-joins">Cross-Region JOINs</a></h3>
+<pre><code class="language-sql">-- Join US logs with EU user profiles
+SELECT l.service, u.name, l.error_message
+FROM us_east.application_logs l
+JOIN eu_west.user_profiles u ON l.user_id = u.user_id
+WHERE l.status &gt;= 500
+</code></pre>
+<p>The hub fetches from both spokes in parallel, then performs the hash join locally. Data crosses regions — consider latency and data residency requirements.</p>
+<h2 id="configuration-patterns"><a class="header" href="#configuration-patterns">Configuration Patterns</a></h2>
+<h3 id="environment-based-datasource-naming"><a class="header" href="#environment-based-datasource-naming">Environment-Based Datasource Naming</a></h3>
+<p>Use consistent naming across environments:</p>
+<pre><code class="language-toml"># Production
+[[datasource]]
+id = "logs"
+type = "opensearch"
+url = "${OPENSEARCH_PROD_URL}"
+
+# Staging (same id, different URL)
+[[datasource]]
+id = "logs"
+type = "opensearch"
+url = "${OPENSEARCH_STAGING_URL}"
+</code></pre>
+<p>Queries use <code>logs.application_logs</code> in both environments — the URL changes, the query doesn't.</p>
+<h3 id="datasource-groups"><a class="header" href="#datasource-groups">Datasource Groups</a></h3>
+<p>Organize datasources by function:</p>
+<pre><code class="language-toml"># Observability cluster
+[[datasource]]
+id = "obs"
+type = "opensearch"
+url = "https://obs-cluster:9200"
+
+# Business data
+[[datasource]]
+id = "biz"
+type = "postgres"
+url = "postgresql://biz-db:5432/main"
+
+# Metrics
+[[datasource]]
+id = "metrics"
+type = "prometheus"
+url = "http://prometheus:9090"
+</code></pre>
+<pre><code class="language-sql">-- Cross-functional query: correlate business events with system metrics
+SELECT b.order_id, b.status, m.cpu_usage
+FROM biz.orders b
+JOIN metrics.node_cpu m ON b.timestamp BETWEEN m.timestamp - INTERVAL '1 minute' AND m.timestamp
+WHERE b.status = 'failed'
+</code></pre>
+<h2 id="health-and-failover"><a class="header" href="#health-and-failover">Health and Failover</a></h2>
+<h3 id="spoke-health-monitoring"><a class="header" href="#spoke-health-monitoring">Spoke Health Monitoring</a></h3>
+<p>The hub checks spoke health via their <code>/api/fuse/health</code> endpoints:</p>
+<pre><code class="language-bash"># Hub health includes spoke status
+curl http://hub:9400/api/fuse/health
+</code></pre>
+<pre><code class="language-json">{
+  "status": "degraded",
+  "connectors": {
+    "us_east": { "status": "healthy", "latency_ms": 12 },
+    "eu_west": { "status": "healthy", "latency_ms": 45 },
+    "ap_northeast": { "status": "unhealthy", "error": "connection refused" }
+  }
+}
+</code></pre>
+<h3 id="graceful-degradation"><a class="header" href="#graceful-degradation">Graceful Degradation</a></h3>
+<p>When a spoke is down, queries that only touch healthy spokes succeed. Queries that need the unhealthy spoke return a partial failure with results from healthy spokes and an error for the failed spoke.</p>
+<pre><code class="language-sql">-- If ap_northeast is down, this returns US + EU results with an error annotation
+SELECT * FROM us_east.logs
+UNION ALL SELECT * FROM eu_west.logs
+UNION ALL SELECT * FROM ap_northeast.logs
+</code></pre>
+<h2 id="capacity-planning"><a class="header" href="#capacity-planning">Capacity Planning</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Topology</th><th>Instances</th><th>Use Case</th></tr></thead><tbody>
+<tr><td>Single</td><td>1</td><td>Dev, small team (&lt; 10 users)</td></tr>
+<tr><td>Horizontal</td><td>2–5</td><td>Medium team (10–100 users)</td></tr>
+<tr><td>Hub-spoke</td><td>1 hub + N spokes</td><td>Multi-region, data residency</td></tr>
+<tr><td>Tiered</td><td>Hubs + spokes</td><td>Enterprise (100+ users, 5+ regions)</td></tr>
+</tbody></table>
+</div>
+<h3 id="sizing-per-instance"><a class="header" href="#sizing-per-instance">Sizing Per Instance</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Metric</th><th>Guideline</th></tr></thead><tbody>
+<tr><td>CPU</td><td>1 core per 50 concurrent queries</td></tr>
+<tr><td>Memory</td><td>256MB base + 100MB per concurrent query</td></tr>
+<tr><td>Network</td><td>Dominated by connector data transfer</td></tr>
+<tr><td>Redis</td><td>1GB per 10,000 cached query results</td></tr>
+</tbody></table>
+</div>
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="security-hardening.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="deployment-patterns.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="security-hardening.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="deployment-patterns.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

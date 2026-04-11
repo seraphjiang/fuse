@@ -1,0 +1,421 @@
+<!DOCTYPE HTML>
+<html lang="en" class="navy" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Query Optimization - Fuse — Federated Query Engine</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "navy";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('navy')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="index.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="what-is-fuse.html"><strong aria-hidden="true">1.</strong> What is Fuse?</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">2.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">3.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="sql-reference.html"><strong aria-hidden="true">4.</strong> SQL Reference</a></li><li class="chapter-item expanded "><a href="ppl-reference.html"><strong aria-hidden="true">5.</strong> PPL Reference</a></li><li class="chapter-item expanded "><a href="connectors.html"><strong aria-hidden="true">6.</strong> Connectors</a></li><li class="chapter-item expanded "><a href="dashboard-guide.html"><strong aria-hidden="true">7.</strong> Dashboard Guide</a></li><li class="chapter-item expanded "><a href="data-provenance.html"><strong aria-hidden="true">8.</strong> Data Provenance</a></li><li class="chapter-item expanded "><a href="explain-analyze.html"><strong aria-hidden="true">9.</strong> EXPLAIN / ANALYZE</a></li><li class="chapter-item expanded "><a href="performance-tuning.html"><strong aria-hidden="true">10.</strong> Performance Tuning</a></li><li class="chapter-item expanded "><a href="query-optimization.html" class="active"><strong aria-hidden="true">11.</strong> Query Optimization</a></li><li class="chapter-item expanded "><a href="migration-guide.html"><strong aria-hidden="true">12.</strong> Migration from OpenSearch</a></li><li class="chapter-item expanded "><a href="troubleshooting.html"><strong aria-hidden="true">13.</strong> Troubleshooting</a></li><li class="chapter-item expanded "><a href="troubleshooting-faq.html"><strong aria-hidden="true">14.</strong> Troubleshooting FAQ</a></li><li class="chapter-item expanded affix "><li class="part-title">SDKs & Integrations</li><li class="chapter-item expanded "><a href="python-sdk.html"><strong aria-hidden="true">15.</strong> Python SDK</a></li><li class="chapter-item expanded "><a href="typescript-sdk.html"><strong aria-hidden="true">16.</strong> TypeScript SDK</a></li><li class="chapter-item expanded "><a href="sdk-comparison.html"><strong aria-hidden="true">17.</strong> SDK Comparison (Python vs TypeScript)</a></li><li class="chapter-item expanded "><a href="jupyter-integration.html"><strong aria-hidden="true">18.</strong> Jupyter Notebooks</a></li><li class="chapter-item expanded "><a href="grafana-plugin.html"><strong aria-hidden="true">19.</strong> Grafana Plugin</a></li><li class="chapter-item expanded "><a href="vscode-extension.html"><strong aria-hidden="true">20.</strong> VS Code Extension</a></li><li class="chapter-item expanded "><a href="cli-reference.html"><strong aria-hidden="true">21.</strong> CLI Reference</a></li><li class="chapter-item expanded affix "><li class="part-title">API</li><li class="chapter-item expanded "><a href="api-reference.html"><strong aria-hidden="true">22.</strong> API Reference</a></li><li class="chapter-item expanded "><a href="api-reference-guide.html"><strong aria-hidden="true">23.</strong> API Guide (curl examples)</a></li><li class="chapter-item expanded affix "><li class="part-title">Administration</li><li class="chapter-item expanded "><a href="admin-guide.html"><strong aria-hidden="true">24.</strong> Admin Guide</a></li><li class="chapter-item expanded "><a href="horizontal-scaling.html"><strong aria-hidden="true">25.</strong> Horizontal Scaling</a></li><li class="chapter-item expanded "><a href="security-hardening.html"><strong aria-hidden="true">26.</strong> Security Hardening</a></li><li class="chapter-item expanded "><a href="federation-architecture.html"><strong aria-hidden="true">27.</strong> Federation Architecture</a></li><li class="chapter-item expanded "><a href="deployment-patterns.html"><strong aria-hidden="true">28.</strong> Deployment Patterns</a></li><li class="chapter-item expanded affix "><li class="part-title">Developer</li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">29.</strong> Contributing</a></li><li class="chapter-item expanded "><a href="connector-development.html"><strong aria-hidden="true">30.</strong> Connector Development</a></li><li class="chapter-item expanded "><a href="plugin-development.html"><strong aria-hidden="true">31.</strong> Plugin Development (WASM)</a></li><li class="chapter-item expanded "><a href="community-guide.html"><strong aria-hidden="true">32.</strong> Community</a></li><li class="chapter-item expanded affix "><li class="part-title">Blog & Roadmap</li><li class="chapter-item expanded "><a href="roadmap.html"><strong aria-hidden="true">33.</strong> Roadmap</a></li><li class="chapter-item expanded "><a href="api-stability.html"><strong aria-hidden="true">34.</strong> API Stability Guarantee</a></li><li class="chapter-item expanded "><a href="blog-v100-ga.html"><strong aria-hidden="true">35.</strong> v1.0.0: General Availability</a></li><li class="chapter-item expanded "><a href="blog-v060-release.html"><strong aria-hidden="true">36.</strong> v0.6.0: Enterprise, AI & SDKs</a></li><li class="chapter-item expanded "><a href="blog-sprint-5-release.html"><strong aria-hidden="true">37.</strong> v0.5.0 Release</a></li><li class="chapter-item expanded "><a href="blog-introducing-fuse.html"><strong aria-hidden="true">38.</strong> Introducing Fuse</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Fuse — Federated Query Engine</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/seraphjiang/fuse" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/seraphjiang/fuse/edit/main/docs-site/src/src/query-optimization.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="query-optimization-guide"><a class="header" href="#query-optimization-guide">Query Optimization Guide</a></h1>
+<p>How to read EXPLAIN output, identify bottlenecks, and optimize federated queries.</p>
+<h2 id="reading-explain-output"><a class="header" href="#reading-explain-output">Reading EXPLAIN Output</a></h2>
+<h3 id="basic-explain"><a class="header" href="#basic-explain">Basic EXPLAIN</a></h3>
+<pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/query/explain \
+  -d '{"query": "SELECT service, count(*) FROM cluster_a.logs GROUP BY service"}'
+</code></pre>
+<p>Returns a text plan and a structured <code>plan_tree</code>:</p>
+<pre><code class="language-json">{
+  "plan": "FederatedQuery → RemoteScan(cluster_a) [pushdown: filter, projection, aggregation]",
+  "plan_tree": {
+    "op": "FederatedQuery",
+    "children": [
+      {
+        "op": "RemoteScan",
+        "datasource": "cluster_a",
+        "pushdown": ["filter", "projection", "aggregation"]
+      }
+    ]
+  }
+}
+</code></pre>
+<h3 id="explain-analyze"><a class="header" href="#explain-analyze">EXPLAIN ANALYZE</a></h3>
+<p>Add <code>"analyze": true</code> to execute the query and get actual timing:</p>
+<pre><code class="language-bash">curl -X POST http://localhost:9400/api/fuse/query/explain \
+  -d '{"query": "SELECT l.service, u.team FROM cluster_a.logs l JOIN ddb.users u ON l.user_id = u.user_id", "analyze": true}'
+</code></pre>
+<pre><code class="language-json">{
+  "plan_tree": {
+    "op": "HashJoin",
+    "actual_rows": 1250,
+    "actual_ms": 87,
+    "estimated_rows": 20000,
+    "estimated_cost": 870.0,
+    "estimate_accuracy": "16.0x (est 20000 vs actual 1250)",
+    "children": [
+      {
+        "op": "RemoteScan",
+        "datasource": "cluster_a",
+        "actual_rows": 5000,
+        "actual_ms": 45,
+        "data_bytes": 512000,
+        "pushdown": ["projection"],
+        "detail": "Scan cluster_a"
+      },
+      {
+        "op": "RemoteScan",
+        "datasource": "ddb",
+        "actual_rows": 200,
+        "actual_ms": 32,
+        "data_bytes": 24000,
+        "pushdown": ["projection"],
+        "detail": "Scan ddb"
+      }
+    ]
+  }
+}
+</code></pre>
+<h3 id="key-fields"><a class="header" href="#key-fields">Key Fields</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>op</code></td><td>Operation type: RemoteScan, HashJoin, Sort, Aggregate, Filter, Union, Limit</td></tr>
+<tr><td><code>actual_rows</code></td><td>Rows produced (ANALYZE only)</td></tr>
+<tr><td><code>actual_ms</code></td><td>Wall-clock time in milliseconds (ANALYZE only)</td></tr>
+<tr><td><code>data_bytes</code></td><td>Bytes transferred from connector</td></tr>
+<tr><td><code>estimated_rows</code></td><td>Planner's row estimate</td></tr>
+<tr><td><code>estimated_cost</code></td><td>Relative cost (lower = cheaper)</td></tr>
+<tr><td><code>estimate_accuracy</code></td><td>Ratio of estimated vs actual — high ratios indicate bad estimates</td></tr>
+<tr><td><code>pushdown</code></td><td>Operations pushed to the connector: filter, projection, aggregation, sort, limit</td></tr>
+<tr><td><code>children</code></td><td>Child operations (tree structure)</td></tr>
+</tbody></table>
+</div>
+<h2 id="identifying-bottlenecks"><a class="header" href="#identifying-bottlenecks">Identifying Bottlenecks</a></h2>
+<h3 id="1-check-pushdown"><a class="header" href="#1-check-pushdown">1. Check Pushdown</a></h3>
+<p>The most impactful optimization. Compare what's pushed down vs what Fuse does in-memory:</p>
+<pre><code>RemoteScan(cluster_a) pushdown: [projection]          ← only projection pushed
+  → 5000 rows, 512KB transferred
+
+RemoteScan(cluster_a) pushdown: [filter, projection]   ← filter also pushed
+  → 50 rows, 5KB transferred                           ← 100x less data
+</code></pre>
+<p>If <code>filter</code> is missing from pushdown, the connector doesn't support it or the filter can't be translated. See <a href="#pushdown-by-connector">Pushdown by Connector</a>.</p>
+<h3 id="2-check-estimate_accuracy"><a class="header" href="#2-check-estimate_accuracy">2. Check estimate_accuracy</a></h3>
+<p>A ratio far from 1.0x means the planner made a bad estimate:</p>
+<ul>
+<li><code>16.0x</code> — planner overestimated by 16x → may have chosen wrong join order</li>
+<li><code>0.1x</code> — planner underestimated by 10x → may have skipped useful optimizations</li>
+</ul>
+<h3 id="3-check-data_bytes"><a class="header" href="#3-check-data_bytes">3. Check data_bytes</a></h3>
+<p>Large <code>data_bytes</code> on a RemoteScan means too much data is being pulled:</p>
+<div class="table-wrapper"><table><thead><tr><th>data_bytes</th><th>Action</th></tr></thead><tbody>
+<tr><td>&lt; 100KB</td><td>Fine</td></tr>
+<tr><td>100KB–1MB</td><td>Check if filters can be pushed down</td></tr>
+<tr><td>1MB–10MB</td><td>Add WHERE clauses, reduce columns</td></tr>
+<tr><td>&gt; 10MB</td><td>Add LIMIT, use cursor pagination, or create a materialized view</td></tr>
+</tbody></table>
+</div>
+<h3 id="4-check-actual_ms-distribution"><a class="header" href="#4-check-actual_ms-distribution">4. Check actual_ms Distribution</a></h3>
+<p>If one child takes 90% of the time, that's your bottleneck:</p>
+<pre><code>HashJoin: 87ms total
+  ├── RemoteScan(cluster_a): 45ms  ← 52% — slow connector or large scan
+  └── RemoteScan(ddb): 32ms        ← 37%
+       join overhead: 10ms          ← 11% — fine
+</code></pre>
+<h2 id="optimization-techniques"><a class="header" href="#optimization-techniques">Optimization Techniques</a></h2>
+<h3 id="add-where-clauses-for-pushdown"><a class="header" href="#add-where-clauses-for-pushdown">Add WHERE Clauses for Pushdown</a></h3>
+<pre><code class="language-sql">-- Bad: scans all logs, filters in Fuse
+SELECT * FROM cluster_a.logs WHERE service = 'api'
+
+-- Good: same query, but OpenSearch pushes the filter down
+-- (this happens automatically — just make sure the filter is pushdown-compatible)
+</code></pre>
+<p>Pushdown-compatible filters: <code>=</code>, <code>!=</code>, <code>&gt;</code>, <code>&lt;</code>, <code>&gt;=</code>, <code>&lt;=</code>, <code>LIKE</code>, <code>IN</code>, <code>BETWEEN</code>, <code>IS NULL</code>, <code>IS NOT NULL</code>, <code>AND</code>, <code>OR</code>.</p>
+<p>Not pushed down: <code>ILIKE</code> (some connectors), functions on columns (<code>WHERE UPPER(service) = 'API'</code>), correlated subqueries.</p>
+<h3 id="select-only-needed-columns"><a class="header" href="#select-only-needed-columns">Select Only Needed Columns</a></h3>
+<pre><code class="language-sql">-- Bad: transfers all columns
+SELECT * FROM cluster_a.logs LIMIT 100
+
+-- Good: transfers only 2 columns
+SELECT service, timestamp FROM cluster_a.logs LIMIT 100
+</code></pre>
+<h3 id="use-limit"><a class="header" href="#use-limit">Use LIMIT</a></h3>
+<pre><code class="language-sql">-- Bad: fetches all matching rows, then truncates
+SELECT service FROM cluster_a.logs WHERE status &gt;= 500
+
+-- Good: connector stops after 100 rows
+SELECT service FROM cluster_a.logs WHERE status &gt;= 500 LIMIT 100
+</code></pre>
+<h3 id="optimize-joins"><a class="header" href="#optimize-joins">Optimize JOINs</a></h3>
+<p>Put the smaller table on the right (build side of hash join):</p>
+<pre><code class="language-sql">-- Good: 200 users (small) builds the hash table, 5000 logs probe it
+SELECT l.service, u.team
+FROM cluster_a.logs l
+JOIN ddb.users u ON l.user_id = u.user_id
+</code></pre>
+<p>Add filters before the JOIN to reduce both sides:</p>
+<pre><code class="language-sql">SELECT l.service, u.team
+FROM cluster_a.logs l
+JOIN ddb.users u ON l.user_id = u.user_id
+WHERE l.status &gt;= 500          -- reduces logs from 5000 → 50
+  AND u.role = 'admin'         -- reduces users from 200 → 10
+</code></pre>
+<h3 id="use-materialized-views-for-repeated-queries"><a class="header" href="#use-materialized-views-for-repeated-queries">Use Materialized Views for Repeated Queries</a></h3>
+<pre><code class="language-toml">[[view]]
+name = "error_summary"
+query = "SELECT service, count(*) as errors FROM cluster_a.logs WHERE status &gt;= 500 GROUP BY service"
+refresh_secs = 300
+</code></pre>
+<pre><code class="language-sql">-- Served from cache (sub-millisecond)
+SELECT * FROM view.error_summary
+</code></pre>
+<h3 id="use-cursor-pagination-for-large-results"><a class="header" href="#use-cursor-pagination-for-large-results">Use Cursor Pagination for Large Results</a></h3>
+<pre><code class="language-sql">-- First page
+SELECT * FROM cluster_a.logs ORDER BY timestamp DESC LIMIT 500
+
+-- Subsequent pages use cursor (no re-scanning)
+-- Pass cursor from previous response's next_cursor field
+</code></pre>
+<h2 id="pushdown-by-connector"><a class="header" href="#pushdown-by-connector">Pushdown by Connector</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Connector</th><th>Filter</th><th>Projection</th><th>Limit</th><th>Sort</th><th>Aggregation</th></tr></thead><tbody>
+<tr><td>OpenSearch</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+<tr><td>Elasticsearch</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+<tr><td>PostgreSQL</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+<tr><td>MySQL</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+<tr><td>DynamoDB</td><td>✅ filter/key</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td></tr>
+<tr><td>S3 Parquet</td><td>✅ predicate</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td></tr>
+<tr><td>S3 O11y</td><td>✅ time range</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td></tr>
+<tr><td>Prometheus</td><td>✅ label/time</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td></tr>
+<tr><td>CloudWatch</td><td>✅ time/group</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td></tr>
+<tr><td>Redis</td><td>✅ key pattern</td><td>❌</td><td>✅</td><td>❌</td><td>❌</td></tr>
+<tr><td>CSV/JSON</td><td>❌</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td></tr>
+<tr><td>MongoDB</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+<tr><td>InfluxDB</td><td>✅ tag/time</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+<tr><td>ClickHouse</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+<tr><td>DuckDB</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+</tbody></table>
+</div>
+<h2 id="query-advisor"><a class="header" href="#query-advisor">Query Advisor</a></h2>
+<p>Get automated optimization suggestions:</p>
+<pre><code class="language-bash">curl "http://localhost:9400/api/fuse/advisor?query=SELECT+*+FROM+cluster_a.logs"
+</code></pre>
+<p>Common suggestions:</p>
+<ul>
+<li>"Add LIMIT to avoid full table scan"</li>
+<li>"Use explicit columns instead of SELECT *"</li>
+<li>"Add WHERE clause for filter pushdown"</li>
+<li>"Consider cursor pagination for results &gt; 10,000 rows"</li>
+<li>"This query is a good candidate for a materialized view"</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="performance-tuning.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="migration-guide.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="performance-tuning.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="migration-guide.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>
