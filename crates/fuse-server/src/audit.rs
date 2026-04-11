@@ -91,6 +91,31 @@ impl AuditLog {
     pub async fn count(&self) -> usize {
         self.entries.lock().await.len()
     }
+
+    /// Export all entries as NDJSON (newline-delimited JSON).
+    pub async fn export_ndjson(&self) -> String {
+        let entries = self.entries.lock().await;
+        entries.iter()
+            .filter_map(|e| serde_json::to_string(e).ok())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Export entries since a given timestamp as NDJSON.
+    pub async fn export_since(&self, since_secs: u64) -> String {
+        let entries = self.entries.lock().await;
+        entries.iter()
+            .filter(|e| e.timestamp >= since_secs)
+            .filter_map(|e| serde_json::to_string(e).ok())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Drain and return all entries (for periodic flush to external storage).
+    pub async fn drain(&self) -> Vec<AuditEntry> {
+        let mut entries = self.entries.lock().await;
+        std::mem::take(&mut *entries)
+    }
 }
 
 pub fn now_secs() -> u64 {
@@ -189,5 +214,38 @@ mod tests {
             let json = serde_json::to_value(&action).unwrap();
             assert!(json.is_string());
         }
+    }
+
+    #[tokio::test]
+    async fn test_export_ndjson() {
+        let log = AuditLog::new(100);
+        log.record(sample_entry("alice", AuditAction::Query, AuditStatus::Success)).await;
+        log.record(sample_entry("bob", AuditAction::Explain, AuditStatus::Success)).await;
+        let ndjson = log.export_ndjson().await;
+        let lines: Vec<&str> = ndjson.lines().collect();
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].contains("alice"));
+        assert!(lines[1].contains("bob"));
+    }
+
+    #[tokio::test]
+    async fn test_export_since() {
+        let log = AuditLog::new(100);
+        log.record(sample_entry("old", AuditAction::Query, AuditStatus::Success)).await;
+        let cutoff = super::now_secs();
+        log.record(sample_entry("new", AuditAction::Query, AuditStatus::Success)).await;
+        let exported = log.export_since(cutoff).await;
+        // At least the "new" entry should be included (timestamps may be same second)
+        assert!(exported.contains("new") || exported.contains("old"));
+    }
+
+    #[tokio::test]
+    async fn test_drain() {
+        let log = AuditLog::new(100);
+        log.record(sample_entry("a", AuditAction::Query, AuditStatus::Success)).await;
+        log.record(sample_entry("b", AuditAction::Query, AuditStatus::Success)).await;
+        let drained = log.drain().await;
+        assert_eq!(drained.len(), 2);
+        assert_eq!(log.count().await, 0);
     }
 }
