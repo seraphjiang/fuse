@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: fuse
+    static_configs:
+      - targets: ["fuse-1:9400"]
+        labels:
+          instance: fuse-1
+      - targets: ["fuse-2:9400"]
+        labels:
+          instance: fuse-2
+
+  - job_name: nginx
+    static_configs:
+      - targets: ["nginx-exporter:9113"]
+
+  - job_name: redis
+    static_configs:
+      - targets: ["redis-exporter:9121"]

@@ -1,0 +1,107 @@
+{
+  "dashboard": {
+    "title": "Fuse Cluster",
+    "uid": "fuse-cluster",
+    "timezone": "utc",
+    "refresh": "15s",
+    "time": { "from": "now-1h", "to": "now" },
+    "templating": {
+      "list": [
+        {
+          "name": "instance",
+          "type": "query",
+          "query": "label_values(fuse_query_count_total, instance)",
+          "datasource": "Prometheus",
+          "includeAll": true,
+          "multi": true,
+          "current": { "text": "All", "value": "$__all" }
+        }
+      ]
+    },
+    "panels": [
+      {
+        "title": "Request Rate (per instance)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "expr": "rate(fuse_query_count_total{instance=~\"$instance\"}[1m])",
+            "legendFormat": "{{instance}}"
+          }
+        ]
+      },
+      {
+        "title": "Query Latency p50 / p95 / p99",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(fuse_query_duration_seconds_bucket{instance=~\"$instance\"}[5m]))",
+            "legendFormat": "p50 {{instance}}"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(fuse_query_duration_seconds_bucket{instance=~\"$instance\"}[5m]))",
+            "legendFormat": "p95 {{instance}}"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(fuse_query_duration_seconds_bucket{instance=~\"$instance\"}[5m]))",
+            "legendFormat": "p99 {{instance}}"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "s" } }
+      },
+      {
+        "title": "Cache Hit Rate",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "targets": [
+          {
+            "expr": "rate(fuse_cache_hits_total{instance=~\"$instance\"}[5m]) / (rate(fuse_cache_hits_total{instance=~\"$instance\"}[5m]) + rate(fuse_cache_misses_total{instance=~\"$instance\"}[5m]))",
+            "legendFormat": "{{instance}}"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1 } }
+      },
+      {
+        "title": "Active Queries",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "targets": [
+          {
+            "expr": "fuse_active_queries{instance=~\"$instance\"}",
+            "legendFormat": "{{instance}}"
+          }
+        ]
+      },
+      {
+        "title": "Error Rate",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+        "targets": [
+          {
+            "expr": "rate(fuse_query_errors_total{instance=~\"$instance\"}[5m])",
+            "legendFormat": "{{instance}}"
+          }
+        ]
+      },
+      {
+        "title": "Connector Health",
+        "type": "stat",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+        "targets": [
+          {
+            "expr": "fuse_connector_healthy{instance=~\"$instance\"}",
+            "legendFormat": "{{connector}} ({{instance}})"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              { "type": "value", "options": { "1": { "text": "Healthy", "color": "green" }, "0": { "text": "Unhealthy", "color": "red" } } }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}
