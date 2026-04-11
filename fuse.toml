@@ -8,6 +8,16 @@ default_timeout = "30s"
 # Rate limiting (requests per minute). Set to 0 to disable.
 rate_limit_global = 1000
 rate_limit_per_ip = 100
+# CORS: allowed origins. Empty = same-origin only. ["*"] = any origin.
+cors_origins = []
+# Max result size in bytes. 0 = unlimited. Default: 100MB.
+max_result_bytes = 104857600
+
+# ── Telemetry (OpenTelemetry OTLP export) ──
+# [engine.telemetry]
+# enabled = false
+# otlp_endpoint = "http://localhost:4317"
+# service_name = "fuse"
 
 # ── Per-connector TLS/mTLS (optional) ──
 # Any [[connector]] can include a [connector.tls] section:
