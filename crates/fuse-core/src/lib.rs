@@ -21,6 +21,7 @@ pub mod planner;
 pub mod predicate;
 pub mod pushdown;
 pub mod query_stats;
+pub mod scalar_expr;
 pub mod schema_compat;
 pub mod secrets;
 pub mod security;
