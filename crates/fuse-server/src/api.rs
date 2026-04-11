@@ -488,8 +488,7 @@ pub async fn query_handler(
 ) -> impl IntoResponse {
     let t0 = std::time::Instant::now();
     let format = req.format.to_lowercase();
-    let query_id = format!("q-{:x}", t0.elapsed().as_nanos() ^ std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+    let query_id = format!("q-{:016x}", QUERY_COUNTER.fetch_add(1, Ordering::Relaxed));
 
     tracing::info!(
         query_id = %query_id,
