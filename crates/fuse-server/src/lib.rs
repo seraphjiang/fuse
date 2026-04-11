@@ -28,6 +28,7 @@ pub mod query_diff;
 pub mod rate_limit;
 pub mod redis_cache;
 pub mod refresh_scheduler;
+pub mod request_id;
 pub mod retry;
 pub mod shutdown;
 pub mod wasm_plugin;
