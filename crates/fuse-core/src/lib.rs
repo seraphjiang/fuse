@@ -5,6 +5,7 @@ pub mod alerting;
 pub mod config;
 pub mod connector;
 pub mod error;
+pub mod health_history;
 pub mod materialized_view;
 pub mod registry;
 pub mod secrets;
