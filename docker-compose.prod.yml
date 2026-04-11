@@ -1,0 +1,46 @@
+# Production docker-compose for Fuse v1.1.0
+# Usage: docker compose -f docker-compose.prod.yml up -d
+version: "3.8"
+
+services:
+  fuse:
+    build: .
+    container_name: fuse-server
+    ports:
+      - "9400:9400"
+    volumes:
+      - ./fuse.toml:/etc/fuse/fuse.toml:ro
+    environment:
+      - FUSE_CONFIG=/etc/fuse/fuse.toml
+      - FUSE_LOG_FORMAT=json
+      - FUSE_REDIS_URL=redis://redis:6379
+      - RUST_LOG=info
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+
+  redis:
+    image: public.ecr.aws/docker/library/redis:7-alpine
+    container_name: fuse-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  redis-data:
