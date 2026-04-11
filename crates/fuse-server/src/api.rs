@@ -108,7 +108,7 @@ pub struct QueryRequest {
     pub analyze: bool,
     /// Per-query timeout in milliseconds. If not set, uses server default (30s).
     pub timeout_ms: Option<u64>,
-    /// Output format: "json" (default) or "csv".
+    /// Output format: "json" (default), "csv", or "ndjson" (newline-delimited JSON, chunked).
     #[serde(default = "default_result_format")]
     pub result_format: String,
     /// Named query parameters. Keys without $ prefix are matched against $key in query.
@@ -878,7 +878,14 @@ pub async fn query_handler(
                 datasources = ?fed.datasources,
                 "Query completed"
             );
-            if req.result_format == "csv" {
+            if req.result_format == "ndjson" {
+                let ndjson = batches_to_ndjson(&batches);
+                (
+                    StatusCode::OK,
+                    [(axum::http::header::CONTENT_TYPE, "application/x-ndjson")],
+                    ndjson,
+                ).into_response()
+            } else if req.result_format == "csv" {
                 let csv = batches_to_csv(&batches);
                 (
                     StatusCode::OK,
@@ -2339,6 +2346,35 @@ fn batches_to_csv(batches: &[arrow::record_batch::RecordBatch]) -> String {
     String::from_utf8(buf).unwrap_or_default()
 }
 
+/// Convert Arrow RecordBatches to newline-delimited JSON (one object per row).
+fn batches_to_ndjson(batches: &[arrow::record_batch::RecordBatch]) -> String {
+    if batches.is_empty() {
+        return String::new();
+    }
+    let schema = batches[0].schema();
+    let columns: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
+    let mut out = String::new();
+    for batch in batches {
+        for row_idx in 0..batch.num_rows() {
+            let mut map = serde_json::Map::new();
+            for (col_idx, col_name) in columns.iter().enumerate() {
+                let col = batch.column(col_idx);
+                let val = if col.is_null(row_idx) {
+                    serde_json::Value::Null
+                } else {
+                    serde_json::Value::String(
+                        arrow::util::display::array_value_to_string(col, row_idx).unwrap_or_default()
+                    )
+                };
+                map.insert(col_name.to_string(), val);
+            }
+            out.push_str(&serde_json::to_string(&map).unwrap_or_default());
+            out.push('\n');
+        }
+    }
+    out
+}
+
 /// GET /api/fuse/history — last 50 queries with stats.
 pub async fn history_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     Json(state.history.list())
@@ -3319,5 +3355,65 @@ mod tests {
     #[test]
     fn test_parse_refresh_mat_view_none_create() {
         assert!(parse_refresh_materialized_view("CREATE MATERIALIZED VIEW v AS SELECT 1").is_none());
+    }
+
+    // ── NDJSON output tests ──
+
+    #[test]
+    fn test_batches_to_ndjson_empty() {
+        assert_eq!(batches_to_ndjson(&[]), "");
+    }
+
+    #[test]
+    fn test_batches_to_ndjson_single_row() {
+        use arrow::array::StringArray;
+        use arrow::datatypes::{DataType, Field, Schema};
+        let schema = std::sync::Arc::new(Schema::new(vec![
+            Field::new("name", DataType::Utf8, false),
+        ]));
+        let batch = arrow::record_batch::RecordBatch::try_new(
+            schema,
+            vec![std::sync::Arc::new(StringArray::from(vec!["alice"]))],
+        ).unwrap();
+        let ndjson = batches_to_ndjson(&[batch]);
+        let parsed: serde_json::Value = serde_json::from_str(ndjson.trim()).unwrap();
+        assert_eq!(parsed["name"], "alice");
+    }
+
+    #[test]
+    fn test_batches_to_ndjson_multiple_rows() {
+        use arrow::array::StringArray;
+        use arrow::datatypes::{DataType, Field, Schema};
+        let schema = std::sync::Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Utf8, false),
+        ]));
+        let batch = arrow::record_batch::RecordBatch::try_new(
+            schema,
+            vec![std::sync::Arc::new(StringArray::from(vec!["a", "b", "c"]))],
+        ).unwrap();
+        let ndjson = batches_to_ndjson(&[batch]);
+        let lines: Vec<&str> = ndjson.trim().split('\n').collect();
+        assert_eq!(lines.len(), 3);
+        for line in &lines {
+            assert!(serde_json::from_str::<serde_json::Value>(line).is_ok());
+        }
+    }
+
+    #[test]
+    fn test_batches_to_ndjson_null_values() {
+        use arrow::array::StringArray;
+        use arrow::datatypes::{DataType, Field, Schema};
+        let schema = std::sync::Arc::new(Schema::new(vec![
+            Field::new("val", DataType::Utf8, true),
+        ]));
+        let batch = arrow::record_batch::RecordBatch::try_new(
+            schema,
+            vec![std::sync::Arc::new(StringArray::from(vec![Some("x"), None]))],
+        ).unwrap();
+        let ndjson = batches_to_ndjson(&[batch]);
+        let lines: Vec<&str> = ndjson.trim().split('\n').collect();
+        assert_eq!(lines.len(), 2);
+        let row2: serde_json::Value = serde_json::from_str(lines[1]).unwrap();
+        assert!(row2["val"].is_null());
     }
 }
