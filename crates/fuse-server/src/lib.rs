@@ -15,6 +15,7 @@ pub mod autocomplete;
 pub mod complexity;
 pub mod config_watch;
 pub mod cors;
+pub mod dedup;
 pub mod delivery;
 pub mod export;
 pub mod federation;
