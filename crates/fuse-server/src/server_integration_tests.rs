@@ -304,3 +304,231 @@ mod boundary_tests {
         assert_eq!(case.evaluate(&json!("x")), json!("first"));
     }
 }
+
+
+#[cfg(test)]
+mod comprehensive_tests {
+    use serde_json::json;
+
+    // Response builder
+    #[test]
+    fn test_response_builder_empty() {
+        let resp = crate::response_builder::ResponseBuilder::new("q-1", "sql").build();
+        assert_eq!(resp.metadata.total_rows, 0);
+        assert!(resp.warnings.is_none());
+    }
+
+    // Bookmarks
+    #[test]
+    fn test_bookmark_search_no_match() {
+        let s = crate::bookmarks::BookmarkStore::new();
+        assert!(s.search("nonexistent").is_empty());
+    }
+
+    // Tags
+    #[test]
+    fn test_tags_find_empty() {
+        let r = crate::tags::TagRegistry::new();
+        assert!(r.find_by_tag("missing").is_empty());
+    }
+
+    // Templates
+    #[test]
+    fn test_template_no_params() {
+        let t = crate::templates::QueryTemplate {
+            name: "simple".into(), template: "SELECT 1".into(),
+            params: vec![], description: None,
+        };
+        assert_eq!(t.render(&std::collections::HashMap::new()).unwrap(), "SELECT 1");
+    }
+
+    // Alias
+    #[test]
+    fn test_alias_overwrite() {
+        let r = crate::alias::AliasRegistry::new();
+        r.set("logs", "cluster_a");
+        r.set("logs", "cluster_b");
+        assert_eq!(r.resolve("logs"), "cluster_b");
+    }
+
+    // Notifications
+    #[test]
+    fn test_notification_pending() {
+        let hub = crate::notifications::NotificationHub::new();
+        let _rx = hub.subscribe("q-1");
+        assert_eq!(hub.pending_count(), 1);
+    }
+
+    // Access log
+    #[test]
+    fn test_access_log_empty() {
+        let log = crate::access_log::AccessLog::new();
+        assert_eq!(log.count(), 0);
+        assert!(log.recent(10).is_empty());
+    }
+
+    // Timeout tracker
+    #[test]
+    fn test_timeout_tracker_empty() {
+        let t = crate::timeout_tracker::TimeoutTracker::new();
+        assert_eq!(t.count(), 0);
+    }
+
+    // Cost tracker
+    #[test]
+    fn test_cost_tracker_empty_tenant() {
+        let t = crate::cost_tracker::CostTracker::new();
+        assert!(t.for_tenant("nobody").is_empty());
+    }
+
+    // Rate monitor
+    #[test]
+    fn test_rate_monitor_zero_window() {
+        let m = crate::rate_monitor::RateMonitor::new(0);
+        m.record();
+        assert_eq!(m.qps(), 0.0);
+    }
+
+    // Pool stats
+    #[test]
+    fn test_pool_stats_release_unknown() {
+        let t = crate::pool_stats::PoolTracker::new();
+        t.release("unknown"); // should not panic
+        assert!(t.snapshot().is_empty());
+    }
+
+    // History analytics
+    #[test]
+    fn test_analytics_all_errors() {
+        let entries = vec![(false, 100, vec!["ds".into()])];
+        let a = crate::history_analytics::compute_analytics(&entries);
+        assert_eq!(a.success_rate, 0.0);
+    }
+
+    // Scheduler
+    #[test]
+    fn test_scheduler_disable() {
+        let reg = crate::scheduler::ScheduleRegistry::new();
+        reg.add(crate::scheduler::ScheduledQuery {
+            id: "s1".into(), name: "test".into(), query: "SELECT 1".into(),
+            format: "sql".into(), cron: "* * * * *".into(), enabled: true,
+            last_run: None, last_status: None, run_count: 0,
+        });
+        reg.set_enabled("s1", false);
+        assert!(reg.due_schedules().is_empty());
+    }
+
+    // Lineage
+    #[test]
+    fn test_lineage_single_source() {
+        let l = crate::lineage::QueryLineage::new("q-1", vec![("ds", "t")]);
+        assert!(!l.is_cross_source());
+    }
+
+    // Delivery
+    #[test]
+    fn test_delivery_buffered_default() {
+        let mode = crate::delivery::recommend_delivery(Some(100), Some(1024), 10000, 10_000_000);
+        assert_eq!(mode, crate::delivery::DeliveryMode::Buffered);
+    }
+
+    // Explain cache
+    #[test]
+    fn test_explain_cache_len() {
+        let c = crate::explain_cache::ExplainCache::new(60, 100);
+        c.insert("q1".into(), json!({}));
+        c.insert("q2".into(), json!({}));
+        assert_eq!(c.len(), 2);
+    }
+
+    // Slow query
+    #[test]
+    fn test_slow_query_custom_threshold() {
+        assert!(crate::slow_query::check_slow_query("q", "sql", std::time::Duration::from_millis(50), &[], 0, Some(10)));
+    }
+
+    // Pagination
+    #[test]
+    fn test_pagination_single_page() {
+        let p = crate::pagination::PaginationMeta::single_page(5);
+        assert!(!p.has_more);
+        assert_eq!(p.total_rows, Some(5));
+    }
+
+    // Complexity
+    #[test]
+    fn test_complexity_union() {
+        let s = crate::complexity::score_query("SELECT * FROM a.t UNION ALL SELECT * FROM b.t");
+        assert!(s.has_union);
+    }
+
+    // Fingerprint
+    #[test]
+    fn test_fingerprint_consistency() {
+        let f1 = crate::fingerprint::fingerprint("SELECT * FROM t WHERE id = 1");
+        let f2 = crate::fingerprint::fingerprint("SELECT * FROM t WHERE id = 2");
+        assert_eq!(f1, f2);
+    }
+
+    // Sanitize
+    #[test]
+    fn test_sanitize_multiple() {
+        let s = crate::sanitize::sanitize_query("WHERE a = 'x' AND b = 'y'");
+        assert!(!s.contains("x"));
+        assert!(!s.contains("y"));
+        assert!(s.contains("***"));
+    }
+
+    // Query parser
+    #[test]
+    fn test_extract_tables_multiple() {
+        let tables = crate::query_parser::extract_tables("SELECT * FROM a.t1 JOIN b.t2 ON a.t1.id = b.t2.id");
+        assert_eq!(tables.len(), 2);
+    }
+
+    // Reorder
+    #[test]
+    fn test_reorder_identity() {
+        let cols = vec!["a".into(), "b".into()];
+        let rows = vec![vec![json!(1), json!(2)]];
+        let (new_cols, new_rows) = crate::reorder::reorder(&cols, &rows, &["a".into(), "b".into()]);
+        assert_eq!(new_cols, cols);
+        assert_eq!(new_rows, rows);
+    }
+
+    // Projector
+    #[test]
+    fn test_project_all() {
+        let cols = vec!["a".into(), "b".into()];
+        let rows = vec![vec![json!(1), json!(2)]];
+        let (new_cols, _) = crate::projector::project(&rows, &cols, &["a".into(), "b".into()]);
+        assert_eq!(new_cols.len(), 2);
+    }
+
+    // Union typed
+    #[test]
+    fn test_union_same_schema() {
+        let cols = vec!["x".into()];
+        let left = vec![vec![json!(1)]];
+        let right = vec![vec![json!(2)]];
+        let (c, r) = crate::union_typed::union_aligned(&cols, &left, &cols, &right);
+        assert_eq!(c.len(), 1);
+        assert_eq!(r.len(), 2);
+    }
+
+    // Renamer
+    #[test]
+    fn test_rename_no_match() {
+        let cols = vec!["a".into()];
+        let renamed = crate::renamer::rename_columns(&cols, &std::collections::HashMap::new());
+        assert_eq!(renamed, cols);
+    }
+
+    // Result filter
+    #[test]
+    fn test_filter_neq() {
+        let rows = vec![vec![json!("a")], vec![json!("b")]];
+        let result = crate::result_filter::filter_rows(&rows, &[crate::result_filter::FilterOp::Neq(0, json!("a"))]);
+        assert_eq!(result.len(), 1);
+    }
+}
