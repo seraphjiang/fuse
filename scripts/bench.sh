@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Performance benchmark suite for Fuse query engine.
+# Usage: ./scripts/bench.sh [--url URL] [--iterations N] [--warmup N]
+set -euo pipefail
+
+URL="${1:-http://localhost:9400}"
+ITERATIONS="${2:-10}"
+WARMUP="${3:-2}"
+
+query() {
+  local name="$1" body="$2"
+  # Warmup
+  for ((i=0; i<WARMUP; i++)); do
+    curl -s -o /dev/null -X POST "$URL/api/fuse/query" -H 'Content-Type: application/json' -d "$body"
+  done
+  # Timed runs
+  local total=0
+  for ((i=0; i<ITERATIONS; i++)); do
+    local start end elapsed
+    start=$(date +%s%N)
+    curl -s -o /dev/null -X POST "$URL/api/fuse/query" -H 'Content-Type: application/json' -d "$body"
+    end=$(date +%s%N)
+    elapsed=$(( (end - start) / 1000000 ))
+    total=$((total + elapsed))
+  done
+  local avg=$((total / ITERATIONS))
+  printf "%-40s %6d ms (avg over %d runs)\n" "$name" "$avg" "$ITERATIONS"
+}
+
+echo "=== Fuse Performance Benchmark ==="
+echo "URL: $URL | Iterations: $ITERATIONS | Warmup: $WARMUP"
+echo ""
+
+# Health check
+curl -sf "$URL/api/fuse/health" > /dev/null || { echo "ERROR: Fuse not reachable at $URL"; exit 1; }
+
+echo "--- Single Source ---"
+query "single_select" '{"query":"SELECT * FROM cluster_a.application_logs LIMIT 100","format":"sql"}'
+query "single_filter" '{"query":"SELECT * FROM cluster_a.application_logs WHERE status >= 500 LIMIT 100","format":"sql"}'
+query "single_agg" '{"query":"SELECT service, count(*) FROM cluster_a.application_logs GROUP BY service","format":"sql"}'
+
+echo ""
+echo "--- Cross-Source JOIN ---"
+query "two_source_join" '{"query":"SELECT l.service, u.name FROM cluster_a.application_logs l JOIN dynamodb.users u ON l.user_id = u.user_id LIMIT 50","format":"sql"}'
+
+echo ""
+echo "--- UNION ALL ---"
+query "two_source_union" '{"query":"SELECT * FROM cluster_a.application_logs UNION ALL SELECT * FROM cluster_b.application_logs LIMIT 100","format":"sql"}'
+
+echo ""
+echo "--- EXPLAIN ---"
+query "explain_plan" '{"query":"EXPLAIN SELECT * FROM cluster_a.application_logs WHERE status >= 500","format":"sql"}'
+
+echo ""
+echo "--- PPL ---"
+query "ppl_basic" '{"query":"source = cluster_a.application_logs | where status >= 500 | head 50","format":"ppl"}'
+
+echo ""
+echo "--- Metadata ---"
+start=$(date +%s%N)
+curl -s -o /dev/null "$URL/api/fuse/datasources"
+end=$(date +%s%N)
+printf "%-40s %6d ms\n" "list_datasources" "$(( (end - start) / 1000000 ))"
+
+start=$(date +%s%N)
+curl -s -o /dev/null "$URL/api/fuse/health"
+end=$(date +%s%N)
+printf "%-40s %6d ms\n" "health_check" "$(( (end - start) / 1000000 ))"
+
+echo ""
+echo "=== Benchmark Complete ==="
