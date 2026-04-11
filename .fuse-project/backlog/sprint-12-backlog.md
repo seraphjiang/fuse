@@ -26,7 +26,8 @@
 |----|------|-------|--------|-------|
 | 920 | TLS/mTLS for connector connections | security | unresponsive | rustls, per-connector cert config — TlsConfig exists in tls.rs |
 | 921 | RBAC fine-grained permissions | pm | done | DatasourceRbac with Read/Write/Admin, 8 tests. Commit: 823dad6 |
-| 922 | Secret management (connector credentials) | ai-lead | in-progress | Reassigned from security |
+| 922 | Secret management (connector credentials) | ai-lead | done | SecretResolver trait, validate_secret_refs(), 14 tests. Commit: bfff2e2 |
+| 1100 | Connection pooling per connector | ai-lead | in-progress | Verify + add pooling where missing |
 
 ## P1: Continuous Monitoring (pm)
 
