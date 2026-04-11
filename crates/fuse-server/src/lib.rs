@@ -18,6 +18,7 @@ pub mod bookmarks;
 pub mod auto_suggest;
 pub mod autocomplete;
 pub mod complexity;
+pub mod coercer;
 pub mod column_stats;
 pub mod capability_summary;
 pub mod circuit_breaker;pub mod config_watch;
