@@ -46,6 +46,7 @@ pub mod metrics;
 pub mod nl_query;
 pub mod notifications;
 pub mod pagination;
+pub mod null_handler;
 pub mod offset_pagination;
 pub mod pivot;
 pub mod plan_cache;
