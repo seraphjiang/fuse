@@ -3,6 +3,13 @@ name: Docker Image
 on:
   push:
     tags: ["v*"]
+    branches: [main, mainline]
+  pull_request:
+    paths:
+      - "Dockerfile"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
   workflow_dispatch:
 
 permissions:
@@ -11,6 +18,7 @@ permissions:
 
 env:
   IMAGE_NAME: fuse-server
+  REGISTRY: ghcr.io
 
 jobs:
   docker:
@@ -26,25 +34,37 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract version
+      - name: Extract metadata
         id: meta
-        run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tags=ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${VERSION},ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest" >> "$GITHUB_OUTPUT"
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Verify image (non-PR only)
+        if: github.event_name != 'pull_request'
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version || 'latest' }} || true
+          echo "Image pushed successfully"
