@@ -44,13 +44,19 @@
 | — | Identifier quoting (6 connectors) | security | ✅ done | 0591272 |
 | — | Telemetry security review | security | ✅ done | (review only) |
 
-## P1: Ecosystem — IN PROGRESS
+## P1: Ecosystem — ✅ COMPLETE
 
 | ID | Item | Owner | Status | Commit |
 |----|------|-------|--------|--------|
-| 1422 | OSD plugin update | ai-lead | 🔄 in-progress | — |
-| 1420 | Go SDK client | — | todo | — |
-| 1421 | Jupyter magic command | — | todo | — |
+| 1422 | OSD plugin update | ai-lead | ✅ done | bba41c8 |
+| 1420 | Go SDK client | — | deferred to Sprint 15 | — |
+| 1421 | Jupyter magic command | sde | ✅ done | — |
+
+## Capstone Features — ✅ COMPLETE
+
+| ID | Item | Owner | Status | Commit |
+|----|------|-------|--------|--------|
+| 1460 | Async query API (submit/poll) | ai-lead | ✅ done | a1827f8 |
 
 ## Docs & Frontend
 
