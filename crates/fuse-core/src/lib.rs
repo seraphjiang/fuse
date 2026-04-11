@@ -17,6 +17,7 @@ pub mod metadata_cache;
 pub mod registry;
 pub mod optimizer;
 pub mod plan_builder;
+pub mod plan_printer;
 pub mod plan_serde;
 pub mod plan_visitor;
 pub mod planner;
