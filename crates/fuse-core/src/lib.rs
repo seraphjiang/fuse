@@ -12,6 +12,7 @@ pub mod expr;
 pub mod factory;
 pub mod health_history;
 pub mod materialized_view;
+pub mod limit_pushdown;
 pub mod metadata_cache;
 pub mod registry;
 pub mod optimizer;
