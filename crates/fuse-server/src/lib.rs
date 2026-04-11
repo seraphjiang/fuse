@@ -33,6 +33,7 @@ pub mod fingerprint;
 pub mod formatter;
 pub mod grouper;
 pub mod health;
+pub mod joiner;
 pub mod health_monitor;
 pub mod history;
 pub mod history_analytics;
