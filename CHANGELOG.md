@@ -8,6 +8,31 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- CORS configuration support (`cors_origins` in `[engine]`)
+- Max result size limit (`max_result_bytes`) for OOM prevention
+- Connector retry with exponential backoff
+- Federation health aggregated into `/api/fuse/health`
+- Audit log export endpoint (NDJSON, since-filter, drain mode)
+- W3C Trace Context propagation for distributed tracing
+- Adaptive parallelism — per-datasource concurrency tuning
+- S3 Parquet write path (`write_batches` for S3 connector)
+- PostgreSQL/MySQL/SQLite write path (`write_batches`)
+- Performance benchmark script (`scripts/bench.sh`)
+
+### Fixed
+- Query ID uniqueness — atomic counter replaces timestamp-based generation
+- Duplicate `transactions` field in test AppState constructors
+- Duplicate `query_id` assignment in query handler
+- Duplicate `ComparisonOp::Contains` match arm in PostgreSQL pushdown
+- Identifier quoting in SQL pushdown connectors
+
+### Documentation
+- What's New in v1.0 guide (Arrow Flight, CTAS, RBAC, adaptive timeout, alerts)
+- OpenAPI spec updated — all 24 endpoints documented
+- API reference: prepared statements and federation topology sections
+- README: connector count updated to 22 (DuckDB, Arrow Flight added)
+
 ## [1.1.0] — 2026-04-11
 
 ### Added
