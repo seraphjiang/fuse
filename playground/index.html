@@ -57,7 +57,9 @@ tr:hover td{background:#161b22}
 #chart-container{width:100%;height:400px;display:none;border:1px solid #21262d;border-radius:6px;background:#0d1117}
 .chart-hint{font-size:11px;color:#8b949e;padding:4px 0}
 /* Syntax highlighting overlay */
-.editor-wrap{position:relative}
+.editor-wrap{position:relative;display:flex}
+.line-gutter{padding:12px 8px 12px 0;font-family:"SF Mono",Consolas,monospace;font-size:14px;line-height:1.5;color:#484f58;text-align:right;user-select:none;min-width:32px;overflow:hidden}
+body.light .line-gutter{color:#8c959f}
 .editor-highlight{position:absolute;top:0;left:0;right:0;bottom:0;padding:12px;font-family:"SF Mono",Consolas,monospace;font-size:14px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word;overflow:auto;pointer-events:none;color:transparent;border:1px solid transparent;border-radius:6px}
 .editor-highlight .kw{color:#ff7b72}
 .editor-highlight .fn{color:#d2a8ff}
@@ -396,8 +398,11 @@ button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #58a
 
   <div class="ac-wrap">
     <div class="editor-wrap">
-      <div class="editor-highlight" id="editor-highlight"></div>
-      <textarea id="editor" aria-label="SQL query editor" placeholder="SELECT * FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20" spellcheck="false">SELECT service, status, message FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20</textarea>
+      <div class="line-gutter" id="line-gutter">1</div>
+      <div style="position:relative;flex:1">
+        <div class="editor-highlight" id="editor-highlight"></div>
+        <textarea id="editor" aria-label="SQL query editor" placeholder="SELECT * FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20" spellcheck="false">SELECT service, status, message FROM cluster_a.application_logs WHERE status >= 500 LIMIT 20</textarea>
+      </div>
     </div>
     <div class="ac-dropdown" id="ac-dropdown" role="listbox" aria-label="Autocomplete suggestions"></div>
   </div>
@@ -1496,7 +1501,16 @@ function syncHighlight() {
 }
 
 $('editor').addEventListener('input', syncHighlight);
-$('editor').addEventListener('scroll', () => { $('editor-highlight').scrollTop = $('editor').scrollTop; });
+$('editor').addEventListener('scroll', () => {
+  $('editor-highlight').scrollTop = $('editor').scrollTop;
+  $('line-gutter').scrollTop = $('editor').scrollTop;
+});
+$('editor').addEventListener('input', updateLineNumbers);
+function updateLineNumbers() {
+  const lines = $('editor').value.split('\n').length;
+  $('line-gutter').innerHTML = Array.from({length: lines}, (_, i) => i + 1).join('<br>');
+}
+updateLineNumbers();
 syncHighlight();
 
 // === Schema-Aware Autocomplete ===
