@@ -269,7 +269,7 @@ mod tests {
     use super::*;
 
     fn test_config(brokers: &str) -> ConnectorConfig {
-        let mut props = toml::map::Map::new();
+        let mut props = std::collections::HashMap::new();
         props.insert("brokers".into(), toml::Value::String(brokers.into()));
         ConnectorConfig { id: "test-kafka".into(), connector_type: "kafka".into(), properties: props }
     }
@@ -290,7 +290,7 @@ mod tests {
     #[test]
     fn test_from_config_missing_brokers() {
         let config = ConnectorConfig {
-            id: "k".into(), connector_type: "kafka".into(), properties: toml::map::Map::new(),
+            id: "k".into(), connector_type: "kafka".into(), properties: std::collections::HashMap::new(),
         };
         assert!(KafkaConnector::from_config(&config).is_err());
     }
