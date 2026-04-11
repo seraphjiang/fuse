@@ -11,6 +11,7 @@ pub mod secrets;
 pub mod security;
 pub mod sql;
 pub mod tls;
+pub mod url;
 pub mod version;
 
 // Re-export commonly used types at crate root for convenience
