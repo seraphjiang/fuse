@@ -37,11 +37,13 @@
 # Administration
 
 - [Admin Guide](./admin-guide.md)
+- [Horizontal Scaling](./horizontal-scaling.md)
 
 # Developer
 
 - [Contributing](./contributing.md)
 - [Connector Development](./connector-development.md)
+- [Plugin Development (WASM)](./plugin-development.md)
 - [Community](./community-guide.md)
 
 # Blog & Roadmap
