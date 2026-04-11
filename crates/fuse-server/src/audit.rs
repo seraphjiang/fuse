@@ -10,7 +10,7 @@ use std::time::SystemTime;
 use tokio::sync::Mutex;
 
 /// A single audit log entry.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AuditEntry {
     pub timestamp: u64,
     pub identity: String,
@@ -24,7 +24,7 @@ pub struct AuditEntry {
     pub client_ip: Option<String>,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum AuditAction {
     Query,
     Explain,
@@ -36,7 +36,7 @@ pub enum AuditAction {
     SavedQueryDelete,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum AuditStatus {
     Success,
     Error,

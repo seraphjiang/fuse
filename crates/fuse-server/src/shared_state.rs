@@ -8,6 +8,7 @@ use std::sync::Arc;
 use tracing::{debug, warn};
 
 use crate::history::{HistoryEntry, QueryHistory};
+use crate::audit::{AuditEntry, AuditLog};
 use crate::saved_queries::{SavedQuery, SavedQueryRegistry};
 
 fn redis_client() -> Option<redis::Client> {
@@ -146,6 +147,54 @@ impl SharedQueryHistory {
     }
 }
 
+// ── Shared Audit Log ──
+
+const AUDIT_KEY: &str = "fuse:audit";
+const MAX_AUDIT: usize = 500;
+
+#[derive(Clone)]
+pub enum SharedAuditLog {
+    Redis { client: redis::Client },
+    InMemory(Arc<AuditLog>),
+}
+
+impl SharedAuditLog {
+    pub fn from_env() -> Self {
+        match redis_client() {
+            Some(client) => {
+                debug!("Audit log: Redis");
+                Self::Redis { client }
+            }
+            None => Self::InMemory(Arc::new(AuditLog::new(MAX_AUDIT))),
+        }
+    }
+
+    pub fn is_redis(&self) -> bool { matches!(self, Self::Redis { .. }) }
+
+    pub async fn record(&self, entry: AuditEntry) {
+        match self {
+            Self::Redis { client } => {
+                let Ok(mut conn) = client.get_multiplexed_async_connection().await else { return };
+                let Ok(json) = serde_json::to_string(&entry) else { return };
+                let _: Result<(), _> = redis::cmd("LPUSH").arg(AUDIT_KEY).arg(json).query_async(&mut conn).await;
+                let _: Result<(), _> = redis::cmd("LTRIM").arg(AUDIT_KEY).arg(0i64).arg((MAX_AUDIT - 1) as i64).query_async(&mut conn).await;
+            }
+            Self::InMemory(log) => log.record(entry).await,
+        }
+    }
+
+    pub async fn recent(&self, limit: usize) -> Vec<AuditEntry> {
+        match self {
+            Self::Redis { client } => {
+                let Ok(mut conn) = client.get_multiplexed_async_connection().await else { return vec![] };
+                let vals: Vec<String> = redis::cmd("LRANGE").arg(AUDIT_KEY).arg(0i64).arg((limit - 1) as i64).query_async(&mut conn).await.unwrap_or_default();
+                vals.iter().filter_map(|s| serde_json::from_str(s).ok()).collect()
+            }
+            Self::InMemory(log) => log.recent(limit).await,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -249,5 +298,45 @@ mod tests {
     async fn test_history_empty() {
         std::env::remove_var("FUSE_REDIS_URL");
         assert!(SharedQueryHistory::from_env().list().await.is_empty());
+    }
+
+    // ── SharedAuditLog ──
+
+    fn audit_entry(identity: &str) -> AuditEntry {
+        AuditEntry {
+            timestamp: 0, identity: identity.into(),
+            action: crate::audit::AuditAction::Query, query: Some("SELECT 1".into()),
+            datasources: vec![], duration_ms: 5, row_count: 1,
+            status: crate::audit::AuditStatus::Success, error: None, client_ip: None,
+        }
+    }
+
+    #[test]
+    fn test_audit_no_redis() {
+        std::env::remove_var("FUSE_REDIS_URL");
+        assert!(!SharedAuditLog::from_env().is_redis());
+    }
+
+    #[test]
+    fn test_audit_with_redis_url() {
+        std::env::set_var("FUSE_REDIS_URL", "redis://127.0.0.1:6379");
+        assert!(SharedAuditLog::from_env().is_redis());
+        std::env::remove_var("FUSE_REDIS_URL");
+    }
+
+    #[tokio::test]
+    async fn test_audit_record_and_recent() {
+        std::env::remove_var("FUSE_REDIS_URL");
+        let log = SharedAuditLog::from_env();
+        log.record(audit_entry("user1")).await;
+        log.record(audit_entry("user2")).await;
+        let recent = log.recent(10).await;
+        assert_eq!(recent.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_audit_empty() {
+        std::env::remove_var("FUSE_REDIS_URL");
+        assert!(SharedAuditLog::from_env().recent(10).await.is_empty());
     }
 }
