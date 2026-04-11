@@ -13,6 +13,7 @@ pub mod auth;
 pub mod auto_suggest;
 pub mod autocomplete;
 pub mod complexity;
+pub mod config_watch;
 pub mod cors;
 pub mod export;
 pub mod federation;
