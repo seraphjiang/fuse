@@ -165,6 +165,12 @@ curl http://localhost:9400/api/fuse/datasources/cluster_a/schemas/application_lo
 | MongoDB | `mongodb` | Connection string | Filter pushdown (BSON), projection, limit |
 | InfluxDB | `influxdb` | Token (v2) / Basic (v1) | InfluxQL WHERE pushdown, time range |
 | ClickHouse | `clickhouse` | Basic (HTTP) | Full SQL pushdown (native SQL) |
+| Kafka | `kafka` | None / SASL | Topic consume, key/timestamp filter, JSON extraction |
+| Athena | `athena` | SigV4 (IAM) | Full SQL pushdown, Glue catalog |
+| Timestream | `timestream` | SigV4 (IAM) | Full SQL pushdown, time-series types |
+| Snowflake | `snowflake` | Bearer token | Full SQL pushdown, async polling |
+| BigQuery | `bigquery` | Service account | Full SQL pushdown, Jobs API |
+| Fuse | `fuse` | Bearer token | Full query forwarding (federation) |
 
 ### Configuration (fuse.toml)
 
