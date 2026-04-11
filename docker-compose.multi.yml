@@ -1,0 +1,91 @@
+version: "3.8"
+
+# Multi-instance Fuse deployment with nginx LB and shared Redis.
+# Usage: docker compose -f docker-compose.multi.yml up --build
+
+x-fuse-common: &fuse-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  volumes:
+    - ./fuse.local.toml:/etc/fuse/fuse.toml:ro
+  environment:
+    - FUSE_CONFIG=/etc/fuse/fuse.toml
+    - RUST_LOG=info
+    - FUSE_REDIS_URL=redis://redis:6379
+  depends_on:
+    opensearch:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD-SHELL", "curl -sf http://localhost:9400/api/fuse/health || exit 1"]
+    interval: 10s
+    timeout: 5s
+    retries: 10
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  opensearch:
+    image: opensearchproject/opensearch:2.17.0
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=FuseDev123!
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    ports:
+      - "9200:9200"
+    volumes:
+      - os-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  fuse-1:
+    <<: *fuse-common
+    container_name: fuse-1
+
+  fuse-2:
+    <<: *fuse-common
+    container_name: fuse-2
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "9400:80"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      fuse-1:
+        condition: service_healthy
+      fuse-2:
+        condition: service_healthy
+
+  dashboards:
+    build:
+      context: .
+      dockerfile: Dockerfile.osd
+    ports:
+      - "5601:5601"
+    environment:
+      - FUSE_ENGINE_URL=http://nginx:80
+    depends_on:
+      nginx:
+        condition: service_started
+
+volumes:
+  os-data:
