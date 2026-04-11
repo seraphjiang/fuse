@@ -19,6 +19,25 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - S3 Parquet write path (`write_batches` for S3 connector)
 - PostgreSQL/MySQL/SQLite write path (`write_batches`)
 - Performance benchmark script (`scripts/bench.sh`)
+- Health dashboard timeline (per-connector status over 60 checks)
+- Grafana plugin: multi-line editor, template variable support
+- VS Code extension: inline result decorations
+- Playground: query history search/filter (text, format, status)
+- Playground: connection test button on Settings page
+- Playground: query cost badge after EXPLAIN
+- Playground: schema explorer with click-to-insert
+- Playground: dot-triggered context-aware autocomplete
+- Playground: PPL keywords and SQL functions in autocomplete
+- NL-to-SQL query generation
+- Query advisor endpoint
+- Cost-based query routing
+- Query governor (max rows, execution time, memory limits)
+- Multi-tenancy with tenant isolation
+- Prometheus metrics endpoint (`/metrics`)
+- Go SDK, Python SDK, TypeScript SDK
+- E2E test suite with docker-compose
+- Live site smoke test (28 endpoint checks)
+- Playground UI regression test (93 checks)
 
 ### Fixed
 - Query ID uniqueness — atomic counter replaces timestamp-based generation
@@ -26,12 +45,19 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Duplicate `query_id` assignment in query handler
 - Duplicate `ComparisonOp::Contains` match arm in PostgreSQL pushdown
 - Identifier quoting in SQL pushdown connectors
+- 149 clippy warnings resolved (0 remaining)
+- api_test.rs compilation fixes
+- Tenant isolation P0 security fix
+- WASM resource limits P1 fix
 
 ### Documentation
 - What's New in v1.0 guide (Arrow Flight, CTAS, RBAC, adaptive timeout, alerts)
 - OpenAPI spec updated — all 24 endpoints documented
 - API reference: prepared statements and federation topology sections
 - README: connector count updated to 22 (DuckDB, Arrow Flight added)
+- Getting-started tutorial (install to cross-source JOIN)
+- Playground user guide (16+ features documented)
+- Performance benchmark script updated for Sprint 12-16 features
 
 ## [1.1.0] — 2026-04-11
 
