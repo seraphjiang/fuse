@@ -192,6 +192,8 @@ async function renderDatasources() {
     html += `<div class="card"><div class="card-header"><div>
       <div class="card-title">${esc(d.id)} <span class="status-ok">● connected</span></div>
       <div class="card-meta">${esc(d.connector_type)}</div>
+    </div><div class="card-actions">
+      <button onclick="testConnection('${esc(d.id)}', this)">🔌 Test</button>
     </div></div></div>`;
   });
   customDs.forEach((d, i) => {
@@ -199,6 +201,7 @@ async function renderDatasources() {
       <div class="card-title">${esc(d.id)} <span class="status-warn">● custom</span></div>
       <div class="card-meta">${esc(d.type)} · ${esc(d.endpoint || 'no endpoint')}</div>
     </div><div class="card-actions">
+      <button onclick="testConnection('${esc(d.id)}', this)">🔌 Test</button>
       <button class="danger" onclick="removeDs(${i})">Remove</button>
     </div></div></div>`;
   });
@@ -225,6 +228,32 @@ function removeDs(idx) {
   saveDatasources(ds);
   renderDatasources();
   toast('Datasource removed');
+}
+
+async function testConnection(dsId, btn) {
+  const orig = btn.textContent;
+  btn.textContent = '⏳ Testing…';
+  btn.disabled = true;
+  try {
+    const r = await fetch(API + '/api/fuse/health');
+    const health = await r.json();
+    const conn = health.connectors && health.connectors[dsId];
+    if (conn && (conn.status === 'ok' || conn.status === 'healthy' || conn.status === 'connected')) {
+      btn.textContent = '✅ OK' + (conn.latency_ms ? ` (${conn.latency_ms}ms)` : '');
+      btn.style.color = '#3fb950';
+    } else if (conn) {
+      btn.textContent = '❌ ' + (conn.message || conn.status || 'unhealthy');
+      btn.style.color = '#f85149';
+    } else {
+      btn.textContent = '⚠️ Not found';
+      btn.style.color = '#d29922';
+    }
+  } catch (e) {
+    btn.textContent = '❌ ' + e.message;
+    btn.style.color = '#f85149';
+  }
+  btn.disabled = false;
+  setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, 4000);
 }
 
 // === API Keys ===
