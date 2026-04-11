@@ -35,6 +35,7 @@ pub mod pagination;
 pub mod plan_cache;
 pub mod pool_stats;
 pub mod query_policy;
+pub mod query_context;
 pub mod prepared;
 pub mod query_advisor;
 pub mod query_diff;
