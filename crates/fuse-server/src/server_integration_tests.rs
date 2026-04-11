@@ -532,3 +532,44 @@ mod comprehensive_tests {
         assert_eq!(result.len(), 1);
     }
 }
+
+
+#[cfg(test)]
+mod milestone_tests {
+    use serde_json::json;
+
+    #[test]
+    fn test_agg_min_negative() {
+        let rows = vec![vec![json!(-10)], vec![json!(-5)], vec![json!(0)]];
+        assert_eq!(crate::agg_functions::min(&rows, 0), Some(-10.0));
+    }
+
+    #[test]
+    fn test_joiner_left_join_all_match() {
+        let left = vec![vec![json!(1)], vec![json!(2)]];
+        let right = vec![vec![json!(1), json!("a")], vec![json!(2), json!("b")]];
+        let result = crate::joiner::left_join(&left, 0, &right, 0, 2);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0][1], json!("a"));
+    }
+
+    #[test]
+    fn test_intersect_all_common() {
+        let rows = vec![vec![json!(1)], vec![json!(2)]];
+        assert_eq!(crate::intersect::intersect(&rows, &rows).len(), 2);
+    }
+
+    #[test]
+    fn test_except_all_different() {
+        let left = vec![vec![json!(1)]];
+        let right = vec![vec![json!(2)]];
+        assert_eq!(crate::intersect::except(&left, &right).len(), 1);
+    }
+
+    #[test]
+    fn test_math_floor_negative() {
+        let mut rows = vec![vec![json!(-3.7)]];
+        crate::math_fn::apply_math(&mut rows, 0, crate::math_fn::MathFn::Floor);
+        assert_eq!(rows[0][0], json!(-4.0));
+    }
+}
