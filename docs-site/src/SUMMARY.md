@@ -18,6 +18,7 @@
 - [EXPLAIN / ANALYZE](./explain-analyze.md)
 - [Performance Tuning](./performance-tuning.md)
 - [Query Optimization](./query-optimization.md)
+- [Cookbook (20 Recipes)](./cookbook.md)
 - [Migration from OpenSearch](./migration-guide.md)
 - [Troubleshooting](./troubleshooting.md)
 - [Troubleshooting FAQ](./troubleshooting-faq.md)
