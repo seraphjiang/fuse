@@ -135,6 +135,7 @@ async fn main() -> anyhow::Result<()> {
         shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
         shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
         transactions: Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: config.engine.max_result_bytes,
     });
 
     // Initialize metrics

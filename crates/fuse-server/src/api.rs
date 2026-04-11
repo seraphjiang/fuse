@@ -3797,4 +3797,57 @@ mod tests {
     fn test_parse_rollback_bare_returns_none() {
         assert!(parse_rollback("ROLLBACK").is_none());
     }
+
+    #[test]
+    fn test_estimate_batches_size() {
+        use arrow::array::{Int64Array, StringArray};
+        use arrow::datatypes::{DataType, Field, Schema};
+        let schema = std::sync::Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int64, false),
+            Field::new("name", DataType::Utf8, true),
+        ]));
+        let batch = arrow::record_batch::RecordBatch::try_new(
+            schema,
+            vec![
+                std::sync::Arc::new(Int64Array::from(vec![1, 2, 3])) as arrow::array::ArrayRef,
+                std::sync::Arc::new(StringArray::from(vec!["a", "b", "c"])) as arrow::array::ArrayRef,
+            ],
+        ).unwrap();
+        let size = super::estimate_batches_size(&[batch]);
+        assert!(size > 0);
+    }
+
+    #[test]
+    fn test_check_result_size_unlimited() {
+        use arrow::array::Int64Array;
+        use arrow::datatypes::{DataType, Field, Schema};
+        let schema = std::sync::Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, false)]));
+        let batch = arrow::record_batch::RecordBatch::try_new(
+            schema, vec![std::sync::Arc::new(Int64Array::from(vec![1, 2, 3])) as arrow::array::ArrayRef],
+        ).unwrap();
+        assert!(super::check_result_size(&[batch], 0).is_ok());
+    }
+
+    #[test]
+    fn test_check_result_size_within_limit() {
+        use arrow::array::Int64Array;
+        use arrow::datatypes::{DataType, Field, Schema};
+        let schema = std::sync::Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, false)]));
+        let batch = arrow::record_batch::RecordBatch::try_new(
+            schema, vec![std::sync::Arc::new(Int64Array::from(vec![1])) as arrow::array::ArrayRef],
+        ).unwrap();
+        assert!(super::check_result_size(&[batch], 1_000_000).is_ok());
+    }
+
+    #[test]
+    fn test_check_result_size_exceeds_limit() {
+        use arrow::array::Int64Array;
+        use arrow::datatypes::{DataType, Field, Schema};
+        let schema = std::sync::Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, false)]));
+        let batch = arrow::record_batch::RecordBatch::try_new(
+            schema, vec![std::sync::Arc::new(Int64Array::from(vec![1, 2, 3])) as arrow::array::ArrayRef],
+        ).unwrap();
+        // Set limit to 1 byte — any result should exceed
+        assert!(super::check_result_size(&[batch], 1).is_err());
+    }
 }
