@@ -22,3 +22,6 @@ thiserror = { workspace = true }
 reqwest = { workspace = true }
 aws-config = { workspace = true }
 aws-sdk-secretsmanager = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

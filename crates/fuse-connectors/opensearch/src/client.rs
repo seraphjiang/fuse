@@ -54,8 +54,25 @@ impl OpenSearchClient {
             Url::parse(url).map_err(|e| ConnectorError::Connection(format!("invalid url: {e}")))?;
         let pool = SingleNodeConnectionPool::new(parsed_url);
         let mut builder = TransportBuilder::new(pool)
-            .timeout(request_timeout)
-            .cert_validation(CertificateValidation::None);
+            .timeout(request_timeout);
+
+        // TLS configuration
+        if let Some(tls) = config.tls_config() {
+            tls.validate()
+                .map_err(|e| ConnectorError::Connection(e.to_string()))?;
+            if let Some(ca_bytes) = tls
+                .read_ca_cert()
+                .map_err(|e| ConnectorError::Connection(e.to_string()))?
+            {
+                let cert = opensearch::cert::Certificate::from_pem(&ca_bytes)
+                    .map_err(|e| ConnectorError::Connection(format!("invalid ca_cert: {e}")))?;
+                builder = builder.cert_validation(CertificateValidation::Certificate(cert));
+            } else {
+                builder = builder.cert_validation(CertificateValidation::Default);
+            }
+        } else {
+            builder = builder.cert_validation(CertificateValidation::Default);
+        }
 
         // Auth
         if let Some(auth_table) = config.properties.get("auth").and_then(|v: &toml::Value| v.as_table()) {

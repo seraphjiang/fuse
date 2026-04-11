@@ -73,13 +73,22 @@ impl ElasticsearchConnector {
             headers.insert(AUTHORIZATION, val);
         }
 
-        let client = reqwest::Client::builder()
+        let mut client_builder = reqwest::Client::builder()
             .default_headers(headers)
             .danger_accept_invalid_certs(
                 config.properties.get("tls_insecure").and_then(|v| v.as_bool()).unwrap_or(false)
             )
             .pool_max_idle_per_host(config.max_connections(16) as usize)
-            .timeout(std::time::Duration::from_secs(config.connection_timeout_secs(30)))
+            .timeout(std::time::Duration::from_secs(config.connection_timeout_secs(30)));
+
+        if let Some(tls) = config.tls_config() {
+            tls.validate().map_err(|e| ConnectorError::Connection(e.to_string()))?;
+            client_builder = tls
+                .apply_to_reqwest(client_builder)
+                .map_err(|e| ConnectorError::Connection(e.to_string()))?;
+        }
+
+        let client = client_builder
             .build()
             .map_err(|e| ConnectorError::Connection(e.to_string()))?;
 

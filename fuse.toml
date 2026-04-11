@@ -9,6 +9,14 @@ default_timeout = "30s"
 rate_limit_global = 1000
 rate_limit_per_ip = 100
 
+# ── Per-connector TLS/mTLS (optional) ──
+# Any [[connector]] can include a [connector.tls] section:
+#
+# [connector.tls]
+# ca_cert     = "/path/to/ca.pem"        # Custom CA for server verification
+# client_cert = "/path/to/client.pem"    # Client certificate (mTLS)
+# client_key  = "/path/to/client-key.pem" # Client private key (mTLS)
+
 # ── OpenSearch Serverless Connectors (us-west-2) ──
 
 [[connector]]

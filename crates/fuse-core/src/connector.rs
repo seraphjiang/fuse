@@ -58,6 +58,19 @@ pub trait FederatedConnector: Send + Sync + fmt::Debug {
         query: &SubQuery,
         tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
     ) -> Result<(), ConnectorError>;
+
+    /// Write batches to a table. Used by CTAS and INSERT INTO ... SELECT.
+    /// Default: returns unsupported error. Connectors opt-in by overriding.
+    async fn write_batches(
+        &self,
+        _table: &str,
+        _batches: Vec<RecordBatch>,
+    ) -> Result<u64, ConnectorError> {
+        Err(ConnectorError::query(format!(
+            "connector '{}' does not support writes",
+            self.id()
+        )))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

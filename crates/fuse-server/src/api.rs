@@ -336,6 +336,39 @@ pub fn parse_refresh_materialized_view(query: &str) -> Option<String> {
     Some(name)
 }
 
+/// Parse `CREATE TABLE <datasource.table> AS <query>`.
+/// Returns `(datasource, table, inner_query)` if matched.
+pub fn parse_ctas(query: &str) -> Option<(String, String, String)> {
+    let lower = query.trim().to_lowercase();
+    if !lower.starts_with("create table ") {
+        return None;
+    }
+    let after = query.trim()["create table ".len()..].trim();
+    let as_pos = after.to_lowercase().find(" as ")?;
+    let dest = after[..as_pos].trim();
+    let inner_query = after[as_pos + 4..].trim().to_string();
+    if dest.is_empty() || inner_query.is_empty() { return None; }
+    let (ds, tbl) = parse_qualified_name(dest).ok()?;
+    Some((ds, tbl, inner_query))
+}
+
+/// Parse `INSERT INTO <datasource.table> SELECT ...`.
+/// Returns `(datasource, table, select_query)` if matched.
+pub fn parse_insert_into_select(query: &str) -> Option<(String, String, String)> {
+    let lower = query.trim().to_lowercase();
+    if !lower.starts_with("insert into ") {
+        return None;
+    }
+    let after = query.trim()["insert into ".len()..].trim();
+    // Find the SELECT keyword
+    let sel_pos = after.to_lowercase().find(" select ")?;
+    let dest = after[..sel_pos].trim();
+    let select_query = after[sel_pos + 1..].trim().to_string();
+    if dest.is_empty() || select_query.is_empty() { return None; }
+    let (ds, tbl) = parse_qualified_name(dest).ok()?;
+    Some((ds, tbl, select_query))
+}
+
 pub fn rewrite_contains(query: &str) -> String {
     let lower = query.to_lowercase();
     if !lower.contains(" contains '") {
@@ -463,6 +496,76 @@ pub async fn query_handler(
     let result_cache_key = format!("{}:{}", format, query);
     if let Some(cached_result) = state.result_cache.get(&result_cache_key) {
         return (StatusCode::OK, Json(cached_result.response_json)).into_response();
+    }
+
+    // Handle CREATE TABLE datasource.table AS SELECT ... (CTAS)
+    if let Some((dest_ds, dest_table, select_query)) = parse_ctas(&query) {
+        // Execute the SELECT query
+        let src_refs = match parse_sql_sources(&select_query) {
+            Ok(r) if !r.is_empty() => r,
+            _ => return error_json(StatusCode::BAD_REQUEST, "failed to parse source query").into_response(),
+        };
+        let (src_ds, src_table) = &src_refs[0];
+        let src_connector = match state.registry.get(src_ds) {
+            Some(c) => c,
+            None => return error_json(StatusCode::NOT_FOUND, format!("source datasource '{}' not found", src_ds)).into_response(),
+        };
+        let sq = match build_sub_query(&select_query, "sql", src_table) {
+            Ok(sq) => sq,
+            Err(e) => return error_json(StatusCode::BAD_REQUEST, e).into_response(),
+        };
+        let batches = match src_connector.execute(&sq).await {
+            Ok(b) => b,
+            Err(e) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+        };
+        // Write to destination connector
+        let dest_connector = match state.registry.get(&dest_ds) {
+            Some(c) => c,
+            None => return error_json(StatusCode::NOT_FOUND, format!("destination datasource '{}' not found", dest_ds)).into_response(),
+        };
+        let row_count: u64 = batches.iter().map(|b| b.num_rows() as u64).sum();
+        match dest_connector.write_batches(&dest_table, batches).await {
+            Ok(written) => return (StatusCode::CREATED, Json(serde_json::json!({
+                "message": format!("table '{}.{}' created", dest_ds, dest_table),
+                "rows_written": written,
+                "rows_selected": row_count,
+            }))).into_response(),
+            Err(e) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+        }
+    }
+
+    // Handle INSERT INTO datasource.table SELECT ...
+    if let Some((dest_ds, dest_table, select_query)) = parse_insert_into_select(&query) {
+        let src_refs = match parse_sql_sources(&select_query) {
+            Ok(r) if !r.is_empty() => r,
+            _ => return error_json(StatusCode::BAD_REQUEST, "failed to parse source query").into_response(),
+        };
+        let (src_ds, src_table) = &src_refs[0];
+        let src_connector = match state.registry.get(src_ds) {
+            Some(c) => c,
+            None => return error_json(StatusCode::NOT_FOUND, format!("source datasource '{}' not found", src_ds)).into_response(),
+        };
+        let sq = match build_sub_query(&select_query, "sql", src_table) {
+            Ok(sq) => sq,
+            Err(e) => return error_json(StatusCode::BAD_REQUEST, e).into_response(),
+        };
+        let batches = match src_connector.execute(&sq).await {
+            Ok(b) => b,
+            Err(e) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+        };
+        let dest_connector = match state.registry.get(&dest_ds) {
+            Some(c) => c,
+            None => return error_json(StatusCode::NOT_FOUND, format!("destination datasource '{}' not found", dest_ds)).into_response(),
+        };
+        let row_count: u64 = batches.iter().map(|b| b.num_rows() as u64).sum();
+        match dest_connector.write_batches(&dest_table, batches).await {
+            Ok(written) => return Json(serde_json::json!({
+                "message": format!("inserted into '{}.{}'", dest_ds, dest_table),
+                "rows_written": written,
+                "rows_selected": row_count,
+            })).into_response(),
+            Err(e) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+        }
     }
 
     // Handle CREATE MATERIALIZED VIEW name AS query — store + execute immediately
@@ -3415,5 +3518,70 @@ mod tests {
         assert_eq!(lines.len(), 2);
         let row2: serde_json::Value = serde_json::from_str(lines[1]).unwrap();
         assert!(row2["val"].is_null());
+    }
+
+    // ── CTAS parser tests ──
+
+    #[test]
+    fn test_parse_ctas_basic() {
+        let (ds, tbl, q) = parse_ctas("CREATE TABLE my_pg.results AS SELECT * FROM cluster_a.logs").unwrap();
+        assert_eq!(ds, "my_pg");
+        assert_eq!(tbl, "results");
+        assert_eq!(q, "SELECT * FROM cluster_a.logs");
+    }
+
+    #[test]
+    fn test_parse_ctas_case_insensitive() {
+        assert!(parse_ctas("create table ds.t as SELECT 1").is_some());
+    }
+
+    #[test]
+    fn test_parse_ctas_none_no_as() {
+        assert!(parse_ctas("CREATE TABLE ds.t SELECT 1").is_none());
+    }
+
+    #[test]
+    fn test_parse_ctas_none_unqualified() {
+        assert!(parse_ctas("CREATE TABLE t AS SELECT 1").is_none());
+    }
+
+    #[test]
+    fn test_parse_ctas_none_empty_query() {
+        assert!(parse_ctas("CREATE TABLE ds.t AS ").is_none());
+    }
+
+    #[test]
+    fn test_parse_ctas_none_unrelated() {
+        assert!(parse_ctas("SELECT * FROM t").is_none());
+    }
+
+    // ── INSERT INTO ... SELECT parser tests ──
+
+    #[test]
+    fn test_parse_insert_into_select_basic() {
+        let (ds, tbl, q) = parse_insert_into_select("INSERT INTO my_pg.results SELECT * FROM cluster_a.logs").unwrap();
+        assert_eq!(ds, "my_pg");
+        assert_eq!(tbl, "results");
+        assert_eq!(q, "SELECT * FROM cluster_a.logs");
+    }
+
+    #[test]
+    fn test_parse_insert_into_select_case_insensitive() {
+        assert!(parse_insert_into_select("insert into ds.t select 1").is_some());
+    }
+
+    #[test]
+    fn test_parse_insert_into_select_none_no_select() {
+        assert!(parse_insert_into_select("INSERT INTO ds.t VALUES (1)").is_none());
+    }
+
+    #[test]
+    fn test_parse_insert_into_select_none_unqualified() {
+        assert!(parse_insert_into_select("INSERT INTO t SELECT 1").is_none());
+    }
+
+    #[test]
+    fn test_parse_insert_into_select_none_unrelated() {
+        assert!(parse_insert_into_select("SELECT * FROM t").is_none());
     }
 }
