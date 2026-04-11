@@ -29,6 +29,8 @@
 - [SDK Comparison (Python vs TypeScript)](./sdk-comparison.md)
 - [Jupyter Notebooks](./jupyter-integration.md)
 - [Grafana Plugin](./grafana-plugin.md)
+- [VS Code Extension](./vscode-extension.md)
+- [CLI Reference](./cli-reference.md)
 
 # API
 
@@ -40,6 +42,7 @@
 - [Admin Guide](./admin-guide.md)
 - [Horizontal Scaling](./horizontal-scaling.md)
 - [Security Hardening](./security-hardening.md)
+- [Federation Architecture](./federation-architecture.md)
 
 # Developer
 
