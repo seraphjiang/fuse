@@ -6,6 +6,21 @@ Last updated: April 2026
 
 ## ✅ Shipped
 
+### v1.1.0 — GA Release (April 2026, Sprints 12–16)
+
+115+ items shipped across 5 sprints:
+
+- **22 connectors** — added Kafka, Athena, Timestream, Snowflake, BigQuery, Cassandra, DuckDB, Arrow Flight
+- **Federation** — Fuse-to-Fuse connector, cost-based routing, topology API
+- **Write path** — CTAS, INSERT INTO SELECT, transactions (PostgreSQL, DuckDB, S3 Parquet)
+- **AI queries** — NL-to-SQL, query advisor, auto-suggest, anomaly detection
+- **Security** — TLS/mTLS everywhere, RBAC, tenant isolation, WASM sandboxing, 0 clippy warnings
+- **Playground UX** — schema explorer, dot-triggered autocomplete, flame graph, DAG, cost badge, history filter, connection test, health timeline
+- **Ecosystem** — Go/Python/TypeScript SDKs, Grafana plugin, VS Code extension (inline results), Jupyter magic, OSD plugin
+- **Observability** — W3C Trace Context, OpenTelemetry OTLP, Prometheus metrics, adaptive parallelism
+- **Operations** — query governor, rate limiting, audit export, graceful shutdown, async query API
+- **Testing** — 994 tests (736 core + 258 integration), live smoke test, UI regression (93 checks), load test
+
 ### v0.5.0 — Production Hardening (April 2026)
 
 - API key authentication with viewer/editor/admin roles
