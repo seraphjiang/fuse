@@ -4,6 +4,7 @@ pub mod adaptive_parallelism;
 pub mod adaptive_timeout;
 pub mod alert_api;
 pub mod alert_monitor;
+pub mod alias;
 pub mod api;
 pub mod anomaly;
 pub mod anomaly_alert;
