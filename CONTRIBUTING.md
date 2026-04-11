@@ -229,3 +229,18 @@ This project follows the [Amazon Open Source Code of Conduct](https://aws.github
 ## License
 
 By contributing, you agree that your contributions will be licensed under the Apache License 2.0.
+
+## Multi-Agent Development
+
+Fuse uses a multi-agent hive development model with sprint-based planning:
+
+- **Agents:** pm (coordination), ai-lead (engine/connectors), fee (frontend/docs), sde (infrastructure/SDKs), security (hardening/review)
+- **Sprints:** 2-week cycles with backlog in `.fuse-project/backlog/`
+- **Steering rules:** See `.fuse-project/team/STEERING.md` (19 rules)
+- **Key rules:** Every change needs tests, build must be green, announce `[WORKING]` on shared files, check `git log` before starting any item
+
+### Avoiding Duplicate Work
+
+1. Always `tell` the specific agent AND broadcast assignments
+2. Agents must check `git log --oneline -20` before starting any item
+3. Any agent adding fields to shared structs (AppState, TenantConfig) must update ALL test constructors in the same commit
