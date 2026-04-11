@@ -518,6 +518,15 @@ button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #58a
 
     <!-- HISTORY TAB -->
     <div class="tab-content" id="tab-history">
+      <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
+        <input id="hist-search" type="text" placeholder="Search queries…" oninput="filterHistory()" style="flex:1;min-width:120px;font-size:12px;padding:4px 8px;background:#21262d;color:#e1e4e8;border:1px solid #30363d;border-radius:4px">
+        <select id="hist-format-filter" onchange="filterHistory()" style="font-size:12px;padding:4px 6px;background:#21262d;color:#e1e4e8;border:1px solid #30363d;border-radius:4px">
+          <option value="all">All formats</option><option value="sql">SQL</option><option value="ppl">PPL</option>
+        </select>
+        <select id="hist-status-filter" onchange="filterHistory()" style="font-size:12px;padding:4px 6px;background:#21262d;color:#e1e4e8;border:1px solid #30363d;border-radius:4px">
+          <option value="all">All status</option><option value="ok">✓ Success</option><option value="err">✗ Error</option>
+        </select>
+      </div>
       <div id="history-list"><div style="color:#8b949e;padding:8px 0">Loading…</div></div>
     </div>
   </div>
@@ -642,19 +651,33 @@ async function loadHistory() {
   const el = $('history-list');
   try {
     const entries = await api('/api/fuse/history');
-    if (!entries.length) { el.innerHTML = '<div style="color:#8b949e;padding:8px 0">No queries yet — run something first.</div>'; return; }
-    el.innerHTML = entries.map((e, i) => {
-      const t = new Date(e.timestamp * 1000).toLocaleTimeString();
-      const meta = e.error
-        ? `<span class="hist-err">✗ ${esc(e.error)}</span>`
-        : `<span>${e.row_count} rows</span><span>${e.latency_ms}ms</span>`;
-      return `<div class="hist-item" onclick="loadHistoryEntry(${i})">
-        <div class="hist-query">${esc(e.query)}</div>
-        <div class="hist-meta"><span>${t}</span><span class="example-badge badge-${e.format}">${e.format.toUpperCase()}</span>${meta}</div>
-      </div>`;
-    }).join('');
     window._historyEntries = entries;
+    filterHistory();
   } catch(err) { el.innerHTML = '<div style="color:#f85149">Failed to load history</div>'; }
+}
+function filterHistory() {
+  const el = $('history-list');
+  const entries = window._historyEntries || [];
+  const search = ($('hist-search').value || '').toLowerCase();
+  const fmt = $('hist-format-filter').value;
+  const status = $('hist-status-filter').value;
+  let filtered = entries;
+  if (search) filtered = filtered.filter(e => e.query.toLowerCase().includes(search));
+  if (fmt !== 'all') filtered = filtered.filter(e => e.format === fmt);
+  if (status === 'ok') filtered = filtered.filter(e => !e.error);
+  if (status === 'err') filtered = filtered.filter(e => e.error);
+  if (!filtered.length) { el.innerHTML = '<div style="color:#8b949e;padding:8px 0">No matching queries.</div>'; return; }
+  el.innerHTML = filtered.map((e, i) => {
+    const origIdx = entries.indexOf(e);
+    const t = new Date(e.timestamp * 1000).toLocaleTimeString();
+    const meta = e.error
+      ? `<span class="hist-err">✗ ${esc(e.error)}</span>`
+      : `<span>${e.row_count} rows</span><span>${e.latency_ms}ms</span>`;
+    return `<div class="hist-item" onclick="loadHistoryEntry(${origIdx})">
+      <div class="hist-query">${esc(e.query)}</div>
+      <div class="hist-meta"><span>${t}</span><span class="example-badge badge-${e.format}">${e.format.toUpperCase()}</span>${meta}</div>
+    </div>`;
+  }).join('');
 }
 function loadHistoryEntry(i) {
   const e = window._historyEntries[i];
