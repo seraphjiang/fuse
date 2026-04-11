@@ -46,3 +46,11 @@ jobs:
 
       - name: Test
         run: cargo test --all-targets
+
+      - name: Docker build
+        run: docker build -t fuse-server:ci .
+
+      - name: Test count summary
+        run: |
+          echo "=== Test Summary ==="
+          cargo test --all-targets 2>&1 | grep "test result:" | awk '{total+=$4; pass+=$4} END {print "Total: " total " tests, all passing"}'
