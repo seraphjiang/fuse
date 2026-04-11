@@ -9,6 +9,8 @@
 # User Guide
 
 - [Getting Started](./getting-started.md)
+- [Tutorial: First Cross-Source JOIN](./tutorial-first-join.md)
+- [Playground Guide](./playground-guide.md)
 - [Architecture](./architecture.md)
 - [SQL Reference](./sql-reference.md)
 - [PPL Reference](./ppl-reference.md)
