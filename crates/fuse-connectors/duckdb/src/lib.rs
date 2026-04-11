@@ -379,4 +379,99 @@ mod tests {
 
         let _ = std::fs::remove_file(&path);
     }
+
+    #[tokio::test]
+    async fn test_discover_schemas_memory() {
+        let connector = DuckDbConnector::new("test".into(), ":memory:".into());
+        let conn = connector.open().unwrap();
+        conn.execute_batch("CREATE TABLE t1 (id INT); CREATE TABLE t2 (name TEXT)").unwrap();
+        drop(conn);
+        // discover_schemas uses a new connection — :memory: won't persist
+        // This tests the code path runs without error
+        let schemas = connector.discover_schemas().await;
+        assert!(schemas.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_schema_file_db() {
+        let tmp = std::env::temp_dir().join("fuse_duckdb_schema_test.db");
+        let path = tmp.to_str().unwrap().to_string();
+        let _ = std::fs::remove_file(&path);
+
+        let connector = DuckDbConnector::new("test".into(), path.clone());
+        let conn = connector.open().unwrap();
+        conn.execute_batch("CREATE TABLE users (id BIGINT, name VARCHAR, active BOOLEAN)").unwrap();
+        drop(conn);
+
+        let schema = connector.get_schema("users").await.unwrap();
+        assert_eq!(schema.fields().len(), 3);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn test_execute_with_filter() {
+        let tmp = std::env::temp_dir().join("fuse_duckdb_filter_test.db");
+        let path = tmp.to_str().unwrap().to_string();
+        let _ = std::fs::remove_file(&path);
+
+        let connector = DuckDbConnector::new("test".into(), path.clone());
+        let conn = connector.open().unwrap();
+        conn.execute_batch("CREATE TABLE items (id INT, name TEXT); INSERT INTO items VALUES (1, 'a'), (2, 'b'), (3, 'c')").unwrap();
+        drop(conn);
+
+        let mut sq = SubQuery {
+            table: "items".into(), projections: vec!["name".into()],
+            filter: Some(FilterExpr::Comparison {
+                field: "id".into(), op: ComparisonOp::Gt, value: ScalarValue::Int64(1),
+            }),
+            aggregations: vec![], group_by: vec![], sort: vec![],
+            limit: None, having: None, offset: None, passthrough: None,
+        };
+        let batches = connector.execute(&sq).await.unwrap();
+        assert!(!batches.is_empty());
+        let total_rows: usize = batches.iter().map(|b| b.num_rows()).sum();
+        assert_eq!(total_rows, 2); // id=2 and id=3
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn test_write_then_read_roundtrip() {
+        use arrow::array::{Int64Array, StringArray};
+        use arrow::datatypes::Field;
+
+        let tmp = std::env::temp_dir().join("fuse_duckdb_roundtrip_test.db");
+        let path = tmp.to_str().unwrap().to_string();
+        let _ = std::fs::remove_file(&path);
+
+        let connector = DuckDbConnector::new("test".into(), path.clone());
+        let conn = connector.open().unwrap();
+        conn.execute_batch("CREATE TABLE rt (id BIGINT, val VARCHAR)").unwrap();
+        drop(conn);
+
+        // Write
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int64, false),
+            Field::new("val", DataType::Utf8, true),
+        ]));
+        let batch = RecordBatch::try_new(schema, vec![
+            Arc::new(Int64Array::from(vec![10, 20])) as ArrayRef,
+            Arc::new(StringArray::from(vec!["hello", "world"])) as ArrayRef,
+        ]).unwrap();
+        let written = connector.write_batches("rt", vec![batch]).await.unwrap();
+        assert_eq!(written, 2);
+
+        // Read back
+        let sq = SubQuery {
+            table: "rt".into(), projections: vec![],
+            filter: None, aggregations: vec![], group_by: vec![],
+            sort: vec![], limit: None, having: None, offset: None, passthrough: None,
+        };
+        let batches = connector.execute(&sq).await.unwrap();
+        let total: usize = batches.iter().map(|b| b.num_rows()).sum();
+        assert_eq!(total, 2);
+
+        let _ = std::fs::remove_file(&path);
+    }
 }
