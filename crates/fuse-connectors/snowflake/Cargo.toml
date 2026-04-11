@@ -1,0 +1,16 @@
+[package]
+name = "fuse-connector-snowflake"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Snowflake connector for Fuse — full SQL pushdown via Snowflake SQL API"
+
+[dependencies]
+fuse-core = { path = "../../fuse-core" }
+arrow = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+reqwest = { workspace = true }

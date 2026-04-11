@@ -20,6 +20,7 @@ members = [
     "crates/fuse-connectors/fuse",
     "crates/fuse-connectors/athena",
     "crates/fuse-connectors/timestream",
+    "crates/fuse-connectors/snowflake",
     "crates/fuse-connectors/duckdb",
     "crates/fuse-connector-sdk",
     "crates/fuse-server",
