@@ -222,3 +222,185 @@ mod extra_tests {
         assert!(p.to_sql().starts_with("NOT"));
     }
 }
+
+
+#[cfg(test)]
+mod edge_case_tests {
+    use crate::plan_builder::PlanBuilder;
+    use crate::plan_visitor;
+    use crate::plan_printer;
+    use crate::plan_rules::{self, EliminateMaxLimit, OptRule};
+    use crate::plan_compare;
+    use crate::plan_merge::{MergedPlan, SubPlan};
+    use crate::plan_serde::PlanNode;
+    use crate::plan_stats::PlanStats;
+    use crate::predicate::Predicate;
+    use crate::cost_model;
+    use crate::scalar_expr::ScalarExpr;
+    use crate::type_map;
+    use crate::expr::{self, CompareOp};
+    use crate::url::ConnectorUrl;
+    use serde_json::json;
+
+    // Plan builder edge cases
+    #[test]
+    fn test_scan_only() {
+        let plan = PlanBuilder::scan("ds", "t").build();
+        assert_eq!(plan_visitor::node_count(&plan.root), 1);
+    }
+
+    #[test]
+    fn test_double_filter() {
+        let plan = PlanBuilder::scan("ds", "t")
+            .filter(&Predicate::eq("a", "1"))
+            .filter(&Predicate::eq("b", "2"))
+            .build();
+        assert_eq!(plan_visitor::node_count(&plan.root), 3);
+    }
+
+    #[test]
+    fn test_project_empty() {
+        let plan = PlanBuilder::scan("ds", "t").project(vec![]).build();
+        let text = plan_printer::print_plan(&plan.root, 0);
+        assert!(text.contains("Project: []"));
+    }
+
+    // Plan compare edge cases
+    #[test]
+    fn test_compare_equal_costs() {
+        let a = cost_model::scan_cost(100, 5);
+        let b = cost_model::scan_cost(100, 5);
+        assert_eq!(plan_compare::cheaper(&a, &b), 0); // prefer first when equal
+    }
+
+    #[test]
+    fn test_compare_zero_cost() {
+        let a = cost_model::scan_cost(0, 0);
+        let b = cost_model::scan_cost(100, 5);
+        assert_eq!(plan_compare::cheaper(&a, &b), 0);
+    }
+
+    // Plan merge edge cases
+    #[test]
+    fn test_merge_empty_union() {
+        let plan = MergedPlan::union(vec![]);
+        assert_eq!(plan.datasource_count(), 0);
+    }
+
+    // Plan serde edge cases
+    #[test]
+    fn test_serde_deep_tree() {
+        let node = PlanNode::leaf("Join", "hash")
+            .with_child(PlanNode::leaf("Scan", "a.t1").with_cost(100, 1.0))
+            .with_child(PlanNode::leaf("Scan", "b.t2").with_cost(200, 2.0));
+        let json = node.to_json();
+        let restored = PlanNode::from_json(&json).unwrap();
+        assert_eq!(restored.node_count(), 3);
+    }
+
+    // Plan stats edge cases
+    #[test]
+    fn test_stats_overwrite() {
+        let s = PlanStats::new();
+        s.record("n1", 0, 100, 10, 800);
+        s.record("n1", 0, 200, 20, 1600);
+        assert_eq!(s.get("n1").unwrap().rows_out, 200); // overwritten
+    }
+
+    // Cost model edge cases
+    #[test]
+    fn test_join_cost_large() {
+        let c = cost_model::join_cost(1_000_000, 500_000);
+        assert!(c.estimated_cost > 0.0);
+    }
+
+    #[test]
+    fn test_sort_cost_one_row() {
+        let c = cost_model::sort_cost(1);
+        assert_eq!(c.estimated_rows, 1);
+    }
+
+    // Scalar expr edge cases
+    #[test]
+    fn test_nested_function() {
+        let expr = ScalarExpr::func("UPPER", vec![ScalarExpr::col("name")]);
+        assert_eq!(expr.to_sql(), "UPPER(name)");
+    }
+
+    #[test]
+    fn test_literal_with_quotes() {
+        let expr = ScalarExpr::lit("it's");
+        assert_eq!(expr.to_sql(), "'it''s'");
+    }
+
+    // Predicate edge cases
+    #[test]
+    fn test_predicate_like_wildcard() {
+        let p = Predicate::like("name", "%test%");
+        assert!(p.to_sql().contains("LIKE '%test%'"));
+    }
+
+    // Type map edge cases
+    #[test]
+    fn test_type_map_case_insensitive() {
+        assert_eq!(type_map::from_type_name("VARCHAR"), type_map::from_type_name("varchar"));
+    }
+
+    #[test]
+    fn test_type_incompatible_bool_string() {
+        assert!(!type_map::types_compatible(
+            &type_map::DataType::Boolean,
+            &type_map::DataType::Utf8
+        ));
+    }
+
+    // Expr edge cases
+    #[test]
+    fn test_compare_strings() {
+        assert!(expr::compare(&json!("b"), &CompareOp::Neq, &json!("a")));
+    }
+
+    #[test]
+    fn test_compare_null() {
+        assert!(expr::compare(&json!(null), &CompareOp::IsNull, &json!(null)));
+        assert!(!expr::compare(&json!(42), &CompareOp::IsNull, &json!(null)));
+    }
+
+    // URL edge cases
+    #[test]
+    fn test_url_redis() {
+        let u = ConnectorUrl::parse("rediss://cache.example.com:6380").unwrap();
+        assert!(u.is_tls);
+        assert_eq!(u.port, Some(6380));
+    }
+
+    #[test]
+    fn test_url_no_port_no_path() {
+        let u = ConnectorUrl::parse("http://localhost").unwrap();
+        assert!(u.port.is_none());
+        assert_eq!(u.path, "/");
+    }
+
+    // Optimizer edge cases
+    #[test]
+    fn test_optimize_no_filters() {
+        let ops = vec![
+            crate::optimizer::LogicalOp::Scan { datasource: "a".into(), table: "t".into() },
+            crate::optimizer::LogicalOp::Limit { count: 10 },
+        ];
+        let optimized = crate::optimizer::optimize(ops);
+        assert_eq!(optimized.len(), 2);
+    }
+
+    // Plan rules edge cases
+    #[test]
+    fn test_rules_nested_max_limit() {
+        let plan = PlanBuilder::scan("ds", "t")
+            .filter(&Predicate::eq("x", "1"))
+            .limit(u64::MAX)
+            .build();
+        let rules: Vec<Box<dyn OptRule>> = vec![Box::new(EliminateMaxLimit)];
+        let optimized = plan_rules::apply_rules(plan, &rules);
+        assert!(!plan_printer::print_plan(&optimized.root, 0).contains("Limit"));
+    }
+}
