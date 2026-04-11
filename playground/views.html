@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuse — Materialized Views</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e1e4e8;min-height:100vh}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #21262d;background:#161b22}
+header h1{font-size:18px;font-weight:600;color:#58a6ff}
+.nav-tabs{display:flex;gap:0}.nav-tab{padding:8px 16px;font-size:13px;color:#8b949e;text-decoration:none;border-bottom:2px solid transparent}.nav-tab:hover{color:#e1e4e8}.nav-tab.active{color:#58a6ff;border-bottom-color:#58a6ff;font-weight:600}
+main{max-width:960px;margin:0 auto;padding:24px}
+.toolbar{display:flex;gap:12px;margin-bottom:16px;align-items:center}
+.btn{padding:8px 16px;border-radius:6px;border:1px solid #30363d;background:#21262d;color:#e1e4e8;font-size:13px;cursor:pointer;font-weight:500}
+.btn:hover{border-color:#58a6ff}.btn-primary{background:#238636;border-color:#238636;color:#fff}.btn-primary:hover{background:#2ea043}
+.btn-danger{background:#da3633;border-color:#da3633;color:#fff}.btn-danger:hover{background:#b62324}
+.btn-sm{padding:4px 10px;font-size:12px}
+input,textarea,select{background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:13px;font-family:inherit;width:100%}
+input:focus,textarea:focus{outline:none;border-color:#58a6ff}
+textarea{min-height:80px;resize:vertical;font-family:'SFMono-Regular',Consolas,monospace}
+.card{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px;margin-bottom:12px}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.card-header h3{font-size:14px;color:#e1e4e8;font-weight:600}
+.badge{font-size:10px;padding:2px 8px;border-radius:4px;font-weight:600}
+.badge-fresh{background:#1a3a2a;color:#3fb950}
+.badge-stale{background:#3a2a1a;color:#d29922}
+.meta{font-size:11px;color:#484f58;margin-top:4px}
+.query-text{font-family:'SFMono-Regular',Consolas,monospace;font-size:12px;color:#8b949e;background:#0d1117;padding:8px;border-radius:4px;margin:8px 0;white-space:pre-wrap;word-break:break-all}
+.actions{display:flex;gap:6px;margin-top:8px}
+.empty{text-align:center;padding:48px;color:#484f58;font-size:14px}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:flex;align-items:center;justify-content:center}
+.modal{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;width:500px;max-width:90vw}
+.modal h2{font-size:16px;color:#e1e4e8;margin-bottom:16px}
+.modal .field{margin-bottom:12px}
+.modal .field label{display:block;font-size:12px;color:#8b949e;margin-bottom:4px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:16px">
+    <h1>Fuse</h1>
+    <nav class="nav-tabs">
+      <a href="/playground" class="nav-tab">Playground</a>
+      <a href="/dashboard" class="nav-tab">Dashboard</a>
+      <a href="/explore" class="nav-tab">Explore</a>
+      <a href="/views" class="nav-tab active">Views</a>
+      <a href="/settings" class="nav-tab">Settings</a>
+      <a href="/status" class="nav-tab">Status</a>
+      <a href="/help" class="nav-tab">Help</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="toolbar">
+    <h2 style="font-size:18px;flex:1">Materialized Views</h2>
+    <button class="btn" onclick="loadViews()">↻ Refresh</button>
+    <button class="btn btn-primary" onclick="showCreate()">+ Create View</button>
+  </div>
+
+  <div id="view-list"><div class="empty"><span class="spinner"></span> Loading…</div></div>
+
+  <div id="create-modal" class="modal-bg hidden" onclick="if(event.target===this)hideCreate()">
+    <div class="modal">
+      <h2>Create Materialized View</h2>
+      <div class="field">
+        <label>View Name</label>
+        <input id="mv-name" placeholder="e.g. error_summary">
+      </div>
+      <div class="field">
+        <label>SQL Query</label>
+        <textarea id="mv-query" placeholder="SELECT level, COUNT(*) as cnt FROM logs GROUP BY level"></textarea>
+      </div>
+      <div class="field">
+        <label>Auto-Refresh Interval (optional)</label>
+        <select id="mv-interval">
+          <option value="">Manual only</option>
+          <option value="60">Every 1 minute</option>
+          <option value="300">Every 5 minutes</option>
+          <option value="900">Every 15 minutes</option>
+          <option value="3600">Every 1 hour</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button class="btn" onclick="hideCreate()">Cancel</button>
+        <button class="btn btn-primary" onclick="createView()">Create</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  if (!r.ok) { const e = await r.text(); throw new Error(e); }
+  return r.json();
+}
+
+async function loadViews() {
+  const el = $('view-list');
+  el.innerHTML = '<div class="empty"><span class="spinner"></span> Loading…</div>';
+  try {
+    const views = await api('/api/fuse/views');
+    if (!views.length) {
+      el.innerHTML = '<div class="empty">📋 No materialized views yet.<br><span style="font-size:12px;color:#484f58">Create one to cache expensive query results.</span></div>';
+      return;
+    }
+    el.innerHTML = views.map(v => `
+      <div class="card">
+        <div class="card-header">
+          <h3>${esc(v.name)}</h3>
+          <span class="badge ${v.stale ? 'badge-stale' : 'badge-fresh'}">${v.stale ? '⏳ Stale' : '✓ Fresh'}</span>
+        </div>
+        <div class="actions">
+          <button class="btn btn-sm" onclick="refreshView('${esc(v.name)}')">↻ Refresh</button>
+          <button class="btn btn-sm" onclick="previewView('${esc(v.name)}')">👁 Preview</button>
+          <button class="btn btn-sm btn-danger" onclick="dropView('${esc(v.name)}')">✕ Drop</button>
+        </div>
+        <div id="preview-${esc(v.name)}" class="hidden"></div>
+      </div>
+    `).join('');
+  } catch (e) {
+    el.innerHTML = `<div class="empty" style="color:#f85149">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+function showCreate() { $('create-modal').classList.remove('hidden'); }
+function hideCreate() { $('create-modal').classList.add('hidden'); }
+
+async function createView() {
+  const name = $('mv-name').value.trim();
+  const query = $('mv-query').value.trim();
+  if (!name || !query) { alert('Name and query required'); return; }
+  try {
+    await api('/api/fuse/views', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, query }) });
+    hideCreate();
+    $('mv-name').value = '';
+    $('mv-query').value = '';
+    loadViews();
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+async function refreshView(name) {
+  try {
+    await api(`/api/fuse/views/${encodeURIComponent(name)}/refresh`, { method: 'POST' });
+    loadViews();
+  } catch (e) { alert('Refresh failed: ' + e.message); }
+}
+
+async function previewView(name) {
+  const el = document.getElementById('preview-' + name);
+  if (!el.classList.contains('hidden')) { el.classList.add('hidden'); return; }
+  el.innerHTML = '<span class="spinner"></span>';
+  el.classList.remove('hidden');
+  try {
+    const res = await api(`/api/fuse/views/${encodeURIComponent(name)}`);
+    if (!res.rows || !res.rows.length) { el.innerHTML = '<div class="meta">No data — try refreshing.</div>'; return; }
+    const cols = res.columns || [];
+    el.innerHTML = `<table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:12px">
+      <tr>${cols.map(c => `<th style="text-align:left;padding:4px 8px;border-bottom:1px solid #21262d;color:#8b949e">${esc(c)}</th>`).join('')}</tr>
+      ${res.rows.slice(0, 20).map(r => `<tr>${r.map(v => `<td style="padding:4px 8px;border-bottom:1px solid #21262d">${esc(String(v ?? ''))}</td>`).join('')}</tr>`).join('')}
+    </table>${res.rows.length > 20 ? `<div class="meta">${res.rows.length - 20} more rows…</div>` : ''}`;
+  } catch (e) { el.innerHTML = `<div class="meta" style="color:#f85149">${esc(e.message)}</div>`; }
+}
+
+async function dropView(name) {
+  if (!confirm(`Drop view "${name}"?`)) return;
+  try {
+    await fetch(`/api/fuse/views/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    loadViews();
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+loadViews();
+</script>
+<script>fetch("/feedback-widget").then(r=>r.text()).then(h=>{const d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d);const s=d.querySelectorAll("script");s.forEach(sc=>{const n=document.createElement("script");n.textContent=sc.textContent;document.body.appendChild(n);});})</script>
+</body>
+</html>
