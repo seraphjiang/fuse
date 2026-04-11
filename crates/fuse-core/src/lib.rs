@@ -17,6 +17,7 @@ pub mod registry;
 pub mod optimizer;
 pub mod plan_serde;
 pub mod planner;
+pub mod predicate;
 pub mod pushdown;
 pub mod query_stats;
 pub mod schema_compat;
