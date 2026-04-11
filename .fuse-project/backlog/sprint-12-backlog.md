@@ -33,6 +33,8 @@
 | 902 | Query plan visualization in playground | fee | done | Visual DAG of execution plan nodes |
 | 901 | Flame graph visualization for EXPLAIN ANALYZE | fee | done | Interactive flame graph in playground |
 | 912 | Alert history filters | fee | done | Status + search filters for alert timeline |
+| 1150 | Dark mode | fee | done | Already implemented, verified across 12 pages |
+| 1151 | Mobile responsive layout | fee | done | Responsive breakpoints for tablet/phone |
 
 ## P1: GA Readiness (pm)
 
