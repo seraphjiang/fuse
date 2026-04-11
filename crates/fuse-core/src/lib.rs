@@ -23,6 +23,7 @@ pub mod security;
 pub mod sql;
 pub mod tls;
 pub mod url;
+pub mod type_map;
 pub mod version;
 
 // Re-export commonly used types at crate root for convenience
