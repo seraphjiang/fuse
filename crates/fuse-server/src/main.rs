@@ -148,6 +148,11 @@ async fn main() -> anyhow::Result<()> {
     );
     let running_queries = state.running_queries.clone();
     let app = fuse_server::build_router_with_limits(state, rl);
+    let app = if let Some(cors) = fuse_server::cors::build_cors_layer(&config.engine.cors_origins) {
+        app.layer(cors)
+    } else {
+        app
+    };
 
     let bind = &config.engine.bind;
     let listener = tokio::net::TcpListener::bind(bind).await?;
