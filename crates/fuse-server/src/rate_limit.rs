@@ -139,18 +139,21 @@ pub async fn rate_limit_middleware(
 ) -> Response<Body> {
     // Global limit
     if state.global.check().is_err() {
+        metrics::counter!("fuse_rate_limit_rejected", "scope" => "global").increment(1);
         return too_many_requests();
     }
 
     // Per-IP limit
     let ip = extract_ip(&req).unwrap_or(IpAddr::from([0, 0, 0, 0]));
     if state.per_ip.check_key(&ip).is_err() {
+        metrics::counter!("fuse_rate_limit_rejected", "scope" => "per_ip").increment(1);
         return too_many_requests();
     }
 
     // Per-API-key limit (if authenticated via #501)
     if let Some(identity) = req.extensions().get::<crate::auth::AuthIdentity>() {
         if state.per_key.check_key(&identity.identity).is_err() {
+            metrics::counter!("fuse_rate_limit_rejected", "scope" => "per_key").increment(1);
             return too_many_requests_for_key(&identity.identity);
         }
     }
