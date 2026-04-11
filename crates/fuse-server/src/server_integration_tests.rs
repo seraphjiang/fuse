@@ -573,3 +573,40 @@ mod milestone_tests {
         assert_eq!(rows[0][0], json!(-4.0));
     }
 }
+
+
+#[cfg(test)]
+mod final_coverage_tests {
+    use serde_json::json;
+
+    #[test] fn test_agg_sum_floats() { assert!((crate::agg_functions::sum(&[vec![json!(1.5)], vec![json!(2.5)]], 0) - 4.0).abs() < 1e-10); }
+    #[test] fn test_agg_avg_single() { assert_eq!(crate::agg_functions::avg(&[vec![json!(42)]], 0), Some(42.0)); }
+    #[test] fn test_agg_max_strings() { assert_eq!(crate::agg_functions::max(&[vec![json!(1)], vec![json!(99)]], 0), Some(99.0)); }
+    #[test] fn test_string_upper_empty() { let mut r = vec![vec![json!("")]]; crate::string_fn::upper(&mut r, 0); assert_eq!(r[0][0], json!("")); }
+    #[test] fn test_string_lower_mixed() { let mut r = vec![vec![json!("HeLLo")]]; crate::string_fn::lower(&mut r, 0); assert_eq!(r[0][0], json!("hello")); }
+    #[test] fn test_date_extract_date_with_tz() { let r = vec![vec![json!("2024-01-15T10:30:00+05:00")]]; assert_eq!(crate::date_fn::extract_date(&r, 0)[0], json!("2024-01-15")); }
+    #[test] fn test_math_abs_zero() { let mut r = vec![vec![json!(0.0)]]; crate::math_fn::apply_math(&mut r, 0, crate::math_fn::MathFn::Abs); assert_eq!(r[0][0], json!(0.0)); }
+    #[test] fn test_math_round_half() { let mut r = vec![vec![json!(2.5)]]; crate::math_fn::apply_math(&mut r, 0, crate::math_fn::MathFn::Round); assert_eq!(r[0][0], json!(3.0)); }
+    #[test] fn test_case_when_empty_conditions() { let c = crate::case_when::CaseWhen::new(json!("d")); assert_eq!(c.evaluate(&json!("x")), json!("d")); }
+    #[test] fn test_sorter_single_row() { let mut r = vec![vec![json!(1)]]; crate::sorter::sort_by_column(&mut r, 0, false); assert_eq!(r[0][0], json!(1)); }
+    #[test] fn test_distinct_empty() { assert!(crate::distinct::distinct(vec![]).is_empty()); }
+    #[test] fn test_grouper_empty() { assert!(crate::grouper::group_count(&[], 0).is_empty()); }
+    #[test] fn test_having_eq_no_match() { let r = vec![vec![json!("a")]]; assert!(crate::having::having_eq(&r, 0, &json!("b")).is_empty()); }
+    #[test] fn test_anti_join_all_match() { let l = vec![vec![json!(1)]]; let r = vec![vec![json!(1)]]; assert!(crate::set_ops::anti_join(&l, 0, &r, 0).is_empty()); }
+    #[test] fn test_window_rank_single() { let r = crate::window_fn::add_rank(&[vec![json!(100)]], 0); assert_eq!(r[0][0], json!(1)); }
+    #[test] fn test_coercer_null() { assert_eq!(crate::coercer::to_string(&json!(null)), json!(null)); }
+    #[test] fn test_coercer_bool_false() { assert_eq!(crate::coercer::to_number(&json!(false)), json!(0)); }
+    #[test] fn test_null_handler_fill_no_nulls() { let mut r = vec![vec![json!(1)]]; crate::null_handler::fill_nulls(&mut r, &json!(0)); assert_eq!(r[0][0], json!(1)); }
+    #[test] fn test_sampling_empty() { assert!(crate::sampling::sample_rows(&[], 10).is_empty()); }
+    #[test] fn test_formatter_csv_null() { let csv = crate::formatter::to_csv(&["x".into()], &[vec![json!(null)]]); assert!(csv.contains("NULL")); }
+    #[test] fn test_fingerprint_empty_string() { assert_eq!(crate::fingerprint::fingerprint(""), ""); }
+    #[test] fn test_sanitize_adjacent_strings() { let s = crate::sanitize::sanitize_query("'a''b'"); assert!(s.contains("***")); }
+    #[test] fn test_complexity_subquery() { let s = crate::complexity::score_query("SELECT * FROM t WHERE id IN (SELECT id FROM t2)"); assert!(s.has_subquery); }
+    #[test] fn test_validate_large_page() { let e = crate::validate::validate_request("SELECT 1", "sql", Some(99999), None); assert!(!e.is_empty()); }
+    #[test] fn test_query_parser_limit_none() { assert_eq!(crate::query_parser::extract_limit("SELECT *"), None); }
+    #[test] fn test_top_n_rewrite_no_top() { assert_eq!(crate::top_n::rewrite_top_to_limit("SELECT 1"), "SELECT 1"); }
+    #[test] fn test_cache_key_empty_query() { let k = crate::cache_key::build_key("sql", "", None); assert_eq!(k, "sql:"); }
+    #[test] fn test_policy_select_allowed() { let p = crate::query_policy::QueryPolicy::with_defaults(); assert_eq!(p.check("SELECT 1"), crate::query_policy::PolicyResult::Allowed); }
+    #[test] fn test_circuit_breaker_success_resets() { let cb = crate::circuit_breaker::CircuitBreaker::new(2, 30); cb.record_failure("ds"); cb.record_success("ds"); assert_eq!(cb.state("ds"), crate::circuit_breaker::CircuitState::Closed); }
+    #[test] fn test_rewrite_count_no_limit() { let r = crate::rewrite::apply_rules("SELECT COUNT(*) FROM t", &crate::rewrite::default_rules()); assert!(!r.contains("LIMIT")); }
+}
