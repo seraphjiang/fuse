@@ -195,6 +195,146 @@ fn mask_column(col: &Arc<dyn Array>) -> Arc<dyn Array> {
     Arc::new(StringArray::from(masked))
 }
 
+// ── Datasource-level RBAC (#921) ──
+
+/// Permission level for datasource access.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DatasourcePermission {
+    Read,
+    Write,
+    Admin,
+}
+
+/// A datasource access rule: which roles can access which datasources.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DatasourceAccessRule {
+    pub datasource: String,
+    pub roles: Vec<String>,
+    pub permissions: Vec<DatasourcePermission>,
+}
+
+/// Evaluates datasource-level access control.
+pub struct DatasourceRbac {
+    rules: Vec<DatasourceAccessRule>,
+}
+
+impl DatasourceRbac {
+    pub fn new(rules: Vec<DatasourceAccessRule>) -> Self {
+        Self { rules }
+    }
+
+    /// Check if a user has the given permission on a datasource.
+    pub fn check(
+        &self,
+        user: &UserContext,
+        datasource: &str,
+        required: &DatasourcePermission,
+    ) -> bool {
+        // If no rules defined, allow all (open by default)
+        if self.rules.is_empty() {
+            return true;
+        }
+        self.rules.iter().any(|rule| {
+            rule.datasource == datasource
+                && rule.permissions.contains(required)
+                && rule.roles.iter().any(|r| user.roles.contains(r))
+        })
+    }
+
+    /// Filter a list of datasource IDs to only those the user can read.
+    pub fn filter_readable(&self, user: &UserContext, datasources: &[String]) -> Vec<String> {
+        datasources
+            .iter()
+            .filter(|ds| self.check(user, ds, &DatasourcePermission::Read))
+            .cloned()
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod rbac_tests {
+    use super::*;
+
+    fn rules() -> Vec<DatasourceAccessRule> {
+        vec![
+            DatasourceAccessRule {
+                datasource: "prod_logs".into(),
+                roles: vec!["admin".into(), "analyst".into()],
+                permissions: vec![DatasourcePermission::Read],
+            },
+            DatasourceAccessRule {
+                datasource: "prod_logs".into(),
+                roles: vec!["admin".into()],
+                permissions: vec![DatasourcePermission::Write, DatasourcePermission::Admin],
+            },
+            DatasourceAccessRule {
+                datasource: "dev_logs".into(),
+                roles: vec!["admin".into(), "analyst".into(), "developer".into()],
+                permissions: vec![DatasourcePermission::Read, DatasourcePermission::Write],
+            },
+        ]
+    }
+
+    #[test]
+    fn test_analyst_can_read_prod() {
+        let rbac = DatasourceRbac::new(rules());
+        let user = UserContext { username: "alice".into(), roles: vec!["analyst".into()] };
+        assert!(rbac.check(&user, "prod_logs", &DatasourcePermission::Read));
+    }
+
+    #[test]
+    fn test_analyst_cannot_write_prod() {
+        let rbac = DatasourceRbac::new(rules());
+        let user = UserContext { username: "alice".into(), roles: vec!["analyst".into()] };
+        assert!(!rbac.check(&user, "prod_logs", &DatasourcePermission::Write));
+    }
+
+    #[test]
+    fn test_admin_can_write_prod() {
+        let rbac = DatasourceRbac::new(rules());
+        let user = UserContext { username: "bob".into(), roles: vec!["admin".into()] };
+        assert!(rbac.check(&user, "prod_logs", &DatasourcePermission::Write));
+    }
+
+    #[test]
+    fn test_developer_can_write_dev() {
+        let rbac = DatasourceRbac::new(rules());
+        let user = UserContext { username: "carol".into(), roles: vec!["developer".into()] };
+        assert!(rbac.check(&user, "dev_logs", &DatasourcePermission::Write));
+    }
+
+    #[test]
+    fn test_unknown_datasource_denied() {
+        let rbac = DatasourceRbac::new(rules());
+        let user = UserContext { username: "bob".into(), roles: vec!["admin".into()] };
+        assert!(!rbac.check(&user, "secret_db", &DatasourcePermission::Read));
+    }
+
+    #[test]
+    fn test_no_roles_denied() {
+        let rbac = DatasourceRbac::new(rules());
+        let user = UserContext { username: "nobody".into(), roles: vec![] };
+        assert!(!rbac.check(&user, "prod_logs", &DatasourcePermission::Read));
+    }
+
+    #[test]
+    fn test_empty_rules_allows_all() {
+        let rbac = DatasourceRbac::new(vec![]);
+        let user = UserContext { username: "anyone".into(), roles: vec![] };
+        assert!(rbac.check(&user, "anything", &DatasourcePermission::Read));
+    }
+
+    #[test]
+    fn test_filter_readable() {
+        let rbac = DatasourceRbac::new(rules());
+        let user = UserContext { username: "carol".into(), roles: vec!["developer".into()] };
+        let all = vec!["prod_logs".into(), "dev_logs".into(), "secret_db".into()];
+        let readable = rbac.filter_readable(&user, &all);
+        assert_eq!(readable, vec!["dev_logs"]);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
