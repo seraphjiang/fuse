@@ -23,6 +23,7 @@ pub mod history;
 pub mod lineage;
 pub mod metrics;
 pub mod nl_query;
+pub mod pagination;
 pub mod plan_cache;
 pub mod prepared;
 pub mod query_advisor;
