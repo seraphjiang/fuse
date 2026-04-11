@@ -41,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Load config
     let config_path = std::env::var("FUSE_CONFIG").unwrap_or_else(|_| "fuse.toml".to_string());
-    let config = FuseConfig::from_file(&config_path).unwrap_or_else(|e| {
+    let mut config = FuseConfig::from_file(&config_path).unwrap_or_else(|e| {
         info!("No config loaded ({}), starting with empty registry", e);
         FuseConfig {
             engine: fuse_core::config::EngineConfig {
@@ -75,7 +75,12 @@ async fn main() -> anyhow::Result<()> {
         Box::new(DuckDbConnectorFactory),
     ];
 
-    for cc in &config.connector {
+    for cc in &mut config.connector {
+        // Resolve secret:// references before creating connector
+        if let Err(e) = cc.resolve_secrets().await {
+            tracing::warn!(id = %cc.id, error = %e, "Failed to resolve secrets, skipping");
+            continue;
+        }
         let factory = factories
             .iter()
             .find(|f| f.connector_type() == cc.connector_type);

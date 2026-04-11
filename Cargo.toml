@@ -57,6 +57,7 @@ opensearch = { version = "2", features = ["aws-auth"] }
 
 # S3 & Parquet
 aws-sdk-redshift = "1"
+aws-sdk-secretsmanager = "1"
 aws-sdk-s3 = "1"
 aws-sdk-cloudwatchlogs = "1"
 aws-sdk-dynamodb = "1"

@@ -7,6 +7,7 @@ pub mod connector;
 pub mod error;
 pub mod materialized_view;
 pub mod registry;
+pub mod secrets;
 pub mod security;
 pub mod version;
 

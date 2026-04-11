@@ -54,6 +54,12 @@ pub struct ConnectorConfig {
 }
 
 impl ConnectorConfig {
+    /// Resolve any `secret://` prefixed property values via AWS Secrets Manager.
+    pub async fn resolve_secrets(&mut self) -> Result<(), crate::error::FuseError> {
+        self.properties = crate::secrets::resolve_secrets(&self.properties).await?;
+        Ok(())
+    }
+
     /// Read `max_connections` from properties, defaulting to `default`.
     pub fn max_connections(&self, default: u32) -> u32 {
         self.properties
