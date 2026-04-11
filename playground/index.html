@@ -96,6 +96,12 @@ body.light th{background:#f6f8fa;color:#656d76;border-color:#d1d9e0}
 body.light td{border-color:#d1d9e0;color:#1f2328}
 body.light tr:hover td{background:#f6f8fa}
 body.light .plan-tree,body.light .plan,body.light #chart-container{background:#fff;border-color:#d1d9e0}
+body.light #schema-panel{background:#fff;border-color:#d1d9e0}
+.schema-ds{cursor:pointer;padding:3px 0;font-weight:600;color:#58a6ff}.schema-ds:hover{text-decoration:underline}
+.schema-tbl{cursor:pointer;padding:2px 0 2px 16px;color:#e1e4e8}.schema-tbl:hover{color:#58a6ff}
+.schema-field{padding:1px 0 1px 32px;color:#8b949e;font-size:11px}
+.schema-field .sf-type{color:#484f58;margin-left:4px}
+body.light .schema-tbl{color:#1f2328}body.light .schema-field{color:#656d76}
 body.light .error{background:#ffebe9;border-color:#cf222e33;color:#cf222e}
 body.light .empty{color:#656d76}
 body.light .meta{color:#656d76}
@@ -378,6 +384,10 @@ button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #58a
     <button onclick="prettifyQuery()">✨ Format</button>
     <button class="help-toggle" onclick="toggleAdvisor()">💡 Advisor</button>
     <button class="help-toggle" onclick="toggleHelp()">📖 Docs &amp; Examples ▾</button>
+    <button class="help-toggle" onclick="toggleSchema()">📋 Schema ▾</button>
+  </div>
+  <div id="schema-panel" style="display:none;background:#161b22;border:1px solid #21262d;border-radius:6px;padding:8px 12px;max-height:300px;overflow-y:auto;font-size:12px">
+    <div id="schema-tree"><div style="color:#8b949e">Loading datasources…</div></div>
   </div>
 
   <div class="suggestions" id="suggestions"></div>
@@ -1556,6 +1566,64 @@ $('editor').addEventListener('keydown', e => {
 });
 
 loadSchema();
+
+// === Schema Explorer ===
+let schemaLoaded = false;
+function toggleSchema() {
+  const panel = $('schema-panel');
+  const open = panel.style.display !== 'none';
+  panel.style.display = open ? 'none' : 'block';
+  if (!open && !schemaLoaded) renderSchemaTree();
+}
+async function renderSchemaTree() {
+  const el = $('schema-tree');
+  try {
+    const ds = await api('/api/fuse/datasources');
+    if (!ds.length) { el.innerHTML = '<div style="color:#8b949e">No datasources</div>'; return; }
+    el.innerHTML = ds.map(d => {
+      const id = d.id || d.name;
+      return `<div class="schema-ds" onclick="toggleSchemaTables('${esc(id)}', this)">📦 ${esc(id)}<span style="color:#484f58;font-weight:400;margin-left:6px">${esc(d.connector_type || '')}</span></div><div id="schema-tables-${esc(id)}" style="display:none"></div>`;
+    }).join('');
+    schemaLoaded = true;
+  } catch (e) { el.innerHTML = `<div style="color:#f85149">${esc(e.message)}</div>`; }
+}
+async function toggleSchemaTables(dsId, el) {
+  const container = $('schema-tables-' + dsId);
+  if (container.style.display !== 'none') { container.style.display = 'none'; return; }
+  container.style.display = 'block';
+  if (container.innerHTML) return;
+  container.innerHTML = '<div style="color:#8b949e;padding-left:16px">Loading…</div>';
+  try {
+    const tables = await api(`/api/fuse/datasources/${encodeURIComponent(dsId)}/schemas`);
+    if (!tables.length) { container.innerHTML = '<div style="color:#8b949e;padding-left:16px">No tables</div>'; return; }
+    container.innerHTML = tables.map(t => {
+      const name = typeof t === 'string' ? t : t.name;
+      return `<div class="schema-tbl" onclick="event.stopPropagation();toggleSchemaFields('${esc(dsId)}','${esc(name)}',this)">📋 ${esc(name)}</div><div id="schema-fields-${esc(dsId)}-${esc(name)}" style="display:none"></div>`;
+    }).join('');
+  } catch { container.innerHTML = '<div style="color:#f85149;padding-left:16px">Failed</div>'; }
+}
+async function toggleSchemaFields(dsId, table, el) {
+  const container = $('schema-fields-' + dsId + '-' + table);
+  if (container.style.display !== 'none') { container.style.display = 'none'; return; }
+  container.style.display = 'block';
+  if (container.innerHTML) return;
+  container.innerHTML = '<div style="color:#8b949e;padding-left:32px">Loading…</div>';
+  try {
+    const fields = await api(`/api/fuse/datasources/${encodeURIComponent(dsId)}/schemas/${encodeURIComponent(table)}/fields`);
+    container.innerHTML = fields.map(f => {
+      const name = typeof f === 'string' ? f : f.name;
+      const type = typeof f === 'string' ? '' : f.field_type || f.type || '';
+      return `<div class="schema-field" onclick="event.stopPropagation();insertField('${esc(dsId)}.${esc(table)}.${esc(name)}')" title="Click to insert">${esc(name)}<span class="sf-type">${esc(type)}</span></div>`;
+    }).join('');
+  } catch { container.innerHTML = '<div style="color:#f85149;padding-left:32px">Failed</div>'; }
+}
+function insertField(ref) {
+  const ed = $('editor');
+  const pos = ed.selectionStart;
+  ed.value = ed.value.slice(0, pos) + ref + ed.value.slice(pos);
+  ed.focus();
+  ed.selectionStart = ed.selectionEnd = pos + ref.length;
+}
 
 // === ECharts Integration (#440) + Auto-Visualization (#441) + Core Charts (#442) ===
 let fuseChart = null;
