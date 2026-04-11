@@ -96,6 +96,11 @@ log "Federation"
 assert_status "federation_200" GET "$FUSE_URL/api/fuse/federation" 200
 assert_json "federation_topology" GET "$FUSE_URL/api/fuse/federation" '.instance_count >= 0'
 
+log "Server Info"
+assert_status "info_200" GET "$FUSE_URL/api/fuse/info" 200
+assert_json "info_version" GET "$FUSE_URL/api/fuse/info" '.version'
+assert_json "info_uptime" GET "$FUSE_URL/api/fuse/info" '.uptime_secs >= 0'
+
 log "Playground"
 assert_status "playground_200" GET "$FUSE_URL/" 200
 assert_status "settings_200" GET "$FUSE_URL/settings" 200
