@@ -4,13 +4,13 @@
 
 **Federated Query Engine — Query Any Datasource with SQL or PPL**
 
-Fuse federates queries across 20 connectors from a single SQL or PPL query. Join OpenSearch logs with DynamoDB profiles, union CloudWatch and S3 events, correlate Prometheus metrics with Elasticsearch alerts — all in one statement. Built on [Apache DataFusion](https://datafusion.apache.org/) and [datafusion-federation](https://github.com/datafusion-contrib/datafusion-federation).
+Fuse federates queries across 22 connectors from a single SQL or PPL query. Join OpenSearch logs with DynamoDB profiles, union CloudWatch and S3 events, correlate Prometheus metrics with Elasticsearch alerts — all in one statement. Built on [Apache DataFusion](https://datafusion.apache.org/) and [datafusion-federation](https://github.com/datafusion-contrib/datafusion-federation).
 
 🎮 **[Live Playground](https://fuse.huanji.profile.aws.dev)** (Amazon VPN) · 📖 **[Docs Site](https://seraphjiang.github.io/fuse/)** · 📖 **[Proposal](https://github.com/opensearch-project/OpenSearch-Dashboards/issues/11705)** · 📐 **[Connector Guide](docs/guides/writing-a-connector.md)**
 
 ## Highlights
 
-- **20 connectors** — OpenSearch, Elasticsearch, PostgreSQL, MySQL, DynamoDB, S3 (Parquet), S3 O11y (NDJSON), Prometheus, CloudWatch, Redis, CSV/JSON, MongoDB, InfluxDB, ClickHouse, Kafka, Athena, Timestream, Snowflake, BigQuery, Cassandra
+- **22 connectors** — OpenSearch, Elasticsearch, PostgreSQL, MySQL, DynamoDB, S3 (Parquet), S3 O11y (NDJSON), Prometheus, CloudWatch, Redis, CSV/JSON, MongoDB, InfluxDB, ClickHouse, Kafka, Athena, Timestream, Snowflake, BigQuery, Cassandra, DuckDB, Arrow Flight
 - **Cross-datasource JOINs** — hash join with build-side selection, semi-join, anti-join, correlated subqueries
 - **Federated UNION / UNION ALL** — combine results from any mix of sources, with deduplication
 - **Window functions** — ROW_NUMBER, RANK, LAG, LEAD over federated results
@@ -19,6 +19,8 @@ Fuse federates queries across 20 connectors from a single SQL or PPL query. Join
 - **Cost estimator** — pre-execution estimated_rows and estimated_cost per plan node
 - **PPL support** — pipe-delimited query language with `lookup` for cross-source enrichment
 - **EXPLAIN / EXPLAIN ANALYZE** — inspect federated query plans and execution stats
+- **Prepared statements** — PREPARE/EXECUTE with positional parameter binding, SQL injection prevention
+- **Fuse-to-Fuse federation** — chain Fuse instances for multi-region or tiered deployments
 - **1000+ tests** — unit, integration, E2E, and performance regression suite
 
 ## Architecture

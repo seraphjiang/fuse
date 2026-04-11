@@ -509,3 +509,70 @@ All endpoints are subject to rate limiting:
 | Per-IP | 100 req/min | `[engine] rate_limit_per_ip` |
 
 When exceeded, returns `429 Too Many Requests` with `Retry-After: 60` header.
+
+---
+
+## 13. Prepared Statements
+
+Prepared statements use positional parameters (`$1`, `$2`, ...) to prevent SQL injection.
+
+### PREPARE
+
+Send a `PREPARE` statement via the query endpoint:
+
+```bash
+curl -X POST /api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "PREPARE get_logs AS SELECT * FROM cluster_a.logs WHERE host = $1 AND status >= $2", "format": "sql"}'
+```
+
+**Response:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `prepared` | string | Statement name |
+| `param_count` | number | Number of positional parameters |
+
+### EXECUTE
+
+```bash
+curl -X POST /api/fuse/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "EXECUTE get_logs USING '\''web-01'\'', 500", "format": "sql"}'
+```
+
+Returns the same response as a regular query. Parameters are safely escaped — single quotes are doubled to prevent SQL injection.
+
+**Errors:**
+
+| Status | Condition |
+|--------|-----------|
+| 404 | Statement name not found |
+| 400 | Wrong number of parameters |
+
+---
+
+## 14. Federation Topology
+
+`GET /api/fuse/federation`
+
+Returns the topology of connected Fuse instances in a federated deployment.
+
+**Response fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `instances` | array | List of federated Fuse instances |
+| `instances[].id` | string | Instance identifier |
+| `instances[].name` | string | Display name |
+| `instances[].url` | string | Instance URL |
+| `instances[].status` | string | `ok`, `degraded`, or `unreachable` |
+| `instances[].datasources` | string[] | Datasource IDs available on this instance |
+
+**Example:**
+
+```bash
+curl https://fuse.huanji.profile.aws.dev/api/fuse/federation
+```
+
+The playground Federation page (`/federation`) visualizes this as an interactive topology diagram.
