@@ -9,8 +9,8 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 820 | CREATE MATERIALIZED VIEW syntax | sde | in-progress | Parse, store definition, execute on create |
-| 821 | REFRESH MATERIALIZED VIEW | sde | todo | Re-execute and replace cached result |
+| 820 | CREATE MATERIALIZED VIEW syntax | sde | done | Parse, store, execute on create. Commit: fd58fcb |
+| 821 | REFRESH MATERIALIZED VIEW | sde | done | Re-execute and replace cached result. Commit: fd58fcb |
 
 ## P0: Query Intelligence (ai-lead)
 
@@ -35,6 +35,7 @@
 | 912 | Alert history filters | fee | done | Status + search filters for alert timeline |
 | 1150 | Dark mode | fee | done | Already implemented, verified across 12 pages |
 | 1151 | Mobile responsive layout | fee | done | Responsive breakpoints for tablet/phone |
+| 1010 | VS Code extension | fee | done | Verified + 2 bug fixes (port, PPL lookup). Commit: eb506b1 |
 
 ## P1: GA Readiness (pm)
 
@@ -43,7 +44,8 @@
 | 1103 | Structured error codes (FUSE-XXXX) | pm | done | ErrorCode type, error_code() methods, 14 new tests. Commit: fc7e1bf |
 | 1102 | Configuration validation on startup | pm | done | validate() on FuseConfig, fail-fast, 8 new tests. Commit: e68a5c0 |
 | 841 | Kafka integration test compilation fix | pm | done | 6 tests compile+pass, dev-deps added. Commit: cb1085c |
-| 1113 | Adaptive query timeout | pm | done | Per-datasource p95*3x, 10 tests. Commit: 47ac395 |
+| 1113 | Adaptive query timeout | pm | done | Module + wiring. Commits: 47ac395, d623d4d |
+| 831 | Plugin manifest + discovery | pm | done | PluginManifest, subdirectory layout, 7 tests. Commit: 0c79214 |
 
 ## Already Done (verified per Rule 15)
 
