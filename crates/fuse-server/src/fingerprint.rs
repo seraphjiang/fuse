@@ -75,3 +75,37 @@ mod tests {
         assert_eq!(f, "SELECT * FROM t");
     }
 }
+
+#[cfg(test)]
+mod extra_tests {
+    use super::*;
+
+    #[test]
+    fn test_fingerprint_insert() {
+        let f = fingerprint("INSERT INTO t VALUES ('a', 42)");
+        assert!(f.contains("?"));
+        assert!(!f.contains("42"));
+    }
+
+    #[test]
+    fn test_fingerprint_multiple_strings() {
+        let f = fingerprint("WHERE a = 'x' AND b = 'y' AND c = 'z'");
+        assert_eq!(f.matches('?').count(), 3);
+    }
+
+    #[test]
+    fn test_fingerprint_no_literals() {
+        assert_eq!(fingerprint("SELECT id FROM t"), "SELECT id FROM t");
+    }
+
+    #[test]
+    fn test_fingerprint_float() {
+        let f = fingerprint("WHERE x > 3.14");
+        assert!(f.contains("?"));
+    }
+
+    #[test]
+    fn test_fingerprint_empty() {
+        assert_eq!(fingerprint(""), "");
+    }
+}
