@@ -27,6 +27,7 @@ pub mod circuit_breaker;pub mod config_watch;
 pub mod cors;
 pub mod cost_tracker;
 pub mod dedup;
+pub mod date_fn;
 pub mod delivery;
 pub mod distinct;
 pub mod export;
