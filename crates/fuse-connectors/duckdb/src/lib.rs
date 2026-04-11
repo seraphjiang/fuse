@@ -181,6 +181,63 @@ impl FederatedConnector for DuckDbConnector {
         }
         Ok(())
     }
+
+    async fn write_batches(
+        &self,
+        table: &str,
+        batches: Vec<RecordBatch>,
+    ) -> Result<u64, ConnectorError> {
+        if batches.is_empty() { return Ok(0); }
+        let path = self.path.clone();
+        let table = table.to_string();
+
+        tokio::task::spawn_blocking(move || -> Result<u64, ConnectorError> {
+            let conn = duckdb::Connection::open(&path)
+                .map_err(|e| ConnectorError::query(e))?;
+            let mut total = 0u64;
+
+            for batch in &batches {
+                if batch.num_rows() == 0 { continue; }
+                let schema = batch.schema();
+                let cols: Vec<String> = schema.fields().iter()
+                    .map(|f| format!("\"{}\"", f.name()))
+                    .collect();
+                let col_list = cols.join(", ");
+
+                let mut value_rows = Vec::with_capacity(batch.num_rows());
+                for row in 0..batch.num_rows() {
+                    let vals: Vec<String> = (0..batch.num_columns())
+                        .map(|c| cell_to_sql(batch, c, row))
+                        .collect();
+                    value_rows.push(format!("({})", vals.join(", ")));
+                }
+
+                let sql = format!("INSERT INTO {} ({}) VALUES {}", table, col_list, value_rows.join(", "));
+                conn.execute_batch(&sql).map_err(|e| ConnectorError::query(e))?;
+                total += batch.num_rows() as u64;
+            }
+            Ok(total)
+        }).await.map_err(|e| ConnectorError::query(e))?
+    }
+}
+
+/// Convert an Arrow cell to a SQL literal for INSERT.
+fn cell_to_sql(batch: &RecordBatch, col: usize, row: usize) -> String {
+    use arrow::array as aa;
+    let arr = batch.column(col);
+    if arr.is_null(row) { return "NULL".into(); }
+    match arr.data_type() {
+        DataType::Int64 => arr.as_any().downcast_ref::<aa::Int64Array>().map(|a| a.value(row).to_string()).unwrap_or_else(|| "NULL".into()),
+        DataType::Int32 => arr.as_any().downcast_ref::<aa::Int32Array>().map(|a| a.value(row).to_string()).unwrap_or_else(|| "NULL".into()),
+        DataType::Float64 => arr.as_any().downcast_ref::<aa::Float64Array>().map(|a| a.value(row).to_string()).unwrap_or_else(|| "NULL".into()),
+        DataType::Boolean => arr.as_any().downcast_ref::<aa::BooleanArray>().map(|a| a.value(row).to_string()).unwrap_or_else(|| "NULL".into()),
+        _ => {
+            let s = arr.as_any().downcast_ref::<aa::StringArray>()
+                .map(|a| a.value(row).to_string())
+                .unwrap_or_default();
+            format!("'{}'", s.replace('\'', "''"))
+        }
+    }
 }
 
 fn duckdb_type_to_arrow(t: &str) -> DataType {
@@ -256,5 +313,68 @@ mod tests {
         };
         let batches = c.execute(&q).await.unwrap();
         assert_eq!(batches[0].num_rows(), 1);
+    }
+
+    #[test]
+    fn test_cell_to_sql_types() {
+        use arrow::array::{Int64Array, Float64Array, StringArray, BooleanArray};
+        use arrow::datatypes::Field;
+
+        // Int64
+        let s = Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, true)]));
+        let b = RecordBatch::try_new(s, vec![Arc::new(Int64Array::from(vec![Some(42), None])) as ArrayRef]).unwrap();
+        assert_eq!(cell_to_sql(&b, 0, 0), "42");
+        assert_eq!(cell_to_sql(&b, 0, 1), "NULL");
+
+        // String with quote
+        let s = Arc::new(Schema::new(vec![Field::new("x", DataType::Utf8, true)]));
+        let b = RecordBatch::try_new(s, vec![Arc::new(StringArray::from(vec!["it's"])) as ArrayRef]).unwrap();
+        assert_eq!(cell_to_sql(&b, 0, 0), "'it''s'");
+
+        // Boolean
+        let s = Arc::new(Schema::new(vec![Field::new("x", DataType::Boolean, false)]));
+        let b = RecordBatch::try_new(s, vec![Arc::new(BooleanArray::from(vec![true])) as ArrayRef]).unwrap();
+        assert_eq!(cell_to_sql(&b, 0, 0), "true");
+    }
+
+    #[tokio::test]
+    async fn test_write_batches_file() {
+        use arrow::array::{Int64Array, StringArray};
+        use arrow::datatypes::Field;
+
+        let tmp = std::env::temp_dir().join("fuse_duckdb_write_test.db");
+        let path = tmp.to_str().unwrap().to_string();
+        // Clean up from previous runs
+        let _ = std::fs::remove_file(&path);
+
+        let connector = DuckDbConnector::new("test".into(), path.clone());
+
+        // Create table
+        let conn = connector.open().unwrap();
+        conn.execute_batch("CREATE TABLE test_write (id BIGINT, name VARCHAR)").unwrap();
+        drop(conn);
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int64, false),
+            Field::new("name", DataType::Utf8, true),
+        ]));
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef,
+                Arc::new(StringArray::from(vec!["alice", "bob"])) as ArrayRef,
+            ],
+        ).unwrap();
+
+        let rows = connector.write_batches("test_write", vec![batch]).await.unwrap();
+        assert_eq!(rows, 2);
+
+        // Verify data was written
+        let conn = connector.open().unwrap();
+        let mut stmt = conn.prepare("SELECT count(*) FROM test_write").unwrap();
+        let count: i64 = stmt.query_row([], |r| r.get(0)).unwrap();
+        assert_eq!(count, 2);
+
+        let _ = std::fs::remove_file(&path);
     }
 }
