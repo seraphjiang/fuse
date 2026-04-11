@@ -592,4 +592,41 @@ mod tests {
         let batch = RecordBatch::try_new(schema, vec![Arc::new(BooleanArray::from(vec![true]))]).unwrap();
         assert_eq!(cell_to_sql_literal(&batch, 0, 0), "true");
     }
+
+    #[test]
+    fn test_cell_to_sql_literal_null_handling() {
+        use arrow::array::Int64Array;
+        use arrow::datatypes::Field;
+        let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, true)]));
+        let batch = RecordBatch::try_new(schema, vec![
+            Arc::new(Int64Array::from(vec![None, Some(5), None])) as ArrayRef,
+        ]).unwrap();
+        assert_eq!(cell_to_sql_literal(&batch, 0, 0), "NULL");
+        assert_eq!(cell_to_sql_literal(&batch, 0, 1), "5");
+        assert_eq!(cell_to_sql_literal(&batch, 0, 2), "NULL");
+    }
+
+    #[test]
+    fn test_cell_to_sql_literal_mixed_types() {
+        use arrow::array::{Int64Array, Float64Array, StringArray, BooleanArray};
+        use arrow::datatypes::Field;
+
+        // Multi-column batch
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int64, false),
+            Field::new("score", DataType::Float64, true),
+            Field::new("name", DataType::Utf8, true),
+            Field::new("active", DataType::Boolean, false),
+        ]));
+        let batch = RecordBatch::try_new(schema, vec![
+            Arc::new(Int64Array::from(vec![42])) as ArrayRef,
+            Arc::new(Float64Array::from(vec![9.99])) as ArrayRef,
+            Arc::new(StringArray::from(vec!["test"])) as ArrayRef,
+            Arc::new(BooleanArray::from(vec![false])) as ArrayRef,
+        ]).unwrap();
+        assert_eq!(cell_to_sql_literal(&batch, 0, 0), "42");
+        assert_eq!(cell_to_sql_literal(&batch, 1, 0), "9.99");
+        assert_eq!(cell_to_sql_literal(&batch, 2, 0), "'test'");
+        assert_eq!(cell_to_sql_literal(&batch, 3, 0), "false");
+    }
 }
