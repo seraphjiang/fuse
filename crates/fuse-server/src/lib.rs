@@ -39,7 +39,7 @@ pub mod nl_query;
 pub mod notifications;
 pub mod pagination;
 pub mod plan_cache;
-pub mod pool_stats;
+pub mod pipeline;pub mod pool_stats;
 pub mod query_policy;
 pub mod query_context;
 pub mod prepared;
