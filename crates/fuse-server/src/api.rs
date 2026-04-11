@@ -550,7 +550,11 @@ pub async fn query_handler(
     // Check result cache
     let result_cache_key = format!("{}:{}", format, query);
     if let Some(cached_result) = state.result_cache.get(&result_cache_key) {
-        return (StatusCode::OK, Json(cached_result.response_json)).into_response();
+        let mut resp = cached_result.response_json.clone();
+        if let Some(meta) = resp.get_mut("metadata") {
+            meta["trace_id"] = serde_json::Value::String(query_id.clone());
+        }
+        return (StatusCode::OK, Json(resp)).into_response();
     }
 
     // Handle BEGIN
