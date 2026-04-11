@@ -27,6 +27,9 @@ pub struct EngineConfig {
     /// Allowed CORS origins. Empty = same-origin only. Use ["*"] for any origin.
     #[serde(default)]
     pub cors_origins: Vec<String>,
+    /// Maximum result size in bytes. 0 = unlimited. Default: 100MB.
+    #[serde(default = "default_max_result_bytes")]
+    pub max_result_bytes: u64,
 }
 
 fn default_bind() -> String {
@@ -43,6 +46,9 @@ fn default_rate_limit_global() -> u32 {
 }
 fn default_rate_limit_per_ip() -> u32 {
     100
+}
+fn default_max_result_bytes() -> u64 {
+    104_857_600 // 100MB
 }
 
 /// Configuration for a single connector instance, loaded from [[connector]] in fuse.toml.
@@ -246,6 +252,33 @@ rate_limit_per_ip = 50
         let cfg: FuseConfig = toml::from_str(toml).unwrap();
         assert_eq!(cfg.engine.rate_limit_global, 500);
         assert_eq!(cfg.engine.rate_limit_per_ip, 50);
+    }
+
+    #[test]
+    fn test_max_result_bytes_default() {
+        let toml = r#"[engine]"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.engine.max_result_bytes, 104_857_600);
+    }
+
+    #[test]
+    fn test_max_result_bytes_configurable() {
+        let toml = r#"
+[engine]
+max_result_bytes = 52428800
+"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.engine.max_result_bytes, 52_428_800);
+    }
+
+    #[test]
+    fn test_max_result_bytes_unlimited() {
+        let toml = r#"
+[engine]
+max_result_bytes = 0
+"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.engine.max_result_bytes, 0);
     }
 
     #[test]
