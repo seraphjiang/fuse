@@ -199,3 +199,46 @@ mod tests {
         assert!(!s.iter().any(|s| s.severity == Severity::Critical));
     }
 }
+
+#[cfg(test)]
+mod edge_tests {
+    use super::*;
+
+    #[test]
+    fn test_subquery_in_where() {
+        let s = advise("SELECT * FROM t WHERE id IN (SELECT id FROM t2) LIMIT 10", &[]);
+        // Should not false-positive on JOIN warning
+        assert!(!s.iter().any(|s| s.message.contains("cross-join")));
+    }
+
+    #[test]
+    fn test_cte_query() {
+        let s = advise("WITH cte AS (SELECT * FROM t LIMIT 10) SELECT * FROM cte LIMIT 10", &[]);
+        assert!(!s.iter().any(|s| s.severity == Severity::Critical));
+    }
+
+    #[test]
+    fn test_count_query_no_limit_warning() {
+        let s = advise("SELECT count(*) FROM logs", &[]);
+        assert!(!s.iter().any(|s| s.message.contains("no LIMIT")));
+    }
+
+    #[test]
+    fn test_group_by_no_limit_warning() {
+        let s = advise("SELECT host, count(*) FROM logs GROUP BY host", &[]);
+        assert!(!s.iter().any(|s| s.message.contains("no LIMIT") && s.category == "performance"));
+    }
+
+    #[test]
+    fn test_multiple_issues_detected() {
+        let s = advise("SELECT * FROM a JOIN b ON a.id = b.id ORDER BY a.ts", &[]);
+        // Should detect: SELECT *, JOIN without WHERE, ORDER BY without LIMIT, no LIMIT
+        assert!(s.len() >= 3);
+    }
+
+    #[test]
+    fn test_like_trailing_wildcard_ok() {
+        let s = advise("SELECT * FROM t WHERE name LIKE 'test%' LIMIT 10", &[]);
+        assert!(!s.iter().any(|s| s.message.contains("leading wildcard")));
+    }
+}
