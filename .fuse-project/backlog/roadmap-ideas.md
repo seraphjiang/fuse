@@ -42,13 +42,30 @@ All items from the original Sprint 6+ roadmap are **COMPLETE** as of v1.1.0.
 
 ## Future Ideas (v1.2.0+)
 
+### ✅ Completed Post-GA
+- Query scheduling registry (cron-based recurring queries)
+- Data lineage tracking across federated queries
+- WebSocket streaming protocol types
+- Result cache invalidation by datasource
+- Background connector health monitor
+- Request ID middleware (X-Request-Id)
+- API versioning header (X-Fuse-Version)
+- Rate limit response headers (X-RateLimit-Remaining)
+- Slow query detection and logging
+- Query complexity scorer
+- ConnectorUrl parser (shared URL handling)
+- Server info endpoint (GET /api/fuse/info)
+- OpenAPI client generation script
+- Production docker-compose with Redis
+- Dockerfile HEALTHCHECK
+- Helm chart updated to v1.1.0
+- CI pipeline: Docker build + test summary
+- Startup banner with config summary
+
+### Remaining v1.2.0 Ideas
 - Apache Spark connector
 - Delta Lake / Iceberg table format support
-- Query result caching with invalidation (CDC-based)
 - Multi-region federation with geo-routing
 - Role-based access control UI in playground
-- Query scheduling (cron-based recurring queries)
-- Data lineage tracking across federated queries
-- WebSocket streaming for real-time query results
-- OpenAPI client generation (auto-generate SDKs)
-- Helm chart for Kubernetes deployment
+- WebSocket streaming handler (wire ws_streaming types into router)
+- Data lineage visualization in playground
