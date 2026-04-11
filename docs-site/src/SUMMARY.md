@@ -51,6 +51,7 @@
 - [Contributing](./contributing.md)
 - [Connector Development](./connector-development.md)
 - [Plugin Development (WASM)](./plugin-development.md)
+- [Architecture Deep Dive](./architecture-deep-dive.md)
 - [Community](./community-guide.md)
 
 # Blog & Roadmap
