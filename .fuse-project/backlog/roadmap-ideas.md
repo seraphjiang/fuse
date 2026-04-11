@@ -53,6 +53,10 @@ All items from the original Sprint 6+ roadmap are **COMPLETE** as of v1.1.0.
 - Rate limit response headers (X-RateLimit-Remaining)
 - Slow query detection and logging
 - Query complexity scorer
+- Query sanitizer (redact string literals for safe logging)
+- Config file change detection
+- Streaming delivery threshold (auto buffer vs stream)
+- Pagination metadata (has_more, next_cursor, total_rows)
 - ConnectorUrl parser (shared URL handling)
 - Server info endpoint (GET /api/fuse/info)
 - OpenAPI client generation script
