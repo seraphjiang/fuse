@@ -31,6 +31,7 @@ pub async fn request_id_middleware(req: Request<Body>, next: Next) -> Response {
     if let Ok(val) = HeaderValue::from_str(&id) {
         resp.headers_mut().insert("x-request-id", val);
     }
+    resp.headers_mut().insert("x-fuse-version", HeaderValue::from_static(env!("CARGO_PKG_VERSION")));
     resp
 }
 
