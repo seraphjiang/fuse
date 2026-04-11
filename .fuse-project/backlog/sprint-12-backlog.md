@@ -39,7 +39,8 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 800 | Stateless server mode | sde | in-progress | SharedSavedQueries + SharedQueryHistory + SharedAuditLog. Wiring into AppState |
+| 800 | Stateless server mode | sde | done | SharedSavedQueries/History/AuditLog, Redis+fallback, 16 tests. Commits: aa0b01a→d7c5259 |
+| 802 | Shared tenant registry | sde | in-progress | Redis/config hot-reload |
 
 ## P1: Frontend — Query Visualization (fee)
 
