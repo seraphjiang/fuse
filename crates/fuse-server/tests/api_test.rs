@@ -4346,7 +4346,7 @@ fn test_nl_generates_count_query() {
     }];
     let sql = fuse_server::api::generate_sql_from_nl("count errors by host", &schemas);
     assert!(sql.contains("COUNT(*)"));
-    assert!(sql.contains("GROUP BY host"));
+    assert!(sql.contains("GROUP BY \"host\""));
 }
 
 #[test]
@@ -4376,7 +4376,7 @@ fn test_nl_default_fallback() {
         tables: vec!["data".into()],
     }];
     let sql = fuse_server::api::generate_sql_from_nl("what is happening", &schemas);
-    assert!(sql.contains("SELECT * FROM ds.data"));
+    assert!(sql.contains("SELECT * FROM \"ds\".\"data\""));
 }
 
 // ── Tenant isolation wiring tests ──
