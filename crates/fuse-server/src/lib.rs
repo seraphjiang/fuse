@@ -12,6 +12,7 @@ pub mod async_query;
 pub mod audit;
 pub mod audit_meta;
 pub mod auth;
+pub mod bookmarks;
 pub mod auto_suggest;
 pub mod autocomplete;
 pub mod complexity;
