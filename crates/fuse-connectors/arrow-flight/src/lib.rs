@@ -119,12 +119,12 @@ impl ArrowFlightConnector {
 
     async fn execute_flight_ticket(
         &self,
-        table: &str,
+        query: &SubQuery,
     ) -> Result<Vec<RecordBatch>, ConnectorError> {
-        debug!(url = %self.url, table = %table, "executing Flight ticket query");
+        debug!(url = %self.url, table = %query.table, "executing Flight ticket query");
         let mut client = self.flight_client().await?;
 
-        let ticket = Ticket::new(table.as_bytes().to_vec());
+        let ticket = Ticket::new(build_flight_ticket(query));
         let stream = client
             .do_get(ticket)
             .await
@@ -137,6 +137,34 @@ impl ArrowFlightConnector {
 
         Ok(batches)
     }
+}
+
+/// Build a Flight ticket with predicate pushdown for plain Flight mode.
+///
+/// Encodes the SubQuery as JSON so Flight servers that support it can
+/// apply server-side filtering, projection, sorting, and limits.
+/// Servers that don't understand the format fall back to the table name.
+fn build_flight_ticket(query: &SubQuery) -> Vec<u8> {
+    let mut ticket = serde_json::json!({ "table": query.table });
+    if !query.projections.is_empty() {
+        ticket["projections"] = serde_json::json!(query.projections);
+    }
+    if let Some(ref f) = query.filter {
+        ticket["filter"] = serde_json::Value::String(filter_to_sql(f));
+    }
+    if !query.sort.is_empty() {
+        let s: Vec<serde_json::Value> = query.sort.iter().map(|s| {
+            serde_json::json!({ "field": s.field, "desc": s.descending })
+        }).collect();
+        ticket["sort"] = serde_json::json!(s);
+    }
+    if let Some(l) = query.limit {
+        ticket["limit"] = serde_json::json!(l);
+    }
+    if let Some(o) = query.offset {
+        ticket["offset"] = serde_json::json!(o);
+    }
+    ticket.to_string().into_bytes()
 }
 
 /// Build SQL from SubQuery for Flight SQL servers.
@@ -216,11 +244,11 @@ impl FederatedConnector for ArrowFlightConnector {
 
     fn capabilities(&self) -> ConnectorCapabilities {
         ConnectorCapabilities {
-            supports_filtering: self.mode == FlightMode::FlightSql,
-            supports_projection: self.mode == FlightMode::FlightSql,
+            supports_filtering: true,
+            supports_projection: true,
             supports_aggregation: self.mode == FlightMode::FlightSql,
-            supports_sorting: self.mode == FlightMode::FlightSql,
-            supports_limit: self.mode == FlightMode::FlightSql,
+            supports_sorting: true,
+            supports_limit: true,
             supports_join: false,
             max_concurrent_queries: 8,
             supports_streaming: true,
@@ -335,7 +363,7 @@ impl FederatedConnector for ArrowFlightConnector {
                 let sql = build_flight_sql(query);
                 self.execute_flight_sql(&sql).await
             }
-            FlightMode::Flight => self.execute_flight_ticket(&query.table).await,
+            FlightMode::Flight => self.execute_flight_ticket(query).await,
         }
     }
 
@@ -373,7 +401,7 @@ impl FederatedConnector for ArrowFlightConnector {
             }
             FlightMode::Flight => {
                 let mut client = self.flight_client().await?;
-                let ticket = Ticket::new(query.table.as_bytes().to_vec());
+                let ticket = Ticket::new(build_flight_ticket(query));
                 let mut batch_stream = client
                     .do_get(ticket)
                     .await
@@ -481,8 +509,9 @@ mod tests {
     fn test_plain_flight_capabilities() {
         let c = ArrowFlightConnector::new("t".into(), "grpc://localhost:50051".into(), FlightMode::Flight, None);
         let caps = c.capabilities();
-        assert!(!caps.supports_filtering); // plain Flight doesn't support SQL pushdown
-        assert!(!caps.supports_projection);
+        assert!(caps.supports_filtering); // pushdown via JSON ticket
+        assert!(caps.supports_projection);
+        assert!(!caps.supports_aggregation); // only Flight SQL supports aggregation
         assert!(caps.supports_streaming);
     }
 
@@ -510,5 +539,32 @@ mod tests {
     fn test_scalar_null_and_bool() {
         assert_eq!(scalar_to_sql(&ScalarValue::Null), "NULL");
         assert_eq!(scalar_to_sql(&ScalarValue::Boolean(true)), "true");
+    }
+
+    #[test]
+    fn test_flight_ticket_simple() {
+        let ticket = build_flight_ticket(&sq("events"));
+        let json: serde_json::Value = serde_json::from_slice(&ticket).unwrap();
+        assert_eq!(json["table"], "events");
+        assert!(json.get("filter").is_none());
+    }
+
+    #[test]
+    fn test_flight_ticket_with_predicates() {
+        let mut q = sq("logs");
+        q.projections = vec!["host".into()];
+        q.filter = Some(FilterExpr::Comparison {
+            field: "level".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("ERROR".into()),
+        });
+        q.sort = vec![SortExpr { field: "ts".into(), descending: true }];
+        q.limit = Some(50);
+        let ticket = build_flight_ticket(&q);
+        let json: serde_json::Value = serde_json::from_slice(&ticket).unwrap();
+        assert_eq!(json["table"], "logs");
+        assert_eq!(json["projections"], serde_json::json!(["host"]));
+        assert_eq!(json["filter"], "\"level\" = 'ERROR'");
+        assert_eq!(json["sort"][0]["field"], "ts");
+        assert_eq!(json["sort"][0]["desc"], true);
+        assert_eq!(json["limit"], 50);
     }
 }
