@@ -125,4 +125,75 @@ mod tests {
         assert!(sql.contains("FROM \"my table\""));
         assert!(sql.contains("\"col\"\"name\""));
     }
+
+    #[test]
+    fn test_filter_and_or() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::Or(
+                Box::new(FilterExpr::Comparison { field: "a".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(1) }),
+                Box::new(FilterExpr::Comparison { field: "b".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(2) }),
+            )),
+            ..base()
+        };
+        let sql = subquery_to_sql(&q);
+        assert!(sql.contains("OR"));
+    }
+
+    #[test]
+    fn test_filter_not() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::Not(
+                Box::new(FilterExpr::Comparison { field: "x".into(), op: ComparisonOp::Eq, value: ScalarValue::Null }),
+            )),
+            ..base()
+        };
+        assert!(subquery_to_sql(&q).contains("NOT"));
+    }
+
+    #[test]
+    fn test_filter_in() {
+        let q = SubQuery {
+            filter: Some(FilterExpr::In {
+                field: "status".into(),
+                values: vec![ScalarValue::Utf8("ok".into()), ScalarValue::Utf8("warn".into())],
+            }),
+            ..base()
+        };
+        let sql = subquery_to_sql(&q);
+        assert!(sql.contains("IN"));
+        assert!(sql.contains("'ok'"));
+        assert!(sql.contains("'warn'"));
+    }
+
+    #[test]
+    fn test_is_null_is_not_null() {
+        let q1 = SubQuery { filter: Some(FilterExpr::IsNull("x".into())), ..base() };
+        assert!(subquery_to_sql(&q1).contains("IS NULL"));
+
+        let q2 = SubQuery { filter: Some(FilterExpr::IsNotNull("x".into())), ..base() };
+        assert!(subquery_to_sql(&q2).contains("IS NOT NULL"));
+    }
+
+    #[test]
+    fn test_projections() {
+        let q = SubQuery { projections: vec!["id".into(), "name".into()], ..base() };
+        let sql = subquery_to_sql(&q);
+        assert!(sql.contains("id") && sql.contains("name"));
+        assert!(!sql.contains("*"));
+    }
+
+    #[test]
+    fn test_sort_asc_desc() {
+        use fuse_core::connector::SortExpr;
+        let q = SubQuery {
+            sort: vec![
+                SortExpr { field: "a".into(), descending: false },
+                SortExpr { field: "b".into(), descending: true },
+            ],
+            ..base()
+        };
+        let sql = subquery_to_sql(&q);
+        assert!(sql.contains("ORDER BY"));
+        assert!(sql.contains("DESC"));
+    }
 }
