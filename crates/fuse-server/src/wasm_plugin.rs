@@ -27,6 +27,13 @@ use wasmtime::*;
 use fuse_core::connector::*;
 use fuse_core::error::ConnectorError;
 
+/// Maximum fuel per WASM function call (prevents infinite loops).
+const WASM_FUEL_LIMIT: u64 = 10_000_000;
+/// Maximum WASM linear memory in bytes (64 MiB).
+const WASM_MEMORY_LIMIT: usize = 64 * 1024 * 1024;
+/// Maximum input size for WASM function calls (1 MiB).
+const WASM_MAX_INPUT_SIZE: usize = 1024 * 1024;
+
 /// A loaded WASM plugin module.
 pub struct WasmPlugin {
     id: String,
@@ -49,7 +56,10 @@ impl fmt::Debug for WasmPlugin {
 impl WasmPlugin {
     /// Load a WASM plugin from a `.wasm` file.
     pub fn load(id: &str, path: &Path) -> Result<Self, ConnectorError> {
-        let engine = Engine::default();
+        let mut config = wasmtime::Config::new();
+        config.consume_fuel(true);
+        let engine = Engine::new(&config)
+            .map_err(|e| ConnectorError::Connection(format!("wasm engine: {e}")))?;
         let module = Module::from_file(&engine, path)
             .map_err(|e| ConnectorError::Connection(format!("wasm load '{}': {e}", path.display())))?;
 
@@ -69,6 +79,7 @@ impl WasmPlugin {
 
     fn probe_connector_type(engine: &Engine, module: &Module) -> Result<String, ConnectorError> {
         let mut store = Store::new(engine, ());
+        store.set_fuel(WASM_FUEL_LIMIT).ok();
         let linker = Linker::new(engine);
         let instance = linker.instantiate(&mut store, module)
             .map_err(|e| ConnectorError::Connection(format!("wasm instantiate: {e}")))?;
@@ -96,7 +107,14 @@ impl WasmPlugin {
 
     /// Call a WASM function that takes a JSON string and returns a JSON string.
     fn call_json_fn(&self, func_name: &str, input: &str) -> Result<String, ConnectorError> {
+        if input.len() > WASM_MAX_INPUT_SIZE {
+            return Err(ConnectorError::QueryFailed(format!(
+                "wasm input too large: {} bytes (max {})", input.len(), WASM_MAX_INPUT_SIZE
+            )));
+        }
+
         let mut store = Store::new(&self.engine, ());
+        store.set_fuel(WASM_FUEL_LIMIT).ok();
         let linker = Linker::new(&self.engine);
         let instance = linker.instantiate(&mut store, &self.module)
             .map_err(|e| ConnectorError::Connection(format!("wasm instantiate: {e}")))?;

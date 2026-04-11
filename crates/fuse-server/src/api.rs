@@ -2875,7 +2875,7 @@ pub async fn multi_query_handler(
     for stmt in &statements {
         let mut sub_req = req.clone();
         sub_req.query = stmt.clone();
-        let resp = query_handler(State(state.clone()), None, Json(sub_req)).await;
+        let resp = query_handler(State(state.clone()), auth_identity.clone(), Json(sub_req)).await;
         // Extract JSON body from response
         let (parts, body) = resp.into_response().into_parts();
         let bytes = axum::body::to_bytes(body, 10_000_000).await.unwrap_or_default();
@@ -2918,6 +2918,7 @@ pub struct DatasourceSchema {
 /// POST /api/fuse/nl — translate natural language to SQL
 pub async fn nl_to_sql_handler(
     State(state): State<Arc<AppState>>,
+    auth_identity: Option<Extension<crate::auth::AuthIdentity>>,
     Json(req): Json<NlQueryRequest>,
 ) -> impl IntoResponse {
     // Gather schema context from all registered datasources
@@ -2973,7 +2974,7 @@ pub async fn nl_to_sql_handler(
             start: None, end: None, step: None,
             cursor: None, page_size: None,
         };
-        let exec_resp = query_handler(State(state), None, Json(query_req)).await;
+        let exec_resp = query_handler(State(state), auth_identity, Json(query_req)).await;
         let (_, body) = exec_resp.into_response().into_parts();
         if let Ok(bytes) = axum::body::to_bytes(body, 10_000_000).await {
             response.results = serde_json::from_slice(&bytes).ok();
