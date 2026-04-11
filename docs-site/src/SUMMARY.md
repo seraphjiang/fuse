@@ -17,6 +17,7 @@
 - [Data Provenance](./data-provenance.md)
 - [EXPLAIN / ANALYZE](./explain-analyze.md)
 - [Performance Tuning](./performance-tuning.md)
+- [Query Optimization](./query-optimization.md)
 - [Migration from OpenSearch](./migration-guide.md)
 - [Troubleshooting](./troubleshooting.md)
 - [Troubleshooting FAQ](./troubleshooting-faq.md)
@@ -38,6 +39,7 @@
 
 - [Admin Guide](./admin-guide.md)
 - [Horizontal Scaling](./horizontal-scaling.md)
+- [Security Hardening](./security-hardening.md)
 
 # Developer
 
