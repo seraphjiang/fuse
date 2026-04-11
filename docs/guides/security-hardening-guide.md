@@ -238,17 +238,89 @@ Ship audit logs to a separate, append-only store for tamper resistance.
 | Item | Status |
 |------|--------|
 | TLS enabled (server or proxy) | ☐ |
+| Connector TLS configured (custom CA or mTLS) | ☐ |
 | All connector URLs use `https://` or `sslmode=require` | ☐ |
 | API keys configured (no anonymous access) | ☐ |
 | Tenant isolation enabled | ☐ |
 | Query governor limits set per tenant | ☐ |
 | Rate limiting enabled | ☐ |
-| Credentials in env vars, not config files | ☐ |
+| Secrets use `secret://` references (not plaintext) | ☐ |
 | Config file permissions 600 | ☐ |
 | Fuse bound to localhost (behind proxy) | ☐ |
 | Audit logging enabled and shipped to secure store | ☐ |
 | API keys rotated on schedule | ☐ |
 | Docker networks isolated (frontend/backend) | ☐ |
+| WASM plugins loaded from trusted directory only | ☐ |
+
+## Connector TLS/mTLS
+
+All HTTP-based connectors support custom CA certificates and mutual TLS (mTLS)
+via the `[connector.tls]` config block:
+
+```toml
+[[connector]]
+id = "my_service"
+type = "opensearch"
+url = "https://my-cluster:9200"
+
+[connector.tls]
+ca_cert = "/etc/ssl/custom-ca.pem"        # Custom CA certificate
+client_cert = "/etc/ssl/client-cert.pem"   # mTLS client certificate
+client_key = "/etc/ssl/client-key.pem"     # mTLS client private key
+```
+
+Supported connectors: OpenSearch, Elasticsearch, ClickHouse, Prometheus,
+InfluxDB, Kafka, Snowflake, BigQuery, Fuse-to-Fuse. AWS SDK connectors
+(DynamoDB, S3, CloudWatch, Athena, Timestream) handle TLS internally.
+
+Kafka uses rustls via rskafka's `transport-tls` feature. Arrow Flight uses
+tonic gRPC with TLS via `grpcs://` URL scheme.
+
+**Warning**: Elasticsearch supports `tls_insecure = true` to skip certificate
+validation. This logs a startup warning and should only be used for development.
+
+## Secret Management
+
+Use `secret://` references to avoid plaintext credentials in config files:
+
+```toml
+[[connector]]
+id = "my_pg"
+type = "postgres"
+[connector.auth]
+username = "app_user"
+password = "secret://fuse/pg-password"   # Resolved from AWS Secrets Manager
+```
+
+Secrets are resolved recursively into nested TOML tables (e.g., `[connector.auth]`
+blocks). Only secret *names* are logged — values are never written to logs or
+trace spans.
+
+## WASM Plugin Sandboxing
+
+WASM connector plugins run with resource limits to prevent denial of service:
+
+- **Fuel metering**: Each call limited to 10M fuel units (prevents infinite loops)
+- **Input size**: Capped at 1 MiB per function call
+- **No WASI**: Plugins cannot access filesystem, network, or environment variables
+- **Fresh isolation**: Each invocation gets a new WASM Store (no state leakage)
+
+Load plugins only from a trusted directory. No signature verification is
+performed on `.wasm` files — ensure the plugin directory has restricted
+write permissions.
+
+## SQL Injection Prevention
+
+All SQL/CQL pushdown connectors quote identifiers to prevent injection:
+
+- PostgreSQL, DuckDB, Athena, Timestream, Snowflake, Arrow Flight, Cassandra:
+  ANSI double-quote (`"identifier"`)
+- ClickHouse, BigQuery: backtick (`` `identifier` ``)
+- InfluxDB: sanitize_identifier (alphanumeric filter)
+
+String values are escaped via `'` → `''` doubling in all connectors.
+OpenSearch and Elasticsearch use JSON serialization (serde_json), which
+prevents NoSQL injection by construction.
 
 ## Reporting Vulnerabilities
 
