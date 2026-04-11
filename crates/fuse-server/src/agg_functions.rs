@@ -102,4 +102,10 @@ mod tests {
         assert_eq!(max(&r, 0), Some(10.0));
         assert_eq!(sum(&r, 0), 2.0);
     }
+
+    #[test]
+    fn test_float_precision() {
+        let r = vec![vec![json!(0.1)], vec![json!(0.2)]];
+        assert!((sum(&r, 0) - 0.3).abs() < 1e-10);
+    }
 }
