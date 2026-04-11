@@ -8,8 +8,9 @@
 //! Returns 429 Too Many Requests with `Retry-After: 60` on violation.
 
 use std::net::IpAddr;
+use std::collections::HashMap;
 use std::num::NonZeroU32;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use axum::body::Body;
 use axum::extract::Request;
@@ -23,6 +24,51 @@ use governor::state::keyed::DefaultKeyedStateStore;
 pub type GlobalLimiter = RateLimiter<NotKeyed, InMemoryState, DefaultClock>;
 pub type PerIpLimiter = RateLimiter<IpAddr, DefaultKeyedStateStore<IpAddr>, DefaultClock>;
 pub type PerKeyLimiter = RateLimiter<String, DefaultKeyedStateStore<String>, DefaultClock>;
+
+/// Per-datasource concurrency limiter using semaphores.
+///
+/// Enforces `ConnectorCapabilities::max_concurrent_queries` per connector,
+/// preventing any single datasource from being overwhelmed.
+pub struct DatasourceLimiter {
+    semaphores: Mutex<HashMap<String, Arc<tokio::sync::Semaphore>>>,
+}
+
+impl DatasourceLimiter {
+    pub fn new() -> Self {
+        Self { semaphores: Mutex::new(HashMap::new()) }
+    }
+
+    /// Register a datasource with its concurrency limit.
+    pub fn register(&self, datasource_id: &str, max_concurrent: usize) {
+        let max = if max_concurrent == 0 { 16 } else { max_concurrent };
+        self.semaphores.lock().unwrap()
+            .entry(datasource_id.to_string())
+            .or_insert_with(|| Arc::new(tokio::sync::Semaphore::new(max)));
+    }
+
+    /// Acquire a permit for the given datasource. Returns None if unknown.
+    pub async fn acquire(&self, datasource_id: &str) -> Option<tokio::sync::OwnedSemaphorePermit> {
+        let sem: Option<Arc<tokio::sync::Semaphore>> = {
+            self.semaphores.lock().unwrap().get(datasource_id).cloned()
+        };
+        if let Some(s) = sem {
+            let permit: Result<tokio::sync::OwnedSemaphorePermit, _> = s.acquire_owned().await;
+            permit.ok()
+        } else {
+            None
+        }
+    }
+
+    /// Available permits for a datasource.
+    pub fn available(&self, datasource_id: &str) -> Option<usize> {
+        self.semaphores.lock().unwrap().get(datasource_id)
+            .map(|s: &Arc<tokio::sync::Semaphore>| s.available_permits())
+    }
+
+    pub fn datasource_count(&self) -> usize {
+        self.semaphores.lock().unwrap().len()
+    }
+}
 
 /// Rate limiter state shared via axum Extension.
 #[derive(Clone)]
@@ -254,5 +300,40 @@ mod tests {
     fn test_too_many_requests_for_key_includes_identity() {
         let resp = too_many_requests_for_key("alice");
         assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn test_datasource_limiter_basic() {
+        let limiter = DatasourceLimiter::new();
+        limiter.register("pg", 2);
+        assert_eq!(limiter.available("pg"), Some(2));
+        let _p1 = limiter.acquire("pg").await.unwrap();
+        assert_eq!(limiter.available("pg"), Some(1));
+        let _p2 = limiter.acquire("pg").await.unwrap();
+        assert_eq!(limiter.available("pg"), Some(0));
+    }
+
+    #[tokio::test]
+    async fn test_datasource_limiter_release() {
+        let limiter = DatasourceLimiter::new();
+        limiter.register("es", 1);
+        let p = limiter.acquire("es").await.unwrap();
+        assert_eq!(limiter.available("es"), Some(0));
+        drop(p); // release
+        assert_eq!(limiter.available("es"), Some(1));
+    }
+
+    #[tokio::test]
+    async fn test_datasource_limiter_unknown() {
+        let limiter = DatasourceLimiter::new();
+        assert!(limiter.acquire("unknown").await.is_none());
+    }
+
+    #[test]
+    fn test_datasource_limiter_count() {
+        let limiter = DatasourceLimiter::new();
+        limiter.register("a", 5);
+        limiter.register("b", 10);
+        assert_eq!(limiter.datasource_count(), 2);
     }
 }
