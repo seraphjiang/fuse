@@ -253,6 +253,8 @@ pub struct ExplainResponse {
     pub plan: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan_tree: Option<fuse_engine::plan::PlanNode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_profile: Option<ExecutionProfile>,
 }
 
 #[derive(Serialize)]
@@ -1239,10 +1241,34 @@ pub async fn explain_handler(
                 fuse_engine::plan::PlanNode::leaf("Unknown", format!("{} datasources", refs.len()))
             };
 
+            // EXPLAIN ANALYZE: execute query and collect per-node stats
+            let execution_profile = if req.analyze {
+                let t0 = std::time::Instant::now();
+                let exec_result = if refs.len() == 1 {
+                    execute_single(&state, &req.query, &format, &refs[0], None).await
+                } else if format == "ppl" || is_union_query(&req.query) {
+                    execute_union(&state, &req.query, &format, &refs).await
+                } else {
+                    execute_join(&state, &req.query, &refs).await
+                };
+                match exec_result {
+                    Ok(fed) => Some(ExecutionProfile {
+                        total_ms: t0.elapsed().as_millis() as u64,
+                        nodes: fed.profile_nodes,
+                        cache_hit: Some(false),
+                        optimizer_rules_applied: vec![],
+                    }),
+                    Err(_) => None,
+                }
+            } else {
+                None
+            };
+
             let plan_text = plan_tree.to_text(0);
             Json(ExplainResponse {
                 plan: plan_text,
                 plan_tree: Some(plan_tree),
+                execution_profile,
             })
             .into_response()
         }

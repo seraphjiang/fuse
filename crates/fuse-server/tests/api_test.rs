@@ -4397,3 +4397,122 @@ async fn test_enterprise_no_tenant_passes_through() {
     ).await;
     assert_eq!(status, StatusCode::OK);
 }
+
+// ── #900 EXPLAIN ANALYZE with execution stats ──
+
+#[tokio::test]
+async fn test_explain_analyze_single_source() {
+    let body = serde_json::json!({
+        "query": "SELECT * FROM testds.logs",
+        "format": "sql",
+        "analyze": true
+    });
+    let resp = build_test_app()
+        .oneshot(
+            Request::builder().method("POST").uri("/api/fuse/query/explain")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap())).unwrap(),
+        ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    // Plan tree still present
+    assert!(json["plan_tree"].is_object());
+    assert!(json["plan"].as_str().unwrap().len() > 0);
+    // Execution profile present with analyze=true
+    let profile = &json["execution_profile"];
+    assert!(profile.is_object(), "execution_profile missing with analyze=true");
+    assert!(profile["total_ms"].as_u64().is_some());
+    let nodes = profile["nodes"].as_array().unwrap();
+    assert!(!nodes.is_empty());
+    assert!(nodes[0]["actual_rows"].as_u64().is_some());
+    assert!(nodes[0]["actual_ms"].as_u64().is_some());
+}
+
+#[tokio::test]
+async fn test_explain_analyze_union() {
+    let body = serde_json::json!({
+        "query": "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
+        "format": "sql",
+        "analyze": true
+    });
+    let resp = build_federation_app()
+        .oneshot(
+            Request::builder().method("POST").uri("/api/fuse/query/explain")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap())).unwrap(),
+        ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let profile = &json["execution_profile"];
+    assert!(profile.is_object(), "execution_profile missing for UNION EXPLAIN ANALYZE");
+    let nodes = profile["nodes"].as_array().unwrap();
+    // Union should have parent node with children
+    assert!(!nodes.is_empty());
+    assert!(nodes[0]["actual_rows"].as_u64().is_some());
+}
+
+#[tokio::test]
+async fn test_explain_without_analyze_has_no_profile() {
+    let body = serde_json::json!({
+        "query": "SELECT * FROM testds.logs",
+        "format": "sql"
+    });
+    let resp = build_test_app()
+        .oneshot(
+            Request::builder().method("POST").uri("/api/fuse/query/explain")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap())).unwrap(),
+        ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    // No execution_profile when analyze is not set
+    assert!(json.get("execution_profile").is_none() || json["execution_profile"].is_null());
+    // Plan tree still present
+    assert!(json["plan_tree"].is_object());
+}
+
+#[tokio::test]
+async fn test_explain_analyze_has_data_bytes() {
+    let body = serde_json::json!({
+        "query": "SELECT * FROM testds.logs",
+        "format": "sql",
+        "analyze": true
+    });
+    let resp = build_test_app()
+        .oneshot(
+            Request::builder().method("POST").uri("/api/fuse/query/explain")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap())).unwrap(),
+        ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let nodes = json["execution_profile"]["nodes"].as_array().unwrap();
+    // Scan nodes should report data_bytes
+    let scan_node = &nodes[0];
+    assert!(scan_node["data_bytes"].as_u64().is_some());
+}
+
+#[tokio::test]
+async fn test_explain_analyze_join() {
+    let body = serde_json::json!({
+        "query": "SELECT * FROM cluster_a.logs JOIN cluster_b.logs ON cluster_a.logs.host = cluster_b.logs.host",
+        "format": "sql",
+        "analyze": true
+    });
+    let resp = build_federation_app()
+        .oneshot(
+            Request::builder().method("POST").uri("/api/fuse/query/explain")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap())).unwrap(),
+        ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let profile = &json["execution_profile"];
+    assert!(profile.is_object(), "execution_profile missing for JOIN EXPLAIN ANALYZE");
+    assert!(profile["total_ms"].as_u64().is_some());
+}
