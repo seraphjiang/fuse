@@ -1,0 +1,16 @@
+[package]
+name = "fuse-connector-bigquery"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Google BigQuery connector for Fuse — full SQL pushdown via BigQuery REST API"
+
+[dependencies]
+fuse-core = { path = "../../fuse-core" }
+arrow = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+reqwest = { workspace = true }
