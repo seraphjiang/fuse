@@ -37,6 +37,18 @@ textarea{min-height:80px;resize:vertical;font-family:'SFMono-Regular',Consolas,m
 .modal .field{margin-bottom:12px}
 .modal .field label{display:block;font-size:12px;color:#8b949e;margin-bottom:4px}
 .hidden{display:none}
+/* Light mode */
+body.light{background:#fff;color:#1f2328}
+body.light header{background:#f6f8fa;border-color:#d1d9e0}
+body.light .card,.body.light .stat-card{background:#fff;border-color:#d1d9e0}
+body.light input,body.light textarea,body.light select{background:#fff;color:#1f2328;border-color:#d1d9e0}
+body.light .btn{background:#f6f8fa;color:#1f2328;border-color:#d1d9e0}
+body.light .empty{color:#656d76}
+body.light .meta{color:#656d76}
+body.light .nav-tab{color:#656d76}
+body.light .nav-tab.active{color:#0969da;border-bottom-color:#0969da}
+/* Responsive */
+@media(max-width:768px){main{padding:12px}header{flex-wrap:wrap;padding:8px 12px}.nav-tabs{flex-wrap:wrap}.toolbar{flex-wrap:wrap}.stats{flex-direction:column}}
 </style>
 </head>
 <body>

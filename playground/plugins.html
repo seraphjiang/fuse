@@ -29,6 +29,18 @@ main{max-width:960px;margin:0 auto;padding:24px}
 .upload-zone{border:2px dashed #30363d;border-radius:8px;padding:32px;text-align:center;color:#484f58;cursor:pointer;transition:border-color .2s}
 .upload-zone:hover,.upload-zone.dragover{border-color:#58a6ff;color:#8b949e}
 .hidden{display:none}
+/* Light mode */
+body.light{background:#fff;color:#1f2328}
+body.light header{background:#f6f8fa;border-color:#d1d9e0}
+body.light .card,.body.light .stat-card{background:#fff;border-color:#d1d9e0}
+body.light input,body.light textarea,body.light select{background:#fff;color:#1f2328;border-color:#d1d9e0}
+body.light .btn{background:#f6f8fa;color:#1f2328;border-color:#d1d9e0}
+body.light .empty{color:#656d76}
+body.light .meta{color:#656d76}
+body.light .nav-tab{color:#656d76}
+body.light .nav-tab.active{color:#0969da;border-bottom-color:#0969da}
+/* Responsive */
+@media(max-width:768px){main{padding:12px}header{flex-wrap:wrap;padding:8px 12px}.nav-tabs{flex-wrap:wrap}.toolbar{flex-wrap:wrap}.stats{flex-direction:column}}
 </style>
 </head>
 <body>

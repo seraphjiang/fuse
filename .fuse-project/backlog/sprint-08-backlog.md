@@ -9,7 +9,7 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 800 | Stateless server mode (externalize session/cache to Redis) | planner | todo | Remove in-memory state, use Redis for cache + tenant registry |
-| 801 | Redis-backed query result cache | explorer | todo | Replace in-memory LruCache with Redis, TTL support |
+| 801 | Redis-backed query result cache | explorer | done | Replace in-memory LruCache, 6 tests. 122 total passing |
 | 802 | Shared tenant registry (Redis/config file) | planner | todo | Load tenants from external source, hot-reload |
 | 803 | Docker Compose multi-instance setup | infra | done | 2 Fuse + nginx LB + Redis + OpenSearch. Commit: c0491ca |
 
@@ -41,9 +41,9 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 840 | Horizontal scaling load test (multi-instance) | tester | todo | Verify no state leakage across instances |
+| 840 | Horizontal scaling load test (multi-instance) | tester | done | 4 tests: instance isolation, concurrent cross-instance. Commit: 345b1bb |
 | 841 | Kafka connector integration test | tester | todo | Produce + consume + query |
-| 842 | Materialized view lifecycle test | tester | todo | Create, query, refresh, drop |
+| 842 | Materialized view lifecycle test | tester | done | 8 tests: create/query/refresh/drop/stale/error. Commit: 345b1bb |
 | 850 | Horizontal scaling guide | docs | done | Architecture diagram, Docker Compose, Prometheus, troubleshooting. Commit: e6bb339 |
 | 851 | Plugin development guide | docs | done | WASM lifecycle, SDK types, manifest, sandbox. Commit: e6bb339 |
 
