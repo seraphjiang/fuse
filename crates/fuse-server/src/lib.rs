@@ -83,7 +83,7 @@ pub mod sorter;
 pub mod string_fn;
 pub mod wasm_plugin;
 pub mod ws_streaming;
-pub mod window_fn;pub mod saved_queries;
+mod server_integration_tests;pub mod window_fn;pub mod saved_queries;
 pub mod sanitize;
 pub mod sampling;
 pub mod scheduler;
