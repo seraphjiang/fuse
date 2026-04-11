@@ -176,6 +176,7 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/api/fuse/query/explain", post(api::explain_handler))
         .route("/api/fuse/query/validate", post(api::validate_handler))
         .route("/api/fuse/health", get(api::health_handler))
+        .route("/api/fuse/info", get(api::info_handler))
         .route("/api/fuse/history", get(api::history_handler))
         .route("/api/fuse/stats", get(api::stats_handler))
         .route("/api/fuse/saved", get(api::list_saved_queries).post(api::save_query))

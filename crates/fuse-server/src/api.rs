@@ -1762,6 +1762,27 @@ pub async fn health_handler(State(state): State<Arc<AppState>>) -> impl IntoResp
     Json(resp)
 }
 
+/// GET /api/fuse/info — server version, uptime, config summary.
+pub async fn info_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    static START_TIME: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    let start = START_TIME.get_or_init(std::time::Instant::now);
+    let uptime_secs = start.elapsed().as_secs();
+
+    Json(serde_json::json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "uptime_secs": uptime_secs,
+        "connectors": state.registry.list().len(),
+        "features": {
+            "federation": true,
+            "write_path": true,
+            "async_queries": true,
+            "nl_to_sql": true,
+            "prepared_statements": true,
+            "wasm_plugins": true,
+        }
+    }))
+}
+
 // ── Helpers ──
 
 /// Parse all datasource.table references from a PPL query.
