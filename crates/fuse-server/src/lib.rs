@@ -10,6 +10,7 @@ pub mod async_query;
 pub mod audit;
 pub mod auth;
 pub mod auto_suggest;
+pub mod autocomplete;
 pub mod cors;
 pub mod federation;
 pub mod health;
