@@ -45,7 +45,7 @@ pub mod pagination;
 pub mod offset_pagination;pub mod plan_cache;
 pub mod pipeline;pub mod pool_stats;
 pub mod query_policy;
-pub mod projector;
+pub mod query_parser;pub mod projector;
 pub mod registry_snapshot;pub mod query_context;
 pub mod prepared;
 pub mod query_advisor;
