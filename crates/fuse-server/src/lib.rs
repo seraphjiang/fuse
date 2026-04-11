@@ -27,6 +27,7 @@ pub mod metrics;
 pub mod nl_query;
 pub mod pagination;
 pub mod plan_cache;
+pub mod pool_stats;
 pub mod prepared;
 pub mod query_advisor;
 pub mod query_diff;
