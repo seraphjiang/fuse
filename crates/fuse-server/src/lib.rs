@@ -12,6 +12,7 @@ pub mod audit;
 pub mod auth;
 pub mod auto_suggest;
 pub mod autocomplete;
+pub mod complexity;
 pub mod cors;
 pub mod export;
 pub mod federation;
