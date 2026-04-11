@@ -16,6 +16,7 @@ pub mod metrics;
 pub mod nl_query;
 pub mod plan_cache;
 pub mod prepared;
+pub mod query_advisor;
 pub mod rate_limit;
 pub mod redis_cache;
 pub mod refresh_scheduler;
