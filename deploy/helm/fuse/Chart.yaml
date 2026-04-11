@@ -3,7 +3,7 @@ name: fuse
 description: Fuse — federated query engine for distributed datasources
 type: application
 version: 1.0.0
-appVersion: "0.6.0"
+appVersion: "1.0.0"
 keywords:
   - fuse
   - federated-query

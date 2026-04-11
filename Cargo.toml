@@ -9,6 +9,7 @@ members = [
     "crates/fuse-connectors/prometheus",
     "crates/fuse-connectors/cloudwatch",
     "crates/fuse-connectors/csv-json",
+    "crates/fuse-connectors/kafka",
     "crates/fuse-connectors/redis",
     "crates/fuse-connectors/dynamodb",
     "crates/fuse-connectors/postgres",
@@ -23,7 +24,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.6.0"
+version = "1.0.0"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/seraphjiang/fuse"
