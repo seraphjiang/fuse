@@ -495,11 +495,17 @@ fn bind_params(query: &str, params: &std::collections::HashMap<String, serde_jso
 pub async fn query_handler(
     State(state): State<Arc<AppState>>,
     auth_identity: Option<Extension<crate::auth::AuthIdentity>>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<QueryRequest>,
 ) -> impl IntoResponse {
     let t0 = std::time::Instant::now();
     let format = req.format.to_lowercase();
     let query_id = format!("q-{:016x}", QUERY_COUNTER.fetch_add(1, Ordering::Relaxed));
+
+    // Support timeout via header: X-Fuse-Timeout-Ms
+    let header_timeout = headers.get("x-fuse-timeout-ms")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok());
 
     tracing::info!(
         query_id = %query_id,
@@ -865,8 +871,10 @@ pub async fn query_handler(
         }
     }
 
-    // Apply timeout: explicit > adaptive (per-datasource p95) > default
+    // Apply timeout: explicit body > header > adaptive (per-datasource p95) > default
     let base_timeout_ms = if let Some(ms) = req.timeout_ms {
+        ms
+    } else if let Some(ms) = header_timeout {
         ms
     } else if let Some(first_ds) = refs.first().map(|(id, _)| id.as_str()) {
         state.adaptive_timeout.timeout_ms_for(first_ds)
@@ -2901,14 +2909,14 @@ pub async fn multi_query_handler(
     let statements = split_statements(&req.query);
     if statements.len() <= 1 {
         // Single statement — delegate to normal handler
-        return query_handler(State(state), auth_identity, Json(req)).await.into_response();
+        return query_handler(State(state), auth_identity, axum::http::HeaderMap::new(), Json(req)).await.into_response();
     }
 
     let mut results = Vec::new();
     for stmt in &statements {
         let mut sub_req = req.clone();
         sub_req.query = stmt.clone();
-        let resp = query_handler(State(state.clone()), auth_identity.clone(), Json(sub_req)).await;
+        let resp = query_handler(State(state.clone()), auth_identity.clone(), axum::http::HeaderMap::new(), Json(sub_req)).await;
         // Extract JSON body from response
         let (parts, body) = resp.into_response().into_parts();
         let bytes = axum::body::to_bytes(body, 10_000_000).await.unwrap_or_default();
@@ -3014,7 +3022,7 @@ pub async fn nl_to_sql_handler(
                 start: None, end: None, step: None,
                 cursor: None, page_size: None,
             };
-            let exec_resp = query_handler(State(state), auth_identity, Json(query_req)).await;
+            let exec_resp = query_handler(State(state), auth_identity, axum::http::HeaderMap::new(), Json(query_req)).await;
             let (_, body) = exec_resp.into_response().into_parts();
             if let Ok(bytes) = axum::body::to_bytes(body, 10_000_000).await {
                 response.results = serde_json::from_slice(&bytes).ok();
