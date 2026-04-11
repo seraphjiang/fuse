@@ -31,4 +31,11 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 902 | Query plan visualization in playground | fee | done | Visual DAG of execution plan nodes |
-| 901 | Flame graph visualization for EXPLAIN ANALYZE | fee | todo | Interactive flame graph in playground |
+| 901 | Flame graph visualization for EXPLAIN ANALYZE | fee | done | Interactive flame graph in playground |
+
+## P1: GA Readiness (pm)
+
+| ID | Item | Owner | Status | Notes |
+|----|------|-------|--------|-------|
+| 1103 | Structured error codes (FUSE-XXXX) | pm | done | ErrorCode type, error_code() methods, 14 new tests. Commit: fc7e1bf |
+| 1102 | Configuration validation on startup | pm | done | validate() on FuseConfig, fail-fast, 8 new tests. Commit: e68a5c0 |

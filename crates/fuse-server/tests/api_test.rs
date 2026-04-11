@@ -1205,6 +1205,33 @@ async fn test_analyze_default_false() {
     assert!(json.get("execution_profile").is_none());
 }
 
+// ── #901 Flame graph profile structure for JOIN queries ──
+
+#[tokio::test]
+async fn test_analyze_join_profile_has_flame_graph_fields() {
+    let (status, json) = post_query_analyze(
+        build_federation_app(),
+        "SELECT * FROM cluster_a.logs JOIN cluster_b.logs ON cluster_a.logs.host = cluster_b.logs.host",
+        "sql",
+        true,
+    ).await;
+    assert_eq!(status, StatusCode::OK);
+    let profile = &json["execution_profile"];
+    assert!(profile["total_ms"].is_number());
+    let nodes = profile["nodes"].as_array().unwrap();
+    assert!(!nodes.is_empty());
+    // Root node should have children for a JOIN
+    let root = &nodes[0];
+    assert!(root["op"].as_str().is_some());
+    assert!(root["actual_ms"].is_number());
+    let children = root["children"].as_array().unwrap();
+    assert!(children.len() >= 2, "JOIN profile must have at least 2 child scans");
+    for child in children {
+        assert!(child["actual_ms"].is_number(), "each child must have actual_ms for flame graph");
+        assert!(child["actual_rows"].is_number(), "each child must have actual_rows");
+    }
+}
+
 // ── Query timeout tests ──
 
 #[tokio::test]

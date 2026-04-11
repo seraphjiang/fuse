@@ -986,6 +986,8 @@ async function runQuery() {
       lastPlanTree = res.metadata.execution_profile;
       $('plan-view-toggle').style.display = 'flex';
       renderPlanTree(res.metadata.execution_profile);
+      // Auto-show flame graph for EXPLAIN ANALYZE
+      switchPlanView('flame');
     }
     $('meta-rows').textContent = res.metadata.total_rows + ' rows';
     $('meta-cols').textContent = res.columns.length + ' columns';
@@ -1041,51 +1043,78 @@ function renderFlameGraph(tree) {
   const ctx = canvas.getContext('2d');
   const rowH = 28, pad = 2;
   const rects = [];
+  const isAnalyze = tree.actual_ms != null || (tree.nodes && tree.nodes[0] && tree.nodes[0].actual_ms != null);
 
-  // Flatten tree: each node gets a depth and width proportional to cost
+  // For EXPLAIN ANALYZE profiles, root may be { total_ms, nodes: [...] }
+  const root = tree.nodes ? { op: 'Query', actual_ms: tree.total_ms || 0, children: tree.nodes } : tree;
+
   function maxDepth(n, d) { return Math.max(d, ...(n.children || []).map(c => maxDepth(c, d + 1))); }
-  const depth = maxDepth(tree, 0) + 1;
+  const depth = maxDepth(root, 0) + 1;
   canvas.height = depth * rowH + 10;
 
-  function getCost(n) { return n.estimated_cost || n.actual_ms || n.estimated_rows || 1; }
-  const colors = ['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff','#f778ba','#79c0ff','#56d364'];
+  // Prefer actual_ms for ANALYZE, fall back to estimated_cost/estimated_rows
+  function getCost(n) { return (isAnalyze ? n.actual_ms : null) || n.estimated_cost || n.actual_ms || n.estimated_rows || 1; }
+
+  // Collect total time for percentage calculation
+  let totalCostSum = 0;
+  function sumCost(n) { totalCostSum += getCost(n); (n.children || []).forEach(sumCost); }
+  sumCost(root);
+
+  // Time-intensity color: cool (blue) → warm (red) based on fraction of total
+  function heatColor(cost) {
+    if (!totalCostSum) return '#58a6ff';
+    const t = Math.min(cost / (totalCostSum * 0.5), 1); // normalize so 50%+ is max heat
+    const r = Math.round(88 + t * 160);
+    const g = Math.round(166 - t * 140);
+    const b = Math.round(255 - t * 200);
+    return `rgb(${r},${g},${b})`;
+  }
 
   function layout(node, x, w, d) {
-    rects.push({ x, y: canvas.height - (d + 1) * rowH, w, h: rowH - pad, node, depth: d });
-    const totalCost = (node.children || []).reduce((s, c) => s + getCost(c), 0) || 1;
+    const cost = getCost(node);
+    rects.push({ x, y: canvas.height - (d + 1) * rowH, w, h: rowH - pad, node, depth: d, cost });
+    const childTotal = (node.children || []).reduce((s, c) => s + getCost(c), 0) || 1;
     let cx = x;
     (node.children || []).forEach(c => {
-      const cw = Math.max((getCost(c) / totalCost) * w, 20);
+      const cw = Math.max((getCost(c) / childTotal) * w, 20);
       layout(c, cx, cw, d + 1);
       cx += cw;
     });
   }
-  layout(tree, 0, canvas.width, 0);
+  layout(root, 0, canvas.width, 0);
 
-  // Draw
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  rects.forEach((r, i) => {
-    ctx.fillStyle = colors[r.depth % colors.length];
+  rects.forEach(r => {
+    ctx.fillStyle = isAnalyze ? heatColor(r.cost) : ['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff','#f778ba','#79c0ff','#56d364'][r.depth % 8];
     ctx.fillRect(r.x, r.y, r.w, r.h);
     ctx.strokeStyle = '#0d1117';
     ctx.strokeRect(r.x, r.y, r.w, r.h);
     if (r.w > 40) {
       ctx.fillStyle = '#fff';
       ctx.font = '11px -apple-system,sans-serif';
-      const label = r.node.op + (r.node.detail ? ` (${r.node.detail})` : '');
+      const label = r.node.op + (r.node.actual_ms != null ? ` ${r.node.actual_ms}ms` : r.node.detail ? ` (${r.node.detail})` : '');
       ctx.fillText(label.substring(0, Math.floor(r.w / 6.5)), r.x + 4, r.y + 17);
     }
   });
 
-  // Hover tooltip
   canvas.onmousemove = e => {
     const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const my = (e.clientY - rect.top) * (canvas.height / rect.height);
     const hit = rects.find(r => mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h);
     const tip = $('flame-tooltip');
     if (hit) {
       const n = hit.node;
-      tip.innerHTML = `<strong>${esc(n.op)}</strong>${n.detail ? '<br>' + esc(n.detail) : ''}${n.estimated_rows ? '<br>~' + n.estimated_rows + ' rows' : ''}${n.estimated_cost ? '<br>Cost: ' + n.estimated_cost : ''}${n.actual_ms ? '<br>' + n.actual_ms + 'ms' : ''}`;
+      const pct = totalCostSum ? ((hit.cost / totalCostSum) * 100).toFixed(1) : '?';
+      let html = `<strong>${esc(n.op)}</strong>`;
+      if (n.detail) html += '<br>' + esc(n.detail);
+      if (n.actual_ms != null) html += `<br>${n.actual_ms}ms (${pct}%)`;
+      if (n.actual_rows != null) html += '<br>' + n.actual_rows.toLocaleString() + ' rows';
+      if (n.data_bytes != null) html += '<br>' + (n.data_bytes / 1024).toFixed(1) + ' KB';
+      if (n.estimated_rows != null && n.actual_ms == null) html += '<br>~' + n.estimated_rows + ' rows';
+      if (n.estimated_cost != null && n.actual_ms == null) html += '<br>Cost: ' + n.estimated_cost;
+      if (n.estimate_accuracy) html += '<br>Accuracy: ' + esc(n.estimate_accuracy);
+      tip.innerHTML = html;
       tip.style.display = 'block';
       tip.style.left = (e.clientX + 12) + 'px';
       tip.style.top = (e.clientY - 10) + 'px';
