@@ -19,6 +19,7 @@ pub mod cost_tracker;
 pub mod dedup;
 pub mod delivery;
 pub mod export;
+pub mod explain_cache;
 pub mod federation;
 pub mod fingerprint;
 pub mod formatter;
