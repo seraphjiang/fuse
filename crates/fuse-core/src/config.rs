@@ -90,6 +90,73 @@ impl FuseConfig {
             std::fs::read_to_string(path).map_err(|e| crate::error::FuseError::config(e.to_string()))?;
         toml::from_str(&content).map_err(|e| crate::error::FuseError::config(e.to_string()))
     }
+
+    /// Validate the configuration, returning all errors found (not just the first).
+    /// Call at startup to fail fast with clear diagnostics.
+    pub fn validate(&self, known_types: &[&str]) -> Result<(), crate::error::FuseError> {
+        let mut errors: Vec<String> = Vec::new();
+
+        // Engine validation
+        if let Err(e) = parse_bind_addr(&self.engine.bind) {
+            errors.push(format!("engine.bind: {e}"));
+        }
+        if self.engine.max_concurrent_queries == 0 {
+            errors.push("engine.max_concurrent_queries must be > 0".into());
+        }
+
+        // Connector validation
+        let mut seen_ids = std::collections::HashSet::new();
+        for (i, cc) in self.connector.iter().enumerate() {
+            let label = if cc.id.is_empty() {
+                format!("connector[{i}]")
+            } else {
+                format!("connector '{}'", cc.id)
+            };
+
+            if cc.id.is_empty() {
+                errors.push(format!("{label}: id is required"));
+            } else if !seen_ids.insert(&cc.id) {
+                errors.push(format!("{label}: duplicate connector id"));
+            }
+
+            if cc.connector_type.is_empty() {
+                errors.push(format!("{label}: type is required"));
+            } else if !known_types.contains(&cc.connector_type.as_str()) {
+                errors.push(format!(
+                    "{label}: unknown type '{}' (known: {})",
+                    cc.connector_type,
+                    known_types.join(", ")
+                ));
+            }
+
+            // Validate TLS config if present
+            if let Some(tls) = cc.tls_config() {
+                if let Err(e) = tls.validate() {
+                    errors.push(format!("{label}: tls: {e}"));
+                }
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(crate::error::FuseError::Config {
+                code: crate::error::ErrorCode::CONFIG_INVALID,
+                msg: format!(
+                    "configuration has {} error(s):\n  - {}",
+                    errors.len(),
+                    errors.join("\n  - ")
+                ),
+            })
+        }
+    }
+}
+
+fn parse_bind_addr(s: &str) -> Result<(), String> {
+    use std::net::ToSocketAddrs;
+    s.to_socket_addrs()
+        .map(|_| ())
+        .map_err(|e| format!("invalid bind address '{}': {}", s, e))
 }
 
 #[cfg(test)]
@@ -218,5 +285,116 @@ ca_cert = "/tmp/ca.pem"
         let tls = cfg.connector[0].tls_config().unwrap();
         assert_eq!(tls.ca_cert.unwrap().to_str().unwrap(), "/tmp/ca.pem");
         assert!(tls.client_cert.is_none());
+    }
+
+    const KNOWN: &[&str] = &["opensearch", "elasticsearch", "postgres", "mysql", "dynamodb", "s3", "s3-o11y", "prometheus", "cloudwatch", "redis", "csv-json", "mongodb", "influxdb", "clickhouse", "kafka", "redshift", "duckdb", "sqlite"];
+
+    #[test]
+    fn test_validate_valid_config() {
+        let toml = r#"
+[engine]
+bind = "0.0.0.0:9400"
+
+[[connector]]
+id = "a"
+type = "opensearch"
+"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        assert!(cfg.validate(KNOWN).is_ok());
+    }
+
+    #[test]
+    fn test_validate_empty_connectors_ok() {
+        let toml = r#"[engine]"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        assert!(cfg.validate(KNOWN).is_ok());
+    }
+
+    #[test]
+    fn test_validate_duplicate_ids() {
+        let toml = r#"
+[engine]
+
+[[connector]]
+id = "dup"
+type = "opensearch"
+
+[[connector]]
+id = "dup"
+type = "postgres"
+"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        let err = cfg.validate(KNOWN).unwrap_err();
+        assert!(err.to_string().contains("duplicate connector id"));
+    }
+
+    #[test]
+    fn test_validate_unknown_type() {
+        let toml = r#"
+[engine]
+
+[[connector]]
+id = "x"
+type = "oracle"
+"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        let err = cfg.validate(KNOWN).unwrap_err();
+        assert!(err.to_string().contains("unknown type 'oracle'"));
+    }
+
+    #[test]
+    fn test_validate_empty_id() {
+        let toml = r#"
+[engine]
+
+[[connector]]
+id = ""
+type = "opensearch"
+"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        let err = cfg.validate(KNOWN).unwrap_err();
+        assert!(err.to_string().contains("id is required"));
+    }
+
+    #[test]
+    fn test_validate_empty_type() {
+        let toml = r#"
+[engine]
+
+[[connector]]
+id = "x"
+type = ""
+"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        let err = cfg.validate(KNOWN).unwrap_err();
+        assert!(err.to_string().contains("type is required"));
+    }
+
+    #[test]
+    fn test_validate_zero_concurrency() {
+        let toml = r#"
+[engine]
+max_concurrent_queries = 0
+"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        let err = cfg.validate(KNOWN).unwrap_err();
+        assert!(err.to_string().contains("max_concurrent_queries must be > 0"));
+    }
+
+    #[test]
+    fn test_validate_multiple_errors() {
+        let toml = r#"
+[engine]
+max_concurrent_queries = 0
+
+[[connector]]
+id = ""
+type = "bogus"
+"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        let err = cfg.validate(KNOWN).unwrap_err();
+        let msg = err.to_string();
+        // Should report all errors, not just the first
+        assert!(msg.contains("3 error(s)"));
     }
 }

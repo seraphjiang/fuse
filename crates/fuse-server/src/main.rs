@@ -55,6 +55,17 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    // Validate config at startup — fail fast with clear errors
+    let known_types: Vec<&str> = vec![
+        "opensearch", "elasticsearch", "postgres", "mysql", "dynamodb",
+        "s3", "s3-o11y", "prometheus", "cloudwatch", "redis", "csv-json",
+        "mongodb", "influxdb", "clickhouse", "kafka", "redshift", "duckdb", "sqlite",
+    ];
+    if let Err(e) = config.validate(&known_types) {
+        tracing::error!("{e}");
+        anyhow::bail!("{e}");
+    }
+
     // Build connector registry from config
     let registry = ConnectorRegistry::new();
     let factories: Vec<Box<dyn ConnectorFactory>> = vec![
