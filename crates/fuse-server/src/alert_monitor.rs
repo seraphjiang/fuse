@@ -64,6 +64,14 @@ impl AlertMonitor {
         }
     }
 
+    pub fn from_rules(rules: Vec<AlertRule>) -> Self {
+        Self {
+            rules: Mutex::new(rules),
+            history: Mutex::new(Vec::new()),
+            active: Mutex::new(HashMap::new()),
+        }
+    }
+
     pub fn add_rule(&self, rule: AlertRule) {
         self.rules.lock().unwrap().push(rule);
     }
