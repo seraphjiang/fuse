@@ -5,6 +5,7 @@ pub mod adaptive_timeout;
 pub mod alert_api;
 pub mod alert_monitor;
 pub mod api;
+pub mod async_query;
 pub mod audit;
 pub mod auth;
 pub mod cors;
