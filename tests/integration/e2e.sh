@@ -106,6 +106,9 @@ assert_status "playground_200" GET "$FUSE_URL/" 200
 assert_status "settings_200" GET "$FUSE_URL/settings" 200
 assert_status "status_200" GET "$FUSE_URL/status" 200
 
+log "Cache Management"
+assert_status "cache_clear" DELETE "$FUSE_URL/api/fuse/cache" 200
+
 log "Error Handling"
 assert_status "bad_query_400" POST "$FUSE_URL/api/fuse/query" 400 \
   -H 'Content-Type: application/json' \
