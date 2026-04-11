@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 /// Tenant configuration: which datasources a tenant can access.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TenantConfig {
     pub tenant_id: String,
     /// Allowed datasource IDs. Empty = access to all (admin).
