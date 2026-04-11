@@ -24,6 +24,9 @@ pub struct TenantConfig {
     pub max_time_ms: Option<u64>,
     /// Max result size in bytes.
     pub max_result_bytes: Option<u64>,
+    /// Max queries per minute (rate limit).
+    #[serde(default)]
+    pub max_queries_per_minute: Option<u32>,
 }
 
 impl TenantConfig {
@@ -36,6 +39,7 @@ impl TenantConfig {
             max_rows: None,
             max_time_ms: None,
             max_result_bytes: None,
+            max_queries_per_minute: None,
         }
     }
 
@@ -48,6 +52,7 @@ impl TenantConfig {
             max_rows: None,
             max_time_ms: None,
             max_result_bytes: None,
+            max_queries_per_minute: None,
         }
     }
 
@@ -115,6 +120,22 @@ impl Default for TenantRegistry {
 pub struct QueryGovernor;
 
 impl QueryGovernor {
+    /// Check if a tenant can start a new query (rate limit check).
+    pub fn check_rate_limit(
+        config: &TenantConfig,
+        queries_this_minute: u32,
+    ) -> Result<(), String> {
+        if let Some(max) = config.max_queries_per_minute {
+            if queries_this_minute >= max {
+                return Err(format!(
+                    "tenant '{}' exceeded rate limit: {} queries/min (max {})",
+                    config.tenant_id, queries_this_minute, max
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// Check if result exceeds tenant limits. Returns Err with reason if violated.
     pub fn check_limits(
         config: &TenantConfig,
@@ -296,5 +317,26 @@ mod tests {
         assert_eq!(reg.filter_datasources("team_a", &["ds1".into(), "ds2".into()]), vec!["ds1".to_string()]);
         assert_eq!(reg.filter_datasources("team_b", &["ds1".into(), "ds2".into()]), vec!["ds2".to_string()]);
         assert_eq!(reg.filter_datasources("ops", &["ds1".into(), "ds2".into()]).len(), 2);
+    }
+
+    #[test]
+    fn test_rate_limit_within() {
+        let mut config = TenantConfig::admin("t1");
+        config.max_queries_per_minute = Some(100);
+        assert!(QueryGovernor::check_rate_limit(&config, 50).is_ok());
+    }
+
+    #[test]
+    fn test_rate_limit_exceeded() {
+        let mut config = TenantConfig::admin("t1");
+        config.max_queries_per_minute = Some(10);
+        let err = QueryGovernor::check_rate_limit(&config, 10).unwrap_err();
+        assert!(err.contains("rate limit"));
+    }
+
+    #[test]
+    fn test_rate_limit_none_allows_all() {
+        let config = TenantConfig::admin("t1");
+        assert!(QueryGovernor::check_rate_limit(&config, 999_999).is_ok());
     }
 }
