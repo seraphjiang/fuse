@@ -1099,10 +1099,14 @@ function renderDAG(tree) {
   const canvas = $('dag-canvas');
   canvas.width = canvas.parentElement.clientWidth || 800;
   const ctx = canvas.getContext('2d');
-  const nodeW = 140, nodeH = 50, gapX = 30, gapY = 60;
+  const nodeW = 160, nodeH = 54, gapX = 36, gapY = 70;
   const nodes = [], edges = [];
+  const isLight = document.body.classList.contains('light');
+  const edgeColor = isLight ? '#afb8c1' : '#30363d';
+  const textColor = isLight ? '#1f2328' : '#e1e4e8';
+  const subColor = isLight ? '#656d76' : '#8b949e';
+  const bgColor = isLight ? '#fff' : '#0d1117';
 
-  // Assign positions via BFS levels
   function collect(n, depth, parent) {
     const id = nodes.length;
     nodes.push({ id, node: n, depth, x: 0, y: 0 });
@@ -1111,7 +1115,6 @@ function renderDAG(tree) {
   }
   collect(tree, 0, null);
 
-  // Group by depth
   const levels = {};
   nodes.forEach(n => { (levels[n.depth] = levels[n.depth] || []).push(n); });
   const maxDepth = Math.max(...Object.keys(levels).map(Number));
@@ -1126,30 +1129,45 @@ function renderDAG(tree) {
     });
   });
 
-  // Draw edges
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = '#30363d';
-  ctx.lineWidth = 2;
+
+  // Draw edges as bezier curves with arrow and row-count label
   edges.forEach(e => {
     const from = nodes[e.from], to = nodes[e.to];
+    const x1 = from.x + nodeW / 2, y1 = from.y + nodeH;
+    const x2 = to.x + nodeW / 2, y2 = to.y;
+    const cy = (y1 + y2) / 2;
+    ctx.strokeStyle = edgeColor;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(from.x + nodeW / 2, from.y + nodeH);
-    ctx.lineTo(to.x + nodeW / 2, to.y);
+    ctx.moveTo(x1, y1);
+    ctx.bezierCurveTo(x1, cy, x2, cy, x2, y2);
     ctx.stroke();
     // Arrow
-    const ax = to.x + nodeW / 2, ay = to.y;
-    ctx.fillStyle = '#30363d';
+    ctx.fillStyle = edgeColor;
     ctx.beginPath();
-    ctx.moveTo(ax - 5, ay - 6);
-    ctx.lineTo(ax + 5, ay - 6);
-    ctx.lineTo(ax, ay);
+    ctx.moveTo(x2 - 5, y2 - 6);
+    ctx.lineTo(x2 + 5, y2 - 6);
+    ctx.lineTo(x2, y2);
     ctx.fill();
+    // Row count label on edge
+    const rows = to.node.estimated_rows;
+    if (rows != null) {
+      const lx = (x1 + x2) / 2, ly = cy - 4;
+      const label = rows >= 1000 ? (rows / 1000).toFixed(1) + 'k' : String(rows);
+      ctx.font = '9px -apple-system,sans-serif';
+      const tw = ctx.measureText('~' + label).width;
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(lx - tw / 2 - 3, ly - 8, tw + 6, 13);
+      ctx.fillStyle = subColor;
+      ctx.fillText('~' + label, lx - tw / 2, ly + 2);
+    }
   });
 
   // Draw nodes
-  const colors = { Scan: '#1f6feb', RemoteScan: '#1f6feb', HashJoin: '#d29922', MergeJoin: '#d29922', UnionAll: '#8b5cf6', Filter: '#f85149', Project: '#3fb950', Sort: '#bc8cff', Limit: '#f778ba', GlobalLimit: '#f778ba' };
+  const opColors = { Scan: '#1f6feb', RemoteScan: '#1f6feb', HashJoin: '#d29922', MergeJoin: '#d29922', UnionAll: '#8b5cf6', Filter: '#f85149', Project: '#3fb950', Sort: '#bc8cff', Limit: '#f778ba', GlobalLimit: '#f778ba', Aggregate: '#d29922' };
   nodes.forEach(n => {
-    const color = colors[n.node.op] || '#58a6ff';
+    const color = opColors[n.node.op] || '#58a6ff';
     ctx.fillStyle = color + '22';
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
@@ -1157,14 +1175,42 @@ function renderDAG(tree) {
     ctx.roundRect(n.x, n.y, nodeW, nodeH, 8);
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = '#e1e4e8';
+    ctx.fillStyle = textColor;
     ctx.font = 'bold 12px -apple-system,sans-serif';
     ctx.fillText(n.node.op, n.x + 8, n.y + 20);
     ctx.font = '10px -apple-system,sans-serif';
-    ctx.fillStyle = '#8b949e';
+    ctx.fillStyle = subColor;
     const sub = n.node.detail || (n.node.estimated_rows ? '~' + n.node.estimated_rows + ' rows' : '');
-    if (sub) ctx.fillText(sub.substring(0, 20), n.x + 8, n.y + 36);
+    if (sub) ctx.fillText(sub.substring(0, 22), n.x + 8, n.y + 34);
+    if (n.node.estimated_cost != null) {
+      ctx.fillText('cost: ' + n.node.estimated_cost.toFixed(1), n.x + 8, n.y + 46);
+    }
   });
+
+  // Hover tooltip
+  canvas.onmousemove = function(e) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+    const hit = nodes.find(n => mx >= n.x && mx <= n.x + nodeW && my >= n.y && my <= n.y + nodeH);
+    const tip = $('flame-tooltip');
+    if (hit) {
+      const nd = hit.node;
+      let html = '<strong>' + esc(nd.op) + '</strong>';
+      if (nd.detail) html += '<br>' + esc(nd.detail);
+      if (nd.estimated_rows != null) html += '<br>~' + nd.estimated_rows.toLocaleString() + ' rows';
+      if (nd.estimated_cost != null) html += '<br>Cost: ' + nd.estimated_cost.toFixed(1);
+      tip.innerHTML = html;
+      tip.style.display = 'block';
+      tip.style.left = (e.clientX + 12) + 'px';
+      tip.style.top = (e.clientY - 10) + 'px';
+      canvas.style.cursor = 'pointer';
+    } else {
+      tip.style.display = 'none';
+      canvas.style.cursor = 'default';
+    }
+  };
+  canvas.onmouseleave = function() { $('flame-tooltip').style.display = 'none'; canvas.style.cursor = 'default'; };
 }
 
 function renderExplainTree(tree) {

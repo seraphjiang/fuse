@@ -2527,7 +2527,55 @@ async fn test_explain_has_cost_estimates() {
     assert!(tree["estimated_cost"].as_f64().is_some());
 }
 
-// ── Hash join optimization tests ──
+// ── #902 Plan tree structure for DAG visualization ──
+
+#[tokio::test]
+async fn test_explain_plan_tree_has_dag_fields() {
+    // Single-source: tree must have op, and optionally detail/estimated_rows/estimated_cost
+    let resp = build_test_app()
+        .oneshot(
+            Request::builder().method("POST").uri("/api/fuse/query/explain")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&serde_json::json!({
+                    "query": "SELECT * FROM testds.logs",
+                    "format": "sql"
+                })).unwrap())).unwrap(),
+        ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let tree = &json["plan_tree"];
+    assert!(tree["op"].as_str().is_some(), "plan_tree must have op field");
+    // Root should have children for non-trivial plans
+    assert!(tree.get("children").is_none() || tree["children"].is_array(),
+        "children must be absent or an array");
+}
+
+#[tokio::test]
+async fn test_explain_join_plan_tree_has_children() {
+    // JOIN query produces a multi-level tree the DAG renderer needs
+    let body = serde_json::json!({
+        "query": "SELECT * FROM cluster_a.logs JOIN cluster_b.logs ON cluster_a.logs.host = cluster_b.logs.host",
+        "format": "sql"
+    });
+    let resp = build_federation_app()
+        .oneshot(
+            Request::builder().method("POST").uri("/api/fuse/query/explain")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap())).unwrap(),
+        ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let tree = &json["plan_tree"];
+    assert!(tree["op"].as_str().is_some());
+    let children = tree["children"].as_array().expect("join plan must have children");
+    assert!(children.len() >= 2, "join plan must have at least 2 children");
+    // Each child must also have op
+    for child in children {
+        assert!(child["op"].as_str().is_some(), "child node must have op");
+    }
+}
 
 #[tokio::test]
 async fn test_join_profile_shows_build_side() {

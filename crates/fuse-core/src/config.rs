@@ -77,13 +77,18 @@ impl ConnectorConfig {
             .map(|n| n as u64)
             .unwrap_or(default)
     }
+
+    /// Extract optional TLS configuration from `[connector.tls]`.
+    pub fn tls_config(&self) -> Option<crate::tls::TlsConfig> {
+        crate::tls::TlsConfig::from_properties(&self.properties)
+    }
 }
 
 impl FuseConfig {
     pub fn from_file(path: &str) -> Result<Self, crate::error::FuseError> {
         let content =
-            std::fs::read_to_string(path).map_err(|e| crate::error::FuseError::Config(e.to_string()))?;
-        toml::from_str(&content).map_err(|e| crate::error::FuseError::Config(e.to_string()))
+            std::fs::read_to_string(path).map_err(|e| crate::error::FuseError::config(e.to_string()))?;
+        toml::from_str(&content).map_err(|e| crate::error::FuseError::config(e.to_string()))
     }
 }
 
@@ -188,5 +193,30 @@ rate_limit_per_ip = 50
     fn test_connector_config_timeout_default() {
         let config = ConnectorConfig { id: "x".into(), connector_type: "es".into(), properties: Default::default() };
         assert_eq!(config.connection_timeout_secs(30), 30);
+    }
+
+    #[test]
+    fn test_connector_config_tls_none() {
+        let config = ConnectorConfig { id: "x".into(), connector_type: "es".into(), properties: Default::default() };
+        assert!(config.tls_config().is_none());
+    }
+
+    #[test]
+    fn test_connector_config_tls_from_toml() {
+        let toml_str = r#"
+[engine]
+
+[[connector]]
+id = "secure"
+type = "opensearch"
+url = "https://localhost:9200"
+
+[connector.tls]
+ca_cert = "/tmp/ca.pem"
+"#;
+        let cfg: FuseConfig = toml::from_str(toml_str).unwrap();
+        let tls = cfg.connector[0].tls_config().unwrap();
+        assert_eq!(tls.ca_cert.unwrap().to_str().unwrap(), "/tmp/ca.pem");
+        assert!(tls.client_cert.is_none());
     }
 }

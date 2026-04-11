@@ -34,12 +34,12 @@ pub async fn resolve_secrets(
                     .send()
                     .await
                     .map_err(|e| {
-                        crate::error::FuseError::Config(format!(
+                        crate::error::FuseError::config(format!(
                             "failed to resolve secret '{secret_name}' for key '{key}': {e}"
                         ))
                     })?;
                 let secret_string = resp.secret_string().ok_or_else(|| {
-                    crate::error::FuseError::Config(format!(
+                    crate::error::FuseError::config(format!(
                         "secret '{secret_name}' has no string value"
                     ))
                 })?;
