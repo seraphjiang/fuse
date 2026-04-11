@@ -74,11 +74,14 @@ impl ElasticsearchConnector {
             headers.insert(AUTHORIZATION, val);
         }
 
+        let tls_insecure = config.properties.get("tls_insecure").and_then(|v| v.as_bool()).unwrap_or(false);
+        if tls_insecure {
+            tracing::warn!(connector = %config.id, "tls_insecure=true — TLS certificate validation disabled");
+        }
+
         let mut client_builder = reqwest::Client::builder()
             .default_headers(headers)
-            .danger_accept_invalid_certs(
-                config.properties.get("tls_insecure").and_then(|v| v.as_bool()).unwrap_or(false)
-            )
+            .danger_accept_invalid_certs(tls_insecure)
             .pool_max_idle_per_host(config.max_connections(16) as usize)
             .timeout(std::time::Duration::from_secs(config.connection_timeout_secs(30)));
 

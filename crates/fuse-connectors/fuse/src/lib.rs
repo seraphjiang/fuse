@@ -387,12 +387,21 @@ impl ConnectorFactory for FuseConnectorFactory {
             );
         }
 
-        let client = reqwest::Client::builder()
+        let mut client_builder = reqwest::Client::builder()
             .default_headers(headers)
             .pool_max_idle_per_host(config.max_connections(8) as usize)
             .timeout(std::time::Duration::from_secs(
                 config.connection_timeout_secs(60),
-            ))
+            ));
+
+        if let Some(tls) = config.tls_config() {
+            tls.validate().map_err(|e| ConnectorError::Connection(e.to_string()))?;
+            client_builder = tls
+                .apply_to_reqwest(client_builder)
+                .map_err(|e| ConnectorError::Connection(e.to_string()))?;
+        }
+
+        let client = client_builder
             .build()
             .map_err(|e| ConnectorError::Connection(e.to_string()))?;
 

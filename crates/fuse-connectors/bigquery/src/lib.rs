@@ -288,10 +288,19 @@ impl ConnectorFactory for BigQueryConnectorFactory {
                 .map_err(|e: reqwest::header::InvalidHeaderValue| ConnectorError::Connection(e.to_string()))?);
         }
 
-        let client = reqwest::Client::builder()
+        let mut client_builder = reqwest::Client::builder()
             .default_headers(headers)
             .pool_max_idle_per_host(config.max_connections(8) as usize)
-            .timeout(std::time::Duration::from_secs(config.connection_timeout_secs(120)))
+            .timeout(std::time::Duration::from_secs(config.connection_timeout_secs(120)));
+
+        if let Some(tls) = config.tls_config() {
+            tls.validate().map_err(|e| ConnectorError::Connection(e.to_string()))?;
+            client_builder = tls
+                .apply_to_reqwest(client_builder)
+                .map_err(|e| ConnectorError::Connection(e.to_string()))?;
+        }
+
+        let client = client_builder
             .build().map_err(|e| ConnectorError::Connection(e.to_string()))?;
 
         Ok(Arc::new(BigQueryConnector::new(config.id.clone(), client, project_id, dataset, location, max_results)))
