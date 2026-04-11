@@ -77,6 +77,14 @@ textarea{width:100%;min-height:60px;background:#0d1117;color:#e1e4e8;border:1px 
 .var-group{display:flex;align-items:center;gap:4px}
 .var-group label{font-size:11px;color:#8b949e;font-weight:600}
 .var-group select{font-size:12px;padding:3px 8px}
+body.light{background:#fff;color:#1f2328}
+body.light header{background:#f6f8fa;border-color:#d1d9e0}
+body.light .card,body.light .stat-card{background:#fff;border-color:#d1d9e0}
+body.light input,body.light textarea,body.light select{background:#fff;color:#1f2328;border-color:#d1d9e0}
+body.light .btn{background:#f6f8fa;color:#1f2328;border-color:#d1d9e0}
+body.light .nav-tab{color:#656d76}
+body.light .nav-tab.active{color:#0969da;border-bottom-color:#0969da}
+body.light .time-bar{background:#f6f8fa;border-color:#d1d9e0}
 </style>
 </head>
 <body>
@@ -94,6 +102,7 @@ textarea{width:100%;min-height:60px;background:#0d1117;color:#e1e4e8;border:1px 
     </nav>
   </div>
   <div class="header-actions">
+    <button onclick="toggleTheme()" style="background:none;border:1px solid #30363d;color:#8b949e;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px">🌓 Theme</button>
     <button onclick="addPanel()">+ Add Panel</button>
     <button onclick="showTemplates()">📋 Templates</button>
     <button onclick="showImport()">📂 Load</button>
@@ -1035,6 +1044,9 @@ if (window.location.hash === '#add-from-explore') {
   } catch {}
   history.replaceState(null, '', '/dashboard');
 }
+// Theme
+(function(){var t=localStorage.getItem("fuse-theme");if(t==="light"||(!t&&window.matchMedia("(prefers-color-scheme:light)").matches))document.body.classList.add("light");})();
+function toggleTheme(){document.body.classList.toggle("light");localStorage.setItem("fuse-theme",document.body.classList.contains("light")?"light":"dark");}
 </script>
 <script>fetch("/feedback-widget").then(r=>r.text()).then(h=>{const d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d);const s=d.querySelectorAll("script");s.forEach(sc=>{const n=document.createElement("script");n.textContent=sc.textContent;document.body.appendChild(n);});})</script>
 </body>

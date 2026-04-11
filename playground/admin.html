@@ -51,6 +51,13 @@ td{padding:6px 8px;border-bottom:1px solid #21262d}
 .toast{position:fixed;bottom:24px;right:24px;background:#238636;color:#fff;padding:10px 20px;border-radius:6px;font-size:13px;display:none;z-index:100}
 .toast.show{display:block}
 .admin-badge{background:#d29922;color:#0d1117;font-size:10px;padding:1px 6px;border-radius:3px;font-weight:700;margin-left:8px}
+body.light{background:#fff;color:#1f2328}
+body.light header{background:#f6f8fa;border-color:#d1d9e0}
+body.light .card,body.light .stat-card{background:#fff;border-color:#d1d9e0}
+body.light input,body.light textarea,body.light select{background:#fff;color:#1f2328;border-color:#d1d9e0}
+body.light .btn{background:#f6f8fa;color:#1f2328;border-color:#d1d9e0}
+body.light .nav-tab{color:#656d76}
+body.light .nav-tab.active{color:#0969da;border-bottom-color:#0969da}
 </style>
 </head>
 <body>
@@ -65,9 +72,8 @@ td{padding:6px 8px;border-bottom:1px solid #21262d}
       <a href="/admin" class="nav-tab active">Admin</a>
     </nav>
   </div>
+  <button onclick="toggleTheme()" style="background:none;border:1px solid #30363d;color:#8b949e;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px">🌓 Theme</button>
 </header>
-
-<main>
   <div class="sidebar">
     <a class="active" onclick="show('tenants')">👥 Tenants</a>
     <a onclick="show('audit')">📋 Audit Log</a>
@@ -269,6 +275,9 @@ function clearCache() {
 
 // === Init ===
 renderTenants(); renderAudit(); renderKeys(); refreshCache();
+// Theme
+(function(){var t=localStorage.getItem("fuse-theme");if(t==="light"||(!t&&window.matchMedia("(prefers-color-scheme:light)").matches))document.body.classList.add("light");})();
+function toggleTheme(){document.body.classList.toggle("light");localStorage.setItem("fuse-theme",document.body.classList.contains("light")?"light":"dark");}
 </script>
 <script>fetch("/feedback-widget").then(r=>r.text()).then(h=>{const d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d);const s=d.querySelectorAll("script");s.forEach(sc=>{const n=document.createElement("script");n.textContent=sc.textContent;document.body.appendChild(n);});})</script>
 </body>

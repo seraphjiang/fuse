@@ -35,6 +35,13 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
 .link-card:hover{border-color:#58a6ff}
 .link-card .lc-title{font-size:13px;font-weight:600;color:#58a6ff}
 .link-card .lc-desc{font-size:12px;color:#8b949e;margin-top:2px}
+body.light{background:#fff;color:#1f2328}
+body.light header{background:#f6f8fa;border-color:#d1d9e0}
+body.light .card{background:#fff;border-color:#d1d9e0}
+body.light input,body.light textarea,body.light select{background:#fff;color:#1f2328;border-color:#d1d9e0}
+body.light .nav-tab{color:#656d76}
+body.light .nav-tab.active{color:#0969da;border-bottom-color:#0969da}
+body.light .link-card{background:#f6f8fa;border-color:#d1d9e0}
 </style>
 </head>
 <body>
@@ -51,6 +58,7 @@ kbd{background:#21262d;border:1px solid #30363d;border-radius:3px;padding:1px 5p
       <a href="/help" class="nav-tab active">Help</a>
     </nav>
   </div>
+  <button onclick="toggleTheme()" style="background:none;border:1px solid #30363d;color:#8b949e;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px">🌓 Theme</button>
 </header>
 
 <main>
@@ -266,6 +274,9 @@ function show(id) {
 }
 // Handle hash navigation
 if (window.location.hash) show(window.location.hash.slice(1));
+// Theme
+(function(){var t=localStorage.getItem("fuse-theme");if(t==="light"||(!t&&window.matchMedia("(prefers-color-scheme:light)").matches))document.body.classList.add("light");})();
+function toggleTheme(){document.body.classList.toggle("light");localStorage.setItem("fuse-theme",document.body.classList.contains("light")?"light":"dark");}
 </script>
 <script>fetch("/feedback-widget").then(r=>r.text()).then(h=>{const d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d);const s=d.querySelectorAll("script");s.forEach(sc=>{const n=document.createElement("script");n.textContent=sc.textContent;document.body.appendChild(n);});})</script>
 </body>

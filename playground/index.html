@@ -1341,7 +1341,8 @@ function toggleTheme() {
   $('theme-btn').textContent = isLight ? '☀️' : '🌙';
 }
 (function initTheme() {
-  if (localStorage.getItem('fuse-theme') === 'light') {
+  const saved = localStorage.getItem('fuse-theme');
+  if (saved === 'light' || (!saved && window.matchMedia('(prefers-color-scheme:light)').matches)) {
     document.body.classList.add('light');
     $('theme-btn').textContent = '☀️';
   }

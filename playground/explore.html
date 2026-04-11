@@ -47,6 +47,13 @@ main{flex:1;display:flex;flex-direction:column;padding:16px 24px;gap:12px;max-wi
 .error{color:#f85149;padding:12px;background:#1c0d0d;border:1px solid #f8514933;border-radius:6px;font-size:13px}
 .hint{font-size:11px;color:#8b949e;padding:2px 0}
 .section-label{font-size:11px;color:#8b949e;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:4px 0}
+body.light{background:#fff;color:#1f2328}
+body.light header{background:#f6f8fa;border-color:#d1d9e0}
+body.light .card,body.light .stat-card{background:#fff;border-color:#d1d9e0}
+body.light input,body.light textarea,body.light select{background:#fff;color:#1f2328;border-color:#d1d9e0}
+body.light .btn{background:#f6f8fa;color:#1f2328;border-color:#d1d9e0}
+body.light .nav-tab{color:#656d76}
+body.light .nav-tab.active{color:#0969da;border-bottom-color:#0969da}
 </style>
 </head>
 <body>
@@ -65,6 +72,7 @@ main{flex:1;display:flex;flex-direction:column;padding:16px 24px;gap:12px;max-wi
   </div>
   <div style="display:flex;align-items:center;gap:12px">
     <div class="health" id="health"><span class="health-dot" id="health-dot"></span><span id="health-text">connecting…</span></div>
+    <button onclick="toggleTheme()" style="background:none;border:1px solid #30363d;color:#8b949e;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px">🌓 Theme</button>
   </div>
 </header>
 
@@ -336,6 +344,9 @@ async function checkHealth() {
 $('editor').addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); run(); } });
 window.addEventListener('resize', () => { if (chart) chart.resize(); });
 checkHealth();
+// Theme
+(function(){var t=localStorage.getItem("fuse-theme");if(t==="light"||(!t&&window.matchMedia("(prefers-color-scheme:light)").matches))document.body.classList.add("light");})();
+function toggleTheme(){document.body.classList.toggle("light");localStorage.setItem("fuse-theme",document.body.classList.contains("light")?"light":"dark");}
 </script>
 <script>fetch("/feedback-widget").then(r=>r.text()).then(h=>{const d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d);const s=d.querySelectorAll("script");s.forEach(sc=>{const n=document.createElement("script");n.textContent=sc.textContent;document.body.appendChild(n);});})</script>
 </body>
