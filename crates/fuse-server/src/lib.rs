@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+pub mod adaptive_timeout;
 pub mod api;
 pub mod audit;
 pub mod auth;
@@ -10,6 +11,7 @@ pub mod plan_cache;
 pub mod rate_limit;
 pub mod redis_cache;
 pub mod refresh_scheduler;
+pub mod wasm_plugin;
 pub mod saved_queries;
 pub mod streaming;
 pub mod tenant;
