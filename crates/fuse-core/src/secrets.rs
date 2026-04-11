@@ -5,30 +5,26 @@
 //!
 //! # Secret URI Format
 //!
-//! Any connector property value can reference a secret using the `secret://` prefix:
+//! Any connector property value — including nested tables like `[connector.auth]` —
+//! can reference a secret using the `secret://` prefix:
 //!
 //! ```toml
 //! [[connector]]
 //! id = "my_pg"
 //! type = "postgres"
 //! url = "secret://fuse/prod/postgres-url"
-//! ```
 //!
-//! The secret name after `secret://` is the AWS Secrets Manager secret ID.
-//! At startup, all `secret://` references are resolved and replaced with the
-//! actual secret string value. If resolution fails, the server refuses to start.
+//! [connector.auth]
+//! type = "basic"
+//! username = "admin"
+//! password = "secret://fuse/prod/pg-password"
+//! ```
 //!
 //! ## Supported patterns
 //!
 //! - `secret://my-secret` — simple secret name
 //! - `secret://prod/fuse/db-password` — hierarchical path
 //! - `secret://arn:aws:secretsmanager:us-west-2:123456:secret:my-secret` — full ARN
-//!
-//! ## Validation
-//!
-//! Use [`validate_secret_refs`] at startup to check that all `secret://` URIs
-//! are well-formed before attempting resolution. Use [`resolve_secrets`] (or
-//! the mock-friendly [`resolve_secrets_with`]) to fetch actual values.
 
 use std::collections::HashMap;
 use tracing::info;
@@ -45,41 +41,76 @@ pub fn secret_name(value: &str) -> Option<&str> {
     value.strip_prefix(SECRET_PREFIX)
 }
 
-/// Validate all `secret://` references in a properties map.
-/// Returns errors for empty or whitespace-only secret names.
+// ── Validation ──
+
+/// Validate all `secret://` references in a properties map, recursing into nested tables.
 pub fn validate_secret_refs(
     connector_id: &str,
     properties: &HashMap<String, toml::Value>,
 ) -> Vec<String> {
     let mut errors = Vec::new();
-    for (key, value) in properties {
-        if let Some(s) = value.as_str() {
-            if let Some(name) = s.strip_prefix(SECRET_PREFIX) {
-                if name.trim().is_empty() {
-                    errors.push(format!(
-                        "connector '{}': property '{}' has empty secret:// reference",
-                        connector_id, key
-                    ));
-                }
-            }
-        }
-    }
+    validate_recursive(connector_id, "", properties.iter(), &mut errors);
     errors
 }
 
-/// Collect all secret names referenced in a properties map.
-pub fn collect_secret_refs(properties: &HashMap<String, toml::Value>) -> Vec<(String, String)> {
-    properties
-        .iter()
-        .filter_map(|(key, value)| {
-            value
-                .as_str()
-                .and_then(|s| s.strip_prefix(SECRET_PREFIX))
-                .filter(|name| !name.trim().is_empty())
-                .map(|name| (key.clone(), name.to_string()))
-        })
-        .collect()
+fn validate_recursive<'a>(
+    connector_id: &str,
+    prefix: &str,
+    iter: impl Iterator<Item = (&'a String, &'a toml::Value)>,
+    errors: &mut Vec<String>,
+) {
+    for (key, value) in iter {
+        let full_key = if prefix.is_empty() { key.clone() } else { format!("{prefix}.{key}") };
+        match value {
+            toml::Value::String(s) if s.starts_with(SECRET_PREFIX) => {
+                if s[SECRET_PREFIX.len()..].trim().is_empty() {
+                    errors.push(format!(
+                        "connector '{}': property '{}' has empty secret:// reference",
+                        connector_id, full_key
+                    ));
+                }
+            }
+            toml::Value::Table(table) => {
+                validate_recursive(connector_id, &full_key, table.iter(), errors);
+            }
+            _ => {}
+        }
+    }
 }
+
+// ── Collection ──
+
+/// Collect all secret names referenced in a properties map, recursing into nested tables.
+pub fn collect_secret_refs(properties: &HashMap<String, toml::Value>) -> Vec<(String, String)> {
+    let mut refs = Vec::new();
+    collect_recursive("", properties.iter(), &mut refs);
+    refs
+}
+
+fn collect_recursive<'a>(
+    prefix: &str,
+    iter: impl Iterator<Item = (&'a String, &'a toml::Value)>,
+    refs: &mut Vec<(String, String)>,
+) {
+    for (key, value) in iter {
+        let full_key = if prefix.is_empty() { key.clone() } else { format!("{prefix}.{key}") };
+        match value {
+            toml::Value::String(s) => {
+                if let Some(name) = s.strip_prefix(SECRET_PREFIX) {
+                    if !name.trim().is_empty() {
+                        refs.push((full_key, name.to_string()));
+                    }
+                }
+            }
+            toml::Value::Table(table) => {
+                collect_recursive(&full_key, table.iter(), refs);
+            }
+            _ => {}
+        }
+    }
+}
+
+// ── Resolution ──
 
 /// Trait for secret resolution — enables mock testing without AWS.
 #[async_trait::async_trait]
@@ -118,14 +149,26 @@ impl SecretResolver for AwsSecretResolver {
 }
 
 /// Resolve all `secret://` prefixed values using the provided resolver.
+/// Recurses into nested TOML tables (e.g. `[connector.auth]`).
 pub async fn resolve_secrets_with(
     properties: &HashMap<String, toml::Value>,
     resolver: &dyn SecretResolver,
 ) -> Result<HashMap<String, toml::Value>, crate::error::FuseError> {
     let mut resolved = HashMap::with_capacity(properties.len());
     for (key, value) in properties {
-        let resolved_value = match value.as_str() {
-            Some(s) if s.starts_with(SECRET_PREFIX) => {
+        resolved.insert(key.clone(), resolve_value(key, value, resolver).await?);
+    }
+    Ok(resolved)
+}
+
+fn resolve_value<'a>(
+    key: &'a str,
+    value: &'a toml::Value,
+    resolver: &'a dyn SecretResolver,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<toml::Value, crate::error::FuseError>> + Send + 'a>> {
+    Box::pin(async move {
+        match value {
+            toml::Value::String(s) if s.starts_with(SECRET_PREFIX) => {
                 let name = &s[SECRET_PREFIX.len()..];
                 let secret_string = resolver.get_secret(name).await.map_err(|e| {
                     crate::error::FuseError::Config {
@@ -134,28 +177,38 @@ pub async fn resolve_secrets_with(
                     }
                 })?;
                 info!(key = %key, secret = %name, "resolved secret");
-                toml::Value::String(secret_string)
+                Ok(toml::Value::String(secret_string))
             }
-            _ => value.clone(),
-        };
-        resolved.insert(key.clone(), resolved_value);
-    }
-    Ok(resolved)
+            toml::Value::Table(table) => {
+                let mut inner = toml::map::Map::new();
+                for (k, v) in table {
+                    let child_key = format!("{key}.{k}");
+                    inner.insert(k.clone(), resolve_value(&child_key, v, resolver).await?);
+                }
+                Ok(toml::Value::Table(inner))
+            }
+            other => Ok(other.clone()),
+        }
+    })
 }
 
 /// Resolve all `secret://` prefixed values via AWS Secrets Manager.
 pub async fn resolve_secrets(
     properties: &HashMap<String, toml::Value>,
 ) -> Result<HashMap<String, toml::Value>, crate::error::FuseError> {
-    // Only create AWS client if there are actual secret refs
-    let has_secrets = properties
-        .values()
-        .any(|v| v.as_str().map_or(false, |s| s.starts_with(SECRET_PREFIX)));
-    if !has_secrets {
+    if !has_secret_refs_in_values(properties.values()) {
         return Ok(properties.clone());
     }
     let resolver = AwsSecretResolver::new().await;
     resolve_secrets_with(properties, &resolver).await
+}
+
+fn has_secret_refs_in_values<'a>(values: impl Iterator<Item = &'a toml::Value>) -> bool {
+    values.into_iter().any(|v| match v {
+        toml::Value::String(s) => s.starts_with(SECRET_PREFIX),
+        toml::Value::Table(t) => has_secret_refs_in_values(t.values()),
+        _ => false,
+    })
 }
 
 #[cfg(test)]
@@ -180,8 +233,7 @@ mod tests {
         let mut props = HashMap::new();
         props.insert("url".into(), toml::Value::String("secret://fuse/db-url".into()));
         props.insert("port".into(), toml::Value::Integer(5432));
-        let errors = validate_secret_refs("pg", &props);
-        assert!(errors.is_empty());
+        assert!(validate_secret_refs("pg", &props).is_empty());
     }
 
     #[test]
@@ -197,26 +249,56 @@ mod tests {
     fn test_validate_secret_refs_whitespace_name() {
         let mut props = HashMap::new();
         props.insert("url".into(), toml::Value::String("secret://  ".into()));
-        let errors = validate_secret_refs("pg", &props);
-        assert_eq!(errors.len(), 1);
+        assert_eq!(validate_secret_refs("pg", &props).len(), 1);
     }
 
     #[test]
-    fn test_collect_secret_refs() {
+    fn test_validate_nested_empty_secret() {
+        let mut auth = toml::map::Map::new();
+        auth.insert("password".into(), toml::Value::String("secret://".into()));
+        let mut props = HashMap::new();
+        props.insert("auth".into(), toml::Value::Table(auth));
+        let errors = validate_secret_refs("os", &props);
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("auth.password"));
+    }
+
+    #[test]
+    fn test_validate_nested_valid_secret() {
+        let mut auth = toml::map::Map::new();
+        auth.insert("password".into(), toml::Value::String("secret://fuse/pass".into()));
+        let mut props = HashMap::new();
+        props.insert("auth".into(), toml::Value::Table(auth));
+        assert!(validate_secret_refs("os", &props).is_empty());
+    }
+
+    #[test]
+    fn test_collect_secret_refs_flat() {
         let mut props = HashMap::new();
         props.insert("url".into(), toml::Value::String("secret://fuse/db".into()));
         props.insert("port".into(), toml::Value::Integer(5432));
         props.insert("pass".into(), toml::Value::String("secret://fuse/pass".into()));
-        let refs = collect_secret_refs(&props);
-        assert_eq!(refs.len(), 2);
+        assert_eq!(collect_secret_refs(&props).len(), 2);
     }
 
     #[test]
     fn test_collect_secret_refs_skips_empty() {
         let mut props = HashMap::new();
         props.insert("url".into(), toml::Value::String("secret://".into()));
+        assert!(collect_secret_refs(&props).is_empty());
+    }
+
+    #[test]
+    fn test_collect_nested_secret_refs() {
+        let mut auth = toml::map::Map::new();
+        auth.insert("token".into(), toml::Value::String("secret://fuse/token".into()));
+        let mut props = HashMap::new();
+        props.insert("url".into(), toml::Value::String("http://localhost".into()));
+        props.insert("auth".into(), toml::Value::Table(auth));
         let refs = collect_secret_refs(&props);
-        assert!(refs.is_empty());
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].0, "auth.token");
+        assert_eq!(refs[0].1, "fuse/token");
     }
 
     #[test]
@@ -232,7 +314,6 @@ mod tests {
         });
     }
 
-    /// Mock resolver for testing without AWS.
     struct MockResolver {
         secrets: HashMap<String, String>,
     }
@@ -273,16 +354,12 @@ mod tests {
         props.insert("url".into(), toml::Value::String("secret://nonexistent".into()));
         let result = resolve_secrets_with(&props, &resolver).await;
         assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        assert!(err.contains("nonexistent"));
+        assert!(result.unwrap_err().to_string().contains("nonexistent"));
     }
 
     #[tokio::test]
     async fn test_resolve_multiple_secrets() {
-        let resolver = MockResolver::new(&[
-            ("fuse/url", "pg://host/db"),
-            ("fuse/pass", "s3cret"),
-        ]);
+        let resolver = MockResolver::new(&[("fuse/url", "pg://host/db"), ("fuse/pass", "s3cret")]);
         let mut props = HashMap::new();
         props.insert("url".into(), toml::Value::String("secret://fuse/url".into()));
         props.insert("password".into(), toml::Value::String("secret://fuse/pass".into()));
@@ -295,10 +372,55 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_no_secrets_skips_client() {
-        // No secret:// refs → should succeed without any resolver call
         let mut props = HashMap::new();
         props.insert("url".into(), toml::Value::String("http://localhost".into()));
         let resolved = resolve_secrets(&props).await.unwrap();
         assert_eq!(resolved["url"].as_str(), Some("http://localhost"));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_nested_auth_secrets() {
+        let resolver = MockResolver::new(&[("fuse/pass", "hunter2")]);
+        let mut auth = toml::map::Map::new();
+        auth.insert("type".into(), toml::Value::String("basic".into()));
+        auth.insert("username".into(), toml::Value::String("admin".into()));
+        auth.insert("password".into(), toml::Value::String("secret://fuse/pass".into()));
+        let mut props = HashMap::new();
+        props.insert("url".into(), toml::Value::String("https://localhost:9200".into()));
+        props.insert("auth".into(), toml::Value::Table(auth));
+        let resolved = resolve_secrets_with(&props, &resolver).await.unwrap();
+        assert_eq!(resolved["url"].as_str(), Some("https://localhost:9200"));
+        let auth_resolved = resolved["auth"].as_table().unwrap();
+        assert_eq!(auth_resolved["type"].as_str(), Some("basic"));
+        assert_eq!(auth_resolved["username"].as_str(), Some("admin"));
+        assert_eq!(auth_resolved["password"].as_str(), Some("hunter2"));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_nested_missing_secret_errors() {
+        let resolver = MockResolver::new(&[]);
+        let mut auth = toml::map::Map::new();
+        auth.insert("token".into(), toml::Value::String("secret://missing".into()));
+        let mut props = HashMap::new();
+        props.insert("auth".into(), toml::Value::Table(auth));
+        let result = resolve_secrets_with(&props, &resolver).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("missing"));
+    }
+
+    #[test]
+    fn test_has_secret_refs_nested() {
+        let mut auth = toml::map::Map::new();
+        auth.insert("token".into(), toml::Value::String("secret://x".into()));
+        let mut props: HashMap<String, toml::Value> = HashMap::new();
+        props.insert("auth".into(), toml::Value::Table(auth));
+        assert!(has_secret_refs_in_values(props.values()));
+    }
+
+    #[test]
+    fn test_has_secret_refs_none() {
+        let mut props: HashMap<String, toml::Value> = HashMap::new();
+        props.insert("url".into(), toml::Value::String("http://localhost".into()));
+        assert!(!has_secret_refs_in_values(props.values()));
     }
 }

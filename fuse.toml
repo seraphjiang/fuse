@@ -17,6 +17,19 @@ rate_limit_per_ip = 100
 # client_cert = "/path/to/client.pem"    # Client certificate (mTLS)
 # client_key  = "/path/to/client-key.pem" # Client private key (mTLS)
 
+# ── Secret Management ──
+# Any property value (including nested auth blocks) can reference
+# AWS Secrets Manager via the secret:// prefix:
+#
+# url = "secret://fuse/prod/opensearch-url"
+#
+# [connector.auth]
+# type = "basic"
+# username = "admin"
+# password = "secret://fuse/prod/opensearch-password"
+#
+# Supported: secret://name, secret://path/name, secret://arn:aws:secretsmanager:...
+
 # ── OpenSearch Serverless Connectors (us-west-2) ──
 
 [[connector]]
