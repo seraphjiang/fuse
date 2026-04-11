@@ -2862,12 +2862,13 @@ pub fn split_statements(query: &str) -> Vec<String> {
 /// POST /api/fuse/multi — execute multiple semicolon-separated statements
 pub async fn multi_query_handler(
     State(state): State<Arc<AppState>>,
+    auth_identity: Option<Extension<crate::auth::AuthIdentity>>,
     Json(req): Json<QueryRequest>,
 ) -> impl IntoResponse {
     let statements = split_statements(&req.query);
     if statements.len() <= 1 {
         // Single statement — delegate to normal handler
-        return query_handler(State(state), None, Json(req)).await.into_response();
+        return query_handler(State(state), auth_identity, Json(req)).await.into_response();
     }
 
     let mut results = Vec::new();

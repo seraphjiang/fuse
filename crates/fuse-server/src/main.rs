@@ -148,6 +148,11 @@ async fn main() -> anyhow::Result<()> {
         },
     });
 
+    // Security: warn if tenants enabled without auth
+    if state.tenant_registry.is_enabled() {
+        tracing::warn!("⚠️  Tenant isolation is enabled but auth may not be configured — tenant isolation requires API key auth to be effective");
+    }
+
     // Initialize metrics
     let metrics_handle = fuse_server::metrics::init();
     fuse_server::metrics::set_handle(metrics_handle);
