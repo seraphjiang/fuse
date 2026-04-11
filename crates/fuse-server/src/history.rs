@@ -5,11 +5,11 @@ use std::collections::VecDeque;
 use std::sync::Mutex;
 use std::time::SystemTime;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 const MAX_HISTORY: usize = 50;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryEntry {
     pub query: String,
     pub format: String,

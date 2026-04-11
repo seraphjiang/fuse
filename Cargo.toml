@@ -20,6 +20,7 @@ members = [
     "crates/fuse-connectors/duckdb",
     "crates/fuse-connector-sdk",
     "crates/fuse-server",
+    "crates/fuse-cli",
 ]
 resolver = "2"
 
