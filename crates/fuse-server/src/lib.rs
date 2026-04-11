@@ -31,6 +31,7 @@ pub mod wasm_plugin;
 pub mod ws_streaming;
 pub mod saved_queries;
 pub mod shared_state;
+pub mod sse_stream;
 pub mod streaming;
 pub mod telemetry;
 pub mod tenant;
