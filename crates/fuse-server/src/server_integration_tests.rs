@@ -151,3 +151,156 @@ mod tests {
         assert!(tail.is_empty());
     }
 }
+
+
+#[cfg(test)]
+mod boundary_tests {
+    use serde_json::json;
+
+    // Null handler
+    #[test]
+    fn test_null_counts_empty() {
+        assert_eq!(crate::null_handler::null_counts(&[], 3), vec![0, 0, 0]);
+    }
+
+    // Offset pagination
+    #[test]
+    fn test_paginate_beyond_end() {
+        let rows: Vec<Vec<serde_json::Value>> = vec![vec![json!(1)]];
+        assert!(crate::offset_pagination::paginate(&rows, 10, 5).is_empty());
+    }
+
+    #[test]
+    fn test_page_info_single_page() {
+        let info = crate::offset_pagination::page_info(5, 0, 100);
+        assert!(!info.has_next);
+        assert!(!info.has_prev);
+        assert_eq!(info.total_pages, 1);
+    }
+
+    // Row limit
+    #[test]
+    fn test_enforce_limit_zero() {
+        let rows = vec![vec![json!(1)]];
+        let r = crate::row_limit::enforce_limit(rows, 0);
+        assert!(r.truncated);
+        assert!(r.rows.is_empty());
+    }
+
+    // Pivot
+    #[test]
+    fn test_pivot_single_value() {
+        let rows = vec![vec![json!("k"), json!("col"), json!(42)]];
+        let (cols, result) = crate::pivot::pivot(&rows, 0, 1, 2);
+        assert_eq!(result.len(), 1);
+        assert!(cols.contains(&"col".to_string()));
+    }
+
+    // Transpose
+    #[test]
+    fn test_transpose_single_column() {
+        let cols = vec!["x".into()];
+        let rows = vec![vec![json!(1)], vec![json!(2)], vec![json!(3)]];
+        let (new_cols, new_rows) = crate::transpose::transpose(&cols, &rows);
+        assert_eq!(new_cols.len(), 4); // column + row_1 + row_2 + row_3
+        assert_eq!(new_rows.len(), 1); // 1 original column
+    }
+
+    // Flattener
+    #[test]
+    fn test_flatten_scalar() {
+        let mut out = std::collections::BTreeMap::new();
+        crate::flattener::flatten_value("val", &json!(42), &mut out);
+        assert_eq!(out["val"], json!(42));
+    }
+
+    // Arrow export
+    #[test]
+    fn test_columnar_all_nulls() {
+        let cols = vec!["x".into()];
+        let rows = vec![vec![json!(null)], vec![json!(null)]];
+        let arrow = crate::arrow_export::to_columnar(&cols, &rows);
+        assert_eq!(arrow[0].null_count, 2);
+        assert_eq!(arrow[0].data_type, "null");
+    }
+
+    // Type infer
+    #[test]
+    fn test_infer_boolean() {
+        assert_eq!(crate::type_infer::infer_type(&json!(true)), crate::type_infer::InferredType::Boolean);
+    }
+
+    // Profiler
+    #[test]
+    fn test_profile_single_column() {
+        let profiles = crate::profiler::profile(&["id".into()], &[vec![json!(1)], vec![json!(2)]]);
+        assert_eq!(profiles[0].unique_count, 2);
+        assert_eq!(profiles[0].data_type, "integer");
+    }
+
+    // Column stats
+    #[test]
+    fn test_stats_single_value() {
+        let stats = crate::column_stats::compute_stats(&["x".into()], &[vec![json!(42)]]);
+        assert_eq!(stats[0].count, 1);
+        assert_eq!(stats[0].null_count, 0);
+    }
+
+    // Cache key
+    #[test]
+    fn test_cache_key_ppl() {
+        let k = crate::cache_key::build_key("ppl", "source = t | head 10", None);
+        assert!(k.starts_with("ppl:"));
+    }
+
+    // Query policy
+    #[test]
+    fn test_policy_truncate_denied() {
+        let p = crate::query_policy::QueryPolicy::with_defaults();
+        assert!(matches!(p.check("TRUNCATE TABLE users"), crate::query_policy::PolicyResult::Denied(_)));
+    }
+
+    // Circuit breaker
+    #[test]
+    fn test_circuit_breaker_unknown_ds() {
+        let cb = crate::circuit_breaker::CircuitBreaker::new(3, 30);
+        assert!(cb.allow("new_ds")); // unknown = closed = allow
+    }
+
+    // Rewrite
+    #[test]
+    fn test_rewrite_preserves_limit() {
+        let rules = crate::rewrite::default_rules();
+        let result = crate::rewrite::apply_rules("SELECT * FROM t LIMIT 5", &rules);
+        assert!(result.contains("LIMIT 5"));
+        assert!(!result.contains("LIMIT 10000"));
+    }
+
+    // Validate
+    #[test]
+    fn test_validate_ppl_format() {
+        assert!(crate::validate::validate_request("source = t", "ppl", None, None).is_empty());
+    }
+
+    // Date fn
+    #[test]
+    fn test_extract_hour_no_time() {
+        let rows = vec![vec![json!("2024-01-15")]];
+        assert_eq!(crate::date_fn::extract_hour(&rows, 0)[0], json!(null));
+    }
+
+    // Top N
+    #[test]
+    fn test_extract_top_none() {
+        assert_eq!(crate::top_n::extract_top("SELECT * FROM t"), None);
+    }
+
+    // Case when
+    #[test]
+    fn test_case_when_first_match_wins() {
+        let case = crate::case_when::CaseWhen::new(json!("default"))
+            .when(|_| true, json!("first"))
+            .when(|_| true, json!("second"));
+        assert_eq!(case.evaluate(&json!("x")), json!("first"));
+    }
+}
