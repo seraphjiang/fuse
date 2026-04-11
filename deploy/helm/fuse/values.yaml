@@ -38,15 +38,26 @@ config:
   bind: "0.0.0.0:9400"
   max_concurrent_queries: 64
   default_timeout: "30s"
+  cors_origins: []
+  max_result_bytes: 104857600  # 100MB
+
+telemetry:
+  enabled: false
+  otlp_endpoint: ""
 
 connectors: []
 # - id: my_cluster
 #   type: opensearch
 #   url: "https://opensearch:9200"
+#   tls:
+#     ca_cert: ""
 
 redis:
   enabled: false
   url: "redis://redis:6379"
+
+tenants:
+  enabled: false
 
 serviceAccount:
   create: true
