@@ -320,6 +320,47 @@ impl FederatedConnector for S3ParquetConnector {
 
         Ok(())
     }
+
+    async fn write_batches(
+        &self,
+        table: &str,
+        batches: Vec<RecordBatch>,
+    ) -> Result<u64, ConnectorError> {
+        if batches.is_empty() { return Ok(0); }
+
+        let schema = batches[0].schema();
+        let mut buf = Vec::new();
+        let mut total_rows = 0u64;
+        {
+            let mut writer = parquet::arrow::ArrowWriter::try_new(&mut buf, schema, None)
+                .map_err(|e| ConnectorError::query(e.to_string()))?;
+            for batch in &batches {
+                total_rows += batch.num_rows() as u64;
+                writer.write(batch).map_err(|e| ConnectorError::query(e.to_string()))?;
+            }
+            writer.close().map_err(|e| ConnectorError::query(e.to_string()))?;
+        }
+
+        let key = format!(
+            "{}{}/{}.parquet",
+            if self.prefix.is_empty() { String::new() } else { format!("{}/", self.prefix.trim_end_matches('/')) },
+            table,
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
+        );
+        debug!(connector = %self.id, key = key.as_str(), bytes = buf.len(), rows = total_rows, "S3 Parquet write");
+
+        self.client
+            .put_object()
+            .bucket(&self.bucket)
+            .key(&key)
+            .body(buf.into())
+            .content_type("application/vnd.apache.parquet")
+            .send()
+            .await
+            .map_err(|e| ConnectorError::query(e.to_string()))?;
+
+        Ok(total_rows)
+    }
 }
 
 // ── Factory ──
@@ -425,5 +466,58 @@ mod tests {
         );
         assert_eq!(connector.id(), "my-s3");
         assert_eq!(connector.connector_type(), "s3");
+    }
+
+    #[test]
+    fn test_write_batches_generates_parquet() {
+        // Verify ArrowWriter can serialize batches to Parquet bytes
+        use arrow::array::{Int64Array, StringArray};
+        use arrow::datatypes::{DataType, Field, Schema};
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int64, false),
+            Field::new("name", DataType::Utf8, true),
+        ]));
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(Int64Array::from(vec![1, 2, 3])) as arrow::array::ArrayRef,
+                Arc::new(StringArray::from(vec!["a", "b", "c"])) as arrow::array::ArrayRef,
+            ],
+        ).unwrap();
+
+        let mut buf = Vec::new();
+        let mut writer = parquet::arrow::ArrowWriter::try_new(&mut buf, schema, None).unwrap();
+        writer.write(&batch).unwrap();
+        writer.close().unwrap();
+
+        assert!(!buf.is_empty());
+        // Parquet magic bytes: PAR1
+        assert_eq!(&buf[..4], b"PAR1");
+    }
+
+    #[test]
+    fn test_write_key_format() {
+        let prefix = "data/output";
+        let table = "results";
+        let ts = 1234567890u128;
+        let key = format!(
+            "{}/{}/{}.parquet",
+            prefix.trim_end_matches('/'), table, ts
+        );
+        assert_eq!(key, "data/output/results/1234567890.parquet");
+    }
+
+    #[test]
+    fn test_write_key_empty_prefix() {
+        let prefix = "";
+        let table = "out";
+        let ts = 42u128;
+        let key = format!(
+            "{}{}/{}.parquet",
+            if prefix.is_empty() { String::new() } else { format!("{}/", prefix.trim_end_matches('/')) },
+            table, ts
+        );
+        assert_eq!(key, "out/42.parquet");
     }
 }
