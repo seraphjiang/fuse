@@ -348,4 +348,45 @@ mod tests {
         let sql = filter_to_sql(&f);
         assert!(sql.contains("\"a\" = 1") && sql.contains("\"b\" IS NOT NULL"));
     }
+
+    #[test]
+    fn test_subquery_to_sql_with_and_filter() {
+        let mut sq = simple_sq("t");
+        sq.filter = Some(FilterExpr::And(
+            Box::new(FilterExpr::Comparison { field: "region".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("us-east-1".into()) }),
+            Box::new(FilterExpr::Comparison { field: "value".into(), op: ComparisonOp::Gt, value: ScalarValue::Float64(0.0) }),
+        ));
+        let sql = subquery_to_sql(&sq, "db", "t");
+        assert!(sql.contains("'us-east-1'") && sql.contains("AND") && sql.contains("> 0"));
+    }
+
+    #[test]
+    fn test_subquery_to_sql_with_in_filter() {
+        let mut sq = simple_sq("t");
+        sq.filter = Some(FilterExpr::In {
+            field: "status".into(),
+            values: vec![ScalarValue::Utf8("ok".into()), ScalarValue::Utf8("warn".into())],
+        });
+        let sql = subquery_to_sql(&sq, "db", "t");
+        assert!(sql.contains("IN") && sql.contains("'ok'") && sql.contains("'warn'"));
+    }
+
+    #[test]
+    fn test_subquery_to_sql_full_query() {
+        let sq = SubQuery {
+            table: "metrics".into(),
+            projections: vec!["time".into(), "avg(value)".into()],
+            filter: Some(FilterExpr::Comparison { field: "region".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("us-west-2".into()) }),
+            aggregations: vec![], group_by: vec!["time".into()],
+            sort: vec![SortExpr { field: "time".into(), descending: false }],
+            limit: Some(1000),
+            having: None, offset: None, passthrough: None,
+        };
+        let sql = subquery_to_sql(&sq, "mydb", "metrics");
+        assert!(sql.contains("time") && sql.contains("avg(value)"));
+        assert!(sql.contains("mydb") && sql.contains("metrics"));
+        assert!(sql.contains("GROUP BY"));
+        assert!(sql.contains("ORDER BY") && sql.contains("ASC"));
+        assert!(sql.ends_with("LIMIT 1000"));
+    }
 }
