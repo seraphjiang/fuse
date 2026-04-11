@@ -335,6 +335,39 @@ pub fn load_plugins_from_dir(dir: &Path) -> Vec<WasmPlugin> {
     plugins
 }
 
+/// Runtime plugin registry — manages loaded WASM plugins.
+pub struct PluginRegistry {
+    plugins: std::sync::Mutex<Vec<WasmPlugin>>,
+}
+
+impl PluginRegistry {
+    pub fn new() -> Self {
+        Self { plugins: std::sync::Mutex::new(Vec::new()) }
+    }
+
+    /// Load plugins from a directory and register them.
+    pub fn load_from_dir(&self, dir: &Path) {
+        let loaded = load_plugins_from_dir(dir);
+        let mut plugins = self.plugins.lock().unwrap();
+        plugins.extend(loaded);
+    }
+
+    /// Register a single plugin.
+    pub fn register(&self, plugin: WasmPlugin) {
+        self.plugins.lock().unwrap().push(plugin);
+    }
+
+    /// List all loaded plugin IDs.
+    pub fn list(&self) -> Vec<String> {
+        self.plugins.lock().unwrap().iter().map(|p| p.id.clone()).collect()
+    }
+
+    /// Get plugin count.
+    pub fn count(&self) -> usize {
+        self.plugins.lock().unwrap().len()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -444,6 +477,23 @@ enabled = false
         std::fs::write(plugin_dir.join("off-plugin.wasm"), b"fake").unwrap();
         let plugins = load_plugins_from_dir(&dir);
         assert!(plugins.is_empty()); // disabled
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_plugin_registry_empty() {
+        let reg = PluginRegistry::new();
+        assert_eq!(reg.count(), 0);
+        assert!(reg.list().is_empty());
+    }
+
+    #[test]
+    fn test_plugin_registry_load_empty_dir() {
+        let dir = std::env::temp_dir().join("fuse_reg_empty");
+        let _ = std::fs::create_dir_all(&dir);
+        let reg = PluginRegistry::new();
+        reg.load_from_dir(&dir);
+        assert_eq!(reg.count(), 0);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
