@@ -25,6 +25,8 @@ pub struct Transaction {
 }
 
 /// Transaction store keyed by transaction ID.
+const MAX_ACTIVE_TRANSACTIONS: usize = 100;
+
 #[derive(Debug, Default)]
 pub struct TransactionStore {
     txns: Mutex<HashMap<String, Transaction>>,
@@ -35,10 +37,10 @@ impl TransactionStore {
         Self::default()
     }
 
-    /// Begin a new transaction. Returns false if ID already exists.
+    /// Begin a new transaction. Returns false if ID already exists or limit reached.
     pub fn begin(&self, txn_id: &str) -> bool {
         let mut txns = self.txns.lock().unwrap();
-        if txns.contains_key(txn_id) {
+        if txns.contains_key(txn_id) || txns.len() >= MAX_ACTIVE_TRANSACTIONS {
             return false;
         }
         txns.insert(txn_id.to_string(), Transaction::default());
