@@ -2,44 +2,76 @@
 
 **Sprint:** 14
 **PM:** pm
-**Status:** Draft — awaiting user approval
+**Status:** In Progress
 
-## P0: Production Hardening
+## P0: Production Hardening — ✅ COMPLETE
 
-| ID | Item | Owner | Status | Notes |
-|----|------|-------|--------|-------|
-| 1400 | CORS configuration (engine.cors in fuse.toml) | — | todo | Security audit finding — needed for separate frontend deployments |
-| 1401 | Graceful connector reconnection | — | todo | Auto-retry on transient connection failures |
-| 1402 | Health check aggregation across federation | — | todo | /api/fuse/health includes remote instance health |
-| 1403 | Query result size limits | — | todo | Configurable max_result_bytes to prevent OOM |
+| ID | Item | Owner | Status | Commit |
+|----|------|-------|--------|--------|
+| 1400 | CORS configuration | pm | ✅ done | 06e412e |
+| 1401 | Graceful connector retry | pm | ✅ done | 2fcac2f |
+| 1402 | Federation health aggregation | pm | ✅ done | 02a417c |
+| 1403 | Query result size limits | pm+sde | ✅ done | 5e70ea5, 2cb5ef1 |
 
-## P1: Write Path Connectors
+## P1: Write Path Connectors — ✅ COMPLETE
 
-| ID | Item | Owner | Status | Notes |
-|----|------|-------|--------|-------|
-| 1410 | Postgres write_batches implementation | — | todo | INSERT via sqlx, batch mode |
-| 1411 | DuckDB write_batches implementation | — | todo | INSERT via duckdb crate |
-| 1412 | S3 write_batches (Parquet output) | — | todo | Write query results as Parquet to S3 |
+| ID | Item | Owner | Status | Commit |
+|----|------|-------|--------|--------|
+| 1410 | Postgres write_batches | sde | ✅ done | 4312f7c |
+| 1411 | DuckDB write_batches | sde | ✅ done | e22ea5f |
+| 1412 | S3 write_batches (Parquet) | sde | ✅ done | 907b48f |
 
-## P1: Ecosystem
+## P1: Observability — ✅ COMPLETE
 
-| ID | Item | Owner | Status | Notes |
-|----|------|-------|--------|-------|
-| 1420 | Go SDK client | — | todo | Same API surface as Python/TypeScript |
-| 1421 | Jupyter magic command (%fuse) | — | todo | Native notebook integration |
-| 1422 | OpenSearch Dashboards plugin update | — | todo | Sync OSD plugin with v1.1 API |
+| ID | Item | Owner | Status | Commit |
+|----|------|-------|--------|--------|
+| 1430 | Distributed tracing (W3C + OTLP) | pm+ai-lead | ✅ done | 0ec96b6, ffea27b |
+| 1431 | Audit log export (NDJSON) | pm | ✅ done | 9c85729 |
 
-## P1: Observability
+## P1: Performance — ✅ COMPLETE
 
-| ID | Item | Owner | Status | Notes |
-|----|------|-------|--------|-------|
-| 1430 | Distributed tracing (OpenTelemetry) | — | todo | Trace queries across federated instances |
-| 1431 | Query audit log export (S3/CloudWatch) | — | todo | Ship audit logs to external storage |
+| ID | Item | Owner | Status | Commit |
+|----|------|-------|--------|--------|
+| 1440 | Arrow Flight predicate pushdown | ai-lead | ✅ done | be34c6a |
+| 1441 | Adaptive parallelism | pm | ✅ done | fc70675 |
+| 1442 | Plan cache normalization + metrics | ai-lead | ✅ done | ff4db7b |
+| 1450 | Per-datasource rate limiting | ai-lead | ✅ done | 401fd99 |
 
-## P2: Performance
+## P1: Security Hardening — ✅ COMPLETE
 
-| ID | Item | Owner | Status | Notes |
-|----|------|-------|--------|-------|
-| 1440 | Predicate pushdown for Arrow Flight | — | todo | Push filters to Flight SQL endpoints |
-| 1441 | Adaptive parallelism | — | todo | Auto-tune fan-out concurrency per datasource |
-| 1442 | Query plan caching across sessions | — | todo | Reuse plans for identical query patterns |
+| ID | Item | Owner | Status | Commit |
+|----|------|-------|--------|--------|
+| — | Identifier quoting (6 connectors) | security | ✅ done | 0591272 |
+| — | Telemetry security review | security | ✅ done | (review only) |
+
+## P1: Ecosystem — IN PROGRESS
+
+| ID | Item | Owner | Status | Commit |
+|----|------|-------|--------|--------|
+| 1422 | OSD plugin update | ai-lead | 🔄 in-progress | — |
+| 1420 | Go SDK client | — | todo | — |
+| 1421 | Jupyter magic command | — | todo | — |
+
+## Docs & Frontend
+
+| Item | Owner | Status | Commit |
+|------|-------|--------|--------|
+| Docs sweep (API ref, README) | fee | ✅ done | d6cc356 |
+| What's New in v1.0 guide | fee | ✅ done | 7f7a651 |
+| OpenAPI spec (24 endpoints) | fee | ✅ done | 3de9703 |
+| CHANGELOG Sprint 14 | fee | ✅ done | 4918645 |
+| Getting-started tutorial | fee | ✅ done | 4918645 |
+| History search/filter | fee | ✅ done | 88bd834 |
+| Connection test button | fee | ✅ done | c035407 |
+| Query cost badge | fee | ✅ done | a361368 |
+| Schema explorer sidebar | fee | 🔄 in-progress | — |
+
+## Infrastructure
+
+| Item | Owner | Status | Commit |
+|------|-------|--------|--------|
+| Bench script | pm | ✅ done | f0ba315 |
+| Alert CRUD routes wired | pm | ✅ done | 94880fd |
+| Federation API endpoint | pm | ✅ done | f7f40e9 |
+| test_trace_ids_are_unique fix | pm+fee | ✅ done | ce09ddb |
+| Postgres compile fixes | pm | ✅ done | ce09ddb |
