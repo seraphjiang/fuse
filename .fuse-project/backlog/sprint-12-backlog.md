@@ -16,8 +16,8 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 900 | EXPLAIN ANALYZE with execution stats | ai-lead | in-progress | Per-node timing, rows scanned, bytes transferred |
-| 903 | Prepared statements with parameter binding | ai-lead | todo | PREPARE/EXECUTE, prevent SQL injection |
+| 900 | EXPLAIN ANALYZE with execution stats | ai-lead | done | execution_profile, per-node timing/rows/bytes, 5 new tests. Commit: d871977 |
+| 903 | Prepared statements with parameter binding | ai-lead | in-progress | PREPARE/EXECUTE, prevent SQL injection |
 
 ## P1: Security Hardening (security)
 
@@ -32,6 +32,7 @@
 |----|------|-------|--------|-------|
 | 902 | Query plan visualization in playground | fee | done | Visual DAG of execution plan nodes |
 | 901 | Flame graph visualization for EXPLAIN ANALYZE | fee | done | Interactive flame graph in playground |
+| 912 | Alert history filters | fee | done | Status + search filters for alert timeline |
 
 ## P1: GA Readiness (pm)
 

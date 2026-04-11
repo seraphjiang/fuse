@@ -89,6 +89,16 @@ body.light .nav-tab.active{color:#0969da;border-bottom-color:#0969da}
   <div id="active-list"><div class="empty"><span class="spinner"></span> Loading…</div></div>
 
   <h3 style="font-size:14px;margin:20px 0 12px;color:#8b949e">Alert History</h3>
+  <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+    <label style="font-size:12px;color:#8b949e">Filter:</label>
+    <select id="filter-status" onchange="renderHistory()" style="font-size:12px;padding:4px 8px;background:#21262d;color:#e1e4e8;border:1px solid #30363d;border-radius:4px">
+      <option value="all">All</option>
+      <option value="firing">🔴 Firing</option>
+      <option value="ok">🟢 Resolved</option>
+      <option value="ack">🔵 Acknowledged</option>
+    </select>
+    <input id="filter-search" type="text" placeholder="Search alert name…" oninput="renderHistory()" style="font-size:12px;padding:4px 8px;background:#21262d;color:#e1e4e8;border:1px solid #30363d;border-radius:4px;flex:1;max-width:240px">
+  </div>
   <div id="history-list" class="timeline"></div>
 </main>
 
@@ -166,9 +176,14 @@ function ackAlert(name) {
 }
 
 function renderHistory() {
-  const hist = getHistory().slice(0, 50);
+  const statusFilter = $('filter-status').value;
+  const searchFilter = ($('filter-search').value || '').toLowerCase();
+  let hist = getHistory().slice(0, 200);
+  if (statusFilter !== 'all') hist = hist.filter(h => h.type === statusFilter);
+  if (searchFilter) hist = hist.filter(h => h.name.toLowerCase().includes(searchFilter));
+  hist = hist.slice(0, 50);
   $('stat-ack').textContent = getAcked().length;
-  if (!hist.length) { $('history-list').innerHTML = '<div class="empty">No alert history yet.</div>'; return; }
+  if (!hist.length) { $('history-list').innerHTML = '<div class="empty">No matching alert history.</div>'; return; }
   $('history-list').innerHTML = hist.map(h => `
     <div class="event ${h.type}">
       <div style="font-size:13px;color:#e1e4e8">${h.type === 'firing' ? '🔴' : h.type === 'ack' ? '🔵' : '🟢'} <strong>${esc(h.name)}</strong>
