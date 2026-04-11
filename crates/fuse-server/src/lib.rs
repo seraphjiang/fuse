@@ -44,6 +44,7 @@ pub mod redis_cache;
 pub mod refresh_scheduler;
 pub mod request_id;
 pub mod retry;
+pub mod rewrite;
 pub mod shutdown;
 pub mod slow_query;
 pub mod wasm_plugin;
