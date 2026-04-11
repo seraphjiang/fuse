@@ -63,7 +63,7 @@ pub mod sse_stream;
 pub mod streaming;
 pub mod telemetry;
 pub mod tenant;
-pub mod transaction;
+pub mod tags;pub mod transaction;
 pub mod type_infer;
 pub mod timeout_tracker;
 pub mod validate;
