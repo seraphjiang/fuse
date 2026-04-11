@@ -340,6 +340,7 @@ button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #58a
     </select>
     <select id="datasource" onchange="onDatasourceChange(this.value)"><option value="">Loading…</option></select>
     <button class="primary" id="run-btn" onclick="runQuery()">▶ Run</button>
+    <span id="cost-badge" style="display:none;font-size:11px;padding:3px 8px;border-radius:4px;background:#1f3a5f;color:#58a6ff;white-space:nowrap;cursor:help" title="Estimated query cost from EXPLAIN"></span>
     <label class="analyze-label"><input type="checkbox" id="analyze-cb"> Analyze</label>
     <label class="analyze-label"><input type="checkbox" id="anomaly-cb" onchange="if(currentView==='chart')renderChart()"> 🔴 Anomalies</label>
     <button class="lucky" id="lucky-btn" onclick="feelingLucky()">🎲 Feeling Lucky</button>
@@ -765,6 +766,7 @@ function clearOutput() {
   $('plan-view-toggle').style.display = 'none';
   $('flame-canvas').style.display = 'none';
   $('dag-canvas').style.display = 'none';
+  $('cost-badge').style.display = 'none';
   lastPlanTree = null;
 }
 
@@ -1038,6 +1040,17 @@ async function explainQuery() {
       lastPlanTree = res.plan_tree;
       $('plan-view-toggle').style.display = 'flex';
       renderExplainTree(res.plan_tree);
+      // Show cost badge
+      const rows = res.plan_tree.estimated_rows;
+      const cost = res.plan_tree.estimated_cost;
+      if (rows != null || cost != null) {
+        let label = '';
+        if (rows != null) label += '~' + (rows >= 1000 ? (rows/1000).toFixed(1) + 'k' : rows) + ' rows';
+        if (cost != null) label += (label ? ' · ' : '') + 'cost ' + cost.toFixed(1);
+        $('cost-badge').textContent = label;
+        $('cost-badge').title = `Estimated: ${rows != null ? rows + ' rows' : ''}${cost != null ? ', cost ' + cost.toFixed(1) : ''}\nRun EXPLAIN for details`;
+        $('cost-badge').style.display = 'inline';
+      }
     } else {
       $('plan-box').textContent = res.plan;
       $('plan-box').style.display = 'block';
