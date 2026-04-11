@@ -10,7 +10,7 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 1000 | Fuse-to-Fuse connector | ai-lead | done | REST forwarding, schema discovery, 11 tests. Commit: 3abef2e |
-| 1001 | Cross-cluster query routing | ai-lead | in-progress | Wire connector + registry into planner |
+| 1001 | Cross-cluster query routing | ai-lead | done | find_owner(), resolve_route(), RouteTarget. Commit: 5eb9885 |
 | 1002 | Federation topology page | fee | done | Canvas diagram, stats, fallback. Commit: 5fc82b2 |
 
 ## P0: Write Path
