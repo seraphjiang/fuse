@@ -177,3 +177,48 @@ mod tests {
         assert_eq!(crate::sql::quote_ident("my column"), "\"my column\"");
     }
 }
+
+#[cfg(test)]
+mod extra_tests {
+    use crate::plan_builder::PlanBuilder;
+    use crate::predicate::Predicate;
+    use crate::plan_visitor;
+    use crate::plan_printer;
+
+    #[test]
+    fn test_deep_plan_tree() {
+        let plan = PlanBuilder::scan("a", "t1")
+            .filter(&Predicate::eq("x", "1"))
+            .filter(&Predicate::gt("y", "0"))
+            .project(vec!["x", "y"])
+            .sort("x", true)
+            .limit(25)
+            .build();
+        assert_eq!(plan_visitor::node_count(&plan.root), 6);
+    }
+
+    #[test]
+    fn test_plan_print_sort_desc() {
+        let plan = PlanBuilder::scan("ds", "t").sort("ts", true).build();
+        let text = plan_printer::print_plan(&plan.root, 0);
+        assert!(text.contains("DESC"));
+    }
+
+    #[test]
+    fn test_plan_no_filter() {
+        let plan = PlanBuilder::scan("ds", "t").limit(10).build();
+        assert!(!plan_visitor::has_filter(&plan.root));
+    }
+
+    #[test]
+    fn test_predicate_in_list_sql() {
+        let p = Predicate::in_list("id", vec!["1", "2", "3"]);
+        assert!(p.to_sql().contains("IN ('1', '2', '3')"));
+    }
+
+    #[test]
+    fn test_predicate_not_sql() {
+        let p = Predicate::not(Predicate::eq("deleted", "true"));
+        assert!(p.to_sql().starts_with("NOT"));
+    }
+}
