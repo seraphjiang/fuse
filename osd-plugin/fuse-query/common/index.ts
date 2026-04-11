@@ -5,6 +5,8 @@ export interface QueryRequest {
   format: 'sql' | 'ppl';
   analyze?: boolean;
   timeout_ms?: number;
+  page_size?: number;
+  cursor?: string;
 }
 
 export interface DatasourceStat {
@@ -30,9 +32,11 @@ export interface ExecutionProfile {
 export interface QueryMetadata {
   total_rows: number;
   format: string;
+  trace_id?: string;
   datasources_queried?: string[];
   datasource_stats?: Record<string, DatasourceStat>;
   execution_profile?: ExecutionProfile;
+  next_cursor?: string;
 }
 
 export interface QueryResponse {
@@ -109,6 +113,40 @@ export interface TraceResponse {
 export const PLUGIN_ID = 'fuseQuery';
 export const PLUGIN_NAME = 'Fuse Query';
 export const API_BASE = '/api/fuse_query';
+
+// === Federation types (#1001) ===
+
+export interface FederatedInstance {
+  id: string;
+  url: string;
+  name?: string;
+  datasources: string[];
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  latency_ms?: number;
+}
+
+export interface FederationTopology {
+  instances: FederatedInstance[];
+}
+
+// === Stats types ===
+
+export interface QueryStats {
+  total_queries: number;
+  avg_latency_ms: number;
+  error_rate: number;
+  queries_per_minute: number;
+}
+
+// === Saved queries types ===
+
+export interface SavedQuery {
+  name: string;
+  query: string;
+  format: 'sql' | 'ppl';
+  description?: string;
+  saved_at?: number;
+}
 
 
 // === Dashboard types (#521) ===

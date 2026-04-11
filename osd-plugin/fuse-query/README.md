@@ -1,6 +1,6 @@
 # Fuse Query — OpenSearch Dashboards Plugin
 
-Cross-datasource federated query engine plugin for OpenSearch Dashboards. Write SQL or PPL queries that span multiple datasources — OpenSearch, S3, DynamoDB, PostgreSQL, Redis, CloudWatch, Prometheus, and more — from a single interface.
+Cross-datasource federated query engine plugin for OpenSearch Dashboards. Write SQL or PPL queries that span 22 datasources — OpenSearch, Elasticsearch, S3, DynamoDB, PostgreSQL, MySQL, Redis, CloudWatch, Prometheus, MongoDB, InfluxDB, ClickHouse, Kafka, Athena, Timestream, Snowflake, BigQuery, DuckDB, Arrow Flight, and more — from a single interface.
 
 ## Features
 
@@ -61,15 +61,20 @@ fuse.server.url: "http://localhost:3000"
 
 The plugin exposes `FuseApiService` with methods:
 
-- `query(request)` — Execute SQL/PPL query
-- `explain(request)` — Get execution plan
+- `query(request)` — Execute SQL/PPL query (with cursor pagination)
+- `explain(request)` — Get execution plan (with EXPLAIN ANALYZE)
 - `validate(request)` — Validate query syntax
-- `datasources()` — List connected datasources
+- `datasources()` — List connected datasources (22 connector types)
 - `getSchemas(id)` — Get datasource schemas
 - `getFields(id, table)` — Get table fields
 - `health()` — Connector health check
 - `history()` — Query history
 - `trace(traceId)` — Cross-source trace reconstruction
+- `federation()` — Federation topology (Fuse-to-Fuse instances)
+- `stats()` — Aggregated query statistics
+- `savedQueries()` — List saved queries
+- `saveQuery(query)` — Save a named query
+- `deleteSavedQuery(name)` — Delete a saved query
 
 ## License
 

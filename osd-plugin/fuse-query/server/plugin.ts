@@ -30,7 +30,7 @@ export class FuseQueryServerPlugin implements Plugin {
   public stop() {}
 
   private registerProxyRoutes(router: IRouter) {
-    const proxy = async (path: string, method: 'GET' | 'POST', body?: unknown) => {
+    const proxy = async (path: string, method: 'GET' | 'POST' | 'DELETE', body?: unknown) => {
       const url = `${this.fuseEngineUrl}/api/fuse${path}`;
       const opts: RequestInit = {
         method,
@@ -79,6 +79,38 @@ export class FuseQueryServerPlugin implements Plugin {
 
     router.get({ path: `${API_BASE}/history`, validate: false }, async (_ctx, _req, res) => {
       try { return res.ok({ body: await proxy('/history', 'GET') }); }
+      catch (e: any) { return res.customError({ statusCode: 502, body: { message: e.message } }); }
+    });
+
+    // v1.1 API routes
+
+    router.get({ path: `${API_BASE}/trace/{traceId}`, validate: false }, async (_ctx, req, res) => {
+      try { return res.ok({ body: await proxy(`/trace/${(req.params as any).traceId}`, 'GET') }); }
+      catch (e: any) { return res.customError({ statusCode: 502, body: { message: e.message } }); }
+    });
+
+    router.get({ path: `${API_BASE}/federation`, validate: false }, async (_ctx, _req, res) => {
+      try { return res.ok({ body: await proxy('/federation', 'GET') }); }
+      catch (e: any) { return res.customError({ statusCode: 502, body: { message: e.message } }); }
+    });
+
+    router.get({ path: `${API_BASE}/stats`, validate: false }, async (_ctx, _req, res) => {
+      try { return res.ok({ body: await proxy('/stats', 'GET') }); }
+      catch (e: any) { return res.customError({ statusCode: 502, body: { message: e.message } }); }
+    });
+
+    router.get({ path: `${API_BASE}/saved-queries`, validate: false }, async (_ctx, _req, res) => {
+      try { return res.ok({ body: await proxy('/saved-queries', 'GET') }); }
+      catch (e: any) { return res.customError({ statusCode: 502, body: { message: e.message } }); }
+    });
+
+    router.post({ path: `${API_BASE}/saved-queries`, validate: false }, async (_ctx, req, res) => {
+      try { return res.ok({ body: await proxy('/saved-queries', 'POST', req.body) }); }
+      catch (e: any) { return res.customError({ statusCode: 502, body: { message: e.message } }); }
+    });
+
+    router.delete({ path: `${API_BASE}/saved-queries/{name}`, validate: false }, async (_ctx, req, res) => {
+      try { return res.ok({ body: await proxy(`/saved-queries/${(req.params as any).name}`, 'DELETE') }); }
       catch (e: any) { return res.customError({ statusCode: 502, body: { message: e.message } }); }
     });
   }

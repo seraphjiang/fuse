@@ -12,6 +12,9 @@ import {
   HistoryEntry,
   TraceResponse,
   SavedDashboard,
+  FederationTopology,
+  QueryStats,
+  SavedQuery,
 } from '../../common';
 
 export class FuseApiService {
@@ -54,6 +57,29 @@ export class FuseApiService {
 
   async trace(traceId: string): Promise<TraceResponse> {
     return this.http.get(`${API_BASE}/trace/${encodeURIComponent(traceId)}`);
+  }
+
+  // v1.1 API — Federation (#1001)
+  async federation(): Promise<FederationTopology> {
+    return this.http.get(`${API_BASE}/federation`);
+  }
+
+  // v1.1 API — Stats
+  async stats(): Promise<QueryStats> {
+    return this.http.get(`${API_BASE}/stats`);
+  }
+
+  // v1.1 API — Saved queries
+  async savedQueries(): Promise<SavedQuery[]> {
+    return this.http.get(`${API_BASE}/saved-queries`);
+  }
+
+  async saveQuery(query: SavedQuery): Promise<void> {
+    await this.http.post(`${API_BASE}/saved-queries`, { body: JSON.stringify(query) });
+  }
+
+  async deleteSavedQuery(name: string): Promise<void> {
+    await this.http.delete(`${API_BASE}/saved-queries/${encodeURIComponent(name)}`);
   }
 
   // Dashboard persistence (#521) — uses localStorage as OSD doesn't have a dashboard backend
