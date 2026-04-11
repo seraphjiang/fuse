@@ -11,6 +11,15 @@ pub struct HealthResponse {
     pub status: String,
     pub version: String,
     pub connectors: HashMap<String, ConnectorHealthInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub federation: Option<FederationHealthInfo>,
+}
+
+#[derive(Serialize)]
+pub struct FederationHealthInfo {
+    pub instance_count: usize,
+    pub healthy_count: usize,
+    pub instances: HashMap<String, ConnectorHealthInfo>,
 }
 
 #[derive(Serialize)]
@@ -21,6 +30,13 @@ pub struct ConnectorHealthInfo {
 }
 
 pub async fn check_health(registry: &ConnectorRegistry) -> HealthResponse {
+    check_health_with_federation(registry, None).await
+}
+
+pub async fn check_health_with_federation(
+    registry: &ConnectorRegistry,
+    federation: Option<&crate::federation::FederationRegistry>,
+) -> HealthResponse {
     let checks = registry.health_check_all().await;
 
     let all_healthy = checks.values().all(|h| h.status == HealthStatus::Healthy);
@@ -46,10 +62,27 @@ pub async fn check_health(registry: &ConnectorRegistry) -> HealthResponse {
         })
         .collect();
 
+    let federation_info = federation.map(|fed| {
+        let topo = fed.topology();
+        let instances = topo.instances.iter().map(|inst| {
+            (inst.id.clone(), ConnectorHealthInfo {
+                status: format!("{:?}", inst.status).to_lowercase(),
+                latency_ms: inst.latency_ms,
+                message: inst.name.clone(),
+            })
+        }).collect();
+        FederationHealthInfo {
+            instance_count: topo.instance_count,
+            healthy_count: topo.healthy_count,
+            instances,
+        }
+    });
+
     HealthResponse {
         status: overall.to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         connectors,
+        federation: federation_info,
     }
 }
 
