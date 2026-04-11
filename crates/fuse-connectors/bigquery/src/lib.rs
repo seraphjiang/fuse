@@ -33,6 +33,7 @@ use fuse_core::config::ConnectorConfig;
 use fuse_core::connector::*;
 use fuse_core::error::ConnectorError;
 use fuse_core::registry::ConnectorFactory;
+use fuse_core::sql::quote_ident_backtick as qi;
 
 const BQ_API_BASE: &str = "https://bigquery.googleapis.com/bigquery/v2";
 
@@ -158,15 +159,17 @@ fn parse_bq_response(json: &serde_json::Value) -> Result<Vec<RecordBatch>, Conne
 }
 
 fn build_bq_sql(query: &SubQuery, dataset: &str) -> String {
-    let cols = if query.projections.is_empty() { "*".into() } else { query.projections.join(", ") };
+    let cols = if query.projections.is_empty() { "*".into() } else {
+        query.projections.iter().map(|p| if p == "*" { "*".to_string() } else { qi(p) }).collect::<Vec<_>>().join(", ")
+    };
     let table_ref = format!("`{}.{}`", dataset, query.table);
     let mut sql = format!("SELECT {} FROM {}", cols, table_ref);
 
     if let Some(ref f) = query.filter { sql.push_str(&format!(" WHERE {}", filter_to_sql(f))); }
-    if !query.group_by.is_empty() { sql.push_str(&format!(" GROUP BY {}", query.group_by.join(", "))); }
+    if !query.group_by.is_empty() { sql.push_str(&format!(" GROUP BY {}", query.group_by.iter().map(|g| qi(g)).collect::<Vec<_>>().join(", "))); }
     if let Some(ref h) = query.having { sql.push_str(&format!(" HAVING {}", filter_to_sql(h))); }
     if !query.sort.is_empty() {
-        let s: Vec<String> = query.sort.iter().map(|s| if s.descending { format!("{} DESC", s.field) } else { s.field.clone() }).collect();
+        let s: Vec<String> = query.sort.iter().map(|s| if s.descending { format!("{} DESC", qi(&s.field)) } else { qi(&s.field) }).collect();
         sql.push_str(&format!(" ORDER BY {}", s.join(", ")));
     }
     if let Some(l) = query.limit { sql.push_str(&format!(" LIMIT {}", l)); }
@@ -186,14 +189,14 @@ fn filter_to_sql(f: &FilterExpr) -> String {
                 ComparisonOp::Gt => ">", ComparisonOp::Gte => ">=",
                 ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => "LIKE",
             };
-            format!("{} {} {}", field, op_str, scalar_to_sql(value))
+            format!("{} {} {}", qi(field), op_str, scalar_to_sql(value))
         }
         FilterExpr::In { field, values } => {
             let v: Vec<String> = values.iter().map(scalar_to_sql).collect();
-            format!("{} IN ({})", field, v.join(", "))
+            format!("{} IN ({})", qi(field), v.join(", "))
         }
-        FilterExpr::IsNull(f) => format!("{} IS NULL", f),
-        FilterExpr::IsNotNull(f) => format!("{} IS NOT NULL", f),
+        FilterExpr::IsNull(f) => format!("{} IS NULL", qi(f)),
+        FilterExpr::IsNotNull(f) => format!("{} IS NOT NULL", qi(f)),
     }
 }
 
@@ -318,7 +321,7 @@ mod tests {
         q.limit = Some(100);
         assert_eq!(
             build_bq_sql(&q, "myds"),
-            "SELECT host, count(*) FROM `myds.logs` WHERE level = 'ERROR' GROUP BY host ORDER BY host DESC LIMIT 100"
+            "SELECT `host`, `count(*)` FROM `myds.logs` WHERE `level` = 'ERROR' GROUP BY `host` ORDER BY `host` DESC LIMIT 100"
         );
     }
 
@@ -376,6 +379,6 @@ mod tests {
             field: "region".into(),
             values: vec![ScalarValue::Utf8("US".into()), ScalarValue::Utf8("EU".into())],
         };
-        assert_eq!(filter_to_sql(&f), "region IN ('US', 'EU')");
+        assert_eq!(filter_to_sql(&f), "`region` IN ('US', 'EU')");
     }
 }

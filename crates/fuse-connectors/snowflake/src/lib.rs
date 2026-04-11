@@ -33,6 +33,7 @@ use fuse_core::config::ConnectorConfig;
 use fuse_core::connector::*;
 use fuse_core::error::ConnectorError;
 use fuse_core::registry::ConnectorFactory;
+use fuse_core::sql::{quote_ident, quote_table};
 
 #[derive(Debug)]
 pub struct SnowflakeConnector {
@@ -167,14 +168,16 @@ fn json_to_batches(
 }
 
 fn build_snowflake_sql(query: &SubQuery) -> String {
-    let cols = if query.projections.is_empty() { "*".into() } else { query.projections.join(", ") };
-    let mut sql = format!("SELECT {} FROM {}", cols, query.table);
+    let cols = if query.projections.is_empty() { "*".into() } else {
+        query.projections.iter().map(|p| if p == "*" { "*".to_string() } else { quote_ident(p) }).collect::<Vec<_>>().join(", ")
+    };
+    let mut sql = format!("SELECT {} FROM {}", cols, quote_table(&query.table));
 
     if let Some(ref f) = query.filter { sql.push_str(&format!(" WHERE {}", filter_to_sql(f))); }
-    if !query.group_by.is_empty() { sql.push_str(&format!(" GROUP BY {}", query.group_by.join(", "))); }
+    if !query.group_by.is_empty() { sql.push_str(&format!(" GROUP BY {}", query.group_by.iter().map(|g| quote_ident(g)).collect::<Vec<_>>().join(", "))); }
     if let Some(ref h) = query.having { sql.push_str(&format!(" HAVING {}", filter_to_sql(h))); }
     if !query.sort.is_empty() {
-        let s: Vec<String> = query.sort.iter().map(|s| if s.descending { format!("{} DESC", s.field) } else { s.field.clone() }).collect();
+        let s: Vec<String> = query.sort.iter().map(|s| if s.descending { format!("{} DESC", quote_ident(&s.field)) } else { quote_ident(&s.field) }).collect();
         sql.push_str(&format!(" ORDER BY {}", s.join(", ")));
     }
     if let Some(l) = query.limit { sql.push_str(&format!(" LIMIT {}", l)); }
@@ -194,14 +197,14 @@ fn filter_to_sql(f: &FilterExpr) -> String {
                 ComparisonOp::Gt => ">", ComparisonOp::Gte => ">=",
                 ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => "LIKE",
             };
-            format!("{} {} {}", field, op_str, scalar_to_sql(value))
+            format!("{} {} {}", quote_ident(field), op_str, scalar_to_sql(value))
         }
         FilterExpr::In { field, values } => {
             let v: Vec<String> = values.iter().map(scalar_to_sql).collect();
-            format!("{} IN ({})", field, v.join(", "))
+            format!("{} IN ({})", quote_ident(field), v.join(", "))
         }
-        FilterExpr::IsNull(f) => format!("{} IS NULL", f),
-        FilterExpr::IsNotNull(f) => format!("{} IS NOT NULL", f),
+        FilterExpr::IsNull(f) => format!("{} IS NULL", quote_ident(f)),
+        FilterExpr::IsNotNull(f) => format!("{} IS NOT NULL", quote_ident(f)),
     }
 }
 
@@ -239,7 +242,7 @@ impl FederatedConnector for SnowflakeConnector {
     }
 
     async fn get_schema(&self, table: &str) -> Result<Schema, ConnectorError> {
-        let json = self.submit_sql(&format!("DESCRIBE TABLE {}", table)).await?;
+        let json = self.submit_sql(&format!("DESCRIBE TABLE {}", quote_ident(table))).await?;
         let empty = vec![]; let rows = json["data"].as_array().unwrap_or(&empty);
         let fields: Vec<Field> = rows.iter().filter_map(|r| {
             r.as_array().and_then(|a| a.first()).and_then(|v| v.as_str()).map(|name| {
@@ -306,7 +309,7 @@ mod tests {
 
     #[test]
     fn test_build_sql_simple() {
-        assert_eq!(build_snowflake_sql(&sq("events")), "SELECT * FROM events");
+        assert_eq!(build_snowflake_sql(&sq("events")), "SELECT * FROM \"events\"");
     }
 
     #[test]
@@ -319,7 +322,7 @@ mod tests {
         q.limit = Some(50);
         assert_eq!(
             build_snowflake_sql(&q),
-            "SELECT host, count(*) FROM logs WHERE status >= 500 GROUP BY host ORDER BY host LIMIT 50"
+            "SELECT \"host\", \"count(*)\" FROM \"logs\" WHERE \"status\" >= 500 GROUP BY \"host\" ORDER BY \"host\" LIMIT 50"
         );
     }
 
@@ -364,7 +367,7 @@ mod tests {
     #[test]
     fn test_filter_not() {
         let f = FilterExpr::Not(Box::new(FilterExpr::IsNull("x".into())));
-        assert_eq!(filter_to_sql(&f), "NOT (x IS NULL)");
+        assert_eq!(filter_to_sql(&f), "NOT (\"x\" IS NULL)");
     }
 
     #[test]

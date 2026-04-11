@@ -19,24 +19,26 @@ use fuse_core::config::ConnectorConfig;
 use fuse_core::connector::*;
 use fuse_core::error::ConnectorError;
 use fuse_core::registry::ConnectorFactory;
+use fuse_core::sql::quote_ident;
 
 /// Convert SubQuery to CQL SELECT statement.
 pub fn subquery_to_cql(sq: &SubQuery, keyspace: &str) -> String {
-    let cols = if sq.projections.is_empty() { "*".into() } else { sq.projections.join(", ") };
-    let mut cql = format!("SELECT {} FROM {}.{}", cols, keyspace, sq.table);
+    let cols = if sq.projections.is_empty() { "*".into() } else {
+        sq.projections.iter().map(|p| if p == "*" { "*".to_string() } else { quote_ident(p) }).collect::<Vec<_>>().join(", ")
+    };
+    let mut cql = format!("SELECT {} FROM {}.{}", cols, quote_ident(keyspace), quote_ident(&sq.table));
     if let Some(ref f) = sq.filter {
         cql.push_str(&format!(" WHERE {}", filter_to_cql(f)));
     }
     if !sq.sort.is_empty() {
         let clauses: Vec<String> = sq.sort.iter()
-            .map(|s| format!("{} {}", s.field, if s.descending { "DESC" } else { "ASC" }))
+            .map(|s| format!("{} {}", quote_ident(&s.field), if s.descending { "DESC" } else { "ASC" }))
             .collect();
         cql.push_str(&format!(" ORDER BY {}", clauses.join(", ")));
     }
     if let Some(limit) = sq.limit {
         cql.push_str(&format!(" LIMIT {}", limit));
     }
-    // CQL allows ALLOW FILTERING for non-partition-key queries
     if sq.filter.is_some() {
         cql.push_str(" ALLOW FILTERING");
     }
@@ -52,14 +54,14 @@ fn filter_to_cql(f: &FilterExpr) -> String {
                 ComparisonOp::Lt => "<", ComparisonOp::Lte => "<=",
                 ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => "=",
             };
-            format!("{} {} {}", field, op_str, scalar_to_cql(value))
+            format!("{} {} {}", quote_ident(field), op_str, scalar_to_cql(value))
         }
         FilterExpr::And(l, r) => format!("{} AND {}", filter_to_cql(l), filter_to_cql(r)),
         FilterExpr::Or(l, r) => format!("{} AND {}", filter_to_cql(l), filter_to_cql(r)), // CQL doesn't support OR
-        FilterExpr::Not(_) => String::new(), // CQL doesn't support NOT
+        FilterExpr::Not(_) => String::new(),
         FilterExpr::In { field, values } => {
             let vals: Vec<String> = values.iter().map(scalar_to_cql).collect();
-            format!("{} IN ({})", field, vals.join(", "))
+            format!("{} IN ({})", quote_ident(field), vals.join(", "))
         }
         FilterExpr::IsNull(_) | FilterExpr::IsNotNull(_) => String::new(),
     }
@@ -179,7 +181,7 @@ impl FederatedConnector for CassandraConnector {
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
         let cql = format!(
             "SELECT table_name FROM system_schema.tables WHERE keyspace_name = '{}'",
-            self.keyspace
+            self.keyspace.replace('\'', "''")
         );
         let result = self.session.query_unpaged(cql.as_str(), &[]).await
             .map_err(|e| ConnectorError::schema(e.to_string()))?;
@@ -196,7 +198,7 @@ impl FederatedConnector for CassandraConnector {
     async fn get_schema(&self, table: &str) -> Result<Schema, ConnectorError> {
         let cql = format!(
             "SELECT column_name, type FROM system_schema.columns WHERE keyspace_name = '{}' AND table_name = '{}'",
-            self.keyspace, table
+            self.keyspace.replace('\'', "''"), table.replace('\'', "''")
         );
         let result = self.session.query_unpaged(cql.as_str(), &[]).await
             .map_err(|e| ConnectorError::schema(e.to_string()))?;
@@ -248,14 +250,14 @@ mod tests {
 
     #[test]
     fn test_subquery_to_cql_simple() {
-        assert_eq!(subquery_to_cql(&simple_sq("users"), "mykeyspace"), "SELECT * FROM mykeyspace.users");
+        assert_eq!(subquery_to_cql(&simple_sq("users"), "mykeyspace"), "SELECT * FROM \"mykeyspace\".\"users\"");
     }
 
     #[test]
     fn test_subquery_to_cql_with_projections() {
         let mut sq = simple_sq("t");
         sq.projections = vec!["id".into(), "name".into()];
-        assert_eq!(subquery_to_cql(&sq, "ks"), "SELECT id, name FROM ks.t");
+        assert_eq!(subquery_to_cql(&sq, "ks"), "SELECT \"id\", \"name\" FROM \"ks\".\"t\"");
     }
 
     #[test]
@@ -272,7 +274,7 @@ mod tests {
             field: "status".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("active".into()),
         });
         let cql = subquery_to_cql(&sq, "ks");
-        assert!(cql.contains("WHERE status = 'active'"));
+        assert!(cql.contains("WHERE \"status\" = 'active'"));
         assert!(cql.ends_with("ALLOW FILTERING"));
     }
 
@@ -284,14 +286,14 @@ mod tests {
             values: vec![ScalarValue::Int64(1), ScalarValue::Int64(2)],
         });
         let cql = subquery_to_cql(&sq, "ks");
-        assert!(cql.contains("id IN (1, 2)"));
+        assert!(cql.contains("\"id\" IN (1, 2)"));
     }
 
     #[test]
     fn test_subquery_to_cql_sort() {
         let mut sq = simple_sq("t");
         sq.sort = vec![SortExpr { field: "ts".into(), descending: true }];
-        assert!(subquery_to_cql(&sq, "ks").contains("ORDER BY ts DESC"));
+        assert!(subquery_to_cql(&sq, "ks").contains("ORDER BY \"ts\" DESC"));
     }
 
     #[test]

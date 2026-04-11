@@ -18,20 +18,23 @@ use fuse_core::config::ConnectorConfig;
 use fuse_core::connector::*;
 use fuse_core::error::ConnectorError;
 use fuse_core::registry::ConnectorFactory;
+use fuse_core::sql::quote_ident;
 
 pub fn subquery_to_sql(sq: &SubQuery, database: &str, table: &str) -> String {
-    let cols = if sq.projections.is_empty() { "*".into() } else { sq.projections.join(", ") };
-    let fqn = format!("\"{}\".\"{}\"", database, table);
+    let cols = if sq.projections.is_empty() { "*".into() } else {
+        sq.projections.iter().map(|p| if p == "*" { "*".to_string() } else { quote_ident(p) }).collect::<Vec<_>>().join(", ")
+    };
+    let fqn = format!("{}.{}", quote_ident(database), quote_ident(table));
     let mut sql = format!("SELECT {} FROM {}", cols, fqn);
     if let Some(ref f) = sq.filter {
         sql.push_str(&format!(" WHERE {}", filter_to_sql(f)));
     }
     if !sq.group_by.is_empty() {
-        sql.push_str(&format!(" GROUP BY {}", sq.group_by.join(", ")));
+        sql.push_str(&format!(" GROUP BY {}", sq.group_by.iter().map(|g| quote_ident(g)).collect::<Vec<_>>().join(", ")));
     }
     if !sq.sort.is_empty() {
         let clauses: Vec<String> = sq.sort.iter()
-            .map(|s| format!("{} {}", s.field, if s.descending { "DESC" } else { "ASC" }))
+            .map(|s| format!("{} {}", quote_ident(&s.field), if s.descending { "DESC" } else { "ASC" }))
             .collect();
         sql.push_str(&format!(" ORDER BY {}", clauses.join(", ")));
     }
@@ -50,17 +53,17 @@ fn filter_to_sql(f: &FilterExpr) -> String {
                 ComparisonOp::Lt => "<", ComparisonOp::Lte => "<=",
                 ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => "LIKE",
             };
-            format!("{} {} {}", field, op_str, scalar_to_sql(value))
+            format!("{} {} {}", quote_ident(field), op_str, scalar_to_sql(value))
         }
         FilterExpr::And(l, r) => format!("({} AND {})", filter_to_sql(l), filter_to_sql(r)),
         FilterExpr::Or(l, r) => format!("({} OR {})", filter_to_sql(l), filter_to_sql(r)),
         FilterExpr::Not(inner) => format!("NOT ({})", filter_to_sql(inner)),
         FilterExpr::In { field, values } => {
             let vals: Vec<String> = values.iter().map(scalar_to_sql).collect();
-            format!("{} IN ({})", field, vals.join(", "))
+            format!("{} IN ({})", quote_ident(field), vals.join(", "))
         }
-        FilterExpr::IsNull(f) => format!("{} IS NULL", f),
-        FilterExpr::IsNotNull(f) => format!("{} IS NOT NULL", f),
+        FilterExpr::IsNull(f) => format!("{} IS NULL", quote_ident(f)),
+        FilterExpr::IsNotNull(f) => format!("{} IS NOT NULL", quote_ident(f)),
     }
 }
 
@@ -226,7 +229,7 @@ impl FederatedConnector for TimestreamConnector {
             .collect();
         // Fallback: run a LIMIT 0 query to get column info
         if fields.is_empty() {
-            let sql = format!("SELECT * FROM \"{}\".\"{}\" LIMIT 0", self.database, table);
+            let sql = format!("SELECT * FROM {}.{} LIMIT 0", quote_ident(&self.database), quote_ident(table));
             let qr = self.query_client.query().query_string(&sql).send().await
                 .map_err(|e| ConnectorError::schema(e.to_string()))?;
             let cols: Vec<Field> = qr.column_info().iter()
@@ -286,7 +289,7 @@ mod tests {
         let mut sq = simple_sq("t");
         sq.projections = vec!["time".into(), "value".into()];
         let sql = subquery_to_sql(&sq, "db", "t");
-        assert_eq!(sql, "SELECT time, value FROM \"db\".\"t\"");
+        assert_eq!(sql, "SELECT \"time\", \"value\" FROM \"db\".\"t\"");
     }
 
     #[test]
@@ -304,7 +307,7 @@ mod tests {
             field: "measure_value".into(), op: ComparisonOp::Gt, value: ScalarValue::Float64(0.5),
         });
         let sql = subquery_to_sql(&sq, "db", "t");
-        assert!(sql.contains("WHERE measure_value > 0.5"));
+        assert!(sql.contains("WHERE \"measure_value\" > 0.5"));
     }
 
     #[test]
@@ -313,8 +316,8 @@ mod tests {
         sq.group_by = vec!["region".into()];
         sq.sort = vec![SortExpr { field: "time".into(), descending: true }];
         let sql = subquery_to_sql(&sq, "db", "t");
-        assert!(sql.contains("GROUP BY region"));
-        assert!(sql.contains("ORDER BY time DESC"));
+        assert!(sql.contains("GROUP BY \"region\""));
+        assert!(sql.contains("ORDER BY \"time\" DESC"));
     }
 
     #[test]
@@ -342,6 +345,6 @@ mod tests {
             Box::new(FilterExpr::IsNotNull("b".into())),
         );
         let sql = filter_to_sql(&f);
-        assert!(sql.contains("a = 1") && sql.contains("b IS NOT NULL"));
+        assert!(sql.contains("\"a\" = 1") && sql.contains("\"b\" IS NOT NULL"));
     }
 }

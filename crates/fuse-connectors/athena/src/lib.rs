@@ -18,24 +18,25 @@ use fuse_core::config::ConnectorConfig;
 use fuse_core::connector::*;
 use fuse_core::error::ConnectorError;
 use fuse_core::registry::ConnectorFactory;
+use fuse_core::sql::{quote_ident, quote_table};
 
 /// SQL generation from SubQuery for Athena (Presto-compatible SQL).
 pub fn subquery_to_sql(sq: &SubQuery) -> String {
     let cols = if sq.projections.is_empty() {
         "*".to_string()
     } else {
-        sq.projections.join(", ")
+        sq.projections.iter().map(|p| if p == "*" { "*".to_string() } else { quote_ident(p) }).collect::<Vec<_>>().join(", ")
     };
-    let mut sql = format!("SELECT {} FROM {}", cols, sq.table);
+    let mut sql = format!("SELECT {} FROM {}", cols, quote_table(&sq.table));
     if let Some(ref f) = sq.filter {
         sql.push_str(&format!(" WHERE {}", filter_to_sql(f)));
     }
     if !sq.group_by.is_empty() {
-        sql.push_str(&format!(" GROUP BY {}", sq.group_by.join(", ")));
+        sql.push_str(&format!(" GROUP BY {}", sq.group_by.iter().map(|g| quote_ident(g)).collect::<Vec<_>>().join(", ")));
     }
     if !sq.sort.is_empty() {
         let clauses: Vec<String> = sq.sort.iter()
-            .map(|s| format!("{} {}", s.field, if s.descending { "DESC" } else { "ASC" }))
+            .map(|s| format!("{} {}", quote_ident(&s.field), if s.descending { "DESC" } else { "ASC" }))
             .collect();
         sql.push_str(&format!(" ORDER BY {}", clauses.join(", ")));
     }
@@ -59,21 +60,19 @@ fn filter_to_sql(f: &FilterExpr) -> String {
                 ComparisonOp::Lt => "<",
                 ComparisonOp::Lte => "<=",
                 ComparisonOp::Like | ComparisonOp::Contains => "LIKE",
-                ComparisonOp::ILike => "LIKE", // Athena doesn't have ILIKE
-
+                ComparisonOp::ILike => "LIKE",
             };
-            format!("{} {} {}", field, op_str, scalar_to_sql(value))
+            format!("{} {} {}", quote_ident(field), op_str, scalar_to_sql(value))
         }
         FilterExpr::And(left, right) => format!("({} AND {})", filter_to_sql(left), filter_to_sql(right)),
         FilterExpr::Or(left, right) => format!("({} OR {})", filter_to_sql(left), filter_to_sql(right)),
         FilterExpr::Not(inner) => format!("NOT ({})", filter_to_sql(inner)),
         FilterExpr::In { field, values } => {
             let vals: Vec<String> = values.iter().map(scalar_to_sql).collect();
-            format!("{} IN ({})", field, vals.join(", "))
+            format!("{} IN ({})", quote_ident(field), vals.join(", "))
         }
-
-        FilterExpr::IsNull(field) => format!("{} IS NULL", field),
-        FilterExpr::IsNotNull(field) => format!("{} IS NOT NULL", field),
+        FilterExpr::IsNull(field) => format!("{} IS NULL", quote_ident(field)),
+        FilterExpr::IsNotNull(field) => format!("{} IS NOT NULL", quote_ident(field)),
     }
 }
 
@@ -355,7 +354,7 @@ mod tests {
             aggregations: vec![], group_by: vec![], sort: vec![],
             limit: None, having: None, offset: None, passthrough: None,
         };
-        assert_eq!(subquery_to_sql(&sq), "SELECT * FROM logs");
+        assert_eq!(subquery_to_sql(&sq), "SELECT * FROM \"logs\"");
     }
 
     #[test]
@@ -365,7 +364,7 @@ mod tests {
             filter: None, aggregations: vec![], group_by: vec![], sort: vec![],
             limit: None, having: None, offset: None, passthrough: None,
         };
-        assert_eq!(subquery_to_sql(&sq), "SELECT id, name FROM logs");
+        assert_eq!(subquery_to_sql(&sq), "SELECT \"id\", \"name\" FROM \"logs\"");
     }
 
     #[test]
@@ -375,7 +374,7 @@ mod tests {
             aggregations: vec![], group_by: vec![], sort: vec![],
             limit: Some(10), having: None, offset: None, passthrough: None,
         };
-        assert_eq!(subquery_to_sql(&sq), "SELECT * FROM t LIMIT 10");
+        assert_eq!(subquery_to_sql(&sq), "SELECT * FROM \"t\" LIMIT 10");
     }
 
     #[test]
@@ -390,7 +389,7 @@ mod tests {
             aggregations: vec![], group_by: vec![], sort: vec![],
             limit: None, having: None, offset: None, passthrough: None,
         };
-        assert_eq!(subquery_to_sql(&sq), "SELECT * FROM t WHERE status >= 500");
+        assert_eq!(subquery_to_sql(&sq), "SELECT * FROM \"t\" WHERE \"status\" >= 500");
     }
 
     #[test]
@@ -406,10 +405,10 @@ mod tests {
             limit: Some(5), having: None, offset: None, passthrough: None,
         };
         let sql = subquery_to_sql(&sq);
-        assert!(sql.contains("SELECT region, count FROM events"));
-        assert!(sql.contains("WHERE type = 'error'"));
-        assert!(sql.contains("GROUP BY region"));
-        assert!(sql.contains("ORDER BY count DESC"));
+        assert!(sql.contains("SELECT \"region\", \"count\" FROM \"events\""));
+        assert!(sql.contains("WHERE \"type\" = 'error'"));
+        assert!(sql.contains("GROUP BY \"region\""));
+        assert!(sql.contains("ORDER BY \"count\" DESC"));
         assert!(sql.contains("LIMIT 5"));
     }
 
@@ -437,8 +436,8 @@ mod tests {
             )),
         );
         let sql = filter_to_sql(&f);
-        assert!(sql.contains("a = 1"));
-        assert!(sql.contains("b > 2"));
-        assert!(sql.contains("c IS NULL"));
+        assert!(sql.contains("\"a\" = 1"));
+        assert!(sql.contains("\"b\" > 2"));
+        assert!(sql.contains("\"c\" IS NULL"));
     }
 }

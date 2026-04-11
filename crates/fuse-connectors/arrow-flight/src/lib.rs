@@ -38,6 +38,7 @@ use fuse_core::config::ConnectorConfig;
 use fuse_core::connector::*;
 use fuse_core::error::ConnectorError;
 use fuse_core::registry::ConnectorFactory;
+use fuse_core::sql::{quote_ident, quote_table};
 
 /// Connection mode: Flight SQL (SQL queries) or plain Flight (ticket-based).
 #[derive(Debug, Clone, PartialEq)]
@@ -143,31 +144,23 @@ fn build_flight_sql(query: &SubQuery) -> String {
     let cols = if query.projections.is_empty() {
         "*".into()
     } else {
-        query.projections.join(", ")
+        query.projections.iter().map(|p| if p == "*" { "*".to_string() } else { quote_ident(p) }).collect::<Vec<_>>().join(", ")
     };
-    let mut sql = format!("SELECT {} FROM {}", cols, query.table);
+    let mut sql = format!("SELECT {} FROM {}", cols, quote_table(&query.table));
 
     if let Some(ref f) = query.filter {
         sql.push_str(&format!(" WHERE {}", filter_to_sql(f)));
     }
     if !query.group_by.is_empty() {
-        sql.push_str(&format!(" GROUP BY {}", query.group_by.join(", ")));
+        sql.push_str(&format!(" GROUP BY {}", query.group_by.iter().map(|g| quote_ident(g)).collect::<Vec<_>>().join(", ")));
     }
     if let Some(ref h) = query.having {
         sql.push_str(&format!(" HAVING {}", filter_to_sql(h)));
     }
     if !query.sort.is_empty() {
-        let s: Vec<String> = query
-            .sort
-            .iter()
-            .map(|s| {
-                if s.descending {
-                    format!("{} DESC", s.field)
-                } else {
-                    s.field.clone()
-                }
-            })
-            .collect();
+        let s: Vec<String> = query.sort.iter().map(|s| {
+            if s.descending { format!("{} DESC", quote_ident(&s.field)) } else { quote_ident(&s.field) }
+        }).collect();
         sql.push_str(&format!(" ORDER BY {}", s.join(", ")));
     }
     if let Some(l) = query.limit {
@@ -186,22 +179,19 @@ fn filter_to_sql(f: &FilterExpr) -> String {
         FilterExpr::Not(inner) => format!("NOT ({})", filter_to_sql(inner)),
         FilterExpr::Comparison { field, op, value } => {
             let op_str = match op {
-                ComparisonOp::Eq => "=",
-                ComparisonOp::Neq => "!=",
-                ComparisonOp::Lt => "<",
-                ComparisonOp::Lte => "<=",
-                ComparisonOp::Gt => ">",
-                ComparisonOp::Gte => ">=",
+                ComparisonOp::Eq => "=", ComparisonOp::Neq => "!=",
+                ComparisonOp::Lt => "<", ComparisonOp::Lte => "<=",
+                ComparisonOp::Gt => ">", ComparisonOp::Gte => ">=",
                 ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => "LIKE",
             };
-            format!("{} {} {}", field, op_str, scalar_to_sql(value))
+            format!("{} {} {}", quote_ident(field), op_str, scalar_to_sql(value))
         }
         FilterExpr::In { field, values } => {
             let v: Vec<String> = values.iter().map(scalar_to_sql).collect();
-            format!("{} IN ({})", field, v.join(", "))
+            format!("{} IN ({})", quote_ident(field), v.join(", "))
         }
-        FilterExpr::IsNull(f) => format!("{} IS NULL", f),
-        FilterExpr::IsNotNull(f) => format!("{} IS NOT NULL", f),
+        FilterExpr::IsNull(f) => format!("{} IS NULL", quote_ident(f)),
+        FilterExpr::IsNotNull(f) => format!("{} IS NOT NULL", quote_ident(f)),
     }
 }
 
@@ -321,7 +311,7 @@ impl FederatedConnector for ArrowFlightConnector {
         if self.mode == FlightMode::FlightSql {
             let mut client = self.flight_sql_client().await?;
             let flight_info = client
-                .execute(format!("SELECT * FROM {} LIMIT 0", table), None)
+                .execute(format!("SELECT * FROM {} LIMIT 0", quote_table(table)), None)
                 .await
                 .map_err(|e| ConnectorError::query(e.to_string()))?;
             let schema = flight_info
@@ -459,7 +449,7 @@ mod tests {
 
     #[test]
     fn test_build_flight_sql_simple() {
-        assert_eq!(build_flight_sql(&sq("events")), "SELECT * FROM events");
+        assert_eq!(build_flight_sql(&sq("events")), "SELECT * FROM \"events\"");
     }
 
     #[test]
@@ -474,7 +464,7 @@ mod tests {
         q.limit = Some(10);
         assert_eq!(
             build_flight_sql(&q),
-            "SELECT host, count(*) FROM logs WHERE status >= 500 GROUP BY host ORDER BY host DESC LIMIT 10"
+            "SELECT \"host\", \"count(*)\" FROM \"logs\" WHERE \"status\" >= 500 GROUP BY \"host\" ORDER BY \"host\" DESC LIMIT 10"
         );
     }
 
@@ -513,7 +503,7 @@ mod tests {
 
     #[test]
     fn test_filter_is_not_null() {
-        assert_eq!(filter_to_sql(&FilterExpr::IsNotNull("x".into())), "x IS NOT NULL");
+        assert_eq!(filter_to_sql(&FilterExpr::IsNotNull("x".into())), "\"x\" IS NOT NULL");
     }
 
     #[test]
