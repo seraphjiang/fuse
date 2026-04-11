@@ -8,6 +8,7 @@ pub mod api;
 pub mod async_query;
 pub mod audit;
 pub mod auth;
+pub mod auto_suggest;
 pub mod cors;
 pub mod federation;
 pub mod health;
