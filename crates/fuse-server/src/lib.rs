@@ -31,6 +31,7 @@ pub mod explain_cache;
 pub mod federation;
 pub mod fingerprint;
 pub mod formatter;
+pub mod grouper;
 pub mod health;
 pub mod health_monitor;
 pub mod history;
