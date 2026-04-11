@@ -37,6 +37,7 @@ pub mod formatter;
 pub mod grouper;
 pub mod having;
 pub mod health;
+pub mod intersect;
 pub mod joiner;
 pub mod health_monitor;
 pub mod history;
