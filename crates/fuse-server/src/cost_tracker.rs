@@ -40,6 +40,8 @@ impl CostTracker {
             .collect()
     }
 
+    /// Get aggregated costs across all tenants.
+    /// SECURITY: This exposes cross-tenant data — restrict to admin role in API handler.
     pub fn all(&self) -> HashMap<String, CostEntry> {
         let mut merged: HashMap<String, CostEntry> = HashMap::new();
         for ((_, ds), e) in self.costs.lock().unwrap().iter() {
