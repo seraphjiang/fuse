@@ -323,4 +323,43 @@ mod tests {
         assert_eq!(scalar_to_cql(&ScalarValue::Boolean(true)), "true");
         assert_eq!(scalar_to_cql(&ScalarValue::Null), "null");
     }
+
+    #[test]
+    fn test_subquery_to_cql_combined() {
+        let sq = SubQuery {
+            table: "events".into(),
+            projections: vec!["ts".into(), "value".into()],
+            filter: Some(FilterExpr::Comparison {
+                field: "region".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("us-east-1".into()),
+            }),
+            aggregations: vec![], group_by: vec![],
+            sort: vec![SortExpr { field: "ts".into(), descending: true }],
+            limit: Some(100),
+            having: None, offset: None, passthrough: None,
+        };
+        let cql = subquery_to_cql(&sq, "prod");
+        assert!(cql.contains("ts") && cql.contains("value") && cql.contains("prod") && cql.contains("events"));
+        assert!(cql.contains("region") && cql.contains("'us-east-1'"));
+        assert!(cql.contains("ts") && cql.contains("DESC"));
+        assert!(cql.contains("LIMIT 100"));
+        assert!(cql.ends_with("ALLOW FILTERING"));
+    }
+
+    #[test]
+    fn test_filter_and_compound() {
+        let f = FilterExpr::And(
+            Box::new(FilterExpr::Comparison { field: "a".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(1) }),
+            Box::new(FilterExpr::Comparison { field: "b".into(), op: ComparisonOp::Gt, value: ScalarValue::Float64(2.5) }),
+        );
+        let cql = filter_to_cql(&f);
+        assert!(cql.contains("= 1"));
+        assert!(cql.contains("> 2.5"));
+        assert!(cql.contains("AND"));
+    }
+
+    #[test]
+    fn test_scalar_quote_escaping() {
+        assert_eq!(scalar_to_cql(&ScalarValue::Utf8("it's".into())), "'it''s'");
+        assert_eq!(scalar_to_cql(&ScalarValue::Utf8("O'Brien".into())), "'O''Brien'");
+    }
 }
