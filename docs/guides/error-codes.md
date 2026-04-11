@@ -87,3 +87,17 @@ All API error responses include the error code:
 - **FUSE-2010**: The downstream datasource returned an error. Check connector health via `GET /api/fuse/health`.
 - **FUSE-3000**: SQL/PPL syntax error. Use `EXPLAIN` to validate your query structure.
 - **FUSE-6000/6001**: Check connector auth config — credentials, IAM roles, API keys, or network connectivity.
+
+## Runtime Errors (non-coded)
+
+These errors are returned as plain messages without a `FUSE-XXXX` code:
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `rate limit exceeded` | Per-datasource or global rate limit hit | Reduce query frequency or increase `rate_limit` in config |
+| `rate limit exceeded for API key` | Per-tenant API key rate limit | Contact admin to increase tenant quota |
+| `tenant exceeded rate limit: N queries/min` | Multi-tenancy query governor | Reduce query volume or request higher quota |
+| `query governor: max rows exceeded` | Result set exceeds `max_rows` limit | Add `LIMIT` clause or increase governor limit |
+| `query governor: execution time exceeded` | Query exceeded `max_execution_time_ms` | Optimize query or increase timeout |
+| `query governor: result size exceeded` | Response exceeds `max_result_bytes` | Reduce columns/rows or increase limit |
+| `Failed to deserialize the JSON body` | Malformed request JSON | Check request body format against API docs |
