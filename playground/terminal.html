@@ -91,7 +91,7 @@ const COMMANDS = {
   'views': { desc: 'List materialized views', fn: cmdViews },
   'alerts': { desc: 'Evaluate alert rules', fn: cmdAlerts },
   'clear': { desc: 'Clear terminal', fn: () => { term.innerHTML = ''; } },
-  'version': { desc: 'Show version', fn: () => out('Fuse v0.6.0', 'info') },
+  'version': { desc: 'Show version', fn: () => out('Fuse v1.0.0', 'info') },
 };
 
 async function api(url, method='GET', body) {
@@ -292,15 +292,12 @@ function acceptAc() {
 
 // Welcome
 out('╔══════════════════════════════════════╗', 'info');
-out('║     <span class="success">Fuse Query Engine v0.6.0</span>        ║', 'info');
+out('║     <span class="success">Fuse Query Engine v1.0.0</span>        ║', 'info');
 out('║     Web Terminal                     ║', 'info');
 out('╚══════════════════════════════════════╝', 'info');
 out('');
 out('Type <span class="info">help</span> for commands, or enter a SQL query directly.', 'out');
 out('');
-</script>
-<script>
-(function(){var t=localStorage.getItem("fuse-theme");if(t==="light")document.body.classList.add("light");else if(!t&&window.matchMedia("(prefers-color-scheme:light)").matches)document.body.classList.add("light");})();
 </script>
 <script>fetch("/feedback-widget").then(r=>r.text()).then(h=>{const d=document.createElement("div");d.innerHTML=h;document.body.appendChild(d);const s=d.querySelectorAll("script");s.forEach(sc=>{const n=document.createElement("script");n.textContent=sc.textContent;document.body.appendChild(n);});})</script>
 </body>
