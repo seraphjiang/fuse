@@ -16,6 +16,7 @@ pub mod cors;
 pub mod export;
 pub mod federation;
 pub mod health;
+pub mod health_monitor;
 pub mod history;
 pub mod lineage;
 pub mod metrics;
