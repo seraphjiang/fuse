@@ -309,3 +309,40 @@ Before submitting your connector:
 | `crates/fuse-connectors/opensearch/` | Reference implementation |
 | `crates/fuse-engine/tests/federation_test.rs` | Test patterns |
 | `docs/api/openapi.yaml` | REST API spec (your connector appears automatically) |
+
+## 9. Write Path (Optional)
+
+If your connector supports writes (CTAS, INSERT INTO ... SELECT), override
+`write_batches()`:
+
+```rust
+async fn write_batches(
+    &self,
+    table: &str,
+    batches: Vec<RecordBatch>,
+) -> Result<u64, ConnectorError> {
+    let mut total = 0u64;
+    for batch in &batches {
+        // Convert Arrow RecordBatch to your DB's insert format
+        // Example: generate INSERT statements, use bulk API, etc.
+        total += batch.num_rows() as u64;
+    }
+    Ok(total)
+}
+```
+
+The default implementation returns an "unsupported" error, so connectors
+opt-in by overriding. See these implementations for patterns:
+
+| Connector | Strategy |
+|-----------|----------|
+| Postgres/MySQL | Batch INSERT with SQL literals via sqlx |
+| DuckDB | Batch INSERT via `execute_batch()` in `spawn_blocking` |
+| S3 | ArrowWriter → Parquet bytes → PutObject |
+
+Key considerations:
+- Quote column names to prevent SQL injection (`"col_name"`)
+- Escape string values (single-quote doubling: `'it''s'`)
+- Handle NULL values explicitly
+- For large batches, consider chunking to avoid statement size limits
+- Return the total number of rows written
