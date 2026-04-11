@@ -58,6 +58,16 @@ impl RunningQueries {
     }
 }
 
+/// A prepared statement: query template with $N parameter placeholders.
+#[derive(Debug, Clone)]
+pub struct PreparedStatement {
+    pub query: String,
+    pub param_count: usize,
+}
+
+/// Thread-safe store for prepared statements.
+pub type PreparedStatementStore = Arc<std::sync::Mutex<std::collections::HashMap<String, PreparedStatement>>>;
+
 /// Shared application state passed to all handlers.
 pub struct AppState {
     pub registry: Arc<ConnectorRegistry>,
@@ -71,6 +81,7 @@ pub struct AppState {
     pub result_cache: Arc<crate::plan_cache::ResultCache>,
     pub tenant_registry: Arc<TenantRegistry>,
     pub audit_log: Arc<crate::audit::AuditLog>,
+    pub prepared_statements: PreparedStatementStore,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.
@@ -303,6 +314,31 @@ pub fn parse_create_view(query: &str) -> Option<(String, String)> {
     Some((name, view_query))
 }
 
+/// Parse `CREATE MATERIALIZED VIEW <name> AS <query>`.
+pub fn parse_create_materialized_view(query: &str) -> Option<(String, String)> {
+    let lower = query.trim().to_lowercase();
+    if !lower.starts_with("create materialized view ") {
+        return None;
+    }
+    let after = query.trim()["create materialized view ".len()..].trim();
+    let as_pos = after.to_lowercase().find(" as ")?;
+    let name = after[..as_pos].trim().to_string();
+    let view_query = after[as_pos + 4..].trim().to_string();
+    if name.is_empty() || view_query.is_empty() { return None; }
+    Some((name, view_query))
+}
+
+/// Parse `REFRESH MATERIALIZED VIEW <name>`.
+pub fn parse_refresh_materialized_view(query: &str) -> Option<String> {
+    let lower = query.trim().to_lowercase();
+    if !lower.starts_with("refresh materialized view ") {
+        return None;
+    }
+    let name = query.trim()["refresh materialized view ".len()..].trim().to_string();
+    if name.is_empty() { return None; }
+    Some(name)
+}
+
 pub fn rewrite_contains(query: &str) -> String {
     let lower = query.to_lowercase();
     if !lower.contains(" contains '") {
@@ -391,6 +427,102 @@ pub async fn query_handler(
     let result_cache_key = format!("{}:{}", format, query);
     if let Some(cached_result) = state.result_cache.get(&result_cache_key) {
         return (StatusCode::OK, Json(cached_result.response_json)).into_response();
+    }
+
+    // Handle CREATE MATERIALIZED VIEW name AS query — store + execute immediately
+    if let Some((view_name, view_query)) = parse_create_materialized_view(&query) {
+        let def = fuse_engine::materialized::MaterializedViewDef {
+            name: view_name.clone(),
+            query: view_query.clone(),
+            refresh_interval: std::time::Duration::from_secs(300),
+        };
+        state.view_registry.register(def);
+
+        // Execute the query immediately to populate the view
+        let exec_result = match parse_sql_sources(&view_query) {
+            Ok(refs) if !refs.is_empty() => {
+                let (ds_id, table) = &refs[0];
+                match state.registry.get(ds_id) {
+                    Some(connector) => {
+                        match build_sub_query(&view_query, "sql", table) {
+                            Ok(sq) => match connector.execute(&sq).await {
+                                Ok(batches) => {
+                                    let row_count: usize = batches.iter().map(|b| b.num_rows()).sum();
+                                    if let Some(v) = state.view_registry.get(&view_name) {
+                                        v.write().unwrap().set_results(batches);
+                                    }
+                                    Ok(row_count)
+                                }
+                                Err(e) => Err(e.to_string()),
+                            },
+                            Err(e) => Err(e),
+                        }
+                    }
+                    None => Err(format!("datasource '{}' not found", ds_id)),
+                }
+            }
+            _ => Err("failed to parse view query sources".into()),
+        };
+
+        let (row_count, error) = match exec_result {
+            Ok(n) => (n, None),
+            Err(e) => {
+                if let Some(v) = state.view_registry.get(&view_name) {
+                    v.write().unwrap().set_error(e.clone());
+                }
+                (0, Some(e))
+            }
+        };
+
+        let mut resp = serde_json::json!({
+            "message": format!("materialized view '{}' created", view_name),
+            "name": view_name,
+            "query": view_query,
+            "row_count": row_count,
+        });
+        if let Some(e) = error {
+            resp["initial_refresh_error"] = serde_json::Value::String(e);
+        }
+        return (StatusCode::CREATED, Json(resp)).into_response();
+    }
+
+    // Handle REFRESH MATERIALIZED VIEW name — re-execute and replace cached results
+    if let Some(view_name) = parse_refresh_materialized_view(&query) {
+        let view_arc = match state.view_registry.get(&view_name) {
+            Some(v) => v,
+            None => return error_json(StatusCode::NOT_FOUND, format!("materialized view '{}' not found", view_name)).into_response(),
+        };
+        let view_query = view_arc.read().unwrap().def.query.clone();
+
+        let result = match parse_sql_sources(&view_query) {
+            Ok(refs) if !refs.is_empty() => {
+                let (ds_id, table) = &refs[0];
+                match state.registry.get(ds_id) {
+                    Some(connector) => match build_sub_query(&view_query, "sql", table) {
+                        Ok(sq) => connector.execute(&sq).await.map_err(|e| e.to_string()),
+                        Err(e) => Err(e),
+                    },
+                    None => Err(format!("datasource '{}' not found", ds_id)),
+                }
+            }
+            _ => Err("failed to parse view query sources".into()),
+        };
+
+        return match result {
+            Ok(batches) => {
+                let row_count: usize = batches.iter().map(|b| b.num_rows()).sum();
+                view_arc.write().unwrap().set_results(batches);
+                Json(serde_json::json!({
+                    "refreshed": true,
+                    "view": view_name,
+                    "row_count": row_count,
+                })).into_response()
+            }
+            Err(e) => {
+                view_arc.write().unwrap().set_error(e.clone());
+                error_json(StatusCode::INTERNAL_SERVER_ERROR, e).into_response()
+            }
+        };
     }
 
     // Handle CREATE VIEW name AS query
@@ -3060,5 +3192,86 @@ mod tests {
         assert_eq!(json["total_spans"], 0);
         assert!(json["datasources_matched"].as_array().unwrap().is_empty());
         assert!(json["spans"].as_array().unwrap().is_empty());
+    }
+
+    // ── CREATE MATERIALIZED VIEW parser tests ──
+
+    #[test]
+    fn test_parse_create_mat_view_basic() {
+        let (n, q) = parse_create_materialized_view(
+            "CREATE MATERIALIZED VIEW err AS SELECT status FROM cluster_a.logs",
+        ).unwrap();
+        assert_eq!(n, "err");
+        assert_eq!(q, "SELECT status FROM cluster_a.logs");
+    }
+
+    #[test]
+    fn test_parse_create_mat_view_case_insensitive() {
+        assert!(parse_create_materialized_view("create materialized view mv as SELECT 1").is_some());
+    }
+
+    #[test]
+    fn test_parse_create_mat_view_whitespace() {
+        let (n, _) = parse_create_materialized_view(
+            "  CREATE MATERIALIZED VIEW   s   AS   SELECT 1  ",
+        ).unwrap();
+        assert_eq!(n, "s");
+    }
+
+    #[test]
+    fn test_parse_create_mat_view_none_plain_view() {
+        assert!(parse_create_materialized_view("CREATE VIEW v AS SELECT 1").is_none());
+    }
+
+    #[test]
+    fn test_parse_create_mat_view_none_no_as() {
+        assert!(parse_create_materialized_view("CREATE MATERIALIZED VIEW v SELECT 1").is_none());
+    }
+
+    #[test]
+    fn test_parse_create_mat_view_none_empty_name() {
+        assert!(parse_create_materialized_view("CREATE MATERIALIZED VIEW  AS SELECT 1").is_none());
+    }
+
+    #[test]
+    fn test_parse_create_mat_view_none_empty_query() {
+        assert!(parse_create_materialized_view("CREATE MATERIALIZED VIEW v AS ").is_none());
+    }
+
+    #[test]
+    fn test_parse_create_mat_view_none_unrelated() {
+        assert!(parse_create_materialized_view("SELECT * FROM t").is_none());
+    }
+
+    // ── REFRESH MATERIALIZED VIEW parser tests ──
+
+    #[test]
+    fn test_parse_refresh_mat_view_basic() {
+        assert_eq!(parse_refresh_materialized_view("REFRESH MATERIALIZED VIEW err").unwrap(), "err");
+    }
+
+    #[test]
+    fn test_parse_refresh_mat_view_case_insensitive() {
+        assert_eq!(parse_refresh_materialized_view("refresh materialized view mv").unwrap(), "mv");
+    }
+
+    #[test]
+    fn test_parse_refresh_mat_view_whitespace() {
+        assert_eq!(parse_refresh_materialized_view("  REFRESH MATERIALIZED VIEW   s  ").unwrap(), "s");
+    }
+
+    #[test]
+    fn test_parse_refresh_mat_view_none_empty() {
+        assert!(parse_refresh_materialized_view("REFRESH MATERIALIZED VIEW ").is_none());
+    }
+
+    #[test]
+    fn test_parse_refresh_mat_view_none_unrelated() {
+        assert!(parse_refresh_materialized_view("SELECT 1").is_none());
+    }
+
+    #[test]
+    fn test_parse_refresh_mat_view_none_create() {
+        assert!(parse_refresh_materialized_view("CREATE MATERIALIZED VIEW v AS SELECT 1").is_none());
     }
 }
