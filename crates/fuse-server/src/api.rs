@@ -14,6 +14,7 @@ use fuse_core::registry::ConnectorRegistry;
 use fuse_core::alerting::{AlertEvaluator, AlertRule};
 use fuse_engine::materialized::MaterializedViewRegistry;
 use crate::shared_state::{SharedSavedQueries, SharedQueryHistory, SharedAuditLog};
+use crate::transaction::TransactionStore;
 use crate::history::QueryHistory;
 use crate::saved_queries::SavedQueryRegistry;
 use crate::plan_cache::{PlanCache, CachedPlan};
@@ -79,6 +80,7 @@ pub struct AppState {
     pub shared_saved_queries: SharedSavedQueries,
     pub shared_history: SharedQueryHistory,
     pub shared_audit_log: SharedAuditLog,
+    pub transactions: Arc<TransactionStore>,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.
@@ -336,6 +338,51 @@ pub fn parse_refresh_materialized_view(query: &str) -> Option<String> {
     Some(name)
 }
 
+/// Parse `BEGIN [TRANSACTION [id]]`.
+pub fn parse_begin(query: &str) -> Option<String> {
+    let lower = query.trim().to_lowercase();
+    if lower == "begin" || lower == "begin transaction" {
+        return Some(uuid_v4());
+    }
+    if lower.starts_with("begin transaction ") {
+        let id = query.trim()["begin transaction ".len()..].trim().to_string();
+        if !id.is_empty() { return Some(id); }
+    }
+    if lower.starts_with("begin ") && !lower.starts_with("begin transaction") {
+        let id = query.trim()["begin ".len()..].trim().to_string();
+        if !id.is_empty() { return Some(id); }
+    }
+    None
+}
+
+/// Parse `COMMIT [id]`.
+pub fn parse_commit(query: &str) -> Option<String> {
+    let lower = query.trim().to_lowercase();
+    if lower == "commit" { return None; } // needs txn_id from params
+    if lower.starts_with("commit ") {
+        let id = query.trim()["commit ".len()..].trim().to_string();
+        if !id.is_empty() { return Some(id); }
+    }
+    None
+}
+
+/// Parse `ROLLBACK [id]`.
+pub fn parse_rollback(query: &str) -> Option<String> {
+    let lower = query.trim().to_lowercase();
+    if lower == "rollback" { return None; }
+    if lower.starts_with("rollback ") {
+        let id = query.trim()["rollback ".len()..].trim().to_string();
+        if !id.is_empty() { return Some(id); }
+    }
+    None
+}
+
+fn uuid_v4() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    format!("txn-{:x}-{:x}", t.as_secs(), t.subsec_nanos())
+}
+
 /// Parse `CREATE TABLE <datasource.table> AS <query>`.
 /// Returns `(datasource, table, inner_query)` if matched.
 pub fn parse_ctas(query: &str) -> Option<(String, String, String)> {
@@ -496,6 +543,67 @@ pub async fn query_handler(
     let result_cache_key = format!("{}:{}", format, query);
     if let Some(cached_result) = state.result_cache.get(&result_cache_key) {
         return (StatusCode::OK, Json(cached_result.response_json)).into_response();
+    }
+
+    // Handle BEGIN
+    let lower_trimmed = query.trim().to_lowercase();
+    if lower_trimmed == "begin" || lower_trimmed.starts_with("begin ") || lower_trimmed == "begin transaction" {
+        if let Some(txn_id) = parse_begin(&query) {
+            if state.transactions.begin(&txn_id) {
+                return Json(serde_json::json!({
+                    "transaction_id": txn_id,
+                    "status": "active",
+                })).into_response();
+            } else {
+                return error_json(StatusCode::CONFLICT, format!("transaction '{}' already exists", txn_id)).into_response();
+            }
+        }
+    }
+
+    // Handle COMMIT
+    if lower_trimmed == "commit" || lower_trimmed.starts_with("commit ") {
+        let txn_id = parse_commit(&query)
+            .or_else(|| req.params.get("transaction_id").and_then(|v| v.as_str().map(String::from)));
+        let txn_id = match txn_id {
+            Some(id) => id,
+            None => return error_json(StatusCode::BAD_REQUEST, "COMMIT requires transaction_id").into_response(),
+        };
+        let writes = match state.transactions.take(&txn_id) {
+            Some(w) => w,
+            None => return error_json(StatusCode::NOT_FOUND, format!("transaction '{}' not found", txn_id)).into_response(),
+        };
+        let mut results = Vec::new();
+        let mut errors = Vec::new();
+        for pw in writes {
+            match state.registry.get(&pw.datasource) {
+                Some(conn) => match conn.write_batches(&pw.table, pw.batches).await {
+                    Ok(n) => results.push(serde_json::json!({"datasource": pw.datasource, "table": pw.table, "rows_written": n})),
+                    Err(e) => errors.push(serde_json::json!({"datasource": pw.datasource, "table": pw.table, "error": e.to_string()})),
+                },
+                None => errors.push(serde_json::json!({"datasource": pw.datasource, "error": "not found"})),
+            }
+        }
+        return Json(serde_json::json!({
+            "committed": true,
+            "transaction_id": txn_id,
+            "results": results,
+            "errors": errors,
+        })).into_response();
+    }
+
+    // Handle ROLLBACK
+    if lower_trimmed == "rollback" || lower_trimmed.starts_with("rollback ") {
+        let txn_id = parse_rollback(&query)
+            .or_else(|| req.params.get("transaction_id").and_then(|v| v.as_str().map(String::from)));
+        let txn_id = match txn_id {
+            Some(id) => id,
+            None => return error_json(StatusCode::BAD_REQUEST, "ROLLBACK requires transaction_id").into_response(),
+        };
+        if state.transactions.rollback(&txn_id) {
+            return Json(serde_json::json!({"rolled_back": true, "transaction_id": txn_id})).into_response();
+        } else {
+            return error_json(StatusCode::NOT_FOUND, format!("transaction '{}' not found", txn_id)).into_response();
+        }
     }
 
     // Handle CREATE TABLE datasource.table AS SELECT ... (CTAS)
@@ -3583,5 +3691,49 @@ mod tests {
     #[test]
     fn test_parse_insert_into_select_none_unrelated() {
         assert!(parse_insert_into_select("SELECT * FROM t").is_none());
+    }
+
+    // ── Transaction parser tests ──
+
+    #[test]
+    fn test_parse_begin_bare() {
+        let id = parse_begin("BEGIN").unwrap();
+        assert!(id.starts_with("txn-"));
+    }
+
+    #[test]
+    fn test_parse_begin_transaction() {
+        let id = parse_begin("BEGIN TRANSACTION").unwrap();
+        assert!(id.starts_with("txn-"));
+    }
+
+    #[test]
+    fn test_parse_begin_with_id() {
+        assert_eq!(parse_begin("BEGIN my_txn").unwrap(), "my_txn");
+    }
+
+    #[test]
+    fn test_parse_begin_transaction_with_id() {
+        assert_eq!(parse_begin("BEGIN TRANSACTION tx1").unwrap(), "tx1");
+    }
+
+    #[test]
+    fn test_parse_commit_with_id() {
+        assert_eq!(parse_commit("COMMIT tx1").unwrap(), "tx1");
+    }
+
+    #[test]
+    fn test_parse_commit_bare_returns_none() {
+        assert!(parse_commit("COMMIT").is_none());
+    }
+
+    #[test]
+    fn test_parse_rollback_with_id() {
+        assert_eq!(parse_rollback("ROLLBACK tx1").unwrap(), "tx1");
+    }
+
+    #[test]
+    fn test_parse_rollback_bare_returns_none() {
+        assert!(parse_rollback("ROLLBACK").is_none());
     }
 }

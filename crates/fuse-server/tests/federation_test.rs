@@ -84,7 +84,7 @@ fn build_federated_app() -> axum::Router {
         adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
         shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
         shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
-        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
         tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::new(vec![])),
     });
     fuse_server::build_router(state)

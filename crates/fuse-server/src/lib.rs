@@ -20,6 +20,7 @@ pub mod saved_queries;
 pub mod shared_state;
 pub mod streaming;
 pub mod tenant;
+pub mod transaction;
 
 use std::sync::Arc;
 
