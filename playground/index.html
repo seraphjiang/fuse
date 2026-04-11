@@ -530,7 +530,7 @@ button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #58a
     <!-- HISTORY TAB -->
     <div class="tab-content" id="tab-history">
       <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
-        <input id="hist-search" type="text" placeholder="Search queries…" oninput="filterHistory()" style="flex:1;min-width:120px;font-size:12px;padding:4px 8px;background:#21262d;color:#e1e4e8;border:1px solid #30363d;border-radius:4px">
+        <input id="hist-search" type="text" placeholder="Search queries…" oninput="filterHistory()" aria-label="Search query history" style="flex:1;min-width:120px;font-size:12px;padding:4px 8px;background:#21262d;color:#e1e4e8;border:1px solid #30363d;border-radius:4px">
         <select id="hist-format-filter" onchange="filterHistory()" style="font-size:12px;padding:4px 6px;background:#21262d;color:#e1e4e8;border:1px solid #30363d;border-radius:4px">
           <option value="all">All formats</option><option value="sql">SQL</option><option value="ppl">PPL</option>
         </select>
