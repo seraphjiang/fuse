@@ -16,6 +16,7 @@ pub mod limit_pushdown;
 pub mod metadata_cache;
 pub mod registry;
 pub mod optimizer;
+pub mod plan_builder;
 pub mod plan_serde;
 pub mod planner;
 pub mod predicate;
