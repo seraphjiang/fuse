@@ -3,11 +3,12 @@
 //! SQL generation for DuckDB — standard SQL with DuckDB-specific functions.
 
 use fuse_core::connector::{AggFunction, ComparisonOp, FilterExpr, ScalarValue, SubQuery};
+use fuse_core::sql::{quote_ident, quote_table};
 
 pub fn subquery_to_sql(q: &SubQuery) -> String {
     let select = if !q.aggregations.is_empty() {
         let aggs: Vec<String> = q.aggregations.iter().map(|a| {
-            let field = a.field.as_deref().unwrap_or("*");
+            let field = a.field.as_deref().map(quote_ident).unwrap_or_else(|| "*".to_string());
             let expr = match a.function {
                 AggFunction::Count => format!("count({field})"),
                 AggFunction::Sum => format!("sum({field})"),
@@ -18,23 +19,30 @@ pub fn subquery_to_sql(q: &SubQuery) -> String {
                 AggFunction::ApproxPercentile(p) => format!("approx_quantile({field}, {p})"),
                 AggFunction::CountDistinct => format!("count(DISTINCT {field})"),
             };
-            format!("{expr} AS {}", a.alias)
+            format!("{expr} AS {}", quote_ident(&a.alias))
         }).collect();
-        let mut parts = q.group_by.clone();
+        let mut parts: Vec<String> = q.group_by.iter().map(|g| quote_ident(g)).collect();
         parts.extend(aggs);
         parts.join(", ")
     } else if !q.projections.is_empty() {
-        q.projections.join(", ")
+        q.projections.iter().map(|p| {
+            if p == "*" { "*".to_string() } else { quote_ident(p) }
+        }).collect::<Vec<_>>().join(", ")
     } else {
         "*".to_string()
     };
 
-    let mut sql = format!("SELECT {select} FROM {}", q.table);
+    let mut sql = format!("SELECT {select} FROM {}", quote_table(&q.table));
     if let Some(f) = &q.filter { sql.push_str(&format!(" WHERE {}", filter_to_sql(f))); }
-    if !q.group_by.is_empty() { sql.push_str(&format!(" GROUP BY {}", q.group_by.join(", "))); }
+    if !q.group_by.is_empty() {
+        let groups: Vec<String> = q.group_by.iter().map(|g| quote_ident(g)).collect();
+        sql.push_str(&format!(" GROUP BY {}", groups.join(", ")));
+    }
     if let Some(h) = &q.having { sql.push_str(&format!(" HAVING {}", filter_to_sql(h))); }
     if !q.sort.is_empty() {
-        let order: Vec<String> = q.sort.iter().map(|s| if s.descending { format!("{} DESC", s.field) } else { s.field.clone() }).collect();
+        let order: Vec<String> = q.sort.iter().map(|s| {
+            if s.descending { format!("{} DESC", quote_ident(&s.field)) } else { quote_ident(&s.field) }
+        }).collect();
         sql.push_str(&format!(" ORDER BY {}", order.join(", ")));
     }
     if let Some(limit) = q.limit { sql.push_str(&format!(" LIMIT {limit}")); }
@@ -53,14 +61,14 @@ fn filter_to_sql(f: &FilterExpr) -> String {
                 ComparisonOp::Gt => ">", ComparisonOp::Gte => ">=",
                 ComparisonOp::Like | ComparisonOp::Contains => "LIKE", ComparisonOp::ILike => "ILIKE",
             };
-            format!("{field} {op_str} {}", scalar_to_sql(value))
+            format!("{} {op_str} {}", quote_ident(field), scalar_to_sql(value))
         }
         FilterExpr::In { field, values } => {
             let vals: Vec<String> = values.iter().map(scalar_to_sql).collect();
-            format!("{field} IN ({})", vals.join(", "))
+            format!("{} IN ({})", quote_ident(field), vals.join(", "))
         }
-        FilterExpr::IsNull(field) => format!("{field} IS NULL"),
-        FilterExpr::IsNotNull(field) => format!("{field} IS NOT NULL"),
+        FilterExpr::IsNull(field) => format!("{} IS NULL", quote_ident(field)),
+        FilterExpr::IsNotNull(field) => format!("{} IS NOT NULL", quote_ident(field)),
     }
 }
 
@@ -77,19 +85,19 @@ fn scalar_to_sql(v: &ScalarValue) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fuse_core::connector::SubQuery;
+    use fuse_core::connector::{FilterExpr, ScalarValue, SubQuery};
 
     fn base() -> SubQuery {
         SubQuery { table: "events".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None }
     }
 
     #[test]
-    fn test_select_star() { assert_eq!(subquery_to_sql(&base()), "SELECT * FROM events"); }
+    fn test_select_star() { assert_eq!(subquery_to_sql(&base()), "SELECT * FROM \"events\""); }
 
     #[test]
     fn test_limit() {
         let q = SubQuery { limit: Some(5), ..base() };
-        assert_eq!(subquery_to_sql(&q), "SELECT * FROM events LIMIT 5");
+        assert_eq!(subquery_to_sql(&q), "SELECT * FROM \"events\" LIMIT 5");
     }
 
     #[test]
@@ -99,5 +107,22 @@ mod tests {
             ..base()
         };
         assert!(subquery_to_sql(&q).contains("ILIKE"));
+        assert!(subquery_to_sql(&q).contains("\"name\""));
+    }
+
+    #[test]
+    fn test_identifier_with_special_chars() {
+        let q = SubQuery {
+            table: "my table".into(),
+            filter: Some(FilterExpr::Comparison {
+                field: "col\"name".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Int64(1),
+            }),
+            ..base()
+        };
+        let sql = subquery_to_sql(&q);
+        assert!(sql.contains("FROM \"my table\""));
+        assert!(sql.contains("\"col\"\"name\""));
     }
 }

@@ -114,7 +114,7 @@ impl FederatedConnector for DuckDbConnector {
         let fields = tokio::task::spawn_blocking(move || -> Result<Vec<(String, String)>, ConnectorError> {
             let conn = duckdb::Connection::open(&path)
                 .map_err(|e| ConnectorError::schema(e))?;
-            let sql = format!("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '{table}' ORDER BY ordinal_position");
+            let sql = format!("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '{}' ORDER BY ordinal_position", table.replace('\'', "''"));
             let mut stmt = conn.prepare(&sql).map_err(|e| ConnectorError::schema(e))?;
             let rows: Vec<(String, String)> = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
                 .map_err(|e| ConnectorError::schema(e))?

@@ -9,6 +9,7 @@ pub mod materialized_view;
 pub mod registry;
 pub mod secrets;
 pub mod security;
+pub mod sql;
 pub mod tls;
 pub mod version;
 

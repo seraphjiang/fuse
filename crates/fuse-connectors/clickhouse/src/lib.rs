@@ -137,7 +137,7 @@ impl FederatedConnector for ClickHouseConnector {
     }
 
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
-        let text = self.run_query(&format!("SELECT name FROM system.tables WHERE database = '{}'", self.database)).await?;
+        let text = self.run_query(&format!("SELECT name FROM system.tables WHERE database = '{}'", self.database.replace('\'', "''"))).await?;
         let names: Vec<String> = text.lines()
             .filter(|l| !l.is_empty())
             .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
@@ -319,7 +319,7 @@ mod tests {
     fn test_subquery_to_sql_basic() {
         let q = SubQuery { table: "events".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: Some(5), passthrough: None, offset: None };
         let sql = subquery_to_sql(&q);
-        assert_eq!(sql, "SELECT * FROM events LIMIT 5");
+        assert_eq!(sql, "SELECT * FROM `events` LIMIT 5");
     }
 
     #[test]

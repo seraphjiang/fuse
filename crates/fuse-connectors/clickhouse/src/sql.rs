@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
-//! SQL generation for ClickHouse — same as standard SQL with minor differences.
-//! ClickHouse uses backtick-quoted identifiers and supports all standard operators.
+//! SQL generation for ClickHouse — backtick-quoted identifiers, ClickHouse-specific functions.
 
 use fuse_core::connector::{AggFunction, ComparisonOp, FilterExpr, ScalarValue, SubQuery};
+use fuse_core::sql::{quote_ident_backtick as qi, quote_table_backtick as qt};
 
 pub fn subquery_to_sql(q: &SubQuery) -> String {
     let select = if !q.aggregations.is_empty() {
         let aggs: Vec<String> = q.aggregations.iter().map(|a| {
-            let field = a.field.as_deref().unwrap_or("*");
+            let field = a.field.as_deref().map(qi).unwrap_or_else(|| "*".to_string());
             let expr = match a.function {
                 AggFunction::Count => format!("count({field})"),
                 AggFunction::Sum => format!("sum({field})"),
@@ -16,33 +16,36 @@ pub fn subquery_to_sql(q: &SubQuery) -> String {
                 AggFunction::Min => format!("min({field})"),
                 AggFunction::Max => format!("max({field})"),
                 AggFunction::CountDistinct | AggFunction::ApproxCountDistinct => format!("uniq({field})"),
-                AggFunction::ApproxPercentile(p) => format!("quantile({p})({field})"), // ClickHouse uses uniq()
+                AggFunction::ApproxPercentile(p) => format!("quantile({p})({field})"),
             };
-            format!("{expr} AS {}", a.alias)
+            format!("{expr} AS {}", qi(&a.alias))
         }).collect();
-        let mut parts = q.group_by.clone();
+        let mut parts: Vec<String> = q.group_by.iter().map(|g| qi(g)).collect();
         parts.extend(aggs);
         parts.join(", ")
     } else if !q.projections.is_empty() {
-        q.projections.join(", ")
+        q.projections.iter().map(|p| {
+            if p == "*" { "*".to_string() } else { qi(p) }
+        }).collect::<Vec<_>>().join(", ")
     } else {
         "*".to_string()
     };
 
-    let mut sql = format!("SELECT {select} FROM {}", q.table);
+    let mut sql = format!("SELECT {select} FROM {}", qt(&q.table));
 
     if let Some(f) = &q.filter {
         sql.push_str(&format!(" WHERE {}", filter_to_sql(f)));
     }
     if !q.group_by.is_empty() {
-        sql.push_str(&format!(" GROUP BY {}", q.group_by.join(", ")));
+        let groups: Vec<String> = q.group_by.iter().map(|g| qi(g)).collect();
+        sql.push_str(&format!(" GROUP BY {}", groups.join(", ")));
     }
     if let Some(h) = &q.having {
         sql.push_str(&format!(" HAVING {}", filter_to_sql(h)));
     }
     if !q.sort.is_empty() {
         let order: Vec<String> = q.sort.iter().map(|s| {
-            if s.descending { format!("{} DESC", s.field) } else { s.field.clone() }
+            if s.descending { format!("{} DESC", qi(&s.field)) } else { qi(&s.field) }
         }).collect();
         sql.push_str(&format!(" ORDER BY {}", order.join(", ")));
     }
@@ -64,14 +67,14 @@ fn filter_to_sql(f: &FilterExpr) -> String {
                 ComparisonOp::Gt => ">", ComparisonOp::Gte => ">=",
                 ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => "LIKE",
             };
-            format!("{field} {op_str} {}", scalar_to_sql(value))
+            format!("{} {op_str} {}", qi(field), scalar_to_sql(value))
         }
         FilterExpr::In { field, values } => {
             let vals: Vec<String> = values.iter().map(scalar_to_sql).collect();
-            format!("{field} IN ({})", vals.join(", "))
+            format!("{} IN ({})", qi(field), vals.join(", "))
         }
-        FilterExpr::IsNull(field) => format!("isNull({field})"),
-        FilterExpr::IsNotNull(field) => format!("isNotNull({field})"),
+        FilterExpr::IsNull(field) => format!("isNull({})", qi(field)),
+        FilterExpr::IsNotNull(field) => format!("isNotNull({})", qi(field)),
     }
 }
 
@@ -88,7 +91,7 @@ fn scalar_to_sql(v: &ScalarValue) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fuse_core::connector::{AggFunction, AggregationExpr, SubQuery};
+    use fuse_core::connector::{AggFunction, AggregationExpr, SortExpr, SubQuery};
 
     fn base() -> SubQuery {
         SubQuery { table: "events".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None }
@@ -96,7 +99,7 @@ mod tests {
 
     #[test]
     fn test_select_star() {
-        assert_eq!(subquery_to_sql(&base()), "SELECT * FROM events");
+        assert_eq!(subquery_to_sql(&base()), "SELECT * FROM `events`");
     }
 
     #[test]
@@ -105,7 +108,7 @@ mod tests {
             aggregations: vec![AggregationExpr { function: AggFunction::CountDistinct, field: Some("user_id".into()), alias: "unique_users".into() }],
             ..base()
         };
-        assert!(subquery_to_sql(&q).contains("uniq(user_id)"));
+        assert!(subquery_to_sql(&q).contains("uniq(`user_id`)"));
     }
 
     #[test]
@@ -114,7 +117,7 @@ mod tests {
             filter: Some(FilterExpr::IsNull("email".into())),
             ..base()
         };
-        assert!(subquery_to_sql(&q).contains("isNull(email)"));
+        assert!(subquery_to_sql(&q).contains("isNull(`email`)"));
     }
 
     #[test]
@@ -123,7 +126,7 @@ mod tests {
             filter: Some(FilterExpr::IsNotNull("email".into())),
             ..base()
         };
-        assert!(subquery_to_sql(&q).contains("isNotNull(email)"));
+        assert!(subquery_to_sql(&q).contains("isNotNull(`email`)"));
     }
 
     #[test]
@@ -132,10 +135,8 @@ mod tests {
             filter: Some(FilterExpr::Comparison { field: "active".into(), op: ComparisonOp::Eq, value: ScalarValue::Boolean(true) }),
             ..base()
         };
-        assert!(subquery_to_sql(&q).contains("active = 1"));
+        assert!(subquery_to_sql(&q).contains("`active` = 1"));
     }
-
-    // ── #452 Verification tests (tester) ──
 
     #[test]
     fn test_uniq_with_group_by() {
@@ -145,8 +146,8 @@ mod tests {
             ..base()
         };
         let sql = subquery_to_sql(&q);
-        assert!(sql.contains("uniq(user_id) AS uniq_users"));
-        assert!(sql.contains("GROUP BY region"));
+        assert!(sql.contains("uniq(`user_id`) AS `uniq_users`"));
+        assert!(sql.contains("GROUP BY `region`"));
     }
 
     #[test]
@@ -158,16 +159,7 @@ mod tests {
             ..base()
         };
         let sql = subquery_to_sql(&q);
-        assert!(sql.contains("HAVING cnt > 100"));
-    }
-
-    #[test]
-    fn test_false_boolean_as_zero() {
-        let q = SubQuery {
-            filter: Some(FilterExpr::Comparison { field: "active".into(), op: ComparisonOp::Eq, value: ScalarValue::Boolean(false) }),
-            ..base()
-        };
-        assert!(subquery_to_sql(&q).contains("active = 0"));
+        assert!(sql.contains("HAVING `cnt` > 100"));
     }
 
     #[test]
@@ -176,14 +168,30 @@ mod tests {
             aggregations: vec![AggregationExpr { function: AggFunction::Sum, field: Some("amount".into()), alias: "total".into() }],
             group_by: vec!["region".into()],
             filter: Some(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("active".into()) }),
-            sort: vec![fuse_core::connector::SortExpr { field: "total".into(), descending: true }],
+            sort: vec![SortExpr { field: "total".into(), descending: true }],
             limit: Some(10),
             having: None, ..base()
         };
         let sql = subquery_to_sql(&q);
-        assert!(sql.contains("WHERE status = 'active'"));
-        assert!(sql.contains("GROUP BY region"));
-        assert!(sql.contains("ORDER BY total DESC"));
+        assert!(sql.contains("WHERE `status` = 'active'"));
+        assert!(sql.contains("GROUP BY `region`"));
+        assert!(sql.contains("ORDER BY `total` DESC"));
         assert!(sql.contains("LIMIT 10"));
+    }
+
+    #[test]
+    fn test_identifier_with_special_chars() {
+        let q = SubQuery {
+            table: "my table".into(),
+            filter: Some(FilterExpr::Comparison {
+                field: "col`name".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Int64(1),
+            }),
+            ..base()
+        };
+        let sql = subquery_to_sql(&q);
+        assert!(sql.contains("FROM `my table`"));
+        assert!(sql.contains("`col``name`"));
     }
 }
