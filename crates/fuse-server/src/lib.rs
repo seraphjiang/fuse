@@ -36,6 +36,7 @@ pub mod slow_query;
 pub mod wasm_plugin;
 pub mod ws_streaming;
 pub mod saved_queries;
+pub mod sanitize;
 pub mod scheduler;
 pub mod shared_state;
 pub mod sse_stream;
