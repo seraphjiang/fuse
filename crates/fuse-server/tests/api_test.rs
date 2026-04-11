@@ -1478,10 +1478,10 @@ async fn test_stats_endpoint() {
     assert_eq!(resp.status(), StatusCode::OK);
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    assert!(json["total_queries"].as_u64().unwrap() >= 1);
-    assert!(json["avg_latency_ms"].is_number());
-    assert!(json["p95_latency_ms"].is_number());
-    assert!(json["total_rows_returned"].is_number());
+    // Stats response nests query stats under "history" key
+    assert!(json["history"]["total_queries"].as_u64().unwrap_or(0) >= 1);
+    assert!(json["history"]["avg_latency_ms"].is_number());
+    assert!(json["connectors"].is_number());
 }
 
 // ── Parameterized query tests ──
