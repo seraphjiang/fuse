@@ -44,6 +44,7 @@ fn test_governor_within_limits() {
         max_rows: Some(1000),
         max_time_ms: Some(30000),
         max_result_bytes: Some(10_000_000),
+        max_queries_per_minute: None,
     };
     assert!(QueryGovernor::check_limits(&config, 500, 5000, 1000).is_ok());
 }
@@ -57,6 +58,7 @@ fn test_governor_exceeds_max_rows() {
         max_rows: Some(100),
         max_time_ms: None,
         max_result_bytes: None,
+        max_queries_per_minute: None,
     };
     let err = QueryGovernor::check_limits(&config, 200, 0, 0).unwrap_err();
     assert!(err.contains("max_rows"), "should mention max_rows: {}", err);
@@ -71,6 +73,7 @@ fn test_governor_exceeds_max_time() {
         max_rows: None,
         max_time_ms: Some(5000),
         max_result_bytes: None,
+        max_queries_per_minute: None,
     };
     let err = QueryGovernor::check_limits(&config, 0, 0, 10000).unwrap_err();
     assert!(err.contains("max_time_ms"), "should mention time: {}", err);
@@ -85,6 +88,7 @@ fn test_governor_row_limit_truncation() {
         max_rows: Some(50),
         max_time_ms: None,
         max_result_bytes: None,
+        max_queries_per_minute: None,
     };
     assert_eq!(QueryGovernor::apply_row_limit(&config, 100), 50);
     assert_eq!(QueryGovernor::apply_row_limit(&config, 30), 30);
@@ -99,6 +103,7 @@ fn test_governor_effective_timeout() {
         max_rows: None,
         max_time_ms: Some(5000),
         max_result_bytes: None,
+        max_queries_per_minute: None,
     };
     assert_eq!(QueryGovernor::effective_timeout_ms(&config, 30000), 5000);
     assert_eq!(QueryGovernor::effective_timeout_ms(&config, 3000), 3000);
