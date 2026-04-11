@@ -25,6 +25,7 @@ members = [
     "crates/fuse-connectors/bigquery",
     "crates/fuse-connectors/arrow-flight",
     "crates/fuse-connectors/spark",
+    "crates/fuse-connectors/delta-lake",
     "crates/fuse-connectors/duckdb",
     "crates/fuse-connector-sdk",
     "crates/fuse-server",
