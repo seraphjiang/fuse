@@ -162,6 +162,7 @@ async fn main() -> anyhow::Result<()> {
         config.engine.rate_limit_global,
         config.engine.rate_limit_per_ip,
     );
+    let connector_count = state.registry.list().len();
     let running_queries = state.running_queries.clone();
     let app = fuse_server::build_router_with_limits(state, rl);
     let app = if let Some(cors) = fuse_server::cors::build_cors_layer(&config.engine.cors_origins) {
@@ -172,7 +173,15 @@ async fn main() -> anyhow::Result<()> {
 
     let bind = &config.engine.bind;
     let listener = tokio::net::TcpListener::bind(bind).await?;
-    info!(bind = %bind, "Fuse server starting");
+    info!(
+        bind = %bind,
+        connectors = connector_count,
+        version = env!("CARGO_PKG_VERSION"),
+        cors = !config.engine.cors_origins.is_empty(),
+        redis = std::env::var("FUSE_REDIS_URL").is_ok(),
+        "🔗 Fuse v{} — {} connectors, listening on {}",
+        env!("CARGO_PKG_VERSION"), connector_count, bind
+    );
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal(running_queries))
