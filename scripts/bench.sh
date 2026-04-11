@@ -91,4 +91,21 @@ curl -s -o /dev/null "$URL/api/fuse/history"
 end=$(date +%s%N)
 printf "%-40s %6d ms\n" "query_history" "$(( (end - start) / 1000000 ))"
 
+echo ""
+echo "--- Sprint 12-16 Features ---"
+query "prepared_stmt" '{"query":"PREPARE q AS SELECT * FROM cluster_a.application_logs WHERE status >= $1 LIMIT 10; EXECUTE q(500)","format":"sql"}'
+query "multi_statement" '{"query":"SELECT count(*) FROM cluster_a.application_logs; SELECT count(*) FROM cluster_b.application_logs","format":"sql"}'
+query "ppl_lookup" '{"query":"source = cluster_a.application_logs | where status >= 500 | stats count() by service | sort - count()","format":"ppl"}'
+query "validate_only" '{"query":"SELECT * FROM cluster_a.application_logs LIMIT 1","format":"sql"}' # validate endpoint
+query "nl_to_sql" '{"question":"show me errors from cluster_a"}'
+
+echo ""
+echo "--- Endpoint Latency ---"
+for ep in health datasources stats advisor federation; do
+  start=$(date +%s%N)
+  curl -s -o /dev/null "$URL/api/fuse/$ep"
+  end=$(date +%s%N)
+  printf "%-40s %6d ms\n" "$ep" "$(( (end - start) / 1000000 ))"
+done
+
 echo "=== Benchmark Complete ==="
