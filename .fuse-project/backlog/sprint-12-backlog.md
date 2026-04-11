@@ -18,6 +18,7 @@
 |----|------|-------|--------|-------|
 | 900 | EXPLAIN ANALYZE with execution stats | ai-lead | done | execution_profile, per-node timing/rows/bytes, 5 new tests. Commit: d871977 |
 | 903 | Prepared statements with parameter binding | ai-lead | done | PREPARE/EXECUTE, positional $N binding, safe escaping, 19 tests. Commit: 54981ad |
+| 940 | EXPLAIN ANALYZE accuracy tests | fee | done | 6 tests validating profile accuracy. Commit: 1578611 |
 
 ## P1: Security Hardening (security → reassigned)
 
