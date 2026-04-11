@@ -113,6 +113,7 @@ fn too_many_requests() -> Response<Body> {
     Response::builder()
         .status(StatusCode::TOO_MANY_REQUESTS)
         .header("Retry-After", HeaderValue::from_static("60"))
+        .header("X-RateLimit-Remaining", HeaderValue::from_static("0"))
         .header("Content-Type", HeaderValue::from_static("application/json"))
         .body(Body::from(r#"{"error":"rate limit exceeded"}"#))
         .unwrap()
@@ -121,11 +122,11 @@ fn too_many_requests() -> Response<Body> {
 fn too_many_requests_for_key(identity: &str) -> Response<Body> {
     let body = serde_json::json!({
         "error": "rate limit exceeded for API key",
-        "identity": identity
     }).to_string();
     Response::builder()
         .status(StatusCode::TOO_MANY_REQUESTS)
         .header("Retry-After", HeaderValue::from_static("60"))
+        .header("X-RateLimit-Remaining", HeaderValue::from_static("0"))
         .header("Content-Type", HeaderValue::from_static("application/json"))
         .body(Body::from(body))
         .unwrap()
