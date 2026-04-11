@@ -1496,21 +1496,46 @@ async function loadSchema() {
 function getCompletions(word) {
   const w = word.toLowerCase();
   const results = [];
-  // SQL keywords
+  const parts = w.split('.');
+
+  // After "ds." → show tables for that datasource
+  if (parts.length === 2) {
+    const dsKey = Object.keys(acSchema).find(k => k.toLowerCase() === parts[0]);
+    if (dsKey) {
+      Object.keys(acSchema[dsKey]).forEach(tbl => {
+        const full = dsKey + '.' + tbl;
+        if (full.toLowerCase().startsWith(w)) results.push({ label: full, type: 'table' });
+      });
+      if (results.length) return results.slice(0, 15);
+    }
+  }
+
+  // After "ds.table." → show fields for that table
+  if (parts.length === 3) {
+    const dsKey = Object.keys(acSchema).find(k => k.toLowerCase() === parts[0]);
+    if (dsKey) {
+      const tblKey = Object.keys(acSchema[dsKey]).find(k => k.toLowerCase() === parts[1]);
+      if (tblKey) {
+        acSchema[dsKey][tblKey].forEach(f => {
+          if (f.toLowerCase().startsWith(parts[2])) results.push({ label: f, type: 'field' });
+        });
+        if (results.length) return results.slice(0, 15);
+      }
+    }
+  }
+
+  // General: keywords, datasources, tables, fields
   SQL_KEYWORDS.forEach(k => { if (k.toLowerCase().startsWith(w)) results.push({ label: k, type: 'keyword' }); });
-  // Datasource.table
   Object.keys(acSchema).forEach(ds => {
     if (ds.toLowerCase().startsWith(w)) results.push({ label: ds, type: 'datasource' });
     Object.keys(acSchema[ds]).forEach(tbl => {
       const full = ds + '.' + tbl;
       if (full.toLowerCase().startsWith(w) || tbl.toLowerCase().startsWith(w)) results.push({ label: full, type: 'table' });
-      // Fields
       acSchema[ds][tbl].forEach(f => {
         if (f.toLowerCase().startsWith(w)) results.push({ label: f, type: 'field' });
       });
     });
   });
-  // Deduplicate
   const seen = new Set();
   return results.filter(r => { if (seen.has(r.label)) return false; seen.add(r.label); return true; }).slice(0, 15);
 }
