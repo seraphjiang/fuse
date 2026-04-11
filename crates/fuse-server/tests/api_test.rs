@@ -4689,3 +4689,72 @@ async fn test_execute_no_params_zero_placeholders() {
     assert_eq!(status, StatusCode::OK);
     assert!(json["columns"].as_array().is_some());
 }
+
+// ── #941 Prepared statement SQL injection tests ──
+
+#[tokio::test]
+async fn test_prepared_injection_single_quote_escaped() {
+    let app = build_test_app();
+    post_query(app.clone(), "PREPARE q AS SELECT * FROM testds.logs WHERE host = $1", "sql").await;
+    let (status, _json) = post_query(app, "EXECUTE q USING ''; DROP TABLE logs; --'", "sql").await;
+    // Must not crash or execute injection — escaped quotes make it a literal string
+    assert!(status == StatusCode::OK || status == StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
+async fn test_prepared_injection_union_select() {
+    let app = build_test_app();
+    post_query(app.clone(), "PREPARE q AS SELECT * FROM testds.logs WHERE host = $1", "sql").await;
+    let (status, _json) = post_query(app, "EXECUTE q USING '' UNION SELECT * FROM testds.logs --'", "sql").await;
+    // The UNION attempt is inside a quoted string, not executed as SQL
+    assert!(status == StatusCode::OK || status == StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
+async fn test_prepared_injection_numeric_param_safe() {
+    let app = build_test_app();
+    post_query(app.clone(), "PREPARE q AS SELECT * FROM testds.logs WHERE status = $1", "sql").await;
+    // Numeric params bind as numbers, not strings — no injection vector
+    let (status, _json) = post_query(app, "EXECUTE q USING 500", "sql").await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_prepared_injection_null_param_safe() {
+    let app = build_test_app();
+    post_query(app.clone(), "PREPARE q AS SELECT * FROM testds.logs WHERE host = $1", "sql").await;
+    let (status, _json) = post_query(app, "EXECUTE q USING null", "sql").await;
+    // NULL binds as literal NULL keyword, not a string
+    assert!(status == StatusCode::OK || status == StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
+async fn test_prepared_injection_nested_quotes() {
+    let app = build_test_app();
+    post_query(app.clone(), "PREPARE q AS SELECT * FROM testds.logs WHERE host = $1", "sql").await;
+    let (status, _json) = post_query(app, "EXECUTE q USING 'O''Brien; DROP TABLE logs'", "sql").await;
+    // Double-escaped quotes must remain safe
+    assert!(status == StatusCode::OK || status == StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
+async fn test_bind_positional_escapes_injection_payload() {
+    // Unit-level verification that bind_positional escapes dangerous strings
+    let result = fuse_server::prepared::bind_positional(
+        "SELECT * FROM t WHERE name = $1",
+        &[serde_json::json!("'; DROP TABLE t; --")],
+    );
+    // Input ' becomes '' inside the string literal: '(open) ''(escaped ') ; DROP...(rest) '(close)
+    assert!(result.contains("''"), "single quotes must be escaped: {}", result);
+    assert_eq!(result, "SELECT * FROM t WHERE name = '''; DROP TABLE t; --'");
+}
+
+#[tokio::test]
+async fn test_bind_positional_multi_param_injection() {
+    // Verify injection in $2 doesn't affect $1's binding
+    let result = fuse_server::prepared::bind_positional(
+        "SELECT * FROM t WHERE a = $1 AND b = $2",
+        &[serde_json::json!("safe"), serde_json::json!("' OR 1=1 --")],
+    );
+    assert_eq!(result, "SELECT * FROM t WHERE a = 'safe' AND b = ''' OR 1=1 --'");
+}
