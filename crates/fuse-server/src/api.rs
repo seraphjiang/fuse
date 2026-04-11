@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
-use axum::extract::{Json, Path, State};
+use axum::extract::{Json, Path, State, Extension};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use serde::{Deserialize, Serialize};
@@ -488,6 +488,7 @@ fn bind_params(query: &str, params: &std::collections::HashMap<String, serde_jso
 /// POST /api/fuse/query
 pub async fn query_handler(
     State(state): State<Arc<AppState>>,
+    auth_identity: Option<Extension<crate::auth::AuthIdentity>>,
     Json(req): Json<QueryRequest>,
 ) -> impl IntoResponse {
     let t0 = std::time::Instant::now();
@@ -839,8 +840,9 @@ pub async fn query_handler(
         }
     }
 
-    // Tenant isolation: filter datasources by tenant access
-    let tenant_id = req.params.get("_tenant_id").and_then(|v| v.as_str().map(|s| s.to_string()));
+    // Tenant isolation: derive tenant_id from authenticated identity, not request params.
+    // AuthIdentity is set by auth middleware from the validated API key.
+    let tenant_id = auth_identity.as_ref().map(|ext| ext.0.identity.clone());
     if let Some(ref tid) = tenant_id {
         if state.tenant_registry.is_enabled() {
             let ds_ids: Vec<String> = refs.iter().map(|(ds, _)| ds.clone()).collect();
@@ -849,7 +851,7 @@ pub async fn query_handler(
                 if !allowed.contains(ds_id) {
                     return error_json(
                         StatusCode::FORBIDDEN,
-                        format!("tenant '{}' does not have access to datasource '{}'", tid, ds_id),
+                        "access denied".to_string(),
                     )
                     .into_response();
                 }
@@ -2865,14 +2867,14 @@ pub async fn multi_query_handler(
     let statements = split_statements(&req.query);
     if statements.len() <= 1 {
         // Single statement — delegate to normal handler
-        return query_handler(State(state), Json(req)).await.into_response();
+        return query_handler(State(state), None, Json(req)).await.into_response();
     }
 
     let mut results = Vec::new();
     for stmt in &statements {
         let mut sub_req = req.clone();
         sub_req.query = stmt.clone();
-        let resp = query_handler(State(state.clone()), Json(sub_req)).await;
+        let resp = query_handler(State(state.clone()), None, Json(sub_req)).await;
         // Extract JSON body from response
         let (parts, body) = resp.into_response().into_parts();
         let bytes = axum::body::to_bytes(body, 10_000_000).await.unwrap_or_default();
@@ -2970,7 +2972,7 @@ pub async fn nl_to_sql_handler(
             start: None, end: None, step: None,
             cursor: None, page_size: None,
         };
-        let exec_resp = query_handler(State(state), Json(query_req)).await;
+        let exec_resp = query_handler(State(state), None, Json(query_req)).await;
         let (_, body) = exec_resp.into_response().into_parts();
         if let Ok(bytes) = axum::body::to_bytes(body, 10_000_000).await {
             response.results = serde_json::from_slice(&bytes).ok();
