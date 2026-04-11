@@ -136,6 +136,16 @@ async fn main() -> anyhow::Result<()> {
         shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
         transactions: Arc::new(fuse_server::transaction::TransactionStore::new()),
         max_result_bytes: config.engine.max_result_bytes,
+        datasource_limiter: {
+            let limiter = std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new());
+            for c in &config.connector {
+                let max = c.properties.get("max_concurrent_queries")
+                    .and_then(|v| v.as_integer()).map(|n| n as u64)
+                    .unwrap_or(16) as usize;
+                limiter.register(&c.id, max);
+            }
+            limiter
+        },
     });
 
     // Initialize metrics

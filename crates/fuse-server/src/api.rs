@@ -83,6 +83,8 @@ pub struct AppState {
     pub transactions: Arc<TransactionStore>,
     /// Global max result size in bytes (0 = unlimited). From engine.max_result_bytes.
     pub max_result_bytes: u64,
+    /// Per-datasource concurrency limiter. Limits concurrent queries per connector.
+    pub datasource_limiter: Arc<crate::rate_limit::DatasourceLimiter>,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.

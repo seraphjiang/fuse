@@ -336,4 +336,36 @@ mod tests {
         limiter.register("b", 10);
         assert_eq!(limiter.datasource_count(), 2);
     }
+
+    #[test]
+    fn test_datasource_limiter_default_max() {
+        let limiter = DatasourceLimiter::new();
+        limiter.register("ds1", 0); // 0 should default to 16
+        assert_eq!(limiter.available("ds1"), Some(16));
+    }
+
+    #[test]
+    fn test_datasource_limiter_custom_max() {
+        let limiter = DatasourceLimiter::new();
+        limiter.register("ds1", 4);
+        assert_eq!(limiter.available("ds1"), Some(4));
+    }
+
+    #[tokio::test]
+    async fn test_datasource_limiter_concurrency_enforced() {
+        let limiter = DatasourceLimiter::new();
+        limiter.register("ds1", 2);
+
+        let p1 = limiter.acquire("ds1").await;
+        assert!(p1.is_some());
+        assert_eq!(limiter.available("ds1"), Some(1));
+
+        let p2 = limiter.acquire("ds1").await;
+        assert!(p2.is_some());
+        assert_eq!(limiter.available("ds1"), Some(0));
+
+        // Drop one permit — should free a slot
+        drop(p1);
+        assert_eq!(limiter.available("ds1"), Some(1));
+    }
 }
