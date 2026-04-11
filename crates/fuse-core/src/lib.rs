@@ -7,6 +7,7 @@ pub mod connector;
 pub mod cost_model;
 pub mod dependency_graph;
 pub mod error;
+pub mod factory;
 pub mod health_history;
 pub mod materialized_view;
 pub mod metadata_cache;
