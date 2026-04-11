@@ -6,6 +6,7 @@ pub mod alert_api;
 pub mod alert_monitor;
 pub mod api;
 pub mod anomaly;
+pub mod anomaly_alert;
 pub mod async_query;
 pub mod audit;
 pub mod auth;
