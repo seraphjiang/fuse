@@ -102,4 +102,37 @@ await testAsync('health returns response', async () => {
   assert.equal(h.status, 'ok');
 });
 
+
+await testAsync('savedQueries returns list', async () => {
+  const c = new FuseClient({ fetch: mockFetch(200, [{ name: 'q1', query: 'SELECT 1' }]) });
+  const saved = await c.savedQueries();
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].name, 'q1');
+});
+
+await testAsync('saveQuery sends body', async () => {
+  let sentBody;
+  const c = new FuseClient({
+    fetch: async (url, opts) => {
+      sentBody = JSON.parse(opts.body);
+      return { ok: true, status: 200, json: async () => ({ ok: true }), text: async () => '{}' };
+    },
+  });
+  await c.saveQuery('myq', 'SELECT 1', 'test query');
+  assert.equal(sentBody.name, 'myq');
+  assert.equal(sentBody.query, 'SELECT 1');
+});
+
+await testAsync('deleteSavedQuery calls DELETE', async () => {
+  let method;
+  const c = new FuseClient({
+    fetch: async (url, opts) => {
+      method = opts.method;
+      return { ok: true, status: 200, json: async () => ({ ok: true }), text: async () => '{}' };
+    },
+  });
+  await c.deleteSavedQuery('myq');
+  assert.equal(method, 'DELETE');
+});
+
 console.log(`\n${passed} tests passed.`);

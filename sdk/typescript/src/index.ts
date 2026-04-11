@@ -166,6 +166,26 @@ export class FuseClient {
   }
 
   /** Get query history. */
+  /** List saved queries. */
+  async savedQueries(): Promise<unknown[]> {
+    return this.request('GET', '/api/fuse/saved');
+  }
+
+  /** Save a query. */
+  async saveQuery(name: string, query: string, description = ''): Promise<unknown> {
+    return this.request('POST', '/api/fuse/saved', { name, query, description });
+  }
+
+  /** Get a saved query by name. */
+  async getSavedQuery(name: string): Promise<unknown> {
+    return this.request('GET', `/api/fuse/saved/${name}`);
+  }
+
+  /** Delete a saved query. */
+  async deleteSavedQuery(name: string): Promise<unknown> {
+    return this.request('DELETE', `/api/fuse/saved/${name}`);
+  }
+
   async history(): Promise<unknown[]> {
     return this.request('GET', '/api/fuse/history');
   }
