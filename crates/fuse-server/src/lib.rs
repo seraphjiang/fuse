@@ -19,6 +19,7 @@ pub mod dedup;
 pub mod delivery;
 pub mod export;
 pub mod federation;
+pub mod formatter;
 pub mod health;
 pub mod health_monitor;
 pub mod history;
