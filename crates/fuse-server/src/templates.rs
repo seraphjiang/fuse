@@ -16,6 +16,12 @@ pub struct QueryTemplate {
 
 impl QueryTemplate {
     /// Render the template with provided parameter values.
+    ///
+    /// # Security Warning
+    /// Values are substituted as raw strings — NO escaping is applied.
+    /// For user-facing inputs, use prepared statements ($1 params) instead
+    /// of templates. Templates are intended for admin/power-user use where
+    /// parameter values come from trusted sources (config, internal systems).
     pub fn render(&self, values: &HashMap<String, String>) -> Result<String, String> {
         let mut result = self.template.clone();
         for param in &self.params {
