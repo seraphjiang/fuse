@@ -68,4 +68,27 @@ end=$(date +%s%N)
 printf "%-40s %6d ms\n" "health_check" "$(( (end - start) / 1000000 ))"
 
 echo ""
+
+echo ""
+echo "--- Window Functions ---"
+query "window_row_number" '{"query":"SELECT *, ROW_NUMBER() OVER (PARTITION BY service ORDER BY timestamp DESC) as rn FROM cluster_a.application_logs LIMIT 100","format":"sql"}'
+
+echo ""
+echo "--- Cursor Pagination ---"
+query "cursor_first_page" '{"query":"SELECT * FROM cluster_a.application_logs ORDER BY timestamp DESC","format":"sql","page_size":20}'
+
+echo ""
+echo "--- Saved Queries ---"
+start=$(date +%s%N)
+curl -s -o /dev/null "$URL/api/fuse/saved"
+end=$(date +%s%N)
+printf "%-40s %6d ms\n" "list_saved_queries" "$(( (end - start) / 1000000 ))"
+
+echo ""
+echo "--- History ---"
+start=$(date +%s%N)
+curl -s -o /dev/null "$URL/api/fuse/history"
+end=$(date +%s%N)
+printf "%-40s %6d ms\n" "query_history" "$(( (end - start) / 1000000 ))"
+
 echo "=== Benchmark Complete ==="
