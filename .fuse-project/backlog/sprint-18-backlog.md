@@ -20,14 +20,14 @@
 |----|------|-------|--------|-------|
 | 1810 | GraphQL API | sde | todo | Alternative to REST. Schema introspection → datasource schemas. Query/mutation for CRUD. |
 | 1811 | Webhook Subscriptions | sde | todo | POST callback when query result matches condition. Event-driven monitoring. |
-| 1812 | Query Replay & Regression Testing | pm | todo | Record production queries, replay against staging. Diff results. Builds on query_diff module. |
+| 1812 | Query Replay & Regression Testing | pm | done | Record production queries, replay against staging. Diff results. Builds on query_diff module. |
 
 ## P1: Performance
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 1820 | Parallel Fan-out with Backpressure | ai-lead | todo | Fast connectors stream results immediately. Slow connectors don't block. Tokio select + channel buffering. |
-| 1821 | Adaptive Query Caching | pm | todo | Learn repeat patterns, auto-cache with per-datasource TTL. Builds on plan_cache + result_cache. |
+| 1821 | Adaptive Query Caching | pm | done | Learn repeat patterns, auto-cache with per-datasource TTL. Builds on plan_cache + result_cache. |
 
 ## P1: AI/ML
 
@@ -40,8 +40,8 @@
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 1840 | Query Lineage & Data Catalog | pm | todo | Track data flow across connectors. Per-query lineage graph. |
-| 1841 | Multi-tenant SaaS Mode | pm | todo | Usage metering, billing integration, tenant isolation. |
+| 1840 | Query Lineage & Data Catalog | pm | done | Track data flow across connectors. Per-query lineage graph. |
+| 1841 | Multi-tenant SaaS Mode | pm | done | Usage metering, billing integration, tenant isolation. |
 
 ## P2: Advanced
 
