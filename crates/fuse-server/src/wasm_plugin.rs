@@ -22,6 +22,7 @@ use arrow::record_batch::RecordBatch;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
+use sha2::{Sha256, Digest};
 use wasmtime::*;
 
 use fuse_core::connector::*;
@@ -34,6 +35,20 @@ const _WASM_MEMORY_LIMIT: usize = 64 * 1024 * 1024;
 /// Maximum input size for WASM function calls (1 MiB).
 const WASM_MAX_INPUT_SIZE: usize = 1024 * 1024;
 
+/// Verify SHA-256 hash of a WASM module file.
+fn verify_wasm_sha256(path: &Path, expected_hex: &str) -> Result<(), String> {
+    let bytes = std::fs::read(path)
+        .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+    let actual = hex::encode(Sha256::digest(&bytes));
+    if actual != expected_hex.to_lowercase() {
+        return Err(format!(
+            "SHA-256 mismatch for {}: expected {}, got {}",
+            path.display(), expected_hex, actual
+        ));
+    }
+    Ok(())
+}
+
 /// A loaded WASM plugin module.
 pub struct WasmPlugin {
     id: String,
@@ -41,6 +56,7 @@ pub struct WasmPlugin {
     module_path: PathBuf,
     engine: Engine,
     module: Module,
+    security: PluginSecurityConfig,
 }
 
 impl fmt::Debug for WasmPlugin {
@@ -54,8 +70,17 @@ impl fmt::Debug for WasmPlugin {
 }
 
 impl WasmPlugin {
-    /// Load a WASM plugin from a `.wasm` file.
-    pub fn load(id: &str, path: &Path) -> Result<Self, ConnectorError> {
+    /// Load a WASM plugin from a `.wasm` file with security constraints.
+    pub fn load(id: &str, path: &Path, security: PluginSecurityConfig) -> Result<Self, ConnectorError> {
+        // Verify integrity if sha256 is specified
+        if let Some(ref expected) = security.sha256 {
+            verify_wasm_sha256(path, expected)
+                .map_err(|e| ConnectorError::Connection(format!("wasm integrity: {e}")))?;
+            info!("WASM plugin '{}' SHA-256 verified", id);
+        } else {
+            warn!("WASM plugin '{}' loaded without SHA-256 verification — consider adding [security].sha256 to manifest", id);
+        }
+
         let mut config = wasmtime::Config::new();
         config.consume_fuel(true);
         let engine = Engine::new(&config)
@@ -63,10 +88,28 @@ impl WasmPlugin {
         let module = Module::from_file(&engine, path)
             .map_err(|e| ConnectorError::Connection(format!("wasm load '{}': {e}", path.display())))?;
 
-        // Probe for connector_type export
-        let connector_type_name = Self::probe_connector_type(&engine, &module)?;
+        // Reject modules that import WASI when not allowed
+        if !security.allow_wasi {
+            for import in module.imports() {
+                if import.module() == "wasi_snapshot_preview1" || import.module().starts_with("wasi:") {
+                    return Err(ConnectorError::Connection(format!(
+                        "wasm plugin '{}' requires WASI but allow_wasi=false in manifest", id
+                    )));
+                }
+            }
+        }
 
-        info!("Loaded WASM plugin '{}' (type: {}) from {}", id, connector_type_name, path.display());
+        // Probe for connector_type export
+        let fuel = security.max_fuel.unwrap_or(WASM_FUEL_LIMIT);
+        let connector_type_name = Self::probe_connector_type(&engine, &module, fuel)?;
+
+        info!(
+            "Loaded WASM plugin '{}' (type: {}, fuel: {}, mem: {}MiB, wasi: {}) from {}",
+            id, connector_type_name, fuel,
+            security.max_memory_mb.unwrap_or(64),
+            security.allow_wasi,
+            path.display()
+        );
 
         Ok(Self {
             id: id.to_string(),
@@ -74,12 +117,13 @@ impl WasmPlugin {
             module_path: path.to_path_buf(),
             engine,
             module,
+            security,
         })
     }
 
-    fn probe_connector_type(engine: &Engine, module: &Module) -> Result<String, ConnectorError> {
+    fn probe_connector_type(engine: &Engine, module: &Module, fuel: u64) -> Result<String, ConnectorError> {
         let mut store = Store::new(engine, ());
-        store.set_fuel(WASM_FUEL_LIMIT).ok();
+        store.set_fuel(fuel).ok();
         let linker = Linker::new(engine);
         let instance = linker.instantiate(&mut store, module)
             .map_err(|e| ConnectorError::Connection(format!("wasm instantiate: {e}")))?;
@@ -114,7 +158,7 @@ impl WasmPlugin {
         }
 
         let mut store = Store::new(&self.engine, ());
-        store.set_fuel(WASM_FUEL_LIMIT).ok();
+        store.set_fuel(self.security.max_fuel.unwrap_or(WASM_FUEL_LIMIT)).ok();
         let linker = Linker::new(&self.engine);
         let instance = linker.instantiate(&mut store, &self.module)
             .map_err(|e| ConnectorError::Connection(format!("wasm instantiate: {e}")))?;
@@ -251,6 +295,13 @@ impl FederatedConnector for WasmPlugin {
 /// connector_type = "my-type"
 /// description = "Connects to My Service"
 /// author = "Team X"
+///
+/// [security]
+/// sha256 = "abc123..."
+/// max_fuel = 5000000
+/// max_memory_mb = 32
+/// max_execution_ms = 30000
+/// allow_wasi = false
 /// ```
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct PluginManifest {
@@ -267,6 +318,40 @@ pub struct PluginManifest {
     pub author: Option<String>,
     #[serde(default)]
     pub enabled: Option<bool>,
+    #[serde(default)]
+    pub security: PluginSecurityConfig,
+}
+
+/// Security constraints for a WASM plugin.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct PluginSecurityConfig {
+    /// SHA-256 hex digest of the `.wasm` file. If set, module is rejected on mismatch.
+    #[serde(default)]
+    pub sha256: Option<String>,
+    /// Max fuel (CPU budget) per call. Defaults to WASM_FUEL_LIMIT.
+    #[serde(default)]
+    pub max_fuel: Option<u64>,
+    /// Max linear memory in MiB. Defaults to 64.
+    #[serde(default)]
+    pub max_memory_mb: Option<usize>,
+    /// Max wall-clock execution time per call in ms. Defaults to 30_000.
+    #[serde(default)]
+    pub max_execution_ms: Option<u64>,
+    /// Whether WASI imports are allowed. Defaults to false (fully sandboxed).
+    #[serde(default)]
+    pub allow_wasi: bool,
+}
+
+impl Default for PluginSecurityConfig {
+    fn default() -> Self {
+        Self {
+            sha256: None,
+            max_fuel: None,
+            max_memory_mb: None,
+            max_execution_ms: None,
+            allow_wasi: false,
+        }
+    }
 }
 
 impl PluginManifest {
@@ -301,7 +386,7 @@ pub fn load_plugins_from_dir(dir: &Path) -> Vec<WasmPlugin> {
                         }
                         let wasm_path = path.join(format!("{}.wasm", manifest.id));
                         if wasm_path.exists() {
-                            match WasmPlugin::load(&manifest.id, &wasm_path) {
+                            match WasmPlugin::load(&manifest.id, &wasm_path, manifest.security.clone()) {
                                 Ok(plugin) => {
                                     info!("Loaded plugin '{}' v{} from manifest",
                                         manifest.id,
@@ -320,10 +405,11 @@ pub fn load_plugins_from_dir(dir: &Path) -> Vec<WasmPlugin> {
             continue;
         }
 
-        // Case 2: bare .wasm file (original behavior)
+        // Case 2: bare .wasm file — loaded with default (restrictive) security
         if path.extension().is_some_and(|e| e == "wasm") {
             let id = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
-            match WasmPlugin::load(&id, &path) {
+            warn!("Loading bare WASM plugin '{}' without manifest — no integrity verification", id);
+            match WasmPlugin::load(&id, &path, PluginSecurityConfig::default()) {
                 Ok(plugin) => {
                     info!("Loaded WASM plugin: {} ({})", id, plugin.connector_type_name);
                     plugins.push(plugin);
@@ -374,7 +460,7 @@ mod tests {
 
     #[test]
     fn test_load_nonexistent_file() {
-        let result = WasmPlugin::load("test", Path::new("/nonexistent.wasm"));
+        let result = WasmPlugin::load("test", Path::new("/nonexistent.wasm"), PluginSecurityConfig::default());
         assert!(result.is_err());
     }
 
@@ -495,5 +581,89 @@ enabled = false
         reg.load_from_dir(&dir);
         assert_eq!(reg.count(), 0);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── Security tests ──
+
+    #[test]
+    fn test_verify_sha256_valid() {
+        let dir = std::env::temp_dir().join("fuse_sha256_valid");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("test.wasm");
+        let content = b"fake wasm content";
+        std::fs::write(&path, content).unwrap();
+        let expected = hex::encode(sha2::Sha256::digest(content));
+        assert!(verify_wasm_sha256(&path, &expected).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_verify_sha256_mismatch() {
+        let dir = std::env::temp_dir().join("fuse_sha256_bad");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("test.wasm");
+        std::fs::write(&path, b"content").unwrap();
+        let result = verify_wasm_sha256(&path, "0000000000000000000000000000000000000000000000000000000000000000");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("SHA-256 mismatch"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_verify_sha256_missing_file() {
+        let result = verify_wasm_sha256(Path::new("/nonexistent"), "abc");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_manifest_with_security_config() {
+        let toml = r#"
+id = "secure-plugin"
+version = "1.0.0"
+
+[security]
+sha256 = "abcdef1234567890"
+max_fuel = 5000000
+max_memory_mb = 32
+max_execution_ms = 15000
+allow_wasi = false
+"#;
+        let m: PluginManifest = toml::from_str(toml).unwrap();
+        assert_eq!(m.security.sha256.as_deref(), Some("abcdef1234567890"));
+        assert_eq!(m.security.max_fuel, Some(5_000_000));
+        assert_eq!(m.security.max_memory_mb, Some(32));
+        assert_eq!(m.security.max_execution_ms, Some(15_000));
+        assert!(!m.security.allow_wasi);
+    }
+
+    #[test]
+    fn test_manifest_security_defaults() {
+        let toml = r#"id = "no-security""#;
+        let m: PluginManifest = toml::from_str(toml).unwrap();
+        assert!(m.security.sha256.is_none());
+        assert!(m.security.max_fuel.is_none());
+        assert!(m.security.max_memory_mb.is_none());
+        assert!(!m.security.allow_wasi);
+    }
+
+    #[test]
+    fn test_manifest_allow_wasi() {
+        let toml = r#"
+id = "wasi-plugin"
+[security]
+allow_wasi = true
+"#;
+        let m: PluginManifest = toml::from_str(toml).unwrap();
+        assert!(m.security.allow_wasi);
+    }
+
+    #[test]
+    fn test_security_config_default() {
+        let cfg = PluginSecurityConfig::default();
+        assert!(cfg.sha256.is_none());
+        assert!(cfg.max_fuel.is_none());
+        assert!(cfg.max_memory_mb.is_none());
+        assert!(cfg.max_execution_ms.is_none());
+        assert!(!cfg.allow_wasi);
     }
 }
