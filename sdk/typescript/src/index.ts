@@ -206,6 +206,46 @@ export class FuseClient {
   async history(): Promise<unknown[]> {
     return this.request('GET', '/api/fuse/history');
   }
+
+  // ── Sprint 18: Webhooks (#1811) ──
+
+  async webhooks(): Promise<unknown[]> {
+    return this.request('GET', '/api/fuse/webhooks');
+  }
+
+  async createWebhook(name: string, query: string, condition: unknown, callbackUrl: string, format = 'sql'): Promise<{ id: string }> {
+    return this.request('POST', '/api/fuse/webhooks', { name, query, format, condition, callback_url: callbackUrl });
+  }
+
+  async deleteWebhook(id: string): Promise<unknown> {
+    return this.request('DELETE', `/api/fuse/webhooks/${id}`);
+  }
+
+  async testWebhook(id: string): Promise<{ fired: boolean; row_count?: number }> {
+    return this.request('POST', `/api/fuse/webhooks/${id}/test`);
+  }
+
+  // ── Sprint 18: Schema Relationships (#1831) ──
+
+  async relationships(): Promise<unknown[]> {
+    return this.request('GET', '/api/fuse/relationships');
+  }
+
+  // ── Sprint 18: CDC (#1852) ──
+
+  async cdcStatus(): Promise<unknown> {
+    return this.request('GET', '/api/fuse/cdc/status');
+  }
+
+  async cdcEvent(datasource: string, table: string, changeType = 'insert'): Promise<{ accepted: boolean; affected_views: string[] }> {
+    return this.request('POST', '/api/fuse/cdc/events', { datasource, table, change_type: changeType, timestamp: Math.floor(Date.now() / 1000) });
+  }
+
+  // ── Predictive Performance ──
+
+  async predict(query: string): Promise<{ estimated_ms: number; confidence: string }> {
+    return this.request('GET', `/api/fuse/predict?query=${encodeURIComponent(query)}`);
+  }
 }
 
 export default FuseClient;

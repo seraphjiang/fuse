@@ -207,3 +207,95 @@ func (r *QueryResult) ToDicts() []map[string]interface{} {
 	}
 	return out
 }
+
+// ── Sprint 18: Webhooks (#1811) ──
+
+// Webhooks lists all webhook subscriptions.
+func (c *Client) Webhooks() ([]map[string]interface{}, error) {
+	data, err := c.do("GET", "/api/fuse/webhooks", nil)
+	if err != nil {
+		return nil, err
+	}
+	var out []map[string]interface{}
+	return out, json.Unmarshal(data, &out)
+}
+
+// CreateWebhook registers a new webhook subscription.
+func (c *Client) CreateWebhook(name, query string, condition map[string]interface{}, callbackURL string) (string, error) {
+	body := map[string]interface{}{
+		"name": name, "query": query, "format": "sql",
+		"condition": condition, "callback_url": callbackURL,
+	}
+	data, err := c.do("POST", "/api/fuse/webhooks", body)
+	if err != nil {
+		return "", err
+	}
+	var result struct{ ID string `json:"id"` }
+	return result.ID, json.Unmarshal(data, &result)
+}
+
+// DeleteWebhook removes a webhook subscription.
+func (c *Client) DeleteWebhook(id string) error {
+	_, err := c.do("DELETE", "/api/fuse/webhooks/"+id, nil)
+	return err
+}
+
+// TestWebhook test-fires a webhook.
+func (c *Client) TestWebhook(id string) (map[string]interface{}, error) {
+	data, err := c.do("POST", "/api/fuse/webhooks/"+id+"/test", nil)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]interface{}
+	return out, json.Unmarshal(data, &out)
+}
+
+// ── Sprint 18: Schema Relationships (#1831) ──
+
+// Relationships discovers cross-datasource foreign key relationships.
+func (c *Client) Relationships() ([]map[string]interface{}, error) {
+	data, err := c.do("GET", "/api/fuse/relationships", nil)
+	if err != nil {
+		return nil, err
+	}
+	var out []map[string]interface{}
+	return out, json.Unmarshal(data, &out)
+}
+
+// ── Sprint 18: CDC (#1852) ──
+
+// CdcStatus returns CDC tracker stats and pending views.
+func (c *Client) CdcStatus() (map[string]interface{}, error) {
+	data, err := c.do("GET", "/api/fuse/cdc/status", nil)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]interface{}
+	return out, json.Unmarshal(data, &out)
+}
+
+// CdcEvent ingests a change event to trigger materialized view refresh.
+func (c *Client) CdcEvent(datasource, table, changeType string) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"datasource": datasource, "table": table,
+		"change_type": changeType, "timestamp": time.Now().Unix(),
+	}
+	data, err := c.do("POST", "/api/fuse/cdc/events", body)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]interface{}
+	return out, json.Unmarshal(data, &out)
+}
+
+// ── Predictive Performance ──
+
+// Predict estimates query latency based on historical data.
+func (c *Client) Predict(query string) (map[string]interface{}, error) {
+	data, err := c.do("GET", "/api/fuse/predict?query="+query, nil)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]interface{}
+	return out, json.Unmarshal(data, &out)
+}
