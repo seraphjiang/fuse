@@ -37,10 +37,20 @@ fn csv_escape(v: &serde_json::Value) -> String {
     match v {
         serde_json::Value::Null => "".into(),
         serde_json::Value::String(s) => {
-            if s.contains(',') || s.contains('"') || s.contains('\n') {
-                format!("\"{}\"", s.replace('"', "\"\""))
+            // Prefix formula-triggering characters to prevent CSV injection
+            // when opened in spreadsheet applications (Excel, Sheets)
+            let safe = if s.starts_with('=') || s.starts_with('+')
+                || s.starts_with('-') || s.starts_with('@')
+                || s.starts_with('\t') || s.starts_with('\r')
+            {
+                format!("'{}", s)
             } else {
                 s.clone()
+            };
+            if safe.contains(',') || safe.contains('"') || safe.contains('\n') {
+                format!("\"{}\"", safe.replace('"', "\"\""))
+            } else {
+                safe
             }
         }
         other => other.to_string(),

@@ -52,10 +52,19 @@ pub fn to_table(columns: &[String], rows: &[Vec<Value>]) -> String {
 
 fn csv_escape(v: &Value) -> String {
     let s = value_str(v);
-    if s.contains(',') || s.contains('"') || s.contains('\n') {
-        format!("\"{}\"", s.replace('"', "\"\""))
+    // Prefix formula-triggering characters to prevent CSV injection
+    let safe = if s.starts_with('=') || s.starts_with('+')
+        || s.starts_with('-') || s.starts_with('@')
+        || s.starts_with('\t') || s.starts_with('\r')
+    {
+        format!("'{}", s)
     } else {
         s
+    };
+    if safe.contains(',') || safe.contains('"') || safe.contains('\n') {
+        format!("\"{}\"", safe.replace('"', "\"\""))
+    } else {
+        safe
     }
 }
 
