@@ -121,9 +121,14 @@ pub fn config() -> ChaosConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_disabled_by_default() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        disable(); // reset state
         disable(); // reset
         assert!(!is_enabled());
         assert!(maybe_fail("test").is_none());
@@ -131,6 +136,8 @@ mod tests {
 
     #[test]
     fn test_enable_disable() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        disable(); // reset state
         enable(50);
         assert!(is_enabled());
         assert_eq!(config().failure_rate_pct, 50);
@@ -140,6 +147,8 @@ mod tests {
 
     #[test]
     fn test_100_pct_always_fails() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        disable(); // reset state
         enable(100);
         let result = maybe_fail("test_connector");
         assert!(result.is_some());
@@ -149,6 +158,8 @@ mod tests {
 
     #[test]
     fn test_0_pct_never_fails() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        disable(); // reset state
         enable(0);
         for _ in 0..100 {
             assert!(maybe_fail("test").is_none());
@@ -159,6 +170,8 @@ mod tests {
 
     #[test]
     fn test_targeted_connector() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        disable(); // reset state
         enable_with_config(&ChaosConfig {
             enabled: true,
             failure_rate_pct: 100,
@@ -174,6 +187,8 @@ mod tests {
 
     #[test]
     fn test_empty_targets_affects_all() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        disable(); // reset state
         enable_with_config(&ChaosConfig {
             enabled: true,
             failure_rate_pct: 100,
@@ -186,6 +201,8 @@ mod tests {
 
     #[test]
     fn test_config_includes_latency() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        disable(); // reset state
         enable_with_config(&ChaosConfig {
             enabled: true,
             failure_rate_pct: 50,
@@ -199,6 +216,8 @@ mod tests {
     }
     #[test]
     fn test_rate_capped_at_100() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        disable(); // reset state
         enable(200);
         assert_eq!(config().failure_rate_pct, 100);
         disable();
