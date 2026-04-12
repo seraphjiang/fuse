@@ -510,6 +510,8 @@ mod tests {
             query_recorder: Arc::new(crate::query_replay::QueryRecorder::new(1000)),
             compilation_cache: Arc::new(crate::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: Arc::new(crate::cdc::CdcTracker::new(1000)),
             adaptive_cache: Arc::new(crate::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(crate::auth::KeyRotationManager::new(vec![])),
+            smart_router: Arc::new(crate::smart_routing::SmartRouter::new()),
+            health_history: Arc::new(crate::connector_health_history::HealthHistory::new()),
         })
     }
 
