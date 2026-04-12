@@ -1,0 +1,15 @@
+[package]
+name = "fuse-connector-otel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OpenTelemetry Collector connector for Fuse — ingest OTLP traces/metrics/logs, query with SQL"
+
+[dependencies]
+fuse-core = { path = "../../fuse-core" }
+arrow = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }

@@ -84,7 +84,7 @@ fn build_federated_app() -> axum::Router {
         adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
         shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
         shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
-        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)),
         tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::new(vec![])),
     });
     fuse_server::build_router(state)
