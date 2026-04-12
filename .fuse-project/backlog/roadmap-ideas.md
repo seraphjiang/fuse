@@ -1,75 +1,53 @@
-# Roadmap — Post v1.1.0
+# Fuse Roadmap — v2.0+
 
-All items from the original Sprint 6+ roadmap are **COMPLETE** as of v1.1.0.
+## 🔥 High Impact — Differentiation
 
-## ✅ Completed (Sprints 12-16)
+- **Query Lineage & Data Catalog** — Track data flow across 25 connectors. "Show me every query that touched this table in 7 days." Compliance/governance.
+- **Federated Materialized Views with CDC** — Auto-refresh materialized views when source data changes. Cross-datasource views that stay fresh.
+- **Query Replay & Regression Testing** — Record production queries, replay against staging. Catch breaking changes before deploy.
+- **Data Quality Rules Engine** — Define expectations (nulls < 5%, cardinality stable, freshness < 1hr). Alert on violations. Builds on anomaly detection.
+- **Query Cost Estimation with $$$** — "This query will scan ~2GB on Athena ($0.01) + 500K rows on DynamoDB ($0.05)." Real dollar estimates before execution.
 
-### Production Readiness — ALL DONE
-- ✅ Multi-tenancy with per-tenant resource limits
-- ✅ Query governor (max rows, time, memory, rate limit)
-- ✅ Audit logging with NDJSON export
-- ✅ TLS/mTLS for all 22 connectors
-- ✅ Health dashboard with timeline
-- ✅ Horizontal scaling (stateless server, Redis-backed)
-- ✅ CORS, graceful shutdown, config validation
+## ⚡ Performance — 10x
 
-### Advanced Query — ALL DONE
-- ✅ Materialized views with refresh
-- ✅ Fuse-to-Fuse federation with cost-based routing
-- ✅ Prepared statements with parameter binding
-- ✅ Query plan visualization (flame graph + DAG)
-- ✅ EXPLAIN ANALYZE
-- ✅ Async query API (submit/poll)
+- **Adaptive Query Caching** — Learn which queries repeat, auto-cache results with smart TTL per datasource freshness.
+- **Columnar Result Format (Arrow IPC)** — Return Arrow IPC instead of JSON for programmatic clients. Zero-copy for Python/Rust consumers.
+- **Parallel Fan-out with Backpressure** — Smart concurrency: fast connectors don't wait for slow ones. Stream partial results as they arrive.
+- **Query Compilation** — Compile hot query patterns to native code. Skip parsing/planning for repeated patterns.
 
-### Connectors — ALL DONE (22 total)
-- ✅ Kafka, Timestream, BigQuery, Snowflake, Cassandra, DuckDB, Arrow Flight, Athena
+## 🌐 Ecosystem — Adoption
 
-### AI/ML — ALL DONE
-- ✅ NL-to-SQL (LLM-powered)
-- ✅ Auto-suggest queries
-- ✅ Query optimization advisor (7 rules)
-- ✅ Anomaly detection
+- **GraphQL API** — Alternative to REST for frontend devs. Schema introspection maps naturally to datasource schemas.
+- **Webhook Subscriptions** — "Notify me when this query returns > 100 rows." Event-driven data monitoring.
+- **Scheduled Queries (Cron)** — Run queries on schedule, store results, alert on changes. Lightweight ETL.
+- **Multi-tenant SaaS Mode** — Isolated tenants with usage metering, billing integration. Path to hosted Fuse.
+- **OpenTelemetry Collector Mode** — Fuse as an OTel backend — ingest traces/metrics/logs, query with SQL.
+- **Plugin system for custom connectors (WASM dynamic loading)**
+- **REST API SDK improvements (Python, Go, TypeScript)**
+- **Grafana datasource plugin**
+- **VS Code extension for Fuse queries**
+- **Jupyter notebook integration**
 
-### Ecosystem — ALL DONE
-- ✅ WASM plugin system with sandboxing
-- ✅ Python SDK (DataFrame, streaming, saved queries)
-- ✅ Go SDK (stdlib-only)
-- ✅ TypeScript SDK (saved queries CRUD)
-- ✅ Jupyter magic (%fuse / %%fuse)
-- ✅ Grafana datasource plugin
-- ✅ VS Code extension (inline results)
-- ✅ OSD plugin (synced with v1.1 API)
+## 🤖 AI/ML — Next Gen
 
-## Future Ideas (v1.2.0+)
+- **Query Explanation in Plain English** — "This query joins error logs with user profiles to find premium users hitting 500 errors."
+- **Schema Relationship Discovery** — Auto-detect foreign keys across datasources by analyzing column names and value overlap.
+- **Predictive Query Performance** — "This query will take ~45s based on similar past queries." ML-based latency prediction.
+- **Natural language to SQL (LLM-powered)** ✅ Done
+- **Auto-suggest queries based on schema** ✅ Done
+- **Intelligent query optimization (learn from past queries)** ✅ Done (query advisor)
+- **Anomaly detection alerts (continuous monitoring)** ✅ Done
 
-### ✅ Completed Post-GA
-- Query scheduling registry (cron-based recurring queries)
-- Data lineage tracking across federated queries
-- WebSocket streaming protocol types
-- Result cache invalidation by datasource
-- Background connector health monitor
-- Request ID middleware (X-Request-Id)
-- API versioning header (X-Fuse-Version)
-- Rate limit response headers (X-RateLimit-Remaining)
-- Slow query detection and logging
-- Query complexity scorer
-- Query sanitizer (redact string literals for safe logging)
-- Config file change detection
-- Streaming delivery threshold (auto buffer vs stream)
-- Pagination metadata (has_more, next_cursor, total_rows)
-- ConnectorUrl parser (shared URL handling)
-- Server info endpoint (GET /api/fuse/info)
-- OpenAPI client generation script
-- Production docker-compose with Redis
-- Dockerfile HEALTHCHECK
-- Helm chart updated to v1.1.0
-- CI pipeline: Docker build + test summary
-- Startup banner with config summary
+## ✅ Completed (Sprints 12-17)
 
-### Remaining v1.2.0 Ideas
-- Apache Spark connector
-- Delta Lake / Iceberg table format support
-- Multi-region federation with geo-routing
-- Role-based access control UI in playground
-- WebSocket streaming handler (wire ws_streaming types into router)
-- Data lineage visualization in playground
+- 25 connectors (OpenSearch, ES, PG, MySQL, DDB, S3, Prometheus, CloudWatch, Redis, CSV/JSON, MongoDB, InfluxDB, ClickHouse, Kafka, Athena, Timestream, Snowflake, BigQuery, DuckDB, Arrow Flight, Fuse-to-Fuse, Cassandra, Spark, Delta Lake, Iceberg)
+- Multi-tenancy, query governor, RBAC
+- EXPLAIN ANALYZE, prepared statements, cursor pagination
+- Fuse-to-Fuse federation, cross-cluster routing, cost-based routing
+- Arrow Flight zero-copy streaming
+- NL-to-SQL, query advisor, anomaly detection + alerting
+- Async query API, SSE streaming, result export
+- Autocomplete, plan cache normalization, per-datasource rate limiting
+- OpenTelemetry distributed tracing
+- Stateless server mode (Redis-backed)
+- 1100+ tests, 0 clippy warnings
