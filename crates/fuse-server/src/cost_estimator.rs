@@ -96,9 +96,9 @@ mod tests {
     #[test]
     fn test_athena_cost_1gb() {
         let e = estimate_cost("athena", "a", 0, 1_073_741_824);
-        // $5/TB = $0.005/GB. 1GB = $0.005
+        // $5/TB ≈ $0.00488/GB. 1GB ≈ $0.00488
         assert!(e.estimated_cost_usd > 0.0);
-        assert!(e.cost_breakdown.contains("GB scanned"));
+        assert!(e.cost_breakdown.contains("TB scanned"));
     }
 
     #[test]
