@@ -420,7 +420,7 @@ mod tests {
         conn.execute_batch("CREATE TABLE items (id INT, name TEXT); INSERT INTO items VALUES (1, 'a'), (2, 'b'), (3, 'c')").unwrap();
         drop(conn);
 
-        let mut sq = SubQuery {
+        let sq = SubQuery {
             table: "items".into(), projections: vec!["name".into()],
             filter: Some(FilterExpr::Comparison {
                 field: "id".into(), op: ComparisonOp::Gt, value: ScalarValue::Int64(1),

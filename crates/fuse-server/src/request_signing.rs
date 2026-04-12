@@ -102,7 +102,7 @@ fn hex_encode(bytes: &[u8]) -> String {
 }
 
 fn hex_decode(hex: &str) -> Result<Vec<u8>, ()> {
-    if hex.len() % 2 != 0 { return Err(()); }
+    if !hex.len().is_multiple_of(2) { return Err(()); }
     (0..hex.len()).step_by(2)
         .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).map_err(|_| ()))
         .collect()

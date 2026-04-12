@@ -2,7 +2,7 @@
 
 //! Integration tests for PPL parsing and PPL-to-SQL translation.
 
-use fuse_engine::ppl::{is_ppl, parse_ppl, ppl_to_sql, PplCommand, EvalExpr, RenameExpr, SortField};
+use fuse_engine::ppl::{is_ppl, parse_ppl, ppl_to_sql, PplCommand};
 
 #[test]
 fn test_ppl_complex_pipeline() {

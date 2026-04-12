@@ -12,7 +12,7 @@ pub fn to_csv(columns: &[String], rows: &[Vec<serde_json::Value>]) -> String {
     let mut out = columns.join(",");
     out.push('\n');
     for row in rows {
-        let line: Vec<String> = row.iter().map(|v| csv_escape(v)).collect();
+        let line: Vec<String> = row.iter().map(csv_escape).collect();
         out.push_str(&line.join(","));
         out.push('\n');
     }
@@ -109,7 +109,7 @@ mod tests {
 
     #[test]
     fn test_csv_empty() {
-        assert_eq!(to_csv(&vec!["a".into()], &[]), "a\n");
+        assert_eq!(to_csv(&["a".into()], &[]), "a\n");
     }
 
     #[test]
@@ -122,25 +122,25 @@ mod tests {
 
     #[test]
     fn test_csv_formula_injection_plus() {
-        let csv = to_csv(&vec!["x".into()], &[vec![json!("+cmd|'/C calc'")]]);
+        let csv = to_csv(&["x".into()], &[vec![json!("+cmd|'/C calc'")]]);
         assert!(csv.contains("'+"), "+ formula must be quote-prefixed");
     }
 
     #[test]
     fn test_csv_formula_injection_minus() {
-        let csv = to_csv(&vec!["x".into()], &[vec![json!("-1+1")]]);
+        let csv = to_csv(&["x".into()], &[vec![json!("-1+1")]]);
         assert!(csv.contains("'-"), "- formula must be quote-prefixed");
     }
 
     #[test]
     fn test_csv_formula_injection_at() {
-        let csv = to_csv(&vec!["x".into()], &[vec![json!("@SUM(A1)")]]);
+        let csv = to_csv(&["x".into()], &[vec![json!("@SUM(A1)")]]);
         assert!(csv.contains("'@"), "@ formula must be quote-prefixed");
     }
 
     #[test]
     fn test_csv_safe_string_not_prefixed() {
-        let csv = to_csv(&vec!["x".into()], &[vec![json!("hello")]]);
+        let csv = to_csv(&["x".into()], &[vec![json!("hello")]]);
         assert!(!csv.contains("'hello"), "safe strings must not be prefixed");
     }
 }

@@ -36,7 +36,7 @@ pub fn infer_column_types(rows: &[Vec<Value>], columns: &[String]) -> Vec<(Strin
         let types: Vec<InferredType> = rows.iter()
             .filter_map(|row| row.get(i))
             .filter(|v| !v.is_null())
-            .map(|v| infer_type(v))
+            .map(infer_type)
             .collect();
 
         let inferred = if types.is_empty() {

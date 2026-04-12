@@ -16,11 +16,9 @@ use fuse_server::url_validator::validate_callback_url;
 #[tokio::test]
 async fn test_audit_log_records_all_actions() {
     let log = AuditLog::new(100);
-    let actions = vec![
-        AuditAction::Query,
+    let actions = [AuditAction::Query,
         AuditAction::Explain,
-        AuditAction::Validate,
-    ];
+        AuditAction::Validate];
     for (i, action) in actions.iter().enumerate() {
         log.record(AuditEntry {
             timestamp: 1000 + i as u64,

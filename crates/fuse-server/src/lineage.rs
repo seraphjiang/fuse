@@ -124,7 +124,7 @@ fn extract_table_refs(query: &str, format: &str) -> Vec<String> {
             let trimmed = part.trim();
             if let Some(rest) = trimmed.strip_prefix("source") {
                 if let Some(tbl) = rest.trim().strip_prefix('=') {
-                    if let Some(t) = tbl.trim().split_whitespace().next() {
+                    if let Some(t) = tbl.split_whitespace().next() {
                         if !t.is_empty() { tables.push(t.to_string()); }
                     }
                 }
@@ -139,7 +139,7 @@ fn extract_table_refs(query: &str, format: &str) -> Vec<String> {
         let upper_tokens: Vec<String> = tokens.iter().map(|t| t.to_uppercase()).collect();
         for (i, ut) in upper_tokens.iter().enumerate() {
             if (ut == "FROM" || ut == "JOIN") && i + 1 < tokens.len() {
-                let tbl = tokens[i + 1].trim_end_matches(|c| c == ',' || c == ')');
+                let tbl = tokens[i + 1].trim_end_matches([',', ')']);
                 if !tbl.is_empty() && !tbl.starts_with('(') && tbl.to_uppercase() != "SELECT" {
                     tables.push(tbl.to_string());
                 }

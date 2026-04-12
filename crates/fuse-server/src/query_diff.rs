@@ -91,7 +91,7 @@ mod tests {
     #[test]
     fn test_row_count_mismatch() {
         let cols = vec!["x".into()];
-        let d = diff(&cols, &vec![vec![json!(1)]], &cols, &vec![], 100);
+        let d = diff(&cols, &[vec![json!(1)]], &cols, &[], 100);
         assert!(!d.row_count_match);
         assert_eq!(d.left_rows, 1);
         assert_eq!(d.right_rows, 0);
@@ -99,7 +99,7 @@ mod tests {
 
     #[test]
     fn test_schema_mismatch() {
-        let d = diff(&vec!["a".into()], &[], &vec!["b".into()], &[], 100);
+        let d = diff(&["a".into()], &[], &["b".into()], &[], 100);
         assert!(!d.schema_match);
     }
 

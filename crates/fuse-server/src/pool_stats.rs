@@ -27,6 +27,12 @@ struct PoolState {
     total_timeouts: u64,
 }
 
+impl Default for PoolStatsTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PoolStatsTracker {
     pub fn new() -> Self {
         Self { stats: Mutex::new(HashMap::new()) }

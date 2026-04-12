@@ -8,7 +8,7 @@ pub fn to_csv(columns: &[String], rows: &[Vec<Value>]) -> String {
     let mut out = columns.join(",");
     out.push('\n');
     for row in rows {
-        let line: Vec<String> = row.iter().map(|v| csv_escape(v)).collect();
+        let line: Vec<String> = row.iter().map(csv_escape).collect();
         out.push_str(&line.join(","));
         out.push('\n');
     }

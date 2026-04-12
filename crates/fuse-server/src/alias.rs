@@ -8,6 +8,12 @@ pub struct AliasRegistry {
     aliases: Mutex<HashMap<String, String>>, // alias -> datasource_id
 }
 
+impl Default for AliasRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AliasRegistry {
     pub fn new() -> Self {
         Self { aliases: Mutex::new(HashMap::new()) }

@@ -20,6 +20,12 @@ pub struct TimeoutTracker {
     entries: Mutex<VecDeque<TimeoutEntry>>,
 }
 
+impl Default for TimeoutTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TimeoutTracker {
     pub fn new() -> Self {
         Self { entries: Mutex::new(VecDeque::new()) }

@@ -29,6 +29,12 @@ pub struct UsageMeter {
     usage: Mutex<HashMap<String, TenantUsage>>,
 }
 
+impl Default for UsageMeter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UsageMeter {
     pub fn new() -> Self {
         Self { usage: Mutex::new(HashMap::new()) }

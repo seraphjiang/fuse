@@ -22,6 +22,12 @@ pub struct BookmarkStore {
     bookmarks: Mutex<HashMap<String, Bookmark>>,
 }
 
+impl Default for BookmarkStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BookmarkStore {
     pub fn new() -> Self {
         Self { bookmarks: Mutex::new(HashMap::new()) }

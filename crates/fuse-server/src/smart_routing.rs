@@ -20,6 +20,12 @@ pub struct SmartRouter {
     samples: Mutex<HashMap<String, Vec<u64>>>,
 }
 
+impl Default for SmartRouter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SmartRouter {
     pub fn new() -> Self {
         Self { samples: Mutex::new(HashMap::new()) }

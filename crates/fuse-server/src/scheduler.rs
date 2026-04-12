@@ -59,7 +59,7 @@ fn field_matches(field: &str, value: u32) -> bool {
     if field == "*" { return true; }
     if let Some(interval) = field.strip_prefix("*/") {
         if let Ok(n) = interval.parse::<u32>() {
-            return n > 0 && value % n == 0;
+            return n > 0 && value.is_multiple_of(n);
         }
     }
     if let Ok(n) = field.parse::<u32>() {
@@ -127,6 +127,10 @@ impl ScheduleRegistry {
 
     pub fn len(&self) -> usize {
         self.schedules.lock().unwrap().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.schedules.lock().unwrap().is_empty()
     }
 }
 

@@ -60,7 +60,7 @@ pub fn left_join(
                 }
             } else {
                 let mut combined = lrow.clone();
-                combined.extend(std::iter::repeat(Value::Null).take(null_cols));
+                combined.extend(std::iter::repeat_n(Value::Null, null_cols));
                 result.push(combined);
             }
         }

@@ -30,7 +30,7 @@ fn batches_bytes(batches: &[RecordBatch]) -> usize {
         .map(|b| {
             b.columns()
                 .iter()
-                .map(|c| array_bytes(c))
+                .map(array_bytes)
                 .sum::<usize>()
         })
         .sum()

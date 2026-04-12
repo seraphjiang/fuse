@@ -23,6 +23,12 @@ pub struct QueryDedup {
     inflight: Mutex<HashMap<String, broadcast::Sender<serde_json::Value>>>,
 }
 
+impl Default for QueryDedup {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl QueryDedup {
     pub fn new() -> Self {
         Self { inflight: Mutex::new(HashMap::new()) }

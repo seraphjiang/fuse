@@ -6,7 +6,7 @@ pub fn extract_top(query: &str) -> Option<u64> {
     let upper = query.trim().to_uppercase();
     if let Some(pos) = upper.find("SELECT TOP ") {
         let after = &query[pos + 11..];
-        after.trim().split_whitespace().next()?.parse().ok()
+        after.split_whitespace().next()?.parse().ok()
     } else {
         None
     }

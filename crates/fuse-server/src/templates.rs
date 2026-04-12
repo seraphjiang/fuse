@@ -39,6 +39,12 @@ pub struct TemplateStore {
     templates: Mutex<HashMap<String, QueryTemplate>>,
 }
 
+impl Default for TemplateStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TemplateStore {
     pub fn new() -> Self {
         Self { templates: Mutex::new(HashMap::new()) }

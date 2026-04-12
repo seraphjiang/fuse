@@ -42,7 +42,7 @@ pub fn normalize_query(sql: &str) -> String {
             }
             c if c.is_ascii_digit() => {
                 // Skip entire number
-                while chars.peek().map_or(false, |p| p.is_ascii_digit() || *p == '.') {
+                while chars.peek().is_some_and(|p| p.is_ascii_digit() || *p == '.') {
                     chars.next();
                 }
                 result.push('?');

@@ -32,7 +32,7 @@ pub const ARROW_STREAM_CONTENT_TYPE: &str = "application/vnd.apache.arrow.stream
 
 /// Check if the client accepts Arrow IPC format.
 pub fn accepts_arrow(accept_header: Option<&str>) -> bool {
-    accept_header.map_or(false, |h| h.contains("apache.arrow") || h.contains("arrow.stream"))
+    accept_header.is_some_and(|h| h.contains("apache.arrow") || h.contains("arrow.stream"))
 }
 
 #[cfg(test)]

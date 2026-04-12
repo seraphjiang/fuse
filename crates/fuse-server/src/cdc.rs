@@ -487,7 +487,6 @@ pub fn auto_register_view_dependencies(
     if let Ok(sources) = refs {
         let deps: Vec<(String, String)> = sources
             .into_iter()
-            .map(|(ds, table)| (ds, table))
             .collect();
         if !deps.is_empty() {
             cdc_tracker.register_view(view_name, deps);

@@ -176,8 +176,8 @@ fn extract_order_columns(sql: &str) -> Vec<String> {
     clause[..end]
         .split(',')
         .filter_map(|part| {
-            let token = part.trim().split_whitespace().next()?;
-            let col = token.split('.').last()?;
+            let token = part.split_whitespace().next()?;
+            let col = token.split('.').next_back()?;
             if col.chars().all(|c| c.is_alphanumeric() || c == '_') && !col.is_empty() {
                 Some(col.to_string())
             } else {
@@ -195,7 +195,7 @@ fn extract_identifiers_before_operators(clause: &str) -> Vec<String> {
         for (i, _) in clause.match_indices(op) {
             let before = clause[..i].trim();
             if let Some(token) = before.split_whitespace().last() {
-                let col = token.split('.').last().unwrap_or(token);
+                let col = token.split('.').next_back().unwrap_or(token);
                 let col = col.trim_matches(|c: char| !c.is_alphanumeric() && c != '_');
                 if !col.is_empty() && col.chars().all(|c| c.is_alphanumeric() || c == '_') {
                     let upper = col.to_uppercase();

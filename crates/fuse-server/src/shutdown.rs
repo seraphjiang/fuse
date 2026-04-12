@@ -125,9 +125,9 @@ mod tests {
     async fn test_wait_completes_on_shutdown() {
         let coord = ShutdownCoordinator::new();
         let coord2 = std::sync::Arc::new(coord);
-        let c = coord2.clone();
+        let _c = coord2.clone();
         let handle = tokio::spawn(async move {
-            let mut coord = ShutdownCoordinator::new();
+            let coord = ShutdownCoordinator::new();
             // Simulate: just verify subscribe works
             let rx = coord.subscribe();
             assert!(!*rx.borrow());

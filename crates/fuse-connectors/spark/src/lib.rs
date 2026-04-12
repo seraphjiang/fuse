@@ -47,7 +47,7 @@ impl SparkConnector {
     async fn run_query(&self, sql: &str) -> Result<serde_json::Value, ConnectorError> {
         debug!(url = %self.url, sql = %sql, "querying Spark");
         let body = serde_json::json!({ "statement": sql, "database": self.database });
-        let resp = self.client.post(&format!("{}/api/v1/statements", self.url))
+        let resp = self.client.post(format!("{}/api/v1/statements", self.url))
             .json(&body).send().await
             .map_err(|e| ConnectorError::Connection(e.to_string()))?;
         if !resp.status().is_success() {
@@ -137,7 +137,7 @@ impl FederatedConnector for SparkConnector {
     fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
 
     async fn health_check(&self) -> ConnectorHealth {
-        match self.client.get(&format!("{}/api/v1/status", self.url)).send().await {
+        match self.client.get(format!("{}/api/v1/status", self.url)).send().await {
             Ok(r) if r.status().is_success() => ConnectorHealth { status: HealthStatus::Healthy, latency_ms: None, message: None },
             Ok(r) => ConnectorHealth { status: HealthStatus::Degraded, latency_ms: None, message: Some(format!("HTTP {}", r.status())) },
             Err(e) => ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some(e.to_string()) },

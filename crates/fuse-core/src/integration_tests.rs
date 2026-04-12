@@ -231,7 +231,7 @@ mod edge_case_tests {
     use crate::plan_printer;
     use crate::plan_rules::{self, EliminateMaxLimit, OptRule};
     use crate::plan_compare;
-    use crate::plan_merge::{MergedPlan, SubPlan};
+    use crate::plan_merge::MergedPlan;
     use crate::plan_serde::PlanNode;
     use crate::plan_stats::PlanStats;
     use crate::predicate::Predicate;

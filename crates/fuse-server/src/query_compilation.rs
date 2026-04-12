@@ -130,6 +130,10 @@ impl CompilationCache {
         self.entries.lock().unwrap().len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.entries.lock().unwrap().is_empty()
+    }
+
     pub fn stats(&self) -> CompilationStats {
         CompilationStats {
             cached: self.len(),

@@ -3,7 +3,6 @@
 //! Performance benchmarks for fuse-server modules.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use std::sync::Arc;
 
 use fuse_server::plan_cache::{CachedPlan, PlanCache};
 use fuse_server::auto_suggest::{self, ColumnMeta};

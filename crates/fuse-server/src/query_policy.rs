@@ -13,6 +13,12 @@ pub struct QueryPolicy {
     deny_patterns: Vec<String>,
 }
 
+impl Default for QueryPolicy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl QueryPolicy {
     pub fn new() -> Self {
         Self { deny_patterns: Vec::new() }

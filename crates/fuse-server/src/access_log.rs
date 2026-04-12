@@ -22,6 +22,12 @@ pub struct AccessLog {
     entries: Mutex<VecDeque<AccessEntry>>,
 }
 
+impl Default for AccessLog {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AccessLog {
     pub fn new() -> Self {
         Self { entries: Mutex::new(VecDeque::new()) }

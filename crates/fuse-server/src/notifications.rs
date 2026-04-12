@@ -21,6 +21,12 @@ pub struct NotificationHub {
     subscribers: Mutex<HashMap<String, mpsc::Sender<QueryNotification>>>,
 }
 
+impl Default for NotificationHub {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NotificationHub {
     pub fn new() -> Self {
         Self { subscribers: Mutex::new(HashMap::new()) }

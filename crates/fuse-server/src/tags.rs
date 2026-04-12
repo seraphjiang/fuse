@@ -9,6 +9,12 @@ pub struct TagRegistry {
     tags: Mutex<HashMap<String, HashSet<String>>>,
 }
 
+impl Default for TagRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TagRegistry {
     pub fn new() -> Self {
         Self { tags: Mutex::new(HashMap::new()) }

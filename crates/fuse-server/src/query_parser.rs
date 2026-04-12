@@ -10,7 +10,7 @@ pub fn extract_tables(query: &str) -> Vec<String> {
         while let Some(idx) = upper[pos..].find(keyword) {
             let start = pos + idx + keyword.len();
             if let Some(token) = query[start..].split_whitespace().next() {
-                let clean = token.trim_end_matches(|c: char| c == ',' || c == ')' || c == ';');
+                let clean = token.trim_end_matches([',', ')', ';']);
                 if !clean.is_empty() && clean.contains('.') {
                     tables.push(clean.to_string());
                 }

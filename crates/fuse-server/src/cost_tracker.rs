@@ -18,6 +18,12 @@ pub struct CostTracker {
     costs: Mutex<HashMap<(String, String), CostEntry>>,
 }
 
+impl Default for CostTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CostTracker {
     pub fn new() -> Self {
         Self { costs: Mutex::new(HashMap::new()) }

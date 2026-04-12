@@ -324,6 +324,7 @@ pub struct PluginManifest {
 
 /// Security constraints for a WASM plugin.
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Default)]
 pub struct PluginSecurityConfig {
     /// SHA-256 hex digest of the `.wasm` file. If set, module is rejected on mismatch.
     #[serde(default)]
@@ -342,17 +343,6 @@ pub struct PluginSecurityConfig {
     pub allow_wasi: bool,
 }
 
-impl Default for PluginSecurityConfig {
-    fn default() -> Self {
-        Self {
-            sha256: None,
-            max_fuel: None,
-            max_memory_mb: None,
-            max_execution_ms: None,
-            allow_wasi: false,
-        }
-    }
-}
 
 impl PluginManifest {
     /// Load a manifest from a TOML file.
@@ -424,6 +414,12 @@ pub fn load_plugins_from_dir(dir: &Path) -> Vec<WasmPlugin> {
 /// Runtime plugin registry — manages loaded WASM plugins.
 pub struct PluginRegistry {
     plugins: std::sync::Mutex<Vec<WasmPlugin>>,
+}
+
+impl Default for PluginRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PluginRegistry {

@@ -14,16 +14,15 @@ use arrow::record_batch::RecordBatch;
 
 /// How a materialized view is refreshed.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub enum RefreshMode {
     /// Re-execute the full query, replacing all cached data.
+    #[default]
     Full,
     /// Append only new rows where watermark_column > last watermark value.
     Incremental { watermark_column: String },
 }
 
-impl Default for RefreshMode {
-    fn default() -> Self { Self::Full }
-}
 
 /// Definition of a materialized view.
 #[derive(Debug, Clone)]

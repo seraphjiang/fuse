@@ -11,7 +11,7 @@ pub fn paginate(rows: &[Vec<Value>], offset: usize, limit: usize) -> Vec<Vec<Val
 /// Calculate pagination metadata.
 pub fn page_info(total: usize, offset: usize, limit: usize) -> PageInfo {
     let page = if limit > 0 { offset / limit + 1 } else { 1 };
-    let total_pages = if limit > 0 { (total + limit - 1) / limit } else { 1 };
+    let total_pages = if limit > 0 { total.div_ceil(limit) } else { 1 };
     PageInfo {
         page,
         total_pages,

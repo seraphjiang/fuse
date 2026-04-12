@@ -31,6 +31,12 @@ pub struct HealthHistory {
     records: Mutex<HashMap<String, VecDeque<HealthRecord>>>,
 }
 
+impl Default for HealthHistory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HealthHistory {
     pub fn new() -> Self {
         Self { records: Mutex::new(HashMap::new()) }
@@ -38,7 +44,7 @@ impl HealthHistory {
 
     pub fn record(&self, connector_id: &str, healthy: bool, latency_ms: u64, message: Option<String>) {
         let mut map = self.records.lock().unwrap();
-        let entries = map.entry(connector_id.to_string()).or_insert_with(VecDeque::new);
+        let entries = map.entry(connector_id.to_string()).or_default();
         entries.push_back(HealthRecord {
             timestamp_secs: crate::history::now_secs(),
             healthy,

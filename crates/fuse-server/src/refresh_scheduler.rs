@@ -131,7 +131,7 @@ fn extract_max_watermark(batches: &[arrow::record_batch::RecordBatch], column: &
         for i in 0..str_arr.len() {
             if str_arr.is_null(i) { continue; }
             let v = str_arr.value(i);
-            if max_val.as_deref().map_or(true, |m| v > m) {
+            if max_val.as_deref().is_none_or(|m| v > m) {
                 max_val = Some(v.to_string());
             }
         }
