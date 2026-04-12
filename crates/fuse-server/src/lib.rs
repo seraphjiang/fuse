@@ -28,6 +28,7 @@ pub mod capability_summary;
 pub mod case_when;
 pub mod cdc;
 pub mod circuit_breaker;
+pub mod chaos;
 pub mod config_watch;
 pub mod cost_estimator;
 pub mod cors;
@@ -316,6 +317,8 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         )
         .route("/api/fuse/query/explain", post(api::explain_handler))
         .route("/api/fuse/query/validate", post(api::validate_handler))
+        .route("/api/fuse/query/export/csv", post(api::export_csv_handler))
+        .route("/api/fuse/query/export/json", post(api::export_json_handler))
         .route("/api/fuse/health", get(api::health_handler))
         .route("/api/fuse/info", get(api::info_handler))
         .route("/api/fuse/history", get(api::history_handler))
