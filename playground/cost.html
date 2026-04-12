@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuse — Cost Explorer</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e1e4e8;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #21262d;background:#161b22}
+header h1{font-size:18px;font-weight:600;color:#58a6ff}
+.nav-tabs{display:flex;gap:0}
+.nav-tab{padding:8px 16px;font-size:13px;color:#8b949e;text-decoration:none;border-bottom:2px solid transparent}
+.nav-tab:hover{color:#e1e4e8}
+.nav-tab.active{color:#58a6ff;border-bottom-color:#58a6ff;font-weight:600}
+main{max-width:1200px;width:100%;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:20px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.card{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px}
+.card h3{font-size:12px;color:#8b949e;margin-bottom:8px;text-transform:uppercase}
+.card .val{font-size:28px;font-weight:700;color:#58a6ff}
+.card .val.warn{color:#f0883e}
+.card .val.cost{color:#3fb950}
+textarea{width:100%;min-height:80px;background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:"SF Mono",Consolas,monospace;font-size:14px;resize:vertical;line-height:1.5}
+button{padding:6px 14px;font-size:13px;border-radius:6px;border:1px solid #30363d;background:#21262d;color:#e1e4e8;cursor:pointer}
+button:hover{background:#30363d}
+button.primary{background:#238636;border-color:#238636;color:#fff}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:8px 12px;border-bottom:2px solid #21262d;color:#8b949e;font-weight:600}
+td{padding:8px 12px;border-bottom:1px solid #21262d}
+.bar{height:8px;border-radius:4px;background:#238636;min-width:2px}
+body.light{background:#fff;color:#1f2328}
+body.light header{background:#f6f8fa;border-color:#d1d9e0}
+body.light .card{background:#fff;border-color:#d1d9e0}
+body.light textarea{background:#fff;color:#1f2328;border-color:#d1d9e0}
+body.light th{border-color:#d1d9e0;color:#656d76}
+body.light td{border-color:#d1d9e0}
+@media(max-width:768px){main{padding:12px}.cards{grid-template-columns:1fr 1fr}}
+</style>
+<script>(function(){var t=localStorage.getItem('fuse-theme');if(t==='light'||(!t&&window.matchMedia('(prefers-color-scheme:light)').matches))document.body.classList.add('light');})();</script>
+</head>
+<body>
+<header>
+  <h1>💰 Cost Explorer</h1>
+  <nav class="nav-tabs">
+    <a class="nav-tab" href="/">Query</a>
+    <a class="nav-tab" href="/dashboard">Dashboard</a>
+    <a class="nav-tab" href="/explore">Explore</a>
+    <a class="nav-tab active" href="/cost">Cost</a>
+    <a class="nav-tab" href="/status">Status</a>
+    <a class="nav-tab" href="/settings">Settings</a>
+  </nav>
+</header>
+<main>
+  <div class="cards">
+    <div class="card"><h3>Estimated Cost</h3><div class="val cost" id="total-cost">—</div></div>
+    <div class="card"><h3>Estimated Rows</h3><div class="val" id="total-rows">—</div></div>
+    <div class="card"><h3>Connectors Used</h3><div class="val" id="conn-count">—</div></div>
+    <div class="card"><h3>Plan Nodes</h3><div class="val" id="node-count">—</div></div>
+  </div>
+
+  <div>
+    <textarea id="query" placeholder="Enter a query to estimate cost...">SELECT l.service, u.name FROM cluster_a.application_logs l JOIN dynamodb.users u ON l.user_id = u.user_id WHERE l.status >= 500</textarea>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="primary" onclick="estimate()">💰 Estimate Cost</button>
+      <select id="fmt"><option value="sql">SQL</option><option value="ppl">PPL</option></select>
+    </div>
+  </div>
+
+  <div id="breakdown" style="display:none">
+    <h2 style="font-size:16px;margin-bottom:12px">Cost Breakdown by Connector</h2>
+    <table>
+      <thead><tr><th>Connector</th><th>Type</th><th>Est. Rows</th><th>Est. Cost</th><th></th></tr></thead>
+      <tbody id="breakdown-body"></tbody>
+    </table>
+  </div>
+
+  <div id="plan-section" style="display:none">
+    <h2 style="font-size:16px;margin-bottom:12px">Query Plan</h2>
+    <pre id="plan-output" style="font-size:12px;color:#8b949e;background:#161b22;padding:12px;border-radius:6px;overflow:auto;max-height:300px"></pre>
+  </div>
+</main>
+<script>
+function $(id){return document.getElementById(id)}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+async function estimate() {
+  var q = $('query').value.trim();
+  if (!q) return;
+  try {
+    var resp = await fetch('/api/fuse/query', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:'EXPLAIN '+q,format:$('fmt').value})});
+    var data = await resp.json();
+    renderCost(data);
+  } catch(e) {
+    $('total-cost').textContent = 'Error';
+    $('plan-output').textContent = e.message;
+    $('plan-section').style.display = 'block';
+  }
+}
+
+function renderCost(data) {
+  var rows = data.rows || data.data || [];
+  var plan = rows.map(function(r){return Array.isArray(r)?r.join(' '):String(r)}).join('\n');
+  $('plan-output').textContent = plan;
+  $('plan-section').style.display = 'block';
+
+  // Parse cost info from plan or cost_estimate field
+  var ce = data.cost_estimate || data.cost || {};
+  var connectors = ce.connectors || [];
+  var totalCost = ce.total_cost || 0;
+  var totalRows = ce.estimated_rows || 0;
+
+  $('total-cost').textContent = totalCost > 0 ? '$' + totalCost.toFixed(4) : '—';
+  $('total-rows').textContent = totalRows > 0 ? totalRows.toLocaleString() : '—';
+  $('conn-count').textContent = connectors.length || '—';
+  $('node-count').textContent = rows.length || '—';
+
+  if (connectors.length) {
+    $('breakdown').style.display = 'block';
+    var maxCost = Math.max.apply(null, connectors.map(function(c){return c.cost||0})) || 1;
+    $('breakdown-body').innerHTML = connectors.map(function(c){
+      var pct = ((c.cost||0)/maxCost*100).toFixed(0);
+      return '<tr><td><strong>'+esc(c.id||c.name||'?')+'</strong></td><td>'+esc(c.type||'—')+'</td><td>'+(c.estimated_rows||'—').toLocaleString()+'</td><td>$'+(c.cost||0).toFixed(4)+'</td><td style="width:120px"><div class="bar" style="width:'+pct+'%"></div></td></tr>';
+    }).join('');
+  }
+}
+</script>
+</body>
+</html>
