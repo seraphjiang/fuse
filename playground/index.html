@@ -75,12 +75,22 @@ textarea#editor{background:transparent;color:#e1e4e8;caret-color:#e1e4e8;positio
   .toolbar{flex-direction:column;align-items:stretch}
   .toolbar select,.toolbar button{width:100%}
   header{flex-direction:column;gap:8px;padding:8px 12px}
-  .nav-tabs{justify-content:center}
+  .nav-tabs{justify-content:center;flex-wrap:wrap}
   .meta{flex-wrap:wrap}
   .view-toggle{margin-left:0}
   textarea{min-height:80px;font-size:13px}
   .results{max-height:50vh}
   #chart-container{height:300px}
+  .editor-wrap{flex-direction:column}
+  .line-gutter{display:none}
+  .demo-bar{flex-direction:column;gap:4px}
+  .snippet-menu{width:100%;right:0}
+}
+@media(max-width:480px){
+  .nav-tabs a{font-size:11px;padding:4px 6px}
+  header h1{font-size:16px}
+  textarea{font-size:12px;min-height:60px}
+  .toolbar button{font-size:12px;padding:6px}
 }
 /* Light theme */
 body.light{background:#fff;color:#1f2328}
