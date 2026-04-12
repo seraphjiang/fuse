@@ -7,6 +7,13 @@ spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
+  strategy:
+    type: {{ .Values.deploymentStrategy.type }}
+    {{- if eq .Values.deploymentStrategy.type "RollingUpdate" }}
+    rollingUpdate:
+      maxSurge: {{ .Values.deploymentStrategy.maxSurge | default "25%" | quote }}
+      maxUnavailable: {{ .Values.deploymentStrategy.maxUnavailable | default 0 }}
+    {{- end }}
   selector:
     matchLabels: {{- include "fuse.selectorLabels" . | nindent 6 }}
   template:
