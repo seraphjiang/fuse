@@ -5,8 +5,9 @@
 
 use std::sync::Arc;
 
-use async_graphql::{Context, EmptySubscription, InputObject, Object, Schema, SimpleObject};
+use async_graphql::{Context, InputObject, Object, Schema, SimpleObject, Subscription};
 use axum::response::IntoResponse;
+use tokio_stream::Stream;
 
 use crate::api::AppState;
 
@@ -352,14 +353,93 @@ impl MutationRoot {
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// Subscription root — real-time query result streaming
+// ---------------------------------------------------------------------------
+
+/// A single batch of rows streamed to the subscriber.
+#[derive(SimpleObject, Clone)]
+pub struct QueryResultBatch {
+    pub columns: Vec<String>,
+    pub rows: Vec<async_graphql::Json<Vec<serde_json::Value>>>,
+    pub batch_index: u32,
+    pub is_last: bool,
+}
+
+pub struct SubscriptionRoot;
+
+#[Subscription]
+impl SubscriptionRoot {
+    /// Stream query results batch-by-batch over WebSocket.
+    async fn query_results(
+        &self,
+        ctx: &Context<'_>,
+        query: String,
+        #[graphql(default_with = "\"sql\".to_string()")] format: String,
+    ) -> async_graphql::Result<impl Stream<Item = QueryResultBatch>> {
+        let state = ctx.data::<Arc<AppState>>()?.clone();
+        let fmt = format.to_lowercase();
+        let query = crate::api::rewrite_contains(&query);
+
+        let refs = match fmt.as_str() {
+            "ppl" => crate::api::parse_ppl_sources(&query),
+            _ => crate::api::parse_sql_sources(&query),
+        }
+        .map_err(async_graphql::Error::new)?;
+
+        if refs.is_empty() {
+            return Err(async_graphql::Error::new("no datasource.table references found"));
+        }
+
+        let mut tasks: Vec<(
+            Arc<dyn fuse_core::connector::FederatedConnector>,
+            fuse_core::connector::SubQuery,
+        )> = Vec::new();
+        for (ds_id, table) in &refs {
+            let connector = state.registry.get(ds_id).ok_or_else(|| {
+                async_graphql::Error::new(format!("datasource \'{}\' not found", ds_id))
+            })?;
+            let sq = crate::api::build_sub_query(&query, &fmt, table)
+                .map_err(async_graphql::Error::new)?;
+            tasks.push((connector, sq));
+        }
+
+        Ok(async_stream::stream! {
+            let total = tasks.len();
+            for (i, (connector, sq)) in tasks.into_iter().enumerate() {
+                match connector.execute(&sq).await {
+                    Ok(batches) => {
+                        let (columns, rows) = crate::api::batches_to_json(&batches);
+                        yield QueryResultBatch {
+                            columns,
+                            rows: rows.into_iter().map(async_graphql::Json).collect(),
+                            batch_index: i as u32,
+                            is_last: i + 1 == total,
+                        };
+                    }
+                    Err(e) => {
+                        yield QueryResultBatch {
+                            columns: vec!["error".to_string()],
+                            rows: vec![async_graphql::Json(vec![serde_json::json!(e.to_string())])],
+                            batch_index: i as u32,
+                            is_last: i + 1 == total,
+                        };
+                    }
+                }
+            }
+        })
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Schema + handlers
 // ---------------------------------------------------------------------------
 
-pub type FuseSchema = Schema<QueryRoot, MutationRoot, EmptySubscription>;
+pub type FuseSchema = Schema<QueryRoot, MutationRoot, SubscriptionRoot>;
 
 pub fn build_schema(state: Arc<AppState>) -> FuseSchema {
-    Schema::build(QueryRoot, MutationRoot, EmptySubscription)
+    Schema::build(QueryRoot, MutationRoot, SubscriptionRoot)
         .data(state)
         .finish()
 }
@@ -378,10 +458,25 @@ pub async fn graphiql_handler() -> impl IntoResponse {
     axum::response::Html(
         async_graphql::http::GraphiQLSource::build()
             .endpoint("/api/fuse/graphql")
+            .subscription_endpoint("/api/fuse/graphql/ws")
             .finish(),
     )
 }
 
+
+/// WebSocket handler for GraphQL subscriptions.
+pub async fn graphql_ws_handler(
+    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+    protocol: async_graphql_axum::GraphQLProtocol,
+    ws: axum::extract::WebSocketUpgrade,
+) -> impl IntoResponse {
+    let schema = build_schema(state);
+    ws.protocols(async_graphql::http::ALL_WEBSOCKET_PROTOCOLS)
+        .on_upgrade(move |stream| {
+            let stream = async_graphql_axum::GraphQLWebSocket::new(stream, schema, protocol);
+            async move { stream.serve().await }
+        })
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -414,7 +509,7 @@ mod tests {
             adaptive_parallelism: Arc::new(crate::adaptive_parallelism::AdaptiveParallelism::new()),
             query_recorder: Arc::new(crate::query_replay::QueryRecorder::new(1000)),
             compilation_cache: Arc::new(crate::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: Arc::new(crate::cdc::CdcTracker::new(1000)),
-            adaptive_cache: Arc::new(crate::adaptive_cache::AdaptiveCache::new(60, 3, 10000)),
+            adaptive_cache: Arc::new(crate::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None,
         })
     }
 

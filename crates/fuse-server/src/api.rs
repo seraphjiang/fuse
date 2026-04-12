@@ -105,6 +105,8 @@ pub struct AppState {
     pub cdc_tracker: Arc<crate::cdc::CdcTracker>,
     /// #1821 Adaptive cache — auto-promote hot queries with per-datasource TTL.
     pub adaptive_cache: Arc<crate::adaptive_cache::AdaptiveCache>,
+    /// Column-level RBAC — deny or mask sensitive fields per role.
+    pub column_rbac: Option<Arc<fuse_core::security::ResultFilter>>,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.
@@ -1114,6 +1116,20 @@ pub async fn query_handler(
             } else {
                 batches
             };
+            // Apply column-level RBAC: deny or mask sensitive fields per role
+            let batches = if let Some(ref rbac) = state.column_rbac {
+                let user_ctx = fuse_core::security::UserContext {
+                    username: tenant_id.clone().unwrap_or_default(),
+                    roles: auth_identity.as_ref()
+                        .map(|ext| vec![format!("{:?}", ext.0.role).to_lowercase()])
+                        .unwrap_or_default(),
+                };
+                let ds_id = fed.datasources.first().map(|s| s.as_str()).unwrap_or("");
+                let table = refs.first().map(|(_, t)| t.as_str()).unwrap_or("");
+                rbac.filter_batches(batches, ds_id, table, &user_ctx).unwrap_or_default()
+            } else {
+                batches
+            };
             let (columns, rows) = batches_to_json(&batches);
             let row_count = rows.len();
             let total_rows = row_count as u64;
@@ -1835,7 +1851,11 @@ pub async fn explain_handler(
                 None
             };
 
-            let plan_text = plan_tree.to_text(0);
+            let plan_text = if req.query.to_lowercase().contains("tree") {
+                plan_tree.to_tree()
+            } else {
+                plan_tree.to_text(0)
+            };
             let complexity = crate::complexity::score_query(&req.query);
 
             // Compute dollar cost estimate from connector types + estimated bytes

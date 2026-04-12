@@ -10,6 +10,8 @@ pub struct FuseConfig {
     pub engine: EngineConfig,
     #[serde(default)]
     pub connector: Vec<ConnectorConfig>,
+    #[serde(default)]
+    pub security: crate::security::SecurityConfig,
 }
 
 #[derive(Debug, Deserialize)]

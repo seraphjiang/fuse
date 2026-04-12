@@ -126,3 +126,17 @@ type = "otel"
 max_spans = 100000
 max_metrics = 100000
 max_logs = 100000
+
+# ── Column-Level RBAC ──
+# Restrict access to sensitive columns per role. When enabled, denied fields
+# are stripped from results and masked fields show "****".
+#
+# [security]
+# enabled = true
+#
+# [[security.policy]]
+# datasource = "prod_logs"
+# index = "application_logs"
+# deny_fields = ["ssn", "credit_card"]
+# mask_fields = ["email", "phone"]
+# allowed_roles = ["admin"]
