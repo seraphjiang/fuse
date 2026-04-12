@@ -3419,6 +3419,11 @@ pub fn generate_sql_from_nl(question: &str, schemas: &[DatasourceSchema]) -> Str
         .unwrap_or("logs");
     let source = format!("{}.{}", quote_ident(first_ds), quote_ident(table));
 
+    // Multi-table JOIN detection: "join X with Y", "combine X and Y", "correlate/enrich"
+    if let Some(join_sql) = try_generate_join(&q, schemas) {
+        return join_sql;
+    }
+
     if q.contains("count") && q.contains("by") {
         let group_col = extract_keyword_after(&q, "by").unwrap_or("host".into());
         let col = quote_ident(&sanitize_nl_identifier(&group_col));
@@ -4318,4 +4323,93 @@ pub async fn autotune_handler(
         "threshold_ms": threshold,
     }))
     .into_response()
+}
+
+/// Try to generate a JOIN query from natural language.
+/// Detects patterns like "join logs with users", "combine orders and products",
+/// "correlate metrics with alerts", "enrich logs with user info".
+fn try_generate_join(q: &str, schemas: &[DatasourceSchema]) -> Option<String> {
+    use fuse_core::sql::quote_ident;
+
+    let join_keywords = ["join", "combine", "correlate", "enrich", "merge", "link"];
+    let has_join_intent = join_keywords.iter().any(|kw| q.contains(kw));
+    if !has_join_intent || schemas.len() < 2 {
+        return None;
+    }
+
+    // Find two table references mentioned in the question
+    let (left, right) = find_two_tables(q, schemas)?;
+
+    // Guess a join column: look for common column name hints
+    let join_col = guess_join_column(q).unwrap_or_else(|| "id".to_string());
+    let join_col = sanitize_nl_identifier(&join_col);
+
+    let left_alias = "a";
+    let right_alias = "b";
+    let left_src = format!("{}.{}", quote_ident(&left.0), quote_ident(&left.1));
+    let right_src = format!("{}.{}", quote_ident(&right.0), quote_ident(&right.1));
+
+    Some(format!(
+        "SELECT {la}.*, {ra}.* FROM {left} {la} JOIN {right} {ra} ON {la}.{col} = {ra}.{col} LIMIT 100",
+        la = left_alias,
+        ra = right_alias,
+        left = left_src,
+        right = right_src,
+        col = quote_ident(&join_col),
+    ))
+}
+
+/// Find two (datasource, table) pairs mentioned in the question text.
+fn find_two_tables(q: &str, schemas: &[DatasourceSchema]) -> Option<((String, String), (String, String))> {
+    let mut found = Vec::new();
+    for schema in schemas {
+        for table in &schema.tables {
+            if q.contains(&table.to_lowercase()) {
+                found.push((schema.datasource.clone(), table.clone()));
+                if found.len() == 2 {
+                    return Some((found[0].clone(), found[1].clone()));
+                }
+            }
+        }
+        // Also match datasource name
+        if q.contains(&schema.datasource.to_lowercase()) && !schema.tables.is_empty() {
+            let entry = (schema.datasource.clone(), schema.tables[0].clone());
+            if !found.contains(&entry) {
+                found.push(entry);
+                if found.len() == 2 {
+                    return Some((found[0].clone(), found[1].clone()));
+                }
+            }
+        }
+    }
+    // Fallback: use first two datasources
+    if schemas.len() >= 2 {
+        let ds1 = &schemas[0];
+        let ds2 = &schemas[1];
+        let t1 = ds1.tables.first().cloned().unwrap_or_else(|| "table1".into());
+        let t2 = ds2.tables.first().cloned().unwrap_or_else(|| "table2".into());
+        return Some(((ds1.datasource.clone(), t1), (ds2.datasource.clone(), t2)));
+    }
+    None
+}
+
+/// Guess the join column from natural language hints.
+fn guess_join_column(q: &str) -> Option<String> {
+    // "on user_id", "by user_id", "using trace_id"
+    for prefix in ["on ", "by ", "using ", "where "] {
+        if let Some(col) = extract_keyword_after(q, prefix) {
+            let clean = sanitize_nl_identifier(&col);
+            if clean.len() >= 2 && clean.contains('_') {
+                return Some(clean);
+            }
+        }
+    }
+    // Common join column patterns in the question
+    let common = ["user_id", "trace_id", "order_id", "id", "customer_id", "session_id"];
+    for col in common {
+        if q.contains(col) {
+            return Some(col.to_string());
+        }
+    }
+    None
 }
