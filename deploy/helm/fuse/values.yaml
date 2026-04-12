@@ -80,3 +80,10 @@ podAnnotations: {}
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+networkPolicy:
+  enabled: false
+  allowFrom: []
+  # - podSelector:
+  #     matchLabels:
+  #       app: my-client

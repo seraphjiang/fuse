@@ -1,17 +1,17 @@
 # Multi-arch Dockerfile for Fuse (AMD64 + ARM64)
 # Build: docker buildx build --platform linux/amd64,linux/arm64 -t fuse-server .
 
-# Stage 1: Chef — install cargo-chef
+# Stage 1: Chef — compute recipe (dependency layer)
 FROM --platform=$BUILDPLATFORM public.ecr.aws/docker/library/rust:1.85-bookworm AS chef
-RUN cargo install cargo-chef
+RUN cargo install cargo-chef --locked
 WORKDIR /usr/src/fuse
 
-# Stage 2: Planner — compute recipe (dependency lockfile)
+# Stage 2: Planner — generate recipe.json from source
 FROM chef AS planner
 COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
-# Stage 3: Builder — cook dependencies first, then build source
+# Stage 3: Builder — cook dependencies, then build
 FROM chef AS builder
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
@@ -28,8 +28,9 @@ RUN case "$TARGETPLATFORM" in \
         rm -rf /var/lib/apt/lists/* ;; \
     esac
 
-# Cook dependencies (cached unless Cargo.toml/Cargo.lock change)
 COPY --from=planner /usr/src/fuse/recipe.json recipe.json
+
+# Cook dependencies (cached unless Cargo.toml/Cargo.lock change)
 RUN case "$TARGETPLATFORM" in \
       "linux/arm64") \
         export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc && \
@@ -39,8 +40,9 @@ RUN case "$TARGETPLATFORM" in \
         cargo chef cook --release --recipe-path recipe.json ;; \
     esac
 
-# Build application (only source changes trigger this layer)
 COPY . .
+
+# Build for target architecture
 RUN case "$TARGETPLATFORM" in \
       "linux/arm64") \
         export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc && \
