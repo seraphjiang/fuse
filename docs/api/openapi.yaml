@@ -730,6 +730,7 @@ components:
         error:
           type: string
           nullable: true
+          nullable: true
 
     DatasourceInfo:
       type: object
@@ -791,7 +792,7 @@ components:
       properties:
         status:
           type: string
-          enum: [ok, degraded, error]
+          enum: [healthy, degraded, error]
         connectors:
           type: object
           additionalProperties:
