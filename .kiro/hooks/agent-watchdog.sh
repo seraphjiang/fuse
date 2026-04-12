@@ -31,7 +31,7 @@ while true; do
     id=$(echo "$pane" | cut -d: -f1)
     name=$(echo "$pane" | cut -d: -f2)
 
-    [[ "$name" == "$LEAD" || "$name" == "admin" || "$name" == "fee" ]] && continue
+    [[ "$name" == "$LEAD" || "$name" == "admin" || "$name" == "fee" || "$name" == "devops" || "$name" == "dba" || "$name" == "test" ]] && continue
 
     last=$(tmux capture-pane -t "$id" -p -S -3 2>/dev/null)
 

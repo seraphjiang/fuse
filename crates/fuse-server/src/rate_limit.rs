@@ -119,7 +119,7 @@ fn too_many_requests() -> Response<Body> {
         .unwrap()
 }
 
-fn too_many_requests_for_key(identity: &str) -> Response<Body> {
+fn too_many_requests_for_key(_identity: &str) -> Response<Body> {
     let body = serde_json::json!({
         "error": "rate limit exceeded for API key",
     }).to_string();

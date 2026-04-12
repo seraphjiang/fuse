@@ -1324,3 +1324,85 @@ components:
       responses:
         "201":
           description: Query recorded
+
+  /api/fuse/predict:
+    get:
+      summary: Predict query latency
+      description: Estimate execution time based on historical query data, matching by query shape and datasource.
+      operationId: predict
+      tags: [Query]
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: SQL or PPL query to predict performance for
+      responses:
+        "200":
+          description: Prediction result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  estimated_ms:
+                    type: integer
+                    description: Estimated latency in milliseconds
+                  confidence:
+                    type: string
+                    enum: [none, low, medium, high]
+                  sample_count:
+                    type: integer
+                    description: Number of similar past queries used
+                  datasource_estimates:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        datasource:
+                          type: string
+                        avg_ms:
+                          type: integer
+                        p95_ms:
+                          type: integer
+                        sample_count:
+                          type: integer
+        "400":
+          description: Missing query parameter
+
+  /api/fuse/alert-rules:
+    get:
+      summary: List alert rules
+      operationId: listAlertRules
+      tags: [Alerts]
+      responses:
+        "200":
+          description: List of alert rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+    post:
+      summary: Create an alert rule
+      operationId: createAlertRule
+      tags: [Alerts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, query, condition]
+              properties:
+                name:
+                  type: string
+                query:
+                  type: string
+                condition:
+                  type: object
+      responses:
+        "201":
+          description: Alert rule created

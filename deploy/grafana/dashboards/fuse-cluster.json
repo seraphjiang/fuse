@@ -127,6 +127,47 @@
             "legendFormat": "Tenants ({{instance}})"
           }
         ]
+      },
+      {
+        "title": "Query Cost ($/query)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(fuse_query_cost_usd_bucket{instance=~\"$instance\"}[5m]))",
+            "legendFormat": "p95 {{connector_type}}"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(fuse_query_cost_usd_bucket{instance=~\"$instance\"}[5m]))",
+            "legendFormat": "p50 {{connector_type}}"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 4 } }
+      },
+      {
+        "title": "Plan Cache Hit Rate",
+        "type": "gauge",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+        "targets": [
+          {
+            "expr": "fuse_plan_cache_hits{instance=~\"$instance\"} / (fuse_plan_cache_hits{instance=~\"$instance\"} + fuse_plan_cache_misses{instance=~\"$instance\"} + 1)",
+            "legendFormat": "{{instance}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 0.5, "color": "yellow" },
+                { "value": 0.8, "color": "green" }
+              ]
+            }
+          }
+        }
       }
     ]
   }

@@ -36,6 +36,7 @@ pub struct AdaptiveCache {
 struct QueryFreq {
     count: u32,
     last_seen: Instant,
+    #[allow(dead_code)]
     datasources: Vec<String>,
 }
 

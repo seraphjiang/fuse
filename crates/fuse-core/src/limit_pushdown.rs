@@ -3,7 +3,7 @@
 
 /// For a UNION ALL with LIMIT, estimate how many rows to fetch per source.
 /// Strategy: fetch LIMIT rows from each source, then merge and truncate.
-pub fn union_fetch_limit(global_limit: u64, source_count: usize) -> u64 {
+pub fn union_fetch_limit(global_limit: u64, _source_count: usize) -> u64 {
     // Each source needs to return at least global_limit rows
     // (worst case: all qualifying rows come from one source)
     global_limit

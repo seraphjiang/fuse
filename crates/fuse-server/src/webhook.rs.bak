@@ -9,79 +9,6 @@ use std::sync::{Arc, RwLock};
 
 use serde::{Deserialize, Serialize};
 
-/// Exponential backoff retry configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RetryConfig {
-    #[serde(default = "default_max_retries")]
-    pub max_retries: u32,
-    #[serde(default = "default_initial_backoff_ms")]
-    pub initial_backoff_ms: u64,
-    #[serde(default = "default_backoff_multiplier")]
-    pub backoff_multiplier: f64,
-    #[serde(default = "default_max_backoff_ms")]
-    pub max_backoff_ms: u64,
-}
-fn default_max_retries() -> u32 { 5 }
-fn default_initial_backoff_ms() -> u64 { 500 }
-fn default_backoff_multiplier() -> f64 { 2.0 }
-fn default_max_backoff_ms() -> u64 { 30_000 }
-impl Default for RetryConfig {
-    fn default() -> Self {
-        Self {
-            max_retries: default_max_retries(),
-            initial_backoff_ms: default_initial_backoff_ms(),
-            backoff_multiplier: default_backoff_multiplier(),
-            max_backoff_ms: default_max_backoff_ms(),
-        }
-    }
-}
-impl RetryConfig {
-    pub fn backoff_duration(&self, attempt: u32) -> std::time::Duration {
-        let ms = (self.initial_backoff_ms as f64) * self.backoff_multiplier.powi(attempt as i32);
-        std::time::Duration::from_millis((ms as u64).min(self.max_backoff_ms))
-    }
-}
-
-/// Permanently-failed webhook delivery entry.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeadLetterEntry {
-    pub subscription_id: String,
-    pub callback_url: String,
-    pub payload: serde_json::Value,
-    pub attempts: u32,
-    pub last_error: String,
-    pub failed_at: u64,
-}
-
-/// Bounded in-memory dead-letter queue.
-pub struct DeadLetterQueue {
-    entries: RwLock<Vec<DeadLetterEntry>>,
-    max_entries: usize,
-}
-impl DeadLetterQueue {
-    pub fn new(max_entries: usize) -> Self {
-        Self { entries: RwLock::new(Vec::new()), max_entries }
-    }
-    pub fn push(&self, entry: DeadLetterEntry) {
-        let mut v = self.entries.write().unwrap();
-        if v.len() >= self.max_entries { v.remove(0); }
-        v.push(entry);
-    }
-    pub fn list(&self) -> Vec<DeadLetterEntry> { self.entries.read().unwrap().clone() }
-    pub fn len(&self) -> usize { self.entries.read().unwrap().len() }
-    pub fn is_empty(&self) -> bool { self.len() == 0 }
-    pub fn clear(&self) { self.entries.write().unwrap().clear(); }
-}
-
-/// Delivery result after retries.
-#[derive(Debug, Clone, Serialize)]
-pub struct DeliveryOutcome {
-    pub success: bool,
-    pub attempts: u32,
-    pub error: Option<String>,
-}
-
-
 /// Condition that triggers the webhook.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -137,9 +64,6 @@ pub struct WebhookSubscription {
     /// Last error from evaluation or delivery.
     #[serde(default)]
     pub last_error: Option<String>,
-    /// Retry configuration for delivery.
-    #[serde(default)]
-    pub retry_config: RetryConfig,
 }
 
 fn default_format() -> String {
@@ -162,7 +86,6 @@ pub struct WebhookPayload {
 pub struct WebhookRegistry {
     subs: RwLock<HashMap<String, WebhookSubscription>>,
     next_id: std::sync::atomic::AtomicU64,
-    dlq: DeadLetterQueue,
 }
 
 impl Default for WebhookRegistry {
@@ -176,12 +99,7 @@ impl WebhookRegistry {
         Self {
             subs: RwLock::new(HashMap::new()),
             next_id: std::sync::atomic::AtomicU64::new(1),
-            dlq: DeadLetterQueue::new(1000),
         }
-    }
-
-    pub fn dlq(&self) -> &DeadLetterQueue {
-        &self.dlq
     }
 
     pub fn register(&self, mut sub: WebhookSubscription) -> String {
@@ -261,8 +179,12 @@ pub fn evaluate_condition(
     }
 }
 
-/// Deliver a webhook payload (single attempt, no retry).
-async fn try_deliver(client: &reqwest::Client, url: &str, payload: &WebhookPayload) -> Result<(), String> {
+/// Deliver a webhook payload to the callback URL.
+pub async fn deliver_webhook(url: &str, payload: &WebhookPayload) -> Result<(), String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("client build failed: {e}"))?;
     let resp = client
         .post(url)
         .header("Content-Type", "application/json")
@@ -278,40 +200,6 @@ async fn try_deliver(client: &reqwest::Client, url: &str, payload: &WebhookPaylo
     }
 }
 
-/// Deliver with exponential backoff retries. Returns outcome.
-pub async fn deliver_webhook_with_retry(
-    url: &str,
-    payload: &WebhookPayload,
-    config: &RetryConfig,
-) -> DeliveryOutcome {
-    let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => return DeliveryOutcome { success: false, attempts: 0, error: Some(format!("client build failed: {e}")) },
-    };
-
-    let total_attempts = config.max_retries + 1;
-    let mut last_err = String::new();
-    for attempt in 0..total_attempts {
-        if attempt > 0 {
-            tokio::time::sleep(config.backoff_duration(attempt - 1)).await;
-        }
-        match try_deliver(&client, url, payload).await {
-            Ok(()) => return DeliveryOutcome { success: true, attempts: attempt + 1, error: None },
-            Err(e) => last_err = e,
-        }
-    }
-    DeliveryOutcome { success: false, attempts: total_attempts, error: Some(last_err) }
-}
-
-/// Backward-compatible single-attempt delivery.
-pub async fn deliver_webhook(url: &str, payload: &WebhookPayload) -> Result<(), String> {
-    let outcome = deliver_webhook_with_retry(url, payload, &RetryConfig { max_retries: 0, ..Default::default() }).await;
-    if outcome.success { Ok(()) } else { Err(outcome.error.unwrap_or_default()) }
-}
-
 /// Build REST routes for webhook subscriptions.
 pub fn webhook_routes() -> axum::Router<Arc<crate::api::AppState>> {
     use axum::routing::{get, post};
@@ -319,26 +207,6 @@ pub fn webhook_routes() -> axum::Router<Arc<crate::api::AppState>> {
         .route("/", get(list_webhooks).post(create_webhook))
         .route("/{id}", get(get_webhook).delete(delete_webhook))
         .route("/{id}/test", post(test_webhook))
-        .route("/dlq", get(list_dlq).delete(clear_dlq))
-}
-
-
-async fn list_dlq(
-    axum::extract::State(state): axum::extract::State<Arc<crate::api::AppState>>,
-) -> axum::response::Response {
-    use axum::response::IntoResponse;
-    axum::Json(serde_json::json!({
-        "count": state.webhook_registry.dlq().len(),
-        "entries": state.webhook_registry.dlq().list(),
-    })).into_response()
-}
-
-async fn clear_dlq(
-    axum::extract::State(state): axum::extract::State<Arc<crate::api::AppState>>,
-) -> axum::response::Response {
-    use axum::response::IntoResponse;
-    state.webhook_registry.dlq().clear();
-    axum::Json(serde_json::json!({"cleared": true})).into_response()
 }
 
 // --- Handlers ---
@@ -358,8 +226,6 @@ pub struct CreateWebhookRequest {
     pub format: String,
     pub condition: WebhookCondition,
     pub callback_url: String,
-    #[serde(default)]
-    pub retry_config: RetryConfig,
 }
 
 async fn create_webhook(
@@ -378,7 +244,6 @@ async fn create_webhook(
         fire_count: 0,
         last_evaluated: None,
         last_error: None,
-        retry_config: req.retry_config,
     };
     let id = state.webhook_registry.register(sub);
     (
@@ -500,25 +365,14 @@ async fn test_webhook(
             sample_rows,
             fired_at: now,
         };
-        let outcome = deliver_webhook_with_retry(&sub.callback_url, &payload, &sub.retry_config).await;
-        let error = if outcome.success { None } else { outcome.error.clone() };
+        let delivery = deliver_webhook(&sub.callback_url, &payload).await;
+        let error = delivery.err();
         state
             .webhook_registry
             .update_after_fire(&id, now, error.clone());
-        if !outcome.success {
-            state.webhook_registry.dlq().push(DeadLetterEntry {
-                subscription_id: sub.id.clone(),
-                callback_url: sub.callback_url.clone(),
-                payload: serde_json::to_value(&payload).unwrap_or_default(),
-                attempts: outcome.attempts,
-                last_error: outcome.error.clone().unwrap_or_default(),
-                failed_at: now,
-            });
-        }
         axum::Json(serde_json::json!({
             "fired": true,
             "row_count": rows.len(),
-            "attempts": outcome.attempts,
             "delivery_error": error,
         }))
         .into_response()
@@ -598,7 +452,6 @@ mod tests {
             fire_count: 0,
             last_evaluated: None,
             last_error: None,
-            retry_config: RetryConfig::default(),
         };
         let id = reg.register(sub);
         assert!(id.starts_with("wh-"));
@@ -623,7 +476,6 @@ mod tests {
             fire_count: 0,
             last_evaluated: None,
             last_error: None,
-            retry_config: RetryConfig::default(),
         };
         let id = reg.register(sub);
         reg.update_after_fire(&id, 1000, None);
@@ -651,54 +503,6 @@ mod tests {
         assert!(!json.is_empty());
     }
 
-
-    #[test]
-    fn test_retry_config_default() {
-        let cfg = RetryConfig::default();
-        assert_eq!(cfg.max_retries, 5);
-        assert_eq!(cfg.initial_backoff_ms, 500);
-        assert!((cfg.backoff_multiplier - 2.0).abs() < f64::EPSILON);
-        assert_eq!(cfg.max_backoff_ms, 30_000);
-    }
-
-    #[test]
-    fn test_retry_backoff_duration() {
-        let cfg = RetryConfig { max_retries: 5, initial_backoff_ms: 100, backoff_multiplier: 2.0, max_backoff_ms: 5000 };
-        assert_eq!(cfg.backoff_duration(0), std::time::Duration::from_millis(100));
-        assert_eq!(cfg.backoff_duration(1), std::time::Duration::from_millis(200));
-        assert_eq!(cfg.backoff_duration(2), std::time::Duration::from_millis(400));
-        // Capped at max
-        assert_eq!(cfg.backoff_duration(10), std::time::Duration::from_millis(5000));
-    }
-
-    #[test]
-    fn test_dead_letter_queue() {
-        let dlq = DeadLetterQueue::new(3);
-        assert!(dlq.is_empty());
-        for i in 0..5 {
-            dlq.push(DeadLetterEntry {
-                subscription_id: format!("wh-{i}"),
-                callback_url: "http://example.com".into(),
-                payload: serde_json::json!({}),
-                attempts: 5,
-                last_error: "timeout".into(),
-                failed_at: 1000 + i,
-            });
-        }
-        // Bounded to 3
-        assert_eq!(dlq.len(), 3);
-        let entries = dlq.list();
-        assert_eq!(entries[0].subscription_id, "wh-2");
-        dlq.clear();
-        assert!(dlq.is_empty());
-    }
-
-    #[test]
-    fn test_delivery_outcome_serialization() {
-        let outcome = DeliveryOutcome { success: false, attempts: 3, error: Some("timeout".into()) };
-        let json = serde_json::to_string(&outcome).unwrap();
-        assert!(json.contains("\"attempts\":3"));
-    }
     // Helper — .not() doesn't exist on bool, use this pattern
     trait Not {
         fn not(&self) -> bool;

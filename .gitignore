@@ -32,3 +32,4 @@ Thumbs.db
 .fuse-project/local/
 *perf-review*
 docs-site/book/
+coverage/

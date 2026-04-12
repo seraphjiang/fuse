@@ -190,6 +190,7 @@ async fn main() -> anyhow::Result<()> {
         } else {
             None
         },
+        key_rotation: Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
     });
 
     // Security: warn if tenants enabled without auth

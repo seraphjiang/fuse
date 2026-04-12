@@ -35,7 +35,7 @@ fn build_app() -> axum::Router {
         webhook_registry: Arc::new(fuse_server::webhook::WebhookRegistry::new()),
         compilation_cache: Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)),
         cdc_tracker: Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
-        adaptive_cache: Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None,
+        adaptive_cache: Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
     });
     fuse_server::build_router(state)
 }

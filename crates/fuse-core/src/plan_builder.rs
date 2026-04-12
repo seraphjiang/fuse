@@ -2,7 +2,6 @@
 //! Logical plan builder — compose query plans fluently.
 
 use crate::predicate::Predicate;
-use crate::scalar_expr::ScalarExpr;
 use serde::Serialize;
 
 /// A logical query plan.

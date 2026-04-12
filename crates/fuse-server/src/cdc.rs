@@ -136,7 +136,7 @@ pub struct CdcStats {
     pub total_events: usize,
 }
 
-/// REST handlers for CDC.
+// REST handlers for CDC.
 
 /// POST /api/fuse/cdc/events — ingest a change event (from connectors or external).
 pub async fn ingest_event(

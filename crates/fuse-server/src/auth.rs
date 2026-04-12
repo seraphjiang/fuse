@@ -106,6 +106,213 @@ impl Default for AuthState {
     }
 }
 
+
+// ── API Key Rotation ──
+
+/// Manages API key rotation with grace periods.
+/// During rotation, both old and new keys are valid until the grace period expires.
+pub struct KeyRotationManager {
+    state: std::sync::RwLock<RotationState>,
+}
+
+struct RotationState {
+    /// Active keys (current).
+    active: HashMap<String, ApiKeyEntry>,
+    /// Keys in grace period (old keys still valid until expiry).
+    grace: Vec<GracePeriodKey>,
+}
+
+struct GracePeriodKey {
+    entry: ApiKeyEntry,
+    expires_at: std::time::Instant,
+}
+
+/// Result of a key rotation operation.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RotationResult {
+    pub identity: String,
+    pub new_key: String,
+    pub grace_period_secs: u64,
+    pub old_key_expires_at_unix: u64,
+}
+
+impl KeyRotationManager {
+    pub fn new(initial_keys: Vec<ApiKeyEntry>) -> Self {
+        let active = initial_keys.into_iter().map(|e| (e.key.clone(), e)).collect();
+        Self {
+            state: std::sync::RwLock::new(RotationState {
+                active,
+                grace: Vec::new(),
+            }),
+        }
+    }
+
+    /// Rotate a key for the given identity. Returns the new key.
+    /// The old key enters a grace period and remains valid for `grace_secs`.
+    pub fn rotate(&self, identity: &str, grace_secs: u64) -> Option<RotationResult> {
+        let mut state = self.state.write().ok()?;
+
+        // Find the current key for this identity
+        let old_entry = state.active.values().find(|e| e.identity == identity)?.clone();
+        let old_key = old_entry.key.clone();
+
+        // Generate new key
+        let new_key = generate_api_key();
+        let new_entry = ApiKeyEntry {
+            key: new_key.clone(),
+            identity: old_entry.identity.clone(),
+            role: old_entry.role,
+        };
+
+        // Move old key to grace period
+        state.grace.push(GracePeriodKey {
+            entry: old_entry,
+            expires_at: std::time::Instant::now() + std::time::Duration::from_secs(grace_secs),
+        });
+
+        // Replace active key
+        state.active.remove(&old_key);
+        state.active.insert(new_key.clone(), new_entry);
+
+        let expires_unix = std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() + grace_secs;
+
+        Some(RotationResult {
+            identity: identity.to_string(),
+            new_key,
+            grace_period_secs: grace_secs,
+            old_key_expires_at_unix: expires_unix,
+        })
+    }
+
+    /// Validate a key against active keys and grace-period keys.
+    /// Expired grace keys are pruned on each call.
+    pub fn validate(&self, key: &str) -> Option<ApiKeyEntry> {
+        let mut state = self.state.write().ok()?;
+
+        // Prune expired grace keys
+        let now = std::time::Instant::now();
+        state.grace.retain(|g| g.expires_at > now);
+
+        // Check active keys first
+        if let Some(entry) = state.active.get(key) {
+            return Some(entry.clone());
+        }
+
+        // Check grace period keys
+        state.grace.iter()
+            .find(|g| g.entry.key == key)
+            .map(|g| g.entry.clone())
+    }
+
+    /// List all identities with active keys (no secrets exposed).
+    pub fn list_identities(&self) -> Vec<String> {
+        let state = self.state.read().unwrap();
+        state.active.values().map(|e| e.identity.clone()).collect()
+    }
+
+    /// Number of keys currently in grace period.
+    pub fn grace_count(&self) -> usize {
+        let state = self.state.read().unwrap();
+        state.grace.len()
+    }
+}
+
+/// Generate a random API key (32 hex chars).
+fn generate_api_key() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let random_part: u64 = (ts as u64).wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    format!("fuse-{:016x}{:016x}", ts as u64, random_part)
+}
+
+#[cfg(test)]
+mod rotation_tests {
+    use super::*;
+
+    fn test_entries() -> Vec<ApiKeyEntry> {
+        vec![
+            ApiKeyEntry { key: "key-alice".into(), identity: "alice".into(), role: Role::Admin },
+            ApiKeyEntry { key: "key-bob".into(), identity: "bob".into(), role: Role::Viewer },
+        ]
+    }
+
+    #[test]
+    fn test_rotate_returns_new_key() {
+        let mgr = KeyRotationManager::new(test_entries());
+        let result = mgr.rotate("alice", 300).unwrap();
+        assert_eq!(result.identity, "alice");
+        assert!(result.new_key.starts_with("fuse-"));
+        assert_eq!(result.grace_period_secs, 300);
+    }
+
+    #[test]
+    fn test_old_key_in_grace_period() {
+        let mgr = KeyRotationManager::new(test_entries());
+        // Old key works before rotation
+        assert!(mgr.validate("key-alice").is_some());
+        // Rotate
+        let result = mgr.rotate("alice", 300).unwrap();
+        // New key works
+        assert!(mgr.validate(&result.new_key).is_some());
+        // Old key still works (grace period)
+        assert!(mgr.validate("key-alice").is_some());
+    }
+
+    #[test]
+    fn test_other_keys_unaffected() {
+        let mgr = KeyRotationManager::new(test_entries());
+        mgr.rotate("alice", 300);
+        assert!(mgr.validate("key-bob").is_some());
+    }
+
+    #[test]
+    fn test_rotate_unknown_identity() {
+        let mgr = KeyRotationManager::new(test_entries());
+        assert!(mgr.rotate("unknown", 300).is_none());
+    }
+
+    #[test]
+    fn test_grace_count() {
+        let mgr = KeyRotationManager::new(test_entries());
+        assert_eq!(mgr.grace_count(), 0);
+        mgr.rotate("alice", 300);
+        assert_eq!(mgr.grace_count(), 1);
+        mgr.rotate("bob", 300);
+        assert_eq!(mgr.grace_count(), 2);
+    }
+
+    #[test]
+    fn test_list_identities() {
+        let mgr = KeyRotationManager::new(test_entries());
+        let ids = mgr.list_identities();
+        assert!(ids.contains(&"alice".to_string()));
+        assert!(ids.contains(&"bob".to_string()));
+    }
+
+    #[test]
+    fn test_generate_api_key_format() {
+        let key = generate_api_key();
+        assert!(key.starts_with("fuse-"));
+        assert!(key.len() > 20);
+    }
+
+    #[test]
+    fn test_double_rotation() {
+        let mgr = KeyRotationManager::new(test_entries());
+        let r1 = mgr.rotate("alice", 300).unwrap();
+        let r2 = mgr.rotate("alice", 300).unwrap();
+        // Both old keys in grace
+        assert!(mgr.validate("key-alice").is_some());
+        assert!(mgr.validate(&r1.new_key).is_some());
+        // Latest key is active
+        assert!(mgr.validate(&r2.new_key).is_some());
+        assert_eq!(mgr.grace_count(), 2);
+    }
+}
+
 /// Paths that bypass authentication.
 fn is_public_path(path: &str) -> bool {
     matches!(path, "/api/fuse/health" | "/metrics" | "/" | "/playground")

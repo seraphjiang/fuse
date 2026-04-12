@@ -39,7 +39,6 @@ enum QueryShape {
     SingleSource,
     Join,
     Union,
-    Other,
 }
 
 fn classify_query(query: &str) -> QueryShape {
