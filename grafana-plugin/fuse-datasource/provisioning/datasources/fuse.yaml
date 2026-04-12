@@ -1,0 +1,14 @@
+# Grafana provisioning — auto-configure Fuse datasource on startup.
+# Copy to $GRAFANA_HOME/conf/provisioning/datasources/ or mount via Docker.
+apiVersion: 1
+
+datasources:
+  - name: Fuse
+    type: fuse-datasource
+    access: proxy
+    url: http://fuse-server:9400
+    isDefault: false
+    jsonData:
+      url: http://fuse-server:9400
+      defaultTimeout: 30000
+    editable: true

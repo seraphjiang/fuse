@@ -1,0 +1,18 @@
+# Dev environment: Grafana with Fuse datasource plugin pre-installed.
+# Usage: docker compose -f grafana-plugin/docker-compose.grafana.yml up -d
+# Then open http://localhost:3000 (admin/admin)
+version: "3.8"
+
+services:
+  grafana:
+    image: grafana/grafana:10.4.0
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=fuse-datasource
+    volumes:
+      - ./fuse-datasource/dist:/var/lib/grafana/plugins/fuse-datasource
+      - ./fuse-datasource/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./fuse-datasource/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./fuse-datasource/dashboards:/var/lib/grafana/dashboards/fuse
+    network_mode: host

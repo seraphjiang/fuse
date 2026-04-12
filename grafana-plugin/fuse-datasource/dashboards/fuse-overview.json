@@ -1,0 +1,56 @@
+{
+  "dashboard": {
+    "title": "Fuse — Federated Query Overview",
+    "uid": "fuse-overview",
+    "tags": ["fuse", "federation"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Error Logs by Service (Last 1h)",
+        "type": "barchart",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "datasource": { "type": "fuse-datasource", "uid": "${DS_FUSE}" },
+        "targets": [{
+          "refId": "A",
+          "queryText": "SELECT service, count(*) AS errors FROM cluster_a.application_logs WHERE status >= 500 GROUP BY service ORDER BY errors DESC LIMIT 10",
+          "format": "sql"
+        }]
+      },
+      {
+        "id": 2,
+        "title": "Cross-Source: Logs + User Profiles",
+        "type": "table",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "datasource": { "type": "fuse-datasource", "uid": "${DS_FUSE}" },
+        "targets": [{
+          "refId": "A",
+          "queryText": "SELECT l.service, l.status, u.name, u.role FROM cluster_a.application_logs l JOIN dynamodb.users u ON l.user_id = u.user_id WHERE l.status >= 500 LIMIT 20",
+          "format": "sql"
+        }]
+      },
+      {
+        "id": 3,
+        "title": "Connector Health",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 24, "x": 0, "y": 8 },
+        "datasource": { "type": "fuse-datasource", "uid": "${DS_FUSE}" },
+        "targets": [{
+          "refId": "A",
+          "queryText": "SELECT type, count(*) AS count FROM fuse.datasources GROUP BY type",
+          "format": "sql"
+        }]
+      }
+    ],
+    "templating": {
+      "list": [{
+        "name": "DS_FUSE",
+        "type": "datasource",
+        "query": "fuse-datasource"
+      }]
+    },
+    "schemaVersion": 39,
+    "version": 1
+  },
+  "overwrite": true
+}
