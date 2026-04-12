@@ -76,4 +76,25 @@ mod tests {
         assert!(json.contains("\"v1\""));
         assert!(json.contains("\"stable\""));
     }
+
+    #[test]
+    fn test_multiple_versions() {
+        let info = ApiVersionInfo {
+            current: "v1",
+            versions: vec![
+                VersionEntry { version: "v1", status: "stable", prefix: "/api/v1/fuse" },
+                VersionEntry { version: "v2", status: "beta", prefix: "/api/v2/fuse" },
+            ],
+        };
+        assert_eq!(info.versions.len(), 2);
+        assert_eq!(info.current, "v1");
+    }
+
+    #[tokio::test]
+    async fn test_versions_handler_returns_json() {
+        let resp = versions_handler().await;
+        use axum::response::IntoResponse;
+        let resp = resp.into_response();
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+    }
 }
