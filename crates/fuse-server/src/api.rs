@@ -365,8 +365,10 @@ fn connector_error_status(msg: &str) -> StatusCode {
     let lower = msg.to_lowercase();
     if lower.contains("not found") || lower.contains("does not exist") {
         StatusCode::NOT_FOUND
-    } else if lower.contains("timed out") {
-        StatusCode::GATEWAY_TIMEOUT
+    } else if lower.contains("timed out") || lower.contains("timeout") {
+        StatusCode::REQUEST_TIMEOUT
+    } else if lower.contains("exceeds") && lower.contains("limit") {
+        StatusCode::PAYLOAD_TOO_LARGE
     } else if lower.contains("permission") || lower.contains("unauthorized") || lower.contains("access denied") {
         StatusCode::FORBIDDEN
     } else {
@@ -1211,7 +1213,7 @@ pub async fn query_handler(
             // Global result size limit
             if state.max_result_bytes > 0 && result_bytes > state.max_result_bytes {
                 return (
-                    StatusCode::BAD_REQUEST,
+                    StatusCode::PAYLOAD_TOO_LARGE,
                     Json(serde_json::json!({
                         "error": format!("result size {} bytes exceeds max_result_bytes limit of {} bytes", result_bytes, state.max_result_bytes),
                         "query_id": query_id,
@@ -1392,7 +1394,7 @@ async fn execute_single(
     state.pool_tracker.acquire(ds_id);
     let result = connector.execute(&sub_query).await;
     state.pool_tracker.release(ds_id);
-    let batches = result.map_err(|e| { state.pool_tracker.timeout(ds_id); e.to_string() })?;
+    let batches = result.map_err(|e| { state.pool_tracker.timeout(ds_id); state.health_history.record(ds_id, false, start.elapsed().as_millis() as u64, Some(e.to_string())); e.to_string() })?;
     let elapsed = start.elapsed().as_millis() as u64;
     let row_count: u64 = batches.iter().map(|b| b.num_rows() as u64).sum();
     let data_bytes: u64 = batches.iter().map(|b| b.get_array_memory_size() as u64).sum();
@@ -1867,7 +1869,10 @@ pub async fn get_schemas(
                 Json(schemas).into_response()
             }
         }
-        Err(e) => error_json(connector_error_status(&e.to_string()), e.to_string()).into_response(),
+        Err(e) => {
+            let msg = e.to_string();
+            error_json(connector_error_status(&msg), msg).into_response()
+        }
     }
 }
 
@@ -1907,7 +1912,10 @@ pub async fn get_fields(
                 Json(fields).into_response()
             }
         }
-        Err(e) => error_json(connector_error_status(&e.to_string()), e.to_string()).into_response(),
+        Err(e) => {
+            let msg = e.to_string();
+            error_json(connector_error_status(&msg), msg).into_response()
+        }
     }
 }
 
@@ -4444,6 +4452,23 @@ mod tests {
         ).unwrap();
         // Set limit to 1 byte — any result should exceed
         assert!(super::check_result_size(&[batch], 1).is_err());
+    }
+
+    #[test]
+    fn test_parse_on_key_explicit() {
+        let q = "SELECT l.service, u.name FROM cluster_a.logs l JOIN dynamodb.user_profiles u ON l.user_id = u.user_id";
+        assert_eq!(super::parse_on_key(q), Some("user_id".to_string()));
+    }
+
+    #[test]
+    fn test_parse_on_key_missing() {
+        assert_eq!(super::parse_on_key("SELECT * FROM a.t1 JOIN b.t2"), None);
+    }
+
+    #[test]
+    fn test_parse_on_key_different_columns() {
+        let q = "SELECT * FROM a.t1 JOIN b.t2 ON a.id = b.other_id";
+        assert_eq!(super::parse_on_key(q), None);
     }
 }
 
