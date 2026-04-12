@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuse — Data Quality</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e1e4e8;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #21262d;background:#161b22}
+header h1{font-size:18px;font-weight:600;color:#58a6ff}
+.nav-tabs{display:flex;gap:0}
+.nav-tab{padding:8px 16px;font-size:13px;color:#8b949e;text-decoration:none;border-bottom:2px solid transparent}
+.nav-tab:hover{color:#e1e4e8}
+.nav-tab.active{color:#58a6ff;border-bottom-color:#58a6ff;font-weight:600}
+main{max-width:1200px;width:100%;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:20px}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+button{padding:6px 14px;font-size:13px;border-radius:6px;border:1px solid #30363d;background:#21262d;color:#e1e4e8;cursor:pointer}
+button:hover{background:#30363d}
+button.primary{background:#238636;border-color:#238636;color:#fff}
+button.primary:hover{background:#2ea043}
+.card{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px}
+.card h3{font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.stat{font-size:28px;font-weight:700}.stat.pass{color:#3fb950}.stat.warn{color:#d29922}.stat.fail{color:#f85149}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:8px 12px;color:#8b949e;border-bottom:1px solid #21262d;font-weight:600}
+td{padding:8px 12px;border-bottom:1px solid #21262d}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.badge.pass{background:#238636;color:#fff}.badge.warn{background:#d29922;color:#000}.badge.fail{background:#f85149;color:#fff}
+.empty{text-align:center;padding:40px;color:#8b949e}
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center}
+.modal{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:24px;max-width:560px;width:90%}
+.modal h2{font-size:16px;margin-bottom:16px}
+.form-row{margin-bottom:12px}
+.form-row label{display:block;font-size:12px;color:#8b949e;margin-bottom:4px}
+.form-row input,.form-row select{width:100%;padding:8px;font-size:13px;background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px}
+body.light{background:#fff;color:#1f2328}
+body.light header{background:#f6f8fa;border-color:#d0d7de}
+body.light .card{background:#fff;border-color:#d0d7de}
+body.light th,body.light td{border-color:#d0d7de}
+body.light button{background:#f6f8fa;border-color:#d0d7de;color:#1f2328}
+body.light .nav-tab{color:#656d76}
+body.light .nav-tab.active{color:#0969da;border-bottom-color:#0969da}
+body.light .modal{background:#fff;border-color:#d0d7de}
+body.light .form-row input,body.light .form-row select{background:#f6f8fa;color:#1f2328;border-color:#d0d7de}
+@media(max-width:768px){main{padding:12px}header{flex-wrap:wrap;padding:8px 12px}.nav-tabs{flex-wrap:wrap}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔗 Fuse</h1>
+  <div>
+    <nav class="nav-tabs">
+      <a href="/playground" class="nav-tab">Playground</a>
+      <a href="/dashboard" class="nav-tab">Dashboard</a>
+      <a href="/explore" class="nav-tab">Explore</a>
+      <a href="/quality" class="nav-tab active">Quality</a>
+      <a href="/schedules" class="nav-tab">Schedules</a>
+      <a href="/settings" class="nav-tab">Settings</a>
+      <a href="/status" class="nav-tab">Status</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="toolbar">
+    <button class="primary" onclick="showCreate()">+ New Rule</button>
+    <button onclick="runAll()">▶ Run All Checks</button>
+    <button onclick="loadRules()">↻ Refresh</button>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="grid" id="summary">
+    <div class="card"><h3>Passing</h3><div class="stat pass" id="s-pass">—</div></div>
+    <div class="card"><h3>Warnings</h3><div class="stat warn" id="s-warn">—</div></div>
+    <div class="card"><h3>Failing</h3><div class="stat fail" id="s-fail">—</div></div>
+  </div>
+
+  <!-- Rules Table -->
+  <div class="card">
+    <table>
+      <thead><tr><th>Datasource</th><th>Table</th><th>Rule</th><th>Threshold</th><th>Status</th><th>Last Check</th><th>Actions</th></tr></thead>
+      <tbody id="rules-body"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</main>
+
+<!-- Create Rule Modal -->
+<div class="modal-bg" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <h2>New Data Quality Rule</h2>
+    <div class="form-row"><label>Datasource</label><select id="f-ds"></select></div>
+    <div class="form-row"><label>Table</label><input id="f-table" placeholder="application_logs"></div>
+    <div class="form-row"><label>Rule Type</label>
+      <select id="f-type">
+        <option value="null_rate">Null rate (%)</option>
+        <option value="freshness">Freshness (minutes)</option>
+        <option value="row_count_min">Min row count</option>
+        <option value="cardinality_min">Min cardinality</option>
+        <option value="custom_sql">Custom SQL (must return 0 for pass)</option>
+      </select>
+    </div>
+    <div class="form-row"><label>Column (if applicable)</label><input id="f-col" placeholder="status"></div>
+    <div class="form-row"><label>Threshold</label><input id="f-threshold" type="number" value="5"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button onclick="closeModal()">Cancel</button>
+      <button class="primary" onclick="saveRule()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const API = '/api/fuse/quality';
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+if (localStorage.getItem('fuse-theme') === 'light') document.body.classList.add('light');
+
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error(await r.text());
+  return r.status === 204 ? null : r.json();
+}
+
+async function loadDatasources() {
+  try {
+    const ds = await api('/api/fuse/datasources');
+    const list = Array.isArray(ds) ? ds : (ds.datasources || []);
+    $('f-ds').innerHTML = list.map(d => `<option value="${esc(d.id || d.name || d)}">${esc(d.id || d.name || d)}</option>`).join('');
+  } catch {}
+}
+
+async function loadRules() {
+  try {
+    const data = await api(API + '/rules');
+    const rules = Array.isArray(data) ? data : (data.rules || []);
+    let pass = 0, warn = 0, fail = 0;
+    rules.forEach(r => { if (r.status === 'pass') pass++; else if (r.status === 'warn') warn++; else fail++; });
+    $('s-pass').textContent = pass; $('s-warn').textContent = warn; $('s-fail').textContent = fail;
+    if (!rules.length) { $('rules-body').innerHTML = '<tr><td colspan="7" class="empty">No rules defined. Click + New Rule.</td></tr>'; return; }
+    $('rules-body').innerHTML = rules.map(r => `<tr>
+      <td>${esc(r.datasource)}</td>
+      <td>${esc(r.table)}</td>
+      <td>${esc(r.rule_type)}${r.column ? ' (' + esc(r.column) + ')' : ''}</td>
+      <td>${r.threshold}</td>
+      <td><span class="badge ${r.status||'pass'}">${r.status||'unknown'}</span></td>
+      <td style="font-size:12px;color:#8b949e">${r.last_check ? new Date(r.last_check).toLocaleString() : '—'}</td>
+      <td><button onclick="deleteRule('${esc(r.id||r.name)}')" style="font-size:11px;padding:2px 8px;color:#f85149">✕</button></td>
+    </tr>`).join('');
+  } catch (e) { $('rules-body').innerHTML = `<tr><td colspan="7" class="empty" style="color:#f85149">Failed: ${esc(e.message)}</td></tr>`; }
+}
+
+function showCreate() { $('modal').style.display = 'flex'; loadDatasources(); }
+function closeModal() { $('modal').style.display = 'none'; }
+
+async function saveRule() {
+  const body = { datasource: $('f-ds').value, table: $('f-table').value, rule_type: $('f-type').value, column: $('f-col').value || null, threshold: Number($('f-threshold').value) };
+  if (!body.table) { alert('Table is required'); return; }
+  try { await api(API + '/rules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); closeModal(); loadRules(); }
+  catch (e) { alert('Failed: ' + e.message); }
+}
+
+async function deleteRule(id) {
+  if (!confirm('Delete rule?')) return;
+  try { await api(API + '/rules/' + encodeURIComponent(id), { method: 'DELETE' }); loadRules(); }
+  catch (e) { alert('Failed: ' + e.message); }
+}
+
+async function runAll() {
+  try { await api(API + '/evaluate', { method: 'POST' }); loadRules(); }
+  catch (e) { alert('Failed: ' + e.message); }
+}
+
+loadRules();
+</script>
+</body>
+</html>
