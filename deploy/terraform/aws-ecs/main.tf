@@ -19,6 +19,11 @@ variable "desired_count" { default = 2 }
 variable "max_count" { default = 10 }
 variable "redis_enabled" { default = true }
 variable "redis_node_type" { default = "cache.t4g.micro" }
+variable "allowed_cidrs" {
+  description = "CIDRs allowed to reach the ALB (default: open to all)"
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
 
 provider "aws" { region = var.region }
 
@@ -27,8 +32,8 @@ provider "aws" { region = var.region }
 resource "aws_security_group" "alb" {
   name_prefix = "${var.name}-alb-"
   vpc_id      = var.vpc_id
-  ingress { from_port = 80; to_port = 80; protocol = "tcp"; cidr_blocks = ["0.0.0.0/0"] }
-  ingress { from_port = 443; to_port = 443; protocol = "tcp"; cidr_blocks = ["0.0.0.0/0"] }
+  ingress { from_port = 80; to_port = 80; protocol = "tcp"; cidr_blocks = var.allowed_cidrs }
+  ingress { from_port = 443; to_port = 443; protocol = "tcp"; cidr_blocks = var.allowed_cidrs }
   egress  { from_port = 0; to_port = 0; protocol = "-1"; cidr_blocks = ["0.0.0.0/0"] }
   tags = { Name = "${var.name}-alb" }
 }
