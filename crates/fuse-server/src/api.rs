@@ -4779,3 +4779,64 @@ pub async fn anomaly_handler(
         "tolerance": tolerance,
     })).into_response()
 }
+
+/// POST /api/fuse/query/diff — compare results of two queries side by side.
+#[derive(Deserialize)]
+pub struct QueryDiffRequest {
+    pub query_a: String,
+    pub query_b: String,
+    #[serde(default = "default_sql")]
+    pub format: String,
+}
+
+fn default_sql() -> String { "sql".to_string() }
+
+pub async fn query_diff_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<QueryDiffRequest>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+
+    async fn run_query(state: &Arc<AppState>, query: &str, format: &str) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), String> {
+        let query = rewrite_contains(query);
+        let refs = match if format == "ppl" { parse_ppl_sources(&query) } else { parse_sql_sources(&query) } {
+            Ok(r) if !r.is_empty() => r,
+            _ => return Err("no datasource.table references found".into()),
+        };
+        let mut all_batches = Vec::new();
+        for (ds_id, table) in &refs {
+            let connector = state.registry.get(ds_id)
+                .ok_or_else(|| format!("datasource '{}' not found", ds_id))?;
+            let sq = build_sub_query(&query, format, table).map_err(|e| e.to_string())?;
+            let batches = connector.execute(&sq).await.map_err(|e| e.to_string())?;
+            all_batches.extend(batches);
+        }
+        Ok(batches_to_json(&all_batches))
+    }
+
+    let fmt = req.format.to_lowercase();
+    let (result_a, result_b) = tokio::join!(
+        run_query(&state, &req.query_a, &fmt),
+        run_query(&state, &req.query_b, &fmt),
+    );
+
+    match (result_a, result_b) {
+        (Ok((cols_a, rows_a)), Ok((cols_b, rows_b))) => {
+            let same_schema = cols_a == cols_b;
+            let same_row_count = rows_a.len() == rows_b.len();
+            let same_data = same_schema && same_row_count && rows_a == rows_b;
+            axum::Json(serde_json::json!({
+                "a": { "columns": cols_a, "rows": rows_a, "row_count": rows_a.len() },
+                "b": { "columns": cols_b, "rows": rows_b, "row_count": rows_b.len() },
+                "diff": {
+                    "same_schema": same_schema,
+                    "same_row_count": same_row_count,
+                    "same_data": same_data,
+                    "row_count_diff": rows_b.len() as i64 - rows_a.len() as i64,
+                }
+            })).into_response()
+        }
+        (Err(e), _) => error_json(StatusCode::BAD_REQUEST, format!("query_a failed: {}", e)).into_response(),
+        (_, Err(e)) => error_json(StatusCode::BAD_REQUEST, format!("query_b failed: {}", e)).into_response(),
+    }
+}
