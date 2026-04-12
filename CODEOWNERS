@@ -1,0 +1,26 @@
+# Default
+* @seraphjiang
+
+# Infrastructure
+deploy/ @seraphjiang
+.github/ @seraphjiang
+Dockerfile @seraphjiang
+docker-compose*.yml @seraphjiang
+justfile @seraphjiang
+buildspec.yml @seraphjiang
+
+# Core engine
+crates/fuse-core/ @seraphjiang
+crates/fuse-engine/ @seraphjiang
+
+# Server
+crates/fuse-server/ @seraphjiang
+
+# Connectors
+crates/fuse-connectors/ @seraphjiang
+
+# Playground
+playground/ @seraphjiang
+
+# Docs
+docs/ @seraphjiang
