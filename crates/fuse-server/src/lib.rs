@@ -124,6 +124,7 @@ pub mod tracing_ctx;
 pub mod api_versioning;
 pub mod query_autotuner;
 pub mod query_similarity;
+pub mod load_scenarios;
 pub mod schema_cache;
 
 use std::sync::Arc;
@@ -343,6 +344,7 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/api/fuse/routing/stats", get(api::routing_stats_handler))
         .route("/api/fuse/pool/stats", get(api::pool_stats_handler))
         .route("/api/fuse/connectors/health-history", get(api::connector_health_history_handler))
+        .route("/api/fuse/load-scenarios", get(api::load_scenarios_handler))
         .route("/api/fuse/views/{name}", get(api::get_view).delete(api::delete_view))
         .route("/api/fuse/views/{name}/refresh", post(api::refresh_view))
         .route("/api/fuse/trace/{trace_id}", get(api::trace_handler))
