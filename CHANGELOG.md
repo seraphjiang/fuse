@@ -9,6 +9,27 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Scheduled queries with cron expressions, alert-on-change (#1800)
+- Data quality rules engine — null rate, freshness, row count, cardinality, custom SQL (#1801)
+- Arrow IPC result format for zero-copy Python/Rust SDK consumers (#1802)
+- Query cost estimation with real dollar amounts — Athena $/TB, DDB $/RCU, S3 $/request (#1803)
+- GraphQL API — schema introspection, query execution, saved queries (#1810)
+- Webhook subscriptions — event-driven notifications on query result conditions (#1811)
+- Query replay & regression testing — record, replay, diff results (#1812)
+- Parallel fan-out with backpressure — fast connectors stream immediately (#1820)
+- Adaptive query caching — frequency tracking, per-datasource TTL, auto-promotion (#1821)
+- Query explanation in plain English (#1830)
+- Schema relationship discovery — auto-detect foreign keys (#1831)
+- Query lineage & data catalog — graph extraction, POST /api/fuse/lineage (#1840)
+- Multi-tenant SaaS mode — usage metering, rate limiting, tenant isolation (#1841)
+- OpenTelemetry collector mode — ingest OTLP traces/metrics/logs, query with SQL (#1850)
+- Query compilation — skip re-parsing for hot query patterns (#1851)
+- Federated materialized views with CDC (#1852)
+- Playground: scheduled queries, data quality, lineage, replay pages (18 total)
+- Playground: demo tour (6-step guided walkthrough with complex JOINs)
+- Playground: query sharing via URL, saved queries UI, snippets dropdown
+- Playground: line numbers, column sorting, run selection, keyboard shortcuts modal
+- Playground: OTel collector widget and adaptive cache stats on Status page
 - CORS configuration support (`cors_origins` in `[engine]`)
 - Max result size limit (`max_result_bytes`) for OOM prevention
 - Connector retry with exponential backoff
