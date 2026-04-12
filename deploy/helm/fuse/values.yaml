@@ -100,13 +100,23 @@ tolerations: []
 affinity: {}
 
 metrics:
+  # Annotation-based discovery (for clusters without Prometheus Operator)
+  podAnnotations: false  # set true to add prometheus.io/* annotations to pods
   serviceMonitor:
     enabled: false
     interval: "30s"
     scrapeTimeout: "10s"
     path: "/metrics"
     labels: {}
-    # release: prometheus  # match your Prometheus operator selector
+      # release: prometheus  # match your Prometheus operator selector
+    annotations: {}
+    honorLabels: false
+    relabelings: []
+    metricRelabelings: []
+    namespaceSelector: {}  # default: release namespace only
+    targetLabels: []       # service labels to copy to metrics
+    podTargetLabels: []    # pod labels to copy to metrics
+    sampleLimit: null      # per-scrape sample limit
 
 configValidation:
   enabled: false
