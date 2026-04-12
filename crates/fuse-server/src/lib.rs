@@ -125,6 +125,7 @@ pub mod api_versioning;
 pub mod query_autotuner;
 pub mod query_similarity;
 pub mod load_scenarios;
+pub mod perf_regression;
 pub mod schema_cache;
 
 use std::sync::Arc;
