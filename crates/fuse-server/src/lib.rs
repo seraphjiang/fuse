@@ -26,6 +26,7 @@ pub mod column_stats;
 pub mod cache_key;
 pub mod capability_summary;
 pub mod case_when;
+pub mod cdc;
 pub mod circuit_breaker;
 pub mod config_watch;
 pub mod cost_estimator;

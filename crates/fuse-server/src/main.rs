@@ -173,6 +173,7 @@ async fn main() -> anyhow::Result<()> {
         adaptive_parallelism: Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()),
         webhook_registry: Arc::new(fuse_server::webhook::WebhookRegistry::new()),
         compilation_cache: Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)),
+        cdc_tracker: Arc::new(fuse_server::cdc::CdcTracker::new(10000)),
     });
 
     // Security: warn if tenants enabled without auth

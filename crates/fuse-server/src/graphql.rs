@@ -413,7 +413,7 @@ mod tests {
             webhook_registry: Arc::new(crate::webhook::WebhookRegistry::new()),
             adaptive_parallelism: Arc::new(crate::adaptive_parallelism::AdaptiveParallelism::new()),
             query_recorder: Arc::new(crate::query_replay::QueryRecorder::new(1000)),
-            compilation_cache: Arc::new(crate::query_compilation::CompilationCache::new(300, 5000)),
+            compilation_cache: Arc::new(crate::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: Arc::new(crate::cdc::CdcTracker::new(1000)),
         })
     }
 

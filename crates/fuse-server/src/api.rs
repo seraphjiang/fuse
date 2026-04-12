@@ -101,6 +101,8 @@ pub struct AppState {
     pub webhook_registry: Arc<crate::webhook::WebhookRegistry>,
     /// #1851 Query compilation cache — skip re-parsing for repeated query patterns.
     pub compilation_cache: Arc<crate::query_compilation::CompilationCache>,
+    /// #1852 CDC tracker — change data capture for materialized view refresh.
+    pub cdc_tracker: Arc<crate::cdc::CdcTracker>,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.
