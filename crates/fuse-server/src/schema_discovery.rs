@@ -79,7 +79,7 @@ pub async fn discover_relationships(registry: &Arc<ConnectorRegistry>) -> Vec<Re
                 continue;
             }
             // Skip type mismatches
-            if left.data_type != right.data_type {
+            if !types_compatible(&left.data_type, &right.data_type) {
                 continue;
             }
             if left.name == right.name && is_likely_key(&left.name) {
@@ -151,6 +151,22 @@ pub async fn discover_relationships(registry: &Arc<ConnectorRegistry>) -> Vec<Re
     // Sort by confidence descending
     relationships.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
     relationships
+}
+
+/// Check if two data types are compatible for a join relationship.
+fn types_compatible(a: &str, b: &str) -> bool {
+    if a == b { return true; }
+    let ca = type_category(a);
+    let cb = type_category(b);
+    ca == cb
+}
+
+fn type_category(t: &str) -> u8 {
+    let l = t.to_lowercase();
+    if l.contains("int") || l.contains("long") || l.contains("bigint") { return 1; }
+    if l.contains("float") || l.contains("double") || l.contains("decimal") { return 2; }
+    if l.contains("bool") { return 3; }
+    0 // string-like
 }
 
 /// Heuristic: column name looks like a key/identifier.
@@ -234,5 +250,30 @@ mod tests {
         let registry = Arc::new(ConnectorRegistry::new());
         let rels = discover_relationships(&registry).await;
         assert!(rels.is_empty());
+    }
+
+    #[test]
+    fn test_types_compatible() {
+        assert!(types_compatible("Int64", "Int64"));
+        assert!(types_compatible("Int32", "Int64"));
+        assert!(types_compatible("Utf8", "Utf8"));
+        assert!(!types_compatible("Int64", "Boolean"));
+        assert!(types_compatible("Float32", "Float64"));
+    }
+
+    #[test]
+    fn test_type_category() {
+        assert_eq!(type_category("Int64"), type_category("BigInt"));
+        assert_eq!(type_category("Float32"), type_category("Double"));
+        assert_ne!(type_category("Int64"), type_category("Boolean"));
+        assert_eq!(type_category("Utf8"), type_category("String"));
+    }
+
+    #[test]
+    fn test_is_likely_key_negative() {
+        assert!(!is_likely_key("timestamp"));
+        assert!(!is_likely_key("level"));
+        assert!(!is_likely_key("count"));
+        assert!(!is_likely_key("value"));
     }
 }
