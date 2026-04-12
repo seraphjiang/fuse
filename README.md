@@ -92,7 +92,7 @@ cargo test --all-targets
 curl -X POST http://localhost:9400/api/fuse/query \
   -H 'Content-Type: application/json' \
   -d '{
-    "query": "SELECT l.trace_id, l.service, u.name, u.role FROM cluster_a.application_logs l JOIN dynamodb.users u ON l.user_id = u.user_id WHERE l.status >= 500",
+    "query": "SELECT l.trace_id, l.service, u.name, u.plan FROM cluster_a.application_logs l JOIN dynamodb.user_profiles u ON l.user_id = u.user_id WHERE l.status >= 500",
     "format": "sql"
   }'
 ```
@@ -114,7 +114,7 @@ curl -X POST http://localhost:9400/api/fuse/query \
 curl -X POST http://localhost:9400/api/fuse/query \
   -H 'Content-Type: application/json' \
   -d '{
-    "query": "SELECT * FROM cluster_a.application_logs WHERE user_id NOT IN (SELECT user_id FROM dynamodb.users WHERE role = '\''admin'\'')",
+    "query": "SELECT * FROM cluster_a.application_logs WHERE user_id NOT IN (SELECT user_id FROM dynamodb.user_profiles WHERE plan = '\''enterprise'\'')",
     "format": "sql"
   }'
 ```
@@ -125,7 +125,7 @@ curl -X POST http://localhost:9400/api/fuse/query \
 curl -X POST http://localhost:9400/api/fuse/query \
   -H 'Content-Type: application/json' \
   -d '{
-    "query": "source = cluster_a.application_logs | where status >= 500 | lookup dynamodb.users user_id AS user_id REPLACE name, role | stats count() by role",
+    "query": "source = cluster_a.application_logs | where status >= 500 | lookup dynamodb.user_profiles user_id AS user_id REPLACE name, plan | stats count() by plan",
     "format": "ppl"
   }'
 ```
@@ -149,7 +149,7 @@ curl -X POST http://localhost:9400/api/fuse/query \
 ```bash
 curl -X POST http://localhost:9400/api/fuse/query \
   -H 'Content-Type: application/json' \
-  -d '{"query": "EXPLAIN SELECT l.service, count(*) FROM cluster_a.application_logs l JOIN dynamodb.users u ON l.user_id = u.user_id GROUP BY l.service", "format": "sql"}'
+  -d '{"query": "EXPLAIN SELECT l.service, count(*) FROM cluster_a.application_logs l JOIN dynamodb.user_profiles u ON l.user_id = u.user_id GROUP BY l.service", "format": "sql"}'
 ```
 
 ### Other endpoints
