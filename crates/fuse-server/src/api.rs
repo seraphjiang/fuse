@@ -1614,12 +1614,12 @@ async fn execute_join(
 
     // #1820: Record success/failure for adaptive concurrency tuning
     match &res_a {
-        Ok(_) => state.adaptive_parallelism.record_success(ds_a, latency_a),
-        Err(_) => state.adaptive_parallelism.record_failure(ds_a),
+        Ok(_) => { state.adaptive_parallelism.record_success(ds_a, latency_a); state.smart_router.record(ds_a, latency_a); state.health_history.record(ds_a, true, latency_a, None); },
+        Err(e) => { state.adaptive_parallelism.record_failure(ds_a); state.health_history.record(ds_a, false, latency_a, Some(e.to_string())); },
     }
     match &res_b {
-        Ok(_) => state.adaptive_parallelism.record_success(ds_b, latency_b),
-        Err(_) => state.adaptive_parallelism.record_failure(ds_b),
+        Ok(_) => { state.adaptive_parallelism.record_success(ds_b, latency_b); state.smart_router.record(ds_b, latency_b); state.health_history.record(ds_b, true, latency_b, None); },
+        Err(e) => { state.adaptive_parallelism.record_failure(ds_b); state.health_history.record(ds_b, false, latency_b, Some(e.to_string())); },
     }
 
     let batches_a = res_a?;
