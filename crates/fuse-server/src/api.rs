@@ -1356,7 +1356,7 @@ async fn execute_union(
     let mut datasources = Vec::new();
     let mut scan_nodes = Vec::new();
     let mut partial_errors = Vec::new();
-    let mut conn_types: std::collections::HashMap<String, String> = refs.iter()
+    let conn_types: std::collections::HashMap<String, String> = refs.iter()
         .filter_map(|(ds_id, _)| {
             state.registry.get(ds_id).map(|c| (ds_id.clone(), c.connector_type().to_string()))
         })
