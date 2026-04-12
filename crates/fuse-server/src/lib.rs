@@ -72,6 +72,7 @@ pub mod registry_snapshot;pub mod query_context;
 pub mod prepared;
 pub mod query_advisor;
 pub mod query_diff;
+pub mod query_explain;
 pub mod rate_limit;
 pub mod rate_monitor;pub mod redis_cache;
 pub mod refresh_scheduler;
