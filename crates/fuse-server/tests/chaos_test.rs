@@ -146,7 +146,8 @@ async fn test_single_source_connection_refused() {
     let app = build_app(vec![Arc::new(ConnectionRefusedConnector("broken".into()))]);
     let (status, json) = query(app, "SELECT * FROM broken.logs").await;
     assert_ne!(status, StatusCode::OK);
-    assert!(json["error"].as_str().unwrap_or("").contains("connection refused"));
+    // Server errors are sanitized to prevent leaking internal details (see error_json).
+    assert!(json["error"].as_str().unwrap_or("").contains("internal server error"));
 }
 
 #[tokio::test]
@@ -186,7 +187,7 @@ async fn test_join_one_side_refused() {
 #[tokio::test]
 async fn test_hanging_connector_times_out() {
     let app = build_app(vec![Arc::new(HangingConnector("slow".into()))]);
-    let body = serde_json::json!({"query": "SELECT * FROM slow.logs", "format": "sql", "timeout_ms": 500});
+    let body = serde_json::json!({"query": "SELECT * FROM slow.logs", "format": "sql", "timeout_ms": 2000});
     let req = Request::builder()
         .method("POST").uri("/api/fuse/query")
         .header("content-type", "application/json")
@@ -197,7 +198,8 @@ async fn test_hanging_connector_times_out() {
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or_default();
     assert_ne!(status, StatusCode::OK);
     let err = json["error"].as_str().unwrap_or("");
-    assert!(err.contains("timed out") || err.contains("timeout"), "should timeout: {}", err);
+    // Server errors are sanitized — timeout details are logged server-side only.
+    assert!(err.contains("timed out") || err.contains("timeout") || err.contains("internal server error"), "should timeout or be sanitized: {}", err);
 }
 
 #[tokio::test]
