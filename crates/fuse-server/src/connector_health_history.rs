@@ -4,7 +4,6 @@
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
-use std::time::Instant;
 
 const MAX_ENTRIES: usize = 1000;
 
