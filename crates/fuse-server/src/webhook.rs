@@ -537,6 +537,16 @@ async fn test_webhook(
         }
     };
 
+    // Apply column-level RBAC to webhook results (prevent sensitive data leaking)
+    let batches = if let Some(ref rbac) = state.column_rbac {
+        let user_ctx = fuse_core::security::UserContext {
+            username: "webhook".into(),
+            roles: vec![],
+        };
+        rbac.filter_batches(batches, ds_id, table, &user_ctx).unwrap_or_default()
+    } else {
+        batches
+    };
     let (columns, rows) = crate::api::batches_to_json(&batches);
     let now = crate::history::now_secs();
 
