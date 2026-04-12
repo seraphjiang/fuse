@@ -178,6 +178,15 @@ async function refreshStats() {
     if (s.error_count != null) rows.push(['Errors', `<span class="${s.error_count > 0 ? 'err' : 'ok'}">${s.error_count}</span>`]);
     if (s.error_rate != null) rows.push(['Error Rate', `<span class="${s.error_rate > 0.05 ? 'err' : s.error_rate > 0.01 ? 'warn' : 'ok'}">${(s.error_rate * 100).toFixed(1)}%</span>`]);
     if (s.cache_hit_rate != null) rows.push(['Cache Hit Rate', (s.cache_hit_rate * 100).toFixed(1) + '%']);
+    if (s.adaptive_cache) {
+      const ac = s.adaptive_cache;
+      if (ac.tracked_queries != null) rows.push(['Tracked Queries', ac.tracked_queries]);
+      if (ac.hot_queries != null) rows.push(['Hot Queries (auto-cached)', `<span class="${ac.hot_queries > 0 ? 'ok' : ''}">${ac.hot_queries}</span>`]);
+      if (ac.datasource_ttls) {
+        const ttls = Object.entries(ac.datasource_ttls).map(([ds, t]) => `${ds}: ${t}s`).join(', ');
+        if (ttls) rows.push(['Per-DS Cache TTL', ttls]);
+      }
+    }
     if (!rows.length) { $('stats-body').innerHTML = '<div class="empty">No stats available</div>'; return; }
     $('stats-body').innerHTML = rows.map(([l, v]) => `<div class="stat-row"><span class="stat-label">${l}</span><span class="stat-value">${v}</span></div>`).join('');
   } catch { $('stats-body').innerHTML = '<div class="empty">Stats endpoint unavailable</div>'; }
