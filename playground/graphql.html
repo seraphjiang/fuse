@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuse — GraphQL Playground</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e1e4e8;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #21262d;background:#161b22}
+header h1{font-size:18px;font-weight:600;color:#58a6ff}
+.nav-tabs{display:flex;gap:0}
+.nav-tab{padding:8px 16px;font-size:13px;color:#8b949e;text-decoration:none;border-bottom:2px solid transparent}
+.nav-tab:hover{color:#e1e4e8}
+.nav-tab.active{color:#58a6ff;border-bottom-color:#58a6ff;font-weight:600}
+main{flex:1;display:flex;flex-direction:column;padding:16px 24px;gap:12px}
+.panes{display:flex;gap:12px;flex:1;min-height:0}
+.pane{flex:1;display:flex;flex-direction:column;min-width:0}
+.pane-label{font-size:11px;color:#8b949e;text-transform:uppercase;margin-bottom:4px;font-weight:600}
+textarea{flex:1;background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:"SF Mono",Consolas,monospace;font-size:13px;resize:none;line-height:1.5}
+pre{flex:1;background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:12px;font-family:"SF Mono",Consolas,monospace;font-size:13px;overflow:auto;line-height:1.5;color:#8b949e;white-space:pre-wrap}
+.toolbar{display:flex;gap:8px;align-items:center}
+button{padding:6px 14px;font-size:13px;border-radius:6px;border:1px solid #30363d;background:#21262d;color:#e1e4e8;cursor:pointer}
+button:hover{background:#30363d}
+button.primary{background:#238636;border-color:#238636;color:#fff}
+.snippets{display:flex;gap:4px;flex-wrap:wrap}
+.snippets button{font-size:11px;padding:3px 8px}
+.status{font-size:12px;color:#8b949e}
+body.light{background:#fff;color:#1f2328}
+body.light header{background:#f6f8fa;border-color:#d1d9e0}
+body.light textarea{background:#fff;color:#1f2328;border-color:#d1d9e0}
+body.light pre{background:#f6f8fa;border-color:#d1d9e0;color:#1f2328}
+@media(max-width:768px){.panes{flex-direction:column}main{padding:8px 12px}}
+</style>
+<script>(function(){var t=localStorage.getItem('fuse-theme');if(t==='light'||(!t&&window.matchMedia('(prefers-color-scheme:light)').matches))document.body.classList.add('light');})();</script>
+</head>
+<body>
+<header>
+  <h1>🔮 GraphQL Playground</h1>
+  <nav class="nav-tabs">
+    <a class="nav-tab" href="/">Query</a>
+    <a class="nav-tab" href="/dashboard">Dashboard</a>
+    <a class="nav-tab" href="/explore">Explore</a>
+    <a class="nav-tab active" href="/graphql">GraphQL</a>
+    <a class="nav-tab" href="/status">Status</a>
+    <a class="nav-tab" href="/settings">Settings</a>
+  </nav>
+</header>
+<main>
+  <div class="toolbar">
+    <button class="primary" onclick="run()">▶ Run</button>
+    <button onclick="introspect()">🔍 Schema</button>
+    <button onclick="prettify()">✨ Prettify</button>
+    <span class="status" id="status"></span>
+  </div>
+  <div class="snippets">
+    <button onclick="setQuery(SNIPPETS.query)">Query</button>
+    <button onclick="setQuery(SNIPPETS.datasources)">Datasources</button>
+    <button onclick="setQuery(SNIPPETS.health)">Health</button>
+    <button onclick="setQuery(SNIPPETS.saved)">Saved Queries</button>
+    <button onclick="setQuery(SNIPPETS.introspection)">Introspection</button>
+  </div>
+  <div class="panes">
+    <div class="pane">
+      <div class="pane-label">Query</div>
+      <textarea id="editor">{ health { status connectors { id status latency_ms } } }</textarea>
+    </div>
+    <div class="pane">
+      <div class="pane-label">Variables (JSON)</div>
+      <textarea id="vars" style="max-height:120px">{}</textarea>
+      <div class="pane-label" style="margin-top:8px">Response</div>
+      <pre id="result">Run a query to see results...</pre>
+    </div>
+  </div>
+</main>
+<script>
+function $(id){return document.getElementById(id)}
+var SNIPPETS = {
+  query: '{\n  query(sql: "SELECT * FROM cluster_a.application_logs LIMIT 5") {\n    columns\n    rows\n    row_count\n    duration_ms\n  }\n}',
+  datasources: '{\n  datasources {\n    id\n    type\n    tables {\n      name\n      row_count\n    }\n  }\n}',
+  health: '{\n  health {\n    status\n    uptime_secs\n    connectors {\n      id\n      status\n      latency_ms\n    }\n  }\n}',
+  saved: '{\n  savedQueries {\n    id\n    name\n    query\n    format\n    created_at\n  }\n}',
+  introspection: '{\n  __schema {\n    types {\n      name\n      kind\n      fields {\n        name\n        type { name kind }\n      }\n    }\n  }\n}'
+};
+
+function setQuery(q){$('editor').value=q}
+
+async function run(){
+  $('status').textContent='Running...';
+  var t=Date.now();
+  try{
+    var body={query:$('editor').value};
+    try{var v=JSON.parse($('vars').value);if(Object.keys(v).length)body.variables=v;}catch(e){}
+    var resp=await fetch('/api/fuse/graphql',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    var data=await resp.json();
+    $('result').textContent=JSON.stringify(data,null,2);
+    $('status').textContent='Done in '+(Date.now()-t)+'ms — '+resp.status;
+  }catch(e){
+    $('result').textContent='Error: '+e.message;
+    $('status').textContent='Failed';
+  }
+}
+
+async function introspect(){
+  setQuery(SNIPPETS.introspection);
+  await run();
+}
+
+function prettify(){
+  try{
+    var q=$('editor').value;
+    var indent=0,out='',inStr=false;
+    for(var i=0;i<q.length;i++){
+      var c=q[i];
+      if(c==='"')inStr=!inStr;
+      if(inStr){out+=c;continue}
+      if(c==='{'||c==='('){out+=c+'\n'+'  '.repeat(++indent);continue}
+      if(c==='}'||c===')'){out+='\n'+'  '.repeat(--indent)+c;continue}
+      if(c==='\n'||c==='\r')continue;
+      out+=c;
+    }
+    $('editor').value=out;
+  }catch(e){}
+}
+
+document.addEventListener('keydown',function(e){if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();run();}});
+</script>
+</body>
+</html>
