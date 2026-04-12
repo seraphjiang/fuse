@@ -160,4 +160,198 @@ await testAsync('cancelAsync calls DELETE', async () => {
   assert.equal(method, 'DELETE');
 });
 
+// ── Sprint 18: Webhooks ──
+
+await testAsync('webhooks returns list', async () => {
+  const c = new FuseClient({ fetch: mockFetch(200, [{ id: 'w1', name: 'alert' }]) });
+  const ws = await c.webhooks();
+  assert.equal(ws.length, 1);
+  assert.equal(ws[0].id, 'w1');
+});
+
+await testAsync('createWebhook sends body', async () => {
+  let sentBody;
+  const c = new FuseClient({
+    fetch: async (url, opts) => {
+      sentBody = JSON.parse(opts.body);
+      return { ok: true, status: 200, json: async () => ({ id: 'w-new' }), text: async () => '{}' };
+    },
+  });
+  const resp = await c.createWebhook('alert', 'SELECT count(*) FROM ds.logs', { row_count_gt: 100 }, 'https://hook.example.com');
+  assert.equal(resp.id, 'w-new');
+  assert.equal(sentBody.name, 'alert');
+  assert.equal(sentBody.callback_url, 'https://hook.example.com');
+  assert.deepEqual(sentBody.condition, { row_count_gt: 100 });
+});
+
+await testAsync('deleteWebhook calls DELETE', async () => {
+  let method, url;
+  const c = new FuseClient({
+    fetch: async (u, opts) => {
+      method = opts.method; url = u;
+      return { ok: true, status: 200, json: async () => ({ ok: true }), text: async () => '{}' };
+    },
+  });
+  await c.deleteWebhook('w-1');
+  assert.equal(method, 'DELETE');
+  assert.ok(url.endsWith('/api/fuse/webhooks/w-1'));
+});
+
+await testAsync('testWebhook returns fired status', async () => {
+  const c = new FuseClient({ fetch: mockFetch(200, { fired: true, row_count: 42 }) });
+  const resp = await c.testWebhook('w-1');
+  assert.equal(resp.fired, true);
+  assert.equal(resp.row_count, 42);
+});
+
+// ── Sprint 18: Relationships ──
+
+await testAsync('relationships returns list', async () => {
+  const c = new FuseClient({ fetch: mockFetch(200, [{ left_datasource: 'a', right_datasource: 'b', confidence: 0.8 }]) });
+  const rels = await c.relationships();
+  assert.equal(rels.length, 1);
+  assert.equal(rels[0].confidence, 0.8);
+});
+
+// ── Sprint 18: CDC ──
+
+await testAsync('cdcStatus returns status', async () => {
+  const c = new FuseClient({ fetch: mockFetch(200, { enabled: true, tracked_views: 3 }) });
+  const s = await c.cdcStatus();
+  assert.equal(s.enabled, true);
+});
+
+await testAsync('cdcEvent sends body', async () => {
+  let sentBody;
+  const c = new FuseClient({
+    fetch: async (url, opts) => {
+      sentBody = JSON.parse(opts.body);
+      return { ok: true, status: 200, json: async () => ({ accepted: true, affected_views: ['v1'] }), text: async () => '{}' };
+    },
+  });
+  const resp = await c.cdcEvent('ds1', 'users', 'update');
+  assert.equal(resp.accepted, true);
+  assert.equal(sentBody.datasource, 'ds1');
+  assert.equal(sentBody.table, 'users');
+  assert.equal(sentBody.change_type, 'update');
+  assert.ok(typeof sentBody.timestamp === 'number');
+});
+
+// ── Sprint 18: Predict ──
+
+await testAsync('predict returns estimate', async () => {
+  let url;
+  const c = new FuseClient({
+    fetch: async (u, opts) => {
+      url = u;
+      return { ok: true, status: 200, json: async () => ({ estimated_ms: 150, confidence: 'medium' }), text: async () => '{}' };
+    },
+  });
+  const p = await c.predict('SELECT * FROM ds.logs');
+  assert.equal(p.estimated_ms, 150);
+  assert.equal(p.confidence, 'medium');
+  assert.ok(url.includes('/api/fuse/predict?query='));
+});
+
+// ── Untested core methods ──
+
+await testAsync('queryAll paginates automatically', async () => {
+  let callCount = 0;
+  const c = new FuseClient({
+    fetch: async (url, opts) => {
+      callCount++;
+      const body = JSON.parse(opts.body);
+      if (!body.cursor) {
+        return { ok: true, status: 200, json: async () => ({
+          columns: ['x'], rows: [[1], [2]], next_cursor: 'c2',
+          metadata: { total_rows: 2, format: 'sql', trace_id: 't1' },
+        }), text: async () => '{}' };
+      }
+      return { ok: true, status: 200, json: async () => ({
+        columns: ['x'], rows: [[3]],
+        metadata: { total_rows: 1, format: 'sql', trace_id: 't1' },
+      }), text: async () => '{}' };
+    },
+  });
+  const r = await c.queryAll('SELECT x FROM ds.t', { pageSize: 2 });
+  assert.equal(r.rows.length, 3);
+  assert.equal(callCount, 2);
+  assert.equal(r.nextCursor, undefined);
+});
+
+await testAsync('explain returns plan', async () => {
+  const c = new FuseClient({ fetch: mockFetch(200, { plan: 'Scan: ds.logs', plan_tree: { type: 'scan' } }) });
+  const e = await c.explain('SELECT * FROM ds.logs');
+  assert.equal(e.plan, 'Scan: ds.logs');
+  assert.ok(e.plan_tree);
+});
+
+await testAsync('validate valid query', async () => {
+  const c = new FuseClient({ fetch: mockFetch(200, { valid: true }) });
+  const v = await c.validate('SELECT 1');
+  assert.equal(v.valid, true);
+});
+
+await testAsync('validate invalid query', async () => {
+  const c = new FuseClient({ fetch: mockFetch(200, { valid: false, error: 'syntax error' }) });
+  const v = await c.validate('SELEC 1');
+  assert.equal(v.valid, false);
+  assert.equal(v.error, 'syntax error');
+});
+
+await testAsync('datasources returns list', async () => {
+  const c = new FuseClient({ fetch: mockFetch(200, [{ id: 'ds1', connector_type: 'opensearch' }]) });
+  const ds = await c.datasources();
+  assert.equal(ds.length, 1);
+  assert.equal(ds[0].connector_type, 'opensearch');
+});
+
+await testAsync('history returns list', async () => {
+  const c = new FuseClient({ fetch: mockFetch(200, [{ query: 'SELECT 1', latency_ms: 10 }]) });
+  const h = await c.history();
+  assert.equal(h.length, 1);
+  assert.equal(h[0].query, 'SELECT 1');
+});
+
+await testAsync('query with PPL format', async () => {
+  let sentBody;
+  const c = new FuseClient({
+    fetch: async (url, opts) => {
+      sentBody = JSON.parse(opts.body);
+      return { ok: true, status: 200, json: async () => ({
+        columns: ['x'], rows: [[1]], metadata: { total_rows: 1, format: 'ppl', trace_id: 't1' },
+      }), text: async () => '{}' };
+    },
+  });
+  await c.query('source = ds.logs | head 10', { format: 'ppl' });
+  assert.equal(sentBody.format, 'ppl');
+});
+
+await testAsync('query with cursor', async () => {
+  let sentBody;
+  const c = new FuseClient({
+    fetch: async (url, opts) => {
+      sentBody = JSON.parse(opts.body);
+      return { ok: true, status: 200, json: async () => ({
+        columns: ['x'], rows: [[1]], metadata: { total_rows: 1, format: 'sql', trace_id: 't1' },
+      }), text: async () => '{}' };
+    },
+  });
+  await c.query('SELECT * FROM ds.t', { pageSize: 10, cursor: 'fuse_c_abc' });
+  assert.equal(sentBody.page_size, 10);
+  assert.equal(sentBody.cursor, 'fuse_c_abc');
+});
+
+await testAsync('error includes status and body', async () => {
+  const c = new FuseClient({ fetch: mockFetch(422, { error: 'invalid query' }) });
+  try {
+    await c.query('BAD');
+    assert.fail('should have thrown');
+  } catch (e) {
+    assert.ok(e instanceof FuseError);
+    assert.equal(e.statusCode, 422);
+    assert.ok(e.body.includes('invalid query'));
+  }
+});
+
 console.log(`\n${passed} tests passed.`);
