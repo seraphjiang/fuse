@@ -263,11 +263,19 @@ pub fn evaluate_condition(
 
 /// Deliver a webhook payload (single attempt, no retry).
 async fn try_deliver(client: &reqwest::Client, url: &str, payload: &WebhookPayload) -> Result<(), String> {
+    // Re-validate URL at delivery time to prevent DNS rebinding attacks
+    crate::url_validator::validate_callback_url(url)
+        .map_err(|e| format!("SSRF blocked: {e}"))?;
+    let body = serde_json::to_vec(payload)
+        .map_err(|e| format!("serialize failed: {e}"))?;
+    // HMAC-SHA256 signature for webhook payload verification
+    let signature = compute_webhook_signature(&body);
     let resp = client
         .post(url)
         .header("Content-Type", "application/json")
         .header("X-Fuse-Event", "webhook.fired")
-        .json(payload)
+        .header("X-Fuse-Signature", &signature)
+        .body(body)
         .send()
         .await
         .map_err(|e| format!("webhook delivery failed: {e}"))?;
@@ -313,6 +321,17 @@ pub async fn deliver_webhook(url: &str, payload: &WebhookPayload) -> Result<(), 
 }
 
 /// Build REST routes for webhook subscriptions.
+/// Compute HMAC-SHA256 signature for webhook payload verification.
+/// Recipients can verify using the shared secret from FUSE_WEBHOOK_SECRET env var.
+fn compute_webhook_signature(body: &[u8]) -> String {
+    use sha2::{Sha256, Digest};
+    let secret = std::env::var("FUSE_WEBHOOK_SECRET").unwrap_or_else(|_| "fuse-default-secret".into());
+    let mut hasher = Sha256::new();
+    hasher.update(secret.as_bytes());
+    hasher.update(body);
+    format!("sha256={}", hex::encode(hasher.finalize()))
+}
+
 pub fn webhook_routes() -> axum::Router<Arc<crate::api::AppState>> {
     use axum::routing::{get, post};
     axum::Router::new()
@@ -364,9 +383,25 @@ pub struct CreateWebhookRequest {
 
 async fn create_webhook(
     axum::extract::State(state): axum::extract::State<Arc<crate::api::AppState>>,
+    auth_identity: Option<axum::extract::Extension<crate::auth::AuthIdentity>>,
     axum::Json(req): axum::Json<CreateWebhookRequest>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
+    // Webhook creation requires Editor role (executes queries + makes outbound HTTP)
+    if let Err(resp) = crate::auth::require_role(
+        auth_identity.as_ref().map(|e| &e.0),
+        crate::auth::Role::Editor,
+        true,
+    ) {
+        return resp.into_response();
+    }
+    // SSRF protection: validate callback URL before registration
+    if let Err(e) = crate::url_validator::validate_callback_url(&req.callback_url) {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            axum::Json(serde_json::json!({"error": format!("invalid callback_url: {}", e)})),
+        ).into_response();
+    }
     let sub = WebhookSubscription {
         id: String::new(),
         name: req.name,
@@ -405,9 +440,17 @@ async fn get_webhook(
 
 async fn delete_webhook(
     axum::extract::State(state): axum::extract::State<Arc<crate::api::AppState>>,
+    auth_identity: Option<axum::extract::Extension<crate::auth::AuthIdentity>>,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
+    if let Err(resp) = crate::auth::require_role(
+        auth_identity.as_ref().map(|e| &e.0),
+        crate::auth::Role::Editor,
+        true,
+    ) {
+        return resp.into_response();
+    }
     if state.webhook_registry.delete(&id) {
         axum::Json(serde_json::json!({"deleted": true})).into_response()
     } else {
@@ -422,9 +465,17 @@ async fn delete_webhook(
 /// Test-fire a webhook: run the query, evaluate condition, deliver if met.
 async fn test_webhook(
     axum::extract::State(state): axum::extract::State<Arc<crate::api::AppState>>,
+    auth_identity: Option<axum::extract::Extension<crate::auth::AuthIdentity>>,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
+    if let Err(resp) = crate::auth::require_role(
+        auth_identity.as_ref().map(|e| &e.0),
+        crate::auth::Role::Editor,
+        true,
+    ) {
+        return resp.into_response();
+    }
     let sub = match state.webhook_registry.get(&id) {
         Some(s) => s,
         None => {

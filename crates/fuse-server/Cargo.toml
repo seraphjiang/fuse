@@ -53,6 +53,7 @@ toml = { workspace = true }
 reqwest = { workspace = true }
 sha2 = { workspace = true }
 hmac = "0.12"
+url = "2"
 hex = { workspace = true }
 
 [dev-dependencies]
