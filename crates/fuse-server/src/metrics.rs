@@ -42,9 +42,20 @@ pub fn record_cache_stats(hits: u64, misses: u64) {
     metrics::gauge!("fuse_plan_cache_misses").set(misses as f64);
 }
 
+/// Record result cache stats.
+pub fn record_result_cache_stats(entries: usize) {
+    metrics::gauge!("fuse_result_cache_entries").set(entries as f64);
+}
+
 /// Record connector count.
 pub fn set_connector_count(count: usize) {
     metrics::gauge!("fuse_connectors_total").set(count as f64);
+}
+
+/// Record estimated query cost in USD per datasource.
+pub fn record_query_cost(datasource: &str, connector_type: &str, cost_usd: f64) {
+    metrics::histogram!("fuse_query_cost_usd", "datasource" => datasource.to_string(), "connector_type" => connector_type.to_string())
+        .record(cost_usd);
 }
 
 /// Record tenant count.
@@ -57,6 +68,8 @@ pub async fn metrics_handler(
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     set_active_queries(state.running_queries.count());
+    record_cache_stats(state.plan_cache.hits(), state.plan_cache.misses());
+    record_result_cache_stats(state.result_cache.len());
     let handle = HANDLE.get().expect("metrics not initialized");
     handle.render()
 }
