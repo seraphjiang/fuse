@@ -355,12 +355,16 @@ button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #58a
     <label class="analyze-label"><input type="checkbox" id="analyze-cb"> Analyze</label>
     <label class="analyze-label"><input type="checkbox" id="anomaly-cb" onchange="if(currentView==='chart')renderChart()"> 🔴 Anomalies</label>
     <button class="lucky" id="lucky-btn" onclick="feelingLucky()">🎲 Feeling Lucky</button>
+    <button onclick="startDemo()" style="background:#58a6ff;color:#000;border-color:#58a6ff;font-weight:600">🎬 Demo Tour</button>
     <div style="position:relative;display:inline-block">
       <button onclick="toggleSnippets()">📋 Snippets ▾</button>
       <div id="snippet-menu" style="display:none;position:absolute;top:100%;left:0;z-index:200;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:4px 0;min-width:320px;max-height:300px;overflow:auto;box-shadow:0 4px 12px rgba(0,0,0,.4)">
         <div style="padding:4px 12px;font-size:11px;color:#8b949e;text-transform:uppercase">SQL Patterns</div>
         <div class="snip" onclick="insertSnippet('SELECT * FROM {datasource}.{table} LIMIT 20')">Basic SELECT</div>
         <div class="snip" onclick="insertSnippet('SELECT a.*, b.* FROM {ds1}.{table1} a JOIN {ds2}.{table2} b ON a.id = b.id')">Cross-source JOIN</div>
+        <div class="snip" onclick="insertSnippet('SELECT a.*, b.*, c.*\nFROM {ds1}.{t1} a\nJOIN {ds2}.{t2} b ON a.id = b.id\nJOIN {ds3}.{t3} c ON a.id = c.id')">3-way JOIN</div>
+        <div class="snip" onclick="insertSnippet('SELECT * FROM {ds1}.{t1}\nWHERE id NOT IN (\n  SELECT id FROM {ds2}.{t2} WHERE {condition}\n)')">Anti-join (NOT IN)</div>
+        <div class="snip" onclick="insertSnippet('SELECT * FROM {ds1}.{t1} a\nWHERE EXISTS (\n  SELECT 1 FROM {ds2}.{t2} b\n  WHERE b.key = a.key AND {condition}\n)')">Correlated subquery (EXISTS)</div>
         <div class="snip" onclick="insertSnippet('SELECT source, count(*) FROM {datasource}.{table} GROUP BY source ORDER BY count(*) DESC')">GROUP BY + count</div>
         <div class="snip" onclick="insertSnippet('SELECT * FROM {ds1}.{t1} UNION ALL SELECT * FROM {ds2}.{t2}')">UNION ALL</div>
         <div class="snip" onclick="insertSnippet('SELECT *, ROW_NUMBER() OVER (PARTITION BY {col} ORDER BY {sort_col} DESC) as rn FROM {datasource}.{table}')">Window function</div>
@@ -624,6 +628,11 @@ button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #58a
     </select>
   </div>
   <div class="provenance" id="provenance"></div>
+  <div id="demo-bar" style="display:none;align-items:center;gap:12px;padding:8px 16px;background:#1c2128;border:1px solid #58a6ff;border-radius:6px;margin-bottom:8px;font-size:13px">
+    <span id="demo-info" style="flex:1"></span>
+    <button onclick="demoNext()" style="background:#238636;border-color:#238636;color:#fff">Next ▶</button>
+    <button onclick="demoStop()" style="font-size:11px;padding:4px 8px">✕ Stop</button>
+  </div>
   <div class="results" id="results" role="region" aria-label="Query results" aria-live="polite"><div class="empty-state"><div class="es-icon">🔍</div><div class="es-title">Run a query to see results</div><div class="es-hint">Type a SQL or PPL query above, or try 🎲 Feeling Lucky</div></div></div>
   <div id="chart-container" role="img" aria-label="Query results chart"></div>
   <div class="chart-hint" id="chart-hint"></div>
@@ -654,27 +663,60 @@ const $ = id => document.getElementById(id);
 let lastColumns = [], lastRows = [];
 
 const LUCKY_POOL = [
+  // === Simple queries ===
   {f:'sql', q:'SELECT service, status, message, trace_id FROM cluster_a.application_logs WHERE status >= 500 ORDER BY timestamp DESC LIMIT 20'},
   {f:'sql', q:'SELECT service, count(*) as errors FROM cluster_a.application_logs WHERE status >= 500 GROUP BY service ORDER BY errors DESC'},
-  {f:'sql', q:'SELECT method, path, count(*) as hits FROM cluster_a.application_logs GROUP BY method, path ORDER BY hits DESC LIMIT 15'},
-  {f:'sql', q:'SELECT service, avg(response_time_ms) as avg_ms, max(response_time_ms) as max_ms FROM cluster_a.application_logs GROUP BY service ORDER BY avg_ms DESC'},
-  {f:'sql', q:'SELECT * FROM cluster_a.application_logs WHERE response_time_ms > 1000 ORDER BY response_time_ms DESC LIMIT 20'},
-  {f:'sql', q:"SELECT * FROM cluster_a.application_logs WHERE trace_id = 'trace-001'"},
-  {f:'sql', q:'SELECT status, count(*) as cnt FROM cluster_a.application_logs GROUP BY status ORDER BY cnt DESC'},
-  {f:'sql', q:'SELECT service, status, message FROM cluster_a.application_logs UNION ALL SELECT service, status, message FROM cluster_b.application_logs LIMIT 20'},
-  {f:'sql', q:'SELECT _datasource, service, count(*) as errors FROM cluster_a.application_logs WHERE status >= 500 GROUP BY _datasource, service ORDER BY errors DESC'},
-  {f:'sql', q:'SELECT _datasource, trace_id, service, status FROM cluster_a.application_logs UNION ALL SELECT _datasource, trace_id, service, status FROM cluster_b.application_logs LIMIT 30'},
-  {f:'sql', q:'SELECT service, count(*) as total FROM cluster_b.application_logs WHERE status >= 400 GROUP BY service ORDER BY total DESC LIMIT 10'},
-  {f:'sql', q:'SELECT DISTINCT trace_id FROM cluster_a.application_logs WHERE status >= 500 LIMIT 10'},
-  {f:'ppl', q:'source = cluster_a.application_logs | where status >= 500 | head 20'},
-  {f:'ppl', q:'source = cluster_a.application_logs | stats count() by service | sort - count()'},
-  {f:'ppl', q:'source = cluster_a.application_logs | where response_time_ms > 1000 | sort - response_time_ms | head 10'},
-  {f:'ppl', q:'source = cluster_a.application_logs | stats count() by status | sort - count()'},
-  {f:'ppl', q:'source = cluster_a.application_logs, cluster_b.application_logs | where status >= 500 | stats count() by service | sort - count()'},
-  {f:'ppl', q:'source = cluster_b.application_logs | where method = "POST" | stats count() by path | sort - count() | head 10'},
-  {f:'ppl', q:'source = cluster_a.application_logs | stats avg(response_time_ms) as avg_ms by service | sort - avg_ms'},
-  {f:'ppl', q:'source = cluster_a.application_logs | where status >= 500 | stats count() by service, status | sort - count()'},
+  // === Cross-source JOINs (the wow factor) ===
+  {f:'sql', q:'SELECT l.service, l.status, l.message, u.name, u.role\nFROM cluster_a.application_logs l\nJOIN dynamodb.users u ON l.user_id = u.user_id\nWHERE l.status >= 500\nORDER BY l.timestamp DESC LIMIT 20'},
+  {f:'sql', q:'SELECT a.service, a.status, b.service as b_service, b.status as b_status\nFROM cluster_a.application_logs a\nJOIN cluster_b.application_logs b ON a.trace_id = b.trace_id\nWHERE a.status >= 500\nLIMIT 20'},
+  // === 3-way JOIN ===
+  {f:'sql', q:'SELECT l.trace_id, l.service, l.status, u.name, u.role\nFROM cluster_a.application_logs l\nJOIN cluster_b.application_logs r ON l.trace_id = r.trace_id\nJOIN dynamodb.users u ON l.user_id = u.user_id\nWHERE l.status >= 500\nLIMIT 20'},
+  // === Anti-join (NOT IN subquery) ===
+  {f:'sql', q:"SELECT * FROM cluster_a.application_logs\nWHERE user_id NOT IN (\n  SELECT user_id FROM dynamodb.users WHERE role = 'admin'\n)\nAND status >= 500\nLIMIT 20"},
+  // === Window function over federated data ===
+  {f:'sql', q:'SELECT service, status, message,\n  ROW_NUMBER() OVER (PARTITION BY service ORDER BY timestamp DESC) as rn\nFROM cluster_a.application_logs\nWHERE status >= 400\nLIMIT 30'},
+  // === Federated UNION ALL (3 sources) ===
+  {f:'sql', q:"SELECT 'cluster_a' as source, service, count(*) as errors\nFROM cluster_a.application_logs WHERE status >= 500 GROUP BY service\nUNION ALL\nSELECT 'cluster_b', service, count(*)\nFROM cluster_b.application_logs WHERE status >= 500 GROUP BY service\nORDER BY errors DESC"},
+  // === Cross-source GROUP BY ===
+  {f:'sql', q:'SELECT _datasource, service, count(*) as errors, avg(response_time_ms) as avg_ms\nFROM cluster_a.application_logs\nWHERE status >= 500\nGROUP BY _datasource, service\nORDER BY errors DESC'},
+  // === EXPLAIN (show the federated plan) ===
+  {f:'sql', q:'EXPLAIN SELECT l.service, u.name, count(*) as errors\nFROM cluster_a.application_logs l\nJOIN dynamodb.users u ON l.user_id = u.user_id\nWHERE l.status >= 500\nGROUP BY l.service, u.name'},
+  // === Correlated subquery ===
+  {f:'sql', q:'SELECT * FROM cluster_a.application_logs a\nWHERE EXISTS (\n  SELECT 1 FROM cluster_b.application_logs b\n  WHERE b.trace_id = a.trace_id AND b.status >= 500\n)\nLIMIT 20'},
+  // === PPL with cross-source lookup ===
+  {f:'ppl', q:'source = cluster_a.application_logs\n| where status >= 500\n| lookup dynamodb.users user_id AS user_id REPLACE name, role\n| stats count() by role\n| sort - count()'},
+  {f:'ppl', q:'source = cluster_a.application_logs\n| where status >= 500\n| stats count() by service\n| sort - count()'},
+  {f:'ppl', q:'source = cluster_a.application_logs\n| stats avg(response_time_ms) as avg_ms by service\n| where avg_ms > 100\n| sort - avg_ms'},
+  {f:'ppl', q:'source = cluster_a.application_logs, cluster_b.application_logs\n| where status >= 500\n| stats count() by _datasource, service\n| sort - count()'},
 ];
+
+// === Guided Demo Tour ===
+const DEMO_STEPS = [
+  {title:'1/6 — Basic Query', desc:'Simple SELECT across a single datasource', f:'sql', q:'SELECT service, status, message FROM cluster_a.application_logs WHERE status >= 500 LIMIT 10'},
+  {title:'2/6 — Cross-Source JOIN', desc:'Join OpenSearch logs with DynamoDB user profiles', f:'sql', q:'SELECT l.service, l.status, u.name, u.role\nFROM cluster_a.application_logs l\nJOIN dynamodb.users u ON l.user_id = u.user_id\nWHERE l.status >= 500 LIMIT 10'},
+  {title:'3/6 — 3-Way JOIN', desc:'Correlate traces across two clusters + user data', f:'sql', q:'SELECT l.trace_id, l.service, r.service as svc_b, u.name\nFROM cluster_a.application_logs l\nJOIN cluster_b.application_logs r ON l.trace_id = r.trace_id\nJOIN dynamodb.users u ON l.user_id = u.user_id\nWHERE l.status >= 500 LIMIT 10'},
+  {title:'4/6 — Federated UNION', desc:'Combine error counts from multiple clusters', f:'sql', q:"SELECT 'cluster_a' as source, service, count(*) as errors\nFROM cluster_a.application_logs WHERE status >= 500 GROUP BY service\nUNION ALL\nSELECT 'cluster_b', service, count(*)\nFROM cluster_b.application_logs WHERE status >= 500 GROUP BY service\nORDER BY errors DESC"},
+  {title:'5/6 — PPL Cross-Source Lookup', desc:'Pipe-delimited query with cross-source enrichment', f:'ppl', q:'source = cluster_a.application_logs\n| where status >= 500\n| lookup dynamodb.users user_id AS user_id REPLACE name, role\n| stats count() by role\n| sort - count()'},
+  {title:'6/6 — EXPLAIN Plan', desc:'See how Fuse federates the query across connectors', f:'sql', q:'EXPLAIN SELECT l.service, u.name, count(*) as errors\nFROM cluster_a.application_logs l\nJOIN dynamodb.users u ON l.user_id = u.user_id\nWHERE l.status >= 500\nGROUP BY l.service, u.name'},
+];
+let demoStep = -1;
+function startDemo() {
+  demoStep = 0;
+  runDemoStep();
+}
+function runDemoStep() {
+  if (demoStep < 0 || demoStep >= DEMO_STEPS.length) { $('demo-bar').style.display = 'none'; return; }
+  const s = DEMO_STEPS[demoStep];
+  $('demo-bar').style.display = 'flex';
+  $('demo-info').innerHTML = '<strong>' + s.title + '</strong> — ' + s.desc;
+  $('format').value = s.f;
+  $('editor').value = s.q;
+  if (typeof highlightEditor === 'function') highlightEditor();
+  updateLineNumbers();
+  runQuery();
+}
+function demoNext() { if (++demoStep >= DEMO_STEPS.length) { $('demo-bar').style.display = 'none'; demoStep = -1; } else runDemoStep(); }
+function demoStop() { $('demo-bar').style.display = 'none'; demoStep = -1; }
 
 function feelingLucky() {
   const pick = LUCKY_POOL[Math.floor(Math.random() * LUCKY_POOL.length)];
