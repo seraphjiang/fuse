@@ -82,8 +82,12 @@ body.light .nav-tab.active{color:#0969da;border-bottom-color:#0969da}
   </div>
 
   <div class="card" id="diff-card" style="display:none">
-    <h3>Replay Diff</h3>
-    <pre id="diff-output" style="font-size:12px;color:#8b949e;white-space:pre-wrap;max-height:300px;overflow:auto"></pre>
+    <h3>Replay Diff <button onclick="$('diff-card').style.display='none'" style="float:right;font-size:11px;padding:2px 8px">✕ Close</button></h3>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <button onclick="diffMode='json';showDiff(currentDiffId)" style="font-size:11px;padding:2px 8px">JSON</button>
+      <button onclick="diffMode='side';showDiff(currentDiffId)" style="font-size:11px;padding:2px 8px">Side-by-Side</button>
+    </div>
+    <div id="diff-output" style="font-size:12px;max-height:400px;overflow:auto"></div>
   </div>
 </main>
 
@@ -162,11 +166,20 @@ async function replayAll() {
   renderTable();
 }
 
+var diffMode = 'json', currentDiffId = null;
 function showDiff(id) {
-  const r = replayResults[id];
+  currentDiffId = id;
+  var r = replayResults[id];
   if (!r) return;
   $('diff-card').style.display = 'block';
-  $('diff-output').textContent = JSON.stringify(r, null, 2);
+  var el = $('diff-output');
+  if (diffMode === 'side') {
+    var orig = JSON.stringify(r.original || {}, null, 2);
+    var replay = JSON.stringify(r.replay || {}, null, 2);
+    el.innerHTML = '<div style="display:flex;gap:8px"><div style="flex:1"><h4 style="margin:0 0 4px;color:#8b949e">Original</h4><pre style="white-space:pre-wrap;color:#a5d6ff;background:#161b22;padding:8px;border-radius:4px;max-height:300px;overflow:auto">' + esc(orig) + '</pre></div><div style="flex:1"><h4 style="margin:0 0 4px;color:#8b949e">Replay</h4><pre style="white-space:pre-wrap;color:#f0883e;background:#161b22;padding:8px;border-radius:4px;max-height:300px;overflow:auto">' + esc(replay) + '</pre></div></div>';
+  } else {
+    el.innerHTML = '<pre style="white-space:pre-wrap;color:#8b949e">' + esc(JSON.stringify(r, null, 2)) + '</pre>';
+  }
 }
 
 async function clearAll() {
