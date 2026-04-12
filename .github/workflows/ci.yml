@@ -54,3 +54,18 @@ jobs:
         run: |
           echo "=== Test Summary ==="
           cargo test --all-targets 2>&1 | grep "test result:" | awk '{total+=$4; pass+=$4} END {print "Total: " total " tests, all passing"}'
+
+  helm-lint:
+    name: Helm Chart Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Lint chart
+        run: helm lint deploy/helm/fuse/
+
+      - name: Template render (dry-run)
+        run: helm template fuse deploy/helm/fuse/ --debug > /dev/null
