@@ -60,8 +60,6 @@ impl OtelConnector {
 }
 
 /// Extract an OtelFilter from a SubQuery's filter expression.
-/// Recognizes: service_name = 'x', start_time_ns >= N, end_time_ns <= N,
-/// timestamp_ns >= N, timestamp_ns <= N.
 fn extract_otel_filter(filter: &Option<FilterExpr>) -> OtelFilter {
     let mut out = OtelFilter::default();
     if let Some(expr) = filter {
@@ -259,23 +257,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_schema_unknown_table() {
-        let err = connector().get_schema("unknown").await;
-        assert!(err.is_err());
+        assert!(connector().get_schema("unknown").await.is_err());
     }
 
     #[tokio::test]
     async fn test_execute_empty() {
         let sq = SubQuery {
-            table: "spans".into(),
-            projections: vec![],
-            filter: None,
-            aggregations: vec![],
-            group_by: vec![],
-            sort: vec![],
-            limit: None,
-            having: None,
-            passthrough: None,
-            offset: None,
+            table: "spans".into(), projections: vec![], filter: None,
+            aggregations: vec![], group_by: vec![], sort: vec![],
+            limit: None, having: None, passthrough: None, offset: None,
         };
         let batches = connector().execute(&sq).await.unwrap();
         assert!(batches.is_empty());
@@ -285,23 +275,11 @@ mod tests {
     async fn test_execute_after_ingest() {
         let store = Arc::new(OtelStore::new(1000, 1000, 1000));
         let c = OtelConnector::new("test", store.clone());
-
-        store.ingest_span(
-            "abc123", "span1", Some("root"), "my-service", "GET /api",
-            "OK", 1_000_000_000, 1_001_000_000, "{}",
-        );
-
+        store.ingest_span("abc123", "span1", Some("root"), "my-service", "GET /api", "OK", 1_000_000_000, 1_001_000_000, "{}");
         let sq = SubQuery {
-            table: "spans".into(),
-            projections: vec![],
-            filter: None,
-            aggregations: vec![],
-            group_by: vec![],
-            sort: vec![],
-            limit: None,
-            having: None,
-            passthrough: None,
-            offset: None,
+            table: "spans".into(), projections: vec![], filter: None,
+            aggregations: vec![], group_by: vec![], sort: vec![],
+            limit: None, having: None, passthrough: None, offset: None,
         };
         let batches = c.execute(&sq).await.unwrap();
         assert_eq!(batches.len(), 1);
@@ -312,25 +290,13 @@ mod tests {
     async fn test_execute_respects_limit() {
         let store = Arc::new(OtelStore::new(1000, 1000, 1000));
         let c = OtelConnector::new("test", store.clone());
-
         for i in 0..10 {
-            store.ingest_span(
-                &format!("trace{i}"), &format!("span{i}"), None,
-                "svc", "op", "OK", i, i + 1, "{}",
-            );
+            store.ingest_span(&format!("trace{i}"), &format!("span{i}"), None, "svc", "op", "OK", i, i + 1, "{}");
         }
-
         let sq = SubQuery {
-            table: "spans".into(),
-            projections: vec![],
-            filter: None,
-            aggregations: vec![],
-            group_by: vec![],
-            sort: vec![],
-            limit: Some(3),
-            having: None,
-            passthrough: None,
-            offset: None,
+            table: "spans".into(), projections: vec![], filter: None,
+            aggregations: vec![], group_by: vec![], sort: vec![],
+            limit: Some(3), having: None, passthrough: None, offset: None,
         };
         let batches = c.execute(&sq).await.unwrap();
         assert_eq!(batches[0].num_rows(), 3);
@@ -339,16 +305,9 @@ mod tests {
     #[tokio::test]
     async fn test_execute_unknown_table() {
         let sq = SubQuery {
-            table: "unknown".into(),
-            projections: vec![],
-            filter: None,
-            aggregations: vec![],
-            group_by: vec![],
-            sort: vec![],
-            limit: None,
-            having: None,
-            passthrough: None,
-            offset: None,
+            table: "unknown".into(), projections: vec![], filter: None,
+            aggregations: vec![], group_by: vec![], sort: vec![],
+            limit: None, having: None, passthrough: None, offset: None,
         };
         assert!(connector().execute(&sq).await.is_err());
     }
@@ -372,22 +331,15 @@ mod tests {
         let c = OtelConnector::new("test", store.clone());
         store.ingest_span("t1", "s1", None, "svc-a", "op", "OK", 100, 200, "");
         store.ingest_span("t2", "s2", None, "svc-b", "op", "OK", 100, 200, "");
-
         let sq = SubQuery {
-            table: "spans".into(),
-            projections: vec![],
+            table: "spans".into(), projections: vec![],
             filter: Some(FilterExpr::Comparison {
                 field: "service_name".into(),
                 op: ComparisonOp::Eq,
                 value: ScalarValue::Utf8("svc-a".into()),
             }),
-            aggregations: vec![],
-            group_by: vec![],
-            sort: vec![],
-            limit: None,
-            having: None,
-            passthrough: None,
-            offset: None,
+            aggregations: vec![], group_by: vec![], sort: vec![],
+            limit: None, having: None, passthrough: None, offset: None,
         };
         let batches = c.execute(&sq).await.unwrap();
         assert_eq!(batches[0].num_rows(), 1);
@@ -399,22 +351,15 @@ mod tests {
         let c = OtelConnector::new("test", store.clone());
         store.ingest_log(100, "INFO", "early", None, None, None, None);
         store.ingest_log(500, "WARN", "late", None, None, None, None);
-
         let sq = SubQuery {
-            table: "logs".into(),
-            projections: vec![],
+            table: "logs".into(), projections: vec![],
             filter: Some(FilterExpr::Comparison {
                 field: "timestamp_ns".into(),
                 op: ComparisonOp::Gte,
                 value: ScalarValue::Int64(300),
             }),
-            aggregations: vec![],
-            group_by: vec![],
-            sort: vec![],
-            limit: None,
-            having: None,
-            passthrough: None,
-            offset: None,
+            aggregations: vec![], group_by: vec![], sort: vec![],
+            limit: None, having: None, passthrough: None, offset: None,
         };
         let batches = c.execute(&sq).await.unwrap();
         assert_eq!(batches[0].num_rows(), 1);

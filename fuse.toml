@@ -100,3 +100,20 @@ type = "csv-json"
 bucket = "fuse-demo-544277935543"
 prefix = ""
 region = "us-west-2"
+
+# ── OpenTelemetry Collector Mode ──
+# Enables Fuse as an OTLP HTTP backend. Applications send traces/metrics/logs
+# to /v1/traces, /v1/metrics, /v1/logs and query them with SQL via otel.spans,
+# otel.metrics, otel.logs. Health at /v1/health.
+#
+# Configure your OTel SDK:
+#   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:9400
+#   OTEL_EXPORTER_OTLP_PROTOCOL=http/json
+
+[[connector]]
+id = "otel"
+type = "otel"
+[connector.properties]
+max_spans = 100000
+max_metrics = 100000
+max_logs = 100000
