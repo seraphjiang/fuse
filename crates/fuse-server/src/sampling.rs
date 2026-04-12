@@ -11,11 +11,11 @@ pub fn sample_rows(rows: &[Vec<Value>], n: usize) -> Vec<Vec<Value>> {
     // Deterministic reservoir sampling (seeded by row count for reproducibility)
     let mut reservoir: Vec<Vec<Value>> = rows[..n].to_vec();
     let mut seed: u64 = rows.len() as u64;
-    for i in n..rows.len() {
+    for (i, row) in rows.iter().enumerate().skip(n) {
         seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
         let j = (seed % (i as u64 + 1)) as usize;
         if j < n {
-            reservoir[j] = rows[i].clone();
+            reservoir[j] = row.clone();
         }
     }
     reservoir

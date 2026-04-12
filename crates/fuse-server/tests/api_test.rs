@@ -1636,7 +1636,7 @@ async fn test_union_partial_failure_returns_partial_results() {
 
 #[tokio::test]
 async fn test_union_all_fail_returns_error() {
-    // Both sources fail → should return 500
+    // Both sources fail with connection refused → should return 502 (Bad Gateway)
     let registry = ConnectorRegistry::new();
     registry.register(Arc::new(FailingMockConnector::new("cluster_a"))).unwrap();
     registry.register(Arc::new(FailingMockConnector::new("cluster_b"))).unwrap();
@@ -1655,7 +1655,7 @@ async fn test_union_all_fail_returns_error() {
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
         "sql",
     ).await;
-    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
 }
 
 #[tokio::test]

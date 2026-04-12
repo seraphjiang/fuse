@@ -53,7 +53,7 @@ pub struct LoadResult {
 
 impl LoadResult {
     /// Compute stats from a list of latencies (in ms).
-    pub fn from_latencies(scenario: &str, latencies: &mut Vec<u64>, failed: u64, duration_secs: f64) -> Self {
+    pub fn from_latencies(scenario: &str, latencies: &mut [u64], failed: u64, duration_secs: f64) -> Self {
         latencies.sort_unstable();
         let n = latencies.len();
         let total = n as u64 + failed;

@@ -34,7 +34,7 @@ pub fn diff(
     let row_count_match = left_rows.len() == right_rows.len();
     let mut differences = Vec::new();
 
-    let cols = if schema_match { left_cols } else { left_cols }; // use left as reference
+    let cols = left_cols; // use left as reference
     let compare_rows = left_rows.len().min(right_rows.len());
 
     for row_idx in 0..compare_rows {
