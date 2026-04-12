@@ -96,13 +96,18 @@ async function traceLineage() {
     const r = await fetch('/api/fuse/lineage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, format: $('format').value }) });
     if (!r.ok) throw new Error(await r.text());
     const data = await r.json();
-    renderGraph(data);
+    renderGraph(normalizeNodes(data));
     $('details-card').style.display = 'block';
     $('lineage-details').textContent = JSON.stringify(data, null, 2);
   } catch (e) {
     // Fallback: parse query locally for basic lineage
     renderLocalLineage(q);
   }
+}
+
+function normalizeNodes(data) {
+  (data.nodes || []).forEach(n => { if (!n.type && n.node_type) n.type = n.node_type; });
+  return data;
 }
 
 function renderLocalLineage(query) {
@@ -155,7 +160,7 @@ function renderGraph(data) {
     div.className = 'node ' + (n.type || 'transform');
     div.style.left = pos.x + 'px';
     div.style.top = pos.y + 'px';
-    div.innerHTML = `<div class="node-label">${esc(n.label)}</div>${n.meta ? '<div class="node-meta">' + esc(n.meta) + '</div>' : ''}`;
+    div.innerHTML = `<div class="node-label">${esc(n.label)}</div>${n.meta ? '<div class="node-meta">' + esc(n.meta) + '</div>' : n.metadata && n.metadata.datasource ? '<div class="node-meta">' + esc(n.metadata.datasource) + '</div>' : ''}`;
     graph.appendChild(div);
   });
 
