@@ -21,7 +21,19 @@ Fuse federates queries across 25 connectors from a single SQL or PPL query. Join
 - **EXPLAIN / EXPLAIN ANALYZE** — inspect federated query plans and execution stats
 - **Prepared statements** — PREPARE/EXECUTE with positional parameter binding, SQL injection prevention
 - **Fuse-to-Fuse federation** — chain Fuse instances for multi-region or tiered deployments
-- **1000+ tests** — unit, integration, E2E, and performance regression suite
+- **GraphQL API** — schema introspection, query execution, saved queries, views
+- **Scheduled queries** — cron-based scheduling with execution history and alerting
+- **Data quality rules** — null rate, cardinality, freshness, row count checks
+- **Query cost estimation ($)** — real dollar estimates (Athena $/TB, DDB $/RCU, S3 $/request)
+- **Arrow IPC format** — zero-copy binary results for Python/Rust SDK consumers
+- **Webhook subscriptions** — event-driven notifications on query result conditions
+- **Query replay** — record queries, replay against staging, diff results
+- **Query lineage** — data flow graph across connectors (source → transform → sink)
+- **Adaptive caching** — auto-cache repeat patterns with per-datasource TTL
+- **Multi-tenant SaaS mode** — tenant isolation, usage metering, rate limiting
+- **OpenTelemetry collector** — ingest OTLP traces/metrics/logs, query with SQL
+- **Query compilation** — skip re-parsing for hot query patterns
+- **2600+ tests** — unit, integration, E2E, and performance regression suite
 
 ## Architecture
 
