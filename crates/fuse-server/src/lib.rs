@@ -118,6 +118,7 @@ pub mod union_typed;
 pub mod validate;
 pub mod tracing_ctx;
 pub mod api_versioning;
+pub mod query_autotuner;
 pub mod smart_routing;
 
 use std::sync::Arc;
@@ -328,6 +329,7 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/api/fuse/multi", post(api::multi_query_handler))
         .route("/api/fuse/nl", post(api::nl_to_sql_handler))
         .route("/api/fuse/advisor", get(api::query_advisor_handler))
+        .route("/api/fuse/autotune", get(api::autotune_handler))
         .route("/api/fuse/views/{name}", get(api::get_view).delete(api::delete_view))
         .route("/api/fuse/views/{name}/refresh", post(api::refresh_view))
         .route("/api/fuse/trace/{trace_id}", get(api::trace_handler))
