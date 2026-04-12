@@ -2982,8 +2982,35 @@ fn batches_to_ndjson(batches: &[arrow::record_batch::RecordBatch]) -> String {
 }
 
 /// GET /api/fuse/history — last 50 queries with stats.
-pub async fn history_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    Json(state.history.list())
+pub async fn history_handler(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let limit: usize = params.get("limit").and_then(|v| v.parse().ok()).unwrap_or(100);
+    let since: Option<u64> = params.get("since").and_then(|v| v.parse().ok());
+    let status_filter = params.get("status").map(|s| s.as_str());
+    let datasource_filter = params.get("datasource").cloned();
+    let search = params.get("q").cloned();
+
+    let mut entries = state.history.recent(limit * 2); // over-fetch for filtering
+
+    if let Some(since_ts) = since {
+        entries.retain(|e| e.timestamp >= since_ts);
+    }
+    match status_filter {
+        Some("error") => entries.retain(|e| e.error.is_some()),
+        Some("success") => entries.retain(|e| e.error.is_none()),
+        _ => {}
+    }
+    if let Some(ref ds) = datasource_filter {
+        entries.retain(|e| e.query.contains(ds));
+    }
+    if let Some(ref q) = search {
+        let q_lower = q.to_lowercase();
+        entries.retain(|e| e.query.to_lowercase().contains(&q_lower));
+    }
+    entries.truncate(limit);
+    Json(entries)
 }
 
 /// GET /api/fuse/stats — aggregated query statistics.
@@ -4691,4 +4718,64 @@ pub async fn load_scenarios_handler() -> axum::response::Response {
         crate::load_scenarios::preset_stress(),
     ];
     axum::Json(serde_json::json!({ "scenarios": scenarios })).into_response()
+}
+
+/// GET /api/fuse/anomaly — detect anomalies in query latency history per datasource.
+pub async fn anomaly_handler(
+    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let limit: usize = params.get("limit").and_then(|v| v.parse().ok()).unwrap_or(500);
+    let tolerance: f64 = params.get("tolerance").and_then(|v| v.parse().ok()).unwrap_or(3.0);
+
+    let history = state.history.recent(limit);
+    // Group latency by datasource
+    let mut ds_series: std::collections::HashMap<String, Vec<crate::anomaly::TimeSeriesPoint>> =
+        std::collections::HashMap::new();
+    for entry in &history {
+        if let Ok(refs) = parse_sql_sources(&entry.query) {
+            for (ds_id, _) in refs {
+                ds_series.entry(ds_id).or_default().push(
+                    crate::anomaly::TimeSeriesPoint {
+                        timestamp: entry.timestamp,
+                        value: entry.latency_ms as f64,
+                    },
+                );
+            }
+        }
+    }
+
+    let mut all_anomalies = Vec::new();
+    for (ds_id, points) in &ds_series {
+        if let Some(last) = points.last() {
+            let current = last.value;
+            let historical = &points[..points.len().saturating_sub(1)];
+            for a in crate::anomaly::detect_seasonal(&format!("{}.latency", ds_id), current, historical, tolerance) {
+                all_anomalies.push(serde_json::json!({
+                    "datasource": ds_id,
+                    "kind": a.kind,
+                    "column": a.column,
+                    "message": a.message,
+                    "severity": a.severity,
+                }));
+            }
+            for a in crate::anomaly::detect_trend(&format!("{}.latency", ds_id), historical, current, tolerance) {
+                all_anomalies.push(serde_json::json!({
+                    "datasource": ds_id,
+                    "kind": a.kind,
+                    "column": a.column,
+                    "message": a.message,
+                    "severity": a.severity,
+                }));
+            }
+        }
+    }
+
+    Json(serde_json::json!({
+        "anomalies": all_anomalies,
+        "analyzed_datasources": ds_series.len(),
+        "analyzed_queries": history.len(),
+        "tolerance": tolerance,
+    })).into_response()
 }

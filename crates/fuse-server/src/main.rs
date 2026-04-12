@@ -197,6 +197,12 @@ async fn main() -> anyhow::Result<()> {
         pool_tracker: Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
 
+    // Register connectors with pool tracker
+    for conn in state.registry.list() {
+        let max = conn.capabilities().max_concurrent_queries as u32;
+        state.pool_tracker.register(conn.id(), max);
+    }
+
     // Security: warn if tenants enabled without auth
     if state.tenant_registry.is_enabled() {
         tracing::warn!("⚠️  Tenant isolation is enabled but auth may not be configured — tenant isolation requires API key auth to be effective");

@@ -69,6 +69,10 @@ fn build_app() -> axum::Router {
         shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
         shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
         shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
         tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::new(vec![])),
     });
     fuse_server::build_router(state)

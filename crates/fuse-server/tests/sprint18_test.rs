@@ -41,6 +41,10 @@ fn build_app() -> axum::Router {
         compilation_cache: Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)),
         cdc_tracker: Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
         adaptive_cache: Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
     });
     fuse_server::build_router(state)
 }

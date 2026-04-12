@@ -343,6 +343,7 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/api/fuse/routing", get(api::routing_handler))
         .route("/api/fuse/similarity", get(api::similarity_handler))
         .route("/api/fuse/routing/stats", get(api::routing_stats_handler))
+        .route("/api/fuse/anomaly", get(api::anomaly_handler))
         .route("/api/fuse/pool/stats", get(api::pool_stats_handler))
         .route("/api/fuse/connectors/health-history", get(api::connector_health_history_handler))
         .route("/api/fuse/load-scenarios", get(api::load_scenarios_handler))

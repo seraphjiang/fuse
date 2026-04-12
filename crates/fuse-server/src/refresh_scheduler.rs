@@ -103,6 +103,7 @@ mod tests {
             name: name.into(),
             query: "SELECT 1".into(),
             refresh_interval: Duration::from_millis(50),
+            refresh_mode: Default::default(),
         }
     }
 

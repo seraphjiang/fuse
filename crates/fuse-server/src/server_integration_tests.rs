@@ -392,7 +392,7 @@ mod comprehensive_tests {
     // Pool stats
     #[test]
     fn test_pool_stats_release_unknown() {
-        let t = crate::pool_stats::PoolTracker::new();
+        let t = crate::pool_stats::PoolStatsTracker::new();
         t.release("unknown"); // should not panic
         assert!(t.snapshot().is_empty());
     }
@@ -638,7 +638,7 @@ mod final_push_tests {
     #[test] fn test_timeout_tracker_for_ds() { let t = crate::timeout_tracker::TimeoutTracker::new(); assert_eq!(t.count_for_datasource("x"), 0); }
     #[test] fn test_cost_tracker_all_empty() { let t = crate::cost_tracker::CostTracker::new(); assert!(t.all().is_empty()); }
     #[test] fn test_rate_monitor_count() { let m = crate::rate_monitor::RateMonitor::new(60); m.record(); assert_eq!(m.count(), 1); }
-    #[test] fn test_pool_stats_acquire_release() { let t = crate::pool_stats::PoolTracker::new(); t.acquire("ds"); t.release("ds"); let s = t.snapshot(); assert_eq!(s["ds"].active, 0); }
+    #[test] fn test_pool_stats_acquire_release() { let t = crate::pool_stats::PoolStatsTracker::new(); t.register("ds", 10); t.acquire("ds"); t.release("ds"); let s = t.get("ds").unwrap(); assert_eq!(s.active, 0); }
     #[test] fn test_scheduler_count() { let r = crate::scheduler::ScheduleRegistry::new(100); assert_eq!(r.len(), 0); }
 }
 
@@ -797,7 +797,7 @@ mod toward_1550 {
     #[test] fn test_timeout_tracker_recent() { let t = crate::timeout_tracker::TimeoutTracker::new(); t.record("q1", "ds", 5000, 5100); assert_eq!(t.recent(10).len(), 1); }
     #[test] fn test_cost_tracker_record() { let t = crate::cost_tracker::CostTracker::new(); t.record("team", "pg", 100, 5000, 50); assert_eq!(t.for_tenant("team")["pg"].query_count, 1); }
     #[test] fn test_rate_monitor_multiple() { let m = crate::rate_monitor::RateMonitor::new(60); for _ in 0..10 { m.record(); } assert_eq!(m.count(), 10); }
-    #[test] fn test_pool_stats_timeout() { let t = crate::pool_stats::PoolTracker::new(); t.timeout("ds"); assert_eq!(t.snapshot()["ds"].total_timeouts, 1); }
+    #[test] fn test_pool_stats_timeout() { let t = crate::pool_stats::PoolStatsTracker::new(); t.register("ds", 10); t.timeout("ds"); assert_eq!(t.get("ds").unwrap().total_timeouts, 1); }
     #[test] fn test_scheduler_record_run() { let r = crate::scheduler::ScheduleRegistry::new(100); r.add(crate::scheduler::ScheduledQuery { id: "s".into(), name: "t".into(), query: "SELECT 1".into(), format: "sql".into(), cron: "* * * * *".into(), enabled: true, alert_on_change: false, alert_on_error: false, created_at: 0 }); assert!(r.get("s").is_some()); }
     #[test] fn test_lineage_with_join() { let l = crate::lineage::QueryLineage::new("q", vec![("a","t1"),("b","t2")]).with_join("hash"); assert_eq!(l.join_type.as_deref(), Some("hash")); }
     #[test] fn test_delivery_streaming_bytes() { assert_eq!(crate::delivery::recommend_delivery(None, Some(100_000_000), 10000, 10_000_000), crate::delivery::DeliveryMode::Streaming); }
@@ -839,7 +839,7 @@ mod push_1600 {
     #[test] fn test_rate_monitor_qps() { let m = crate::rate_monitor::RateMonitor::new(10); for _ in 0..50 { m.record(); } assert!(m.qps() > 0.0); }
 
     // Pool stats
-    #[test] fn test_pool_stats_multiple_ds() { let t = crate::pool_stats::PoolTracker::new(); t.acquire("a"); t.acquire("b"); assert_eq!(t.snapshot().len(), 2); }
+    #[test] fn test_pool_stats_multiple_ds() { let t = crate::pool_stats::PoolStatsTracker::new(); t.register("a", 5); t.register("b", 5); t.acquire("a"); t.acquire("b"); assert_eq!(t.snapshot().len(), 2); }
 
     // History analytics
     #[test] fn test_analytics_p95() { let entries: Vec<(bool, u64, Vec<String>)> = (0..100).map(|i| (true, i * 10, vec![])).collect(); let a = crate::history_analytics::compute_analytics(&entries); assert!(a.p95_duration_ms > 0); }
