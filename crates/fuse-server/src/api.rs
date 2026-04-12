@@ -1867,7 +1867,7 @@ pub async fn get_schemas(
                 Json(schemas).into_response()
             }
         }
-        Err(e) => error_json(connector_error_status(&e), &e).into_response(),
+        Err(e) => error_json(connector_error_status(&e.to_string()), e.to_string()).into_response(),
     }
 }
 
@@ -1907,7 +1907,7 @@ pub async fn get_fields(
                 Json(fields).into_response()
             }
         }
-        Err(e) => error_json(connector_error_status(&e), &e).into_response(),
+        Err(e) => error_json(connector_error_status(&e.to_string()), e.to_string()).into_response(),
     }
 }
 
