@@ -322,4 +322,44 @@ mod tests {
         let anomalies = detect_seasonal("x", 999.0, &historical, 3.0);
         assert!(anomalies.is_empty());
     }
+
+    #[test]
+    fn test_seasonal_high_severity() {
+        // z > 4.0 should be High severity — need variance in historical data
+        let historical: Vec<TimeSeriesPoint> = (0..20).map(|i| TimeSeriesPoint { timestamp: i, value: 100.0 + (i as f64 % 3.0) }).collect();
+        let anomalies = detect_seasonal("latency", 500.0, &historical, 2.0);
+        assert!(!anomalies.is_empty());
+        assert_eq!(anomalies[0].severity, AnomalySeverity::High);
+    }
+
+    #[test]
+    fn test_trend_below_projected() {
+        // Noisy upward trend, then sudden drop
+        let points: Vec<TimeSeriesPoint> = (0..10).map(|i| TimeSeriesPoint {
+            timestamp: i,
+            value: 100.0 + 10.0 * i as f64 + if i % 2 == 0 { 3.0 } else { -3.0 },
+        }).collect();
+        let anomalies = detect_trend("latency", &points, 10.0, 3.0);
+        assert!(!anomalies.is_empty());
+        assert_eq!(anomalies[0].kind, AnomalyKind::TrendBreak);
+    }
+
+    #[test]
+    fn test_multiple_anomaly_types_simultaneously() {
+        let baseline = ColumnBaseline { column: "x".into(), mean: 100.0, stddev: 10.0, null_rate: 0.01, distinct_count: 50 };
+        // Spike + high null rate + cardinality change all at once
+        let snap = CurrentSnapshot { mean: 200.0, null_rate: 0.60, distinct_count: 200 };
+        let anomalies = detect(&snap, &baseline);
+        let kinds: Vec<_> = anomalies.iter().map(|a| a.kind).collect();
+        assert!(kinds.contains(&AnomalyKind::Spike));
+        assert!(kinds.contains(&AnomalyKind::HighNullRate));
+        assert!(kinds.contains(&AnomalyKind::CardinalityChange));
+    }
+
+    #[test]
+    fn test_trend_insufficient_data() {
+        let points: Vec<TimeSeriesPoint> = (0..3).map(|i| TimeSeriesPoint { timestamp: i, value: 100.0 }).collect();
+        let anomalies = detect_trend("x", &points, 999.0, 3.0);
+        assert!(anomalies.is_empty());
+    }
 }

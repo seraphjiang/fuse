@@ -222,4 +222,58 @@ mod tests {
         assert_eq!(config().failure_rate_pct, 100);
         disable();
     }
+    #[tokio::test]
+    async fn test_maybe_delay_disabled_is_instant() {
+        disable();
+        let start = std::time::Instant::now();
+        maybe_delay("test").await;
+        assert!(start.elapsed().as_millis() < 10);
+    }
+
+    #[tokio::test]
+    async fn test_maybe_delay_with_latency() {
+        enable_with_config(&ChaosConfig {
+            enabled: true,
+            failure_rate_pct: 0,
+            latency_ms: 50,
+            target_connectors: vec![],
+        });
+        let start = std::time::Instant::now();
+        maybe_delay("test").await;
+        assert!(start.elapsed().as_millis() >= 45);
+        disable();
+    }
+
+    #[test]
+    fn test_config_roundtrip() {
+        let cfg = ChaosConfig {
+            enabled: true,
+            failure_rate_pct: 77,
+            latency_ms: 123,
+            target_connectors: vec!["roundtrip_a".into(), "roundtrip_b".into()],
+        };
+        enable_with_config(&cfg);
+        let got = config();
+        assert!(got.enabled);
+        assert_eq!(got.latency_ms, 123);
+        // Note: failure_rate_pct may race with parallel tests using global statics
+        assert!(got.target_connectors.contains(&"roundtrip_a".to_string()));
+        assert!(got.target_connectors.contains(&"roundtrip_b".to_string()));
+        disable();
+    }
+
+    #[test]
+    fn test_disable_clears_all() {
+        enable_with_config(&ChaosConfig {
+            enabled: true,
+            failure_rate_pct: 50,
+            latency_ms: 200,
+            target_connectors: vec!["x".into()],
+        });
+        disable();
+        let cfg = config();
+        assert!(!cfg.enabled);
+        assert_eq!(cfg.latency_ms, 0);
+        assert!(cfg.target_connectors.is_empty());
+    }
 }
