@@ -99,6 +99,10 @@ echo ""
 echo "── Responsive CSS ──"
 RESPONSIVE_PAGES=(index dashboard settings admin status explore)
 for p in "${RESPONSIVE_PAGES[@]}"; do
+  grep -q '@media' "$DIR/$p.html" && check "$p responsive CSS" "ok" || check "$p responsive CSS" "missing"
+done
+grep -q 'max-width:480px' "$DIR/index.html" && check "index: phone breakpoint" "ok" || check "index: phone breakpoint" "missing"
+for p in "${RESPONSIVE_PAGES[@]}"; do
   grep -q '@media' "$DIR/$p.html" && check "$p.html: @media" "ok" || check "$p.html: @media" "missing"
 done
 
