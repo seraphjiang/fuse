@@ -187,7 +187,19 @@ pub fn detect_trend(
     let res_var = residuals.iter().map(|r| r.powi(2)).sum::<f64>() / n;
     let res_std = res_var.sqrt();
 
+    // Perfect trend (zero residuals): any deviation from projected is a break
     if res_std < f64::EPSILON {
+        if (current_value - projected).abs() > f64::EPSILON {
+            return vec![Anomaly {
+                kind: AnomalyKind::TrendBreak,
+                column: column.to_string(),
+                message: format!(
+                    "Trend break: current {:.2} deviates from perfect trend projected {:.2} (slope={:.3})",
+                    current_value, projected, slope
+                ),
+                severity: AnomalySeverity::High,
+            }];
+        }
         return vec![];
     }
 
