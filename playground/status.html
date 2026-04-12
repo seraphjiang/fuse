@@ -109,6 +109,11 @@ body.light .nav-tab.active{color:#0969da;border-bottom-color:#0969da}
     <h3>📈 Health Timeline <span style="font-size:11px;font-weight:400;color:#8b949e">(last 60 checks)</span></h3>
     <div id="timeline-body"><div class="empty">Collecting data…</div></div>
   </div>
+
+  <div class="card" id="otel-card">
+    <h3>📡 OpenTelemetry Collector</h3>
+    <div id="otel-body"><div class="empty">Checking…</div></div>
+  </div>
 </main>
 
 <script>
@@ -204,8 +209,21 @@ async function refreshRunning() {
   } catch { $('running-body').innerHTML = '<div class="empty">Running queries endpoint unavailable</div>'; }
 }
 
+async function refreshOtel() {
+  try {
+    const data = await fetchJSON('/v1/health');
+    const s = data.signals || {};
+    $('otel-body').innerHTML = [
+      ['Status', `<span class="${data.status === 'ready' ? 'ok' : 'warn'}">${data.status || 'unknown'}</span>`],
+      ['Traces', s.traces ? s.traces.count : 0],
+      ['Metrics', s.metrics ? s.metrics.count : 0],
+      ['Logs', s.logs ? s.logs.count : 0],
+    ].map(([l, v]) => `<div class="stat-row"><span class="stat-label">${l}</span><span class="stat-value">${v}</span></div>`).join('');
+  } catch { $('otel-body').innerHTML = '<div class="empty">OTel collector not enabled</div>'; }
+}
+
 async function refreshAll() {
-  await Promise.all([refreshHealth(), refreshStats(), refreshRunning()]);
+  await Promise.all([refreshHealth(), refreshStats(), refreshRunning(), refreshOtel()]);
   $('last-update').textContent = 'Updated ' + new Date().toLocaleTimeString();
 }
 
