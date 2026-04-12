@@ -637,3 +637,68 @@ mod tests {
         assert!(fields.contains(&"health".to_string()));
     }
 }
+
+#[cfg(test)]
+mod subscription_tests {
+    use super::*;
+    use crate::api::AppState;
+    use fuse_core::registry::ConnectorRegistry;
+
+    fn test_state() -> Arc<AppState> {
+        Arc::new(AppState {
+            registry: Arc::new(ConnectorRegistry::new()),
+            alert_rules: vec![],
+            view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+            history: Arc::new(crate::history::QueryHistory::new()),
+            running_queries: Arc::new(crate::api::RunningQueries::new()),
+            saved_queries: Arc::new(crate::saved_queries::SavedQueryRegistry::new()),
+            plan_cache: Arc::new(crate::plan_cache::PlanCache::new(300, 1000)),
+            result_cache: Arc::new(crate::plan_cache::ResultCache::new(60, 500)),
+            tenant_registry: Arc::new(crate::tenant::TenantRegistry::disabled()),
+            audit_log: Arc::new(crate::audit::AuditLog::new(10000)),
+            prepared_statements: crate::prepared::new_store(),
+            adaptive_timeout: Arc::new(crate::adaptive_timeout::AdaptiveTimeout::new()),
+            shared_saved_queries: crate::shared_state::SharedSavedQueries::InMemory(Arc::new(crate::saved_queries::SavedQueryRegistry::new())),
+            shared_history: crate::shared_state::SharedQueryHistory::InMemory(Arc::new(crate::history::QueryHistory::new())),
+            shared_audit_log: crate::shared_state::SharedAuditLog::InMemory(Arc::new(crate::audit::AuditLog::new(1000))),
+            transactions: Arc::new(crate::transaction::TransactionStore::new()),
+            max_result_bytes: 0,
+            datasource_limiter: Arc::new(crate::rate_limit::DatasourceLimiter::new()),
+            otel_store: None,
+            webhook_registry: Arc::new(crate::webhook::WebhookRegistry::new()),
+            adaptive_parallelism: Arc::new(crate::adaptive_parallelism::AdaptiveParallelism::new()),
+            query_recorder: Arc::new(crate::query_replay::QueryRecorder::new(1000)),
+            compilation_cache: Arc::new(crate::query_compilation::CompilationCache::new(300, 5000)),
+            cdc_tracker: Arc::new(crate::cdc::CdcTracker::new(1000)),
+            adaptive_cache: Arc::new(crate::adaptive_cache::AdaptiveCache::new(60, 3, 10000)),
+        })
+    }
+
+    #[tokio::test]
+    async fn test_subscription_fields_present() {
+        let schema = build_schema(test_state());
+        let res = schema
+            .execute(r#"{ __type(name: "SubscriptionRoot") { fields { name } } }"#)
+            .await;
+        assert!(res.errors.is_empty());
+        let data = res.data.into_json().unwrap();
+        let fields: Vec<String> = data["__type"]["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f["name"].as_str().unwrap().to_string())
+            .collect();
+        assert!(fields.contains(&"queryResults".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_subscription_schema_has_subscription_type() {
+        let schema = build_schema(test_state());
+        let res = schema
+            .execute("{ __schema { subscriptionType { name } } }")
+            .await;
+        assert!(res.errors.is_empty());
+        let data = res.data.into_json().unwrap();
+        assert_eq!(data["__schema"]["subscriptionType"]["name"], "SubscriptionRoot");
+    }
+}
