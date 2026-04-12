@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuse — Query Lineage</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e1e4e8;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #21262d;background:#161b22}
+header h1{font-size:18px;font-weight:600;color:#58a6ff}
+.nav-tabs{display:flex;gap:0}
+.nav-tab{padding:8px 16px;font-size:13px;color:#8b949e;text-decoration:none;border-bottom:2px solid transparent}
+.nav-tab:hover{color:#e1e4e8}
+.nav-tab.active{color:#58a6ff;border-bottom-color:#58a6ff;font-weight:600}
+main{max-width:1200px;width:100%;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:20px}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+button{padding:6px 14px;font-size:13px;border-radius:6px;border:1px solid #30363d;background:#21262d;color:#e1e4e8;cursor:pointer}
+button:hover{background:#30363d}
+button.primary{background:#238636;border-color:#238636;color:#fff}
+input,textarea{padding:8px;font-size:13px;background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;font-family:"SF Mono",Consolas,monospace}
+textarea{width:100%;min-height:60px;resize:vertical}
+.card{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px}
+.card h3{font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px}
+#lineage-graph{min-height:300px;position:relative;overflow:auto}
+.node{position:absolute;padding:10px 14px;border:2px solid #30363d;border-radius:8px;background:#161b22;font-size:12px;min-width:120px;text-align:center;cursor:default}
+.node.source{border-color:#3fb950;background:#0d1117}.node.transform{border-color:#58a6ff;background:#0d1117}.node.sink{border-color:#d2a8ff;background:#0d1117}
+.node-label{font-weight:600;margin-bottom:2px}.node-meta{font-size:11px;color:#8b949e}
+svg.edges{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+svg.edges line{stroke:#30363d;stroke-width:2}
+svg.edges polygon{fill:#30363d}
+.empty{text-align:center;padding:40px;color:#8b949e}
+body.light{background:#fff;color:#1f2328}
+body.light header{background:#f6f8fa;border-color:#d0d7de}
+body.light .card{background:#fff;border-color:#d0d7de}
+body.light .node{background:#fff;border-color:#d0d7de}
+body.light .node.source{border-color:#1a7f37}
+body.light .node.transform{border-color:#0969da}
+body.light .node.sink{border-color:#8250df}
+body.light button{background:#f6f8fa;border-color:#d0d7de;color:#1f2328}
+body.light .nav-tab{color:#656d76}
+body.light .nav-tab.active{color:#0969da;border-bottom-color:#0969da}
+body.light input,body.light textarea{background:#f6f8fa;color:#1f2328;border-color:#d0d7de}
+@media(max-width:768px){main{padding:12px}header{flex-wrap:wrap;padding:8px 12px}.nav-tabs{flex-wrap:wrap}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔗 Fuse</h1>
+  <div>
+    <nav class="nav-tabs">
+      <a href="/playground" class="nav-tab">Playground</a>
+      <a href="/dashboard" class="nav-tab">Dashboard</a>
+      <a href="/explore" class="nav-tab">Explore</a>
+      <a href="/lineage" class="nav-tab active">Lineage</a>
+      <a href="/quality" class="nav-tab">Quality</a>
+      <a href="/schedules" class="nav-tab">Schedules</a>
+      <a href="/status" class="nav-tab">Status</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="card">
+    <h3>Query</h3>
+    <textarea id="query" placeholder="SELECT l.service, u.name FROM cluster_a.application_logs l JOIN dynamodb.users u ON l.user_id = u.user_id WHERE l.status >= 500"></textarea>
+    <div style="margin-top:8px;display:flex;gap:8px">
+      <select id="format"><option value="sql">SQL</option><option value="ppl">PPL</option></select>
+      <button class="primary" onclick="traceLineage()">🔍 Trace Lineage</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Data Lineage Graph</h3>
+    <div id="lineage-graph"><div class="empty">Enter a query above and click Trace Lineage to visualize data flow.</div></div>
+  </div>
+
+  <div class="card" id="details-card" style="display:none">
+    <h3>Lineage Details</h3>
+    <pre id="lineage-details" style="font-size:12px;color:#8b949e;white-space:pre-wrap"></pre>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+if (localStorage.getItem('fuse-theme') === 'light') document.body.classList.add('light');
+
+async function traceLineage() {
+  const q = $('query').value.trim();
+  if (!q) return;
+  const graph = $('lineage-graph');
+  graph.innerHTML = '<div class="empty">Tracing…</div>';
+  try {
+    const r = await fetch('/api/fuse/lineage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, format: $('format').value }) });
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    renderGraph(data);
+    $('details-card').style.display = 'block';
+    $('lineage-details').textContent = JSON.stringify(data, null, 2);
+  } catch (e) {
+    // Fallback: parse query locally for basic lineage
+    renderLocalLineage(q);
+  }
+}
+
+function renderLocalLineage(query) {
+  const tables = [];
+  const re = /(?:FROM|JOIN)\s+(\w+\.\w+)/gi;
+  let m;
+  while ((m = re.exec(query)) !== null) tables.push(m[1]);
+  if (!tables.length) { $('lineage-graph').innerHTML = '<div class="empty">No tables detected in query.</div>'; return; }
+
+  const nodes = [];
+  tables.forEach((t, i) => nodes.push({ id: 'src_' + i, label: t, type: 'source' }));
+  nodes.push({ id: 'transform', label: 'Fuse Engine\n(JOIN / filter / agg)', type: 'transform' });
+  nodes.push({ id: 'result', label: 'Query Result', type: 'sink' });
+
+  const edges = [];
+  tables.forEach((_, i) => edges.push({ from: 'src_' + i, to: 'transform' }));
+  edges.push({ from: 'transform', to: 'result' });
+
+  renderGraph({ nodes, edges });
+  $('details-card').style.display = 'block';
+  $('lineage-details').textContent = 'Local parse (API not available):\nSources: ' + tables.join(', ') + '\nFlow: sources → Fuse Engine → result';
+}
+
+function renderGraph(data) {
+  const graph = $('lineage-graph');
+  const nodes = data.nodes || [];
+  const edges = data.edges || [];
+  if (!nodes.length) { graph.innerHTML = '<div class="empty">No lineage data.</div>'; return; }
+
+  // Layout: left-to-right columns by type
+  const cols = { source: [], transform: [], sink: [] };
+  nodes.forEach(n => (cols[n.type] || cols.transform).push(n));
+  const colX = { source: 40, transform: 300, sink: 560 };
+  const positions = {};
+  Object.entries(cols).forEach(([type, list]) => {
+    list.forEach((n, i) => {
+      positions[n.id] = { x: colX[type], y: 40 + i * 80 };
+    });
+  });
+
+  const maxY = Math.max(200, ...Object.values(positions).map(p => p.y + 60));
+  graph.innerHTML = '';
+  graph.style.height = maxY + 'px';
+
+  // Draw nodes
+  nodes.forEach(n => {
+    const pos = positions[n.id];
+    if (!pos) return;
+    const div = document.createElement('div');
+    div.className = 'node ' + (n.type || 'transform');
+    div.style.left = pos.x + 'px';
+    div.style.top = pos.y + 'px';
+    div.innerHTML = `<div class="node-label">${esc(n.label)}</div>${n.meta ? '<div class="node-meta">' + esc(n.meta) + '</div>' : ''}`;
+    graph.appendChild(div);
+  });
+
+  // Draw edges (simple lines)
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.classList.add('edges');
+  svg.style.height = maxY + 'px';
+  edges.forEach(e => {
+    const from = positions[e.from], to = positions[e.to];
+    if (!from || !to) return;
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', from.x + 60); line.setAttribute('y1', from.y + 20);
+    line.setAttribute('x2', to.x); line.setAttribute('y2', to.y + 20);
+    svg.appendChild(line);
+  });
+  graph.appendChild(svg);
+}
+
+traceLineage();
+</script>
+</body>
+</html>
