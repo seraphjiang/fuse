@@ -842,7 +842,9 @@ async function onDatasourceChange(dsId) {
     const schemas = await api(`/api/fuse/datasources/${dsId}/schemas`);
     if (!schemas.length) { sg.classList.remove('open'); return; }
     const table = schemas[0].name;
-    const fields = await api(`/api/fuse/datasources/${dsId}/schemas/${table}/fields`);
+    let fields = [];
+    try { fields = await api(`/api/fuse/datasources/${encodeURIComponent(dsId)}/schemas/${encodeURIComponent(table)}/fields`); } catch(e) { console.warn('Fields fetch failed:', e.message); }
+    if (!fields || !fields.length) { sg.classList.remove('open'); return; }
     const cols = fields.map(f => f.name);
     const numCols = fields.filter(f => /int|float|double|long|number|decimal/i.test(f.data_type)).map(f => f.name);
     const catCols = fields.filter(f => /keyword|text|string|varchar/i.test(f.data_type)).map(f => f.name);
@@ -1658,7 +1660,7 @@ async function loadSchema() {
         const schemas = await api(`/api/fuse/datasources/${d.id}/schemas`);
         for (const s of schemas) {
           try {
-            const fields = await api(`/api/fuse/datasources/${d.id}/schemas/${s.name}/fields`);
+            const fields = await api(`/api/fuse/datasources/${encodeURIComponent(d.id)}/schemas/${encodeURIComponent(s.name)}/fields`);
             acSchema[d.id][s.name] = fields.map(f => f.name);
           } catch {}
         }
