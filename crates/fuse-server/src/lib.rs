@@ -120,6 +120,8 @@ pub mod validate;
 pub mod tracing_ctx;
 pub mod api_versioning;
 pub mod query_autotuner;
+pub mod query_similarity;
+pub mod query_similarity;
 
 use std::sync::Arc;
 
