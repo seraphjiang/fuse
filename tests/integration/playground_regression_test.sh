@@ -22,7 +22,7 @@ echo ""
 
 # 1. All expected pages exist
 echo "── Page existence ──"
-PAGES=(index dashboard explore settings status help admin alerts views plugins changelog terminal federation schedules quality lineage replay feedback-widget cost)
+PAGES=(index dashboard explore settings status help admin alerts views plugins changelog terminal federation schedules quality lineage replay feedback-widget cost graphql)
 for p in "${PAGES[@]}"; do
   [ -f "$DIR/$p.html" ] && check "$p.html exists" "ok" || check "$p.html exists" "missing"
 done
