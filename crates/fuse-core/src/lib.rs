@@ -23,6 +23,7 @@ pub mod plan_printer;
 pub mod plan_rules;
 pub mod plan_serde;
 pub mod plan_stats;
+pub mod plan_validator;
 pub mod plan_visitor;
 pub mod planner;
 pub mod predicate;
