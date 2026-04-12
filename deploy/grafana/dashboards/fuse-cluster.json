@@ -10,7 +10,7 @@
         {
           "name": "instance",
           "type": "query",
-          "query": "label_values(fuse_query_count_total, instance)",
+          "query": "label_values(fuse_queries_total, instance)",
           "datasource": "Prometheus",
           "includeAll": true,
           "multi": true,
@@ -25,7 +25,7 @@
         "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
         "targets": [
           {
-            "expr": "rate(fuse_query_count_total{instance=~\"$instance\"}[1m])",
+            "expr": "rate(fuse_queries_total{instance=~\"$instance\"}[1m])",
             "legendFormat": "{{instance}}"
           }
         ]
@@ -36,19 +36,19 @@
         "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
         "targets": [
           {
-            "expr": "histogram_quantile(0.50, rate(fuse_query_duration_seconds_bucket{instance=~\"$instance\"}[5m]))",
+            "expr": "histogram_quantile(0.50, rate(fuse_query_duration_ms_bucket{instance=~\"$instance\"}[5m]))",
             "legendFormat": "p50 {{instance}}"
           },
           {
-            "expr": "histogram_quantile(0.95, rate(fuse_query_duration_seconds_bucket{instance=~\"$instance\"}[5m]))",
+            "expr": "histogram_quantile(0.95, rate(fuse_query_duration_ms_bucket{instance=~\"$instance\"}[5m]))",
             "legendFormat": "p95 {{instance}}"
           },
           {
-            "expr": "histogram_quantile(0.99, rate(fuse_query_duration_seconds_bucket{instance=~\"$instance\"}[5m]))",
+            "expr": "histogram_quantile(0.99, rate(fuse_query_duration_ms_bucket{instance=~\"$instance\"}[5m]))",
             "legendFormat": "p99 {{instance}}"
           }
         ],
-        "fieldConfig": { "defaults": { "unit": "s" } }
+        "fieldConfig": { "defaults": { "unit": "ms" } }
       },
       {
         "title": "Cache Hit Rate",
@@ -56,7 +56,7 @@
         "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
         "targets": [
           {
-            "expr": "rate(fuse_cache_hits_total{instance=~\"$instance\"}[5m]) / (rate(fuse_cache_hits_total{instance=~\"$instance\"}[5m]) + rate(fuse_cache_misses_total{instance=~\"$instance\"}[5m]))",
+            "expr": "fuse_plan_cache_hits / (fuse_plan_cache_hits + fuse_plan_cache_misses + 1)",
             "legendFormat": "{{instance}}"
           }
         ],
@@ -79,7 +79,7 @@
         "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
         "targets": [
           {
-            "expr": "rate(fuse_query_errors_total{instance=~\"$instance\"}[5m])",
+            "expr": "rate(fuse_queries_total{instance=~\"$instance\", status=\"error\"}[5m])",
             "legendFormat": "{{instance}}"
           }
         ]
@@ -101,6 +101,32 @@
             ]
           }
         }
+      },
+      {
+        "title": "Rate Limit Rejections",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+        "targets": [
+          {
+            "expr": "rate(fuse_rate_limit_rejected{instance=~\"$instance\"}[5m])",
+            "legendFormat": "{{scope}} ({{instance}})"
+          }
+        ]
+      },
+      {
+        "title": "Connectors / Tenants",
+        "type": "stat",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+        "targets": [
+          {
+            "expr": "fuse_connectors_total{instance=~\"$instance\"}",
+            "legendFormat": "Connectors ({{instance}})"
+          },
+          {
+            "expr": "fuse_tenants_total{instance=~\"$instance\"}",
+            "legendFormat": "Tenants ({{instance}})"
+          }
+        ]
       }
     ]
   }

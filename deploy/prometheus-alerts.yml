@@ -1,0 +1,107 @@
+# Fuse Alerting Rules for Prometheus
+# Load via rule_files in prometheus.yml
+
+groups:
+  - name: fuse.rules
+    rules:
+      # --- Availability ---
+      - alert: FuseInstanceDown
+        expr: up{job="fuse"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Fuse instance {{ $labels.instance }} is down"
+          description: "Prometheus has not received metrics from {{ $labels.instance }} for over 1 minute."
+
+      - alert: FuseConnectorUnhealthy
+        expr: fuse_connector_healthy == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Connector {{ $labels.connector }} unhealthy on {{ $labels.instance }}"
+          description: "Connector {{ $labels.connector }} has been reporting unhealthy for over 2 minutes."
+
+      # --- Latency ---
+      - alert: FuseHighP99Latency
+        expr: histogram_quantile(0.99, rate(fuse_query_duration_ms_bucket[5m])) > 10000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Fuse p99 query latency > 10s on {{ $labels.instance }}"
+          description: "p99 latency is {{ $value | humanize }}ms over the last 5 minutes."
+
+      - alert: FuseHighP99LatencyCritical
+        expr: histogram_quantile(0.99, rate(fuse_query_duration_ms_bucket[5m])) > 30000
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Fuse p99 query latency > 30s on {{ $labels.instance }}"
+          description: "p99 latency is {{ $value | humanize }}ms — queries may be timing out."
+
+      # --- Error rate ---
+      - alert: FuseHighErrorRate
+        expr: >
+          rate(fuse_queries_total{status="error"}[5m])
+          / rate(fuse_queries_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Fuse error rate > 5% on {{ $labels.instance }}"
+          description: "{{ $value | humanizeDuration }} of queries are failing."
+
+      - alert: FuseHighErrorRateCritical
+        expr: >
+          rate(fuse_queries_total{status="error"}[5m])
+          / rate(fuse_queries_total[5m]) > 0.20
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Fuse error rate > 20% on {{ $labels.instance }}"
+          description: "Over 20% of queries are failing — possible outage."
+
+      # --- Saturation ---
+      - alert: FuseHighActiveQueries
+        expr: fuse_active_queries > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Fuse active queries > 50 on {{ $labels.instance }}"
+          description: "{{ $value }} concurrent queries — approaching max_concurrent_queries (64)."
+
+      - alert: FuseRateLimitTriggered
+        expr: rate(fuse_rate_limit_rejected[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Rate limiting active on {{ $labels.instance }}"
+          description: "{{ $value | humanize }} requests/s being rejected by rate limiter."
+
+      # --- Cache ---
+      - alert: FuseLowCacheHitRate
+        expr: >
+          fuse_plan_cache_hits
+          / (fuse_plan_cache_hits + fuse_plan_cache_misses + 1) < 0.3
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "Fuse cache hit rate < 30% on {{ $labels.instance }}"
+          description: "Cache hit rate is {{ $value | humanizePercentage }} — consider tuning TTL or cache size."
+
+      # --- No traffic (canary) ---
+      - alert: FuseNoTraffic
+        expr: rate(fuse_queries_total[10m]) == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No queries received on {{ $labels.instance }} for 15 minutes"
+          description: "Instance may be unreachable or misconfigured."
