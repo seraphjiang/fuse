@@ -231,4 +231,41 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(50)).await;
         sched.stop();
     }
+
+    #[test]
+    fn test_extract_max_watermark() {
+        use arrow::array::StringArray;
+        use arrow::datatypes::{DataType, Field, Schema};
+        use arrow::record_batch::RecordBatch;
+        use std::sync::Arc;
+
+        let schema = Arc::new(Schema::new(vec![Field::new("ts", DataType::Utf8, false)]));
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![Arc::new(StringArray::from(vec!["2026-01-01", "2026-03-15", "2026-02-10"]))],
+        ).unwrap();
+        assert_eq!(
+            super::extract_max_watermark(&[batch], "ts"),
+            Some("2026-03-15".to_string()),
+        );
+    }
+
+    #[test]
+    fn test_extract_max_watermark_missing_column() {
+        use arrow::array::Int64Array;
+        use arrow::datatypes::{DataType, Field, Schema};
+        use arrow::record_batch::RecordBatch;
+        use std::sync::Arc;
+
+        let schema = Arc::new(Schema::new(vec![Field::new("id", DataType::Int64, false)]));
+        let batch = RecordBatch::try_new(
+            schema, vec![Arc::new(Int64Array::from(vec![1, 2]))],
+        ).unwrap();
+        assert_eq!(super::extract_max_watermark(&[batch], "ts"), None);
+    }
+
+    #[test]
+    fn test_extract_max_watermark_empty() {
+        assert_eq!(super::extract_max_watermark(&[], "ts"), None);
+    }
 }
