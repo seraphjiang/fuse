@@ -94,7 +94,7 @@ fi
 echo ""
 echo "── Playground pages ──"
 CORE_PAGES=( "" status settings dashboard admin explore help changelog )
-RECENT_PAGES=( alerts views plugins terminal federation )
+RECENT_PAGES=( alerts views plugins terminal federation schedules )
 
 for page in "${CORE_PAGES[@]}"; do
   code=$(curl -s -o /dev/null -w "%{http_code}" "$FUSE/$page")

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuse — Scheduled Queries</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e1e4e8;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #21262d;background:#161b22}
+header h1{font-size:18px;font-weight:600;color:#58a6ff}
+.nav-tabs{display:flex;gap:0}
+.nav-tab{padding:8px 16px;font-size:13px;color:#8b949e;text-decoration:none;border-bottom:2px solid transparent}
+.nav-tab:hover{color:#e1e4e8}
+.nav-tab.active{color:#58a6ff;border-bottom-color:#58a6ff;font-weight:600}
+main{max-width:1200px;width:100%;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:20px}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+button{padding:6px 14px;font-size:13px;border-radius:6px;border:1px solid #30363d;background:#21262d;color:#e1e4e8;cursor:pointer}
+button:hover{background:#30363d}
+button.primary{background:#238636;border-color:#238636;color:#fff}
+button.primary:hover{background:#2ea043}
+.card{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:8px 12px;color:#8b949e;border-bottom:1px solid #21262d;font-weight:600}
+td{padding:8px 12px;border-bottom:1px solid #21262d}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.badge.active{background:#238636;color:#fff}
+.badge.paused{background:#d29922;color:#000}
+.badge.error{background:#f85149;color:#fff}
+.mono{font-family:"SF Mono",Consolas,monospace;font-size:12px;color:#79c0ff}
+.empty{text-align:center;padding:40px;color:#8b949e}
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center}
+.modal{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:24px;max-width:560px;width:90%}
+.modal h2{font-size:16px;margin-bottom:16px}
+.form-row{margin-bottom:12px}
+.form-row label{display:block;font-size:12px;color:#8b949e;margin-bottom:4px}
+.form-row input,.form-row select,.form-row textarea{width:100%;padding:8px;font-size:13px;background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;font-family:inherit}
+.form-row textarea{font-family:"SF Mono",Consolas,monospace;min-height:80px;resize:vertical}
+body.light{background:#fff;color:#1f2328}
+body.light header{background:#f6f8fa;border-color:#d0d7de}
+body.light .card{background:#fff;border-color:#d0d7de}
+body.light th,body.light td{border-color:#d0d7de}
+body.light th{color:#656d76}
+body.light button{background:#f6f8fa;border-color:#d0d7de;color:#1f2328}
+body.light .nav-tab{color:#656d76}
+body.light .nav-tab.active{color:#0969da;border-bottom-color:#0969da}
+body.light .modal{background:#fff;border-color:#d0d7de}
+body.light .form-row input,body.light .form-row select,body.light .form-row textarea{background:#f6f8fa;color:#1f2328;border-color:#d0d7de}
+@media(max-width:768px){main{padding:12px}header{flex-wrap:wrap;padding:8px 12px}.nav-tabs{flex-wrap:wrap}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔗 Fuse</h1>
+  <div>
+    <nav class="nav-tabs">
+      <a href="/playground" class="nav-tab">Playground</a>
+      <a href="/dashboard" class="nav-tab">Dashboard</a>
+      <a href="/explore" class="nav-tab">Explore</a>
+      <a href="/schedules" class="nav-tab active">Schedules</a>
+      <a href="/settings" class="nav-tab">Settings</a>
+      <a href="/status" class="nav-tab">Status</a>
+      <a href="/help" class="nav-tab">Help</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="toolbar">
+    <button class="primary" onclick="showCreate()">+ New Schedule</button>
+    <button onclick="loadSchedules()">↻ Refresh</button>
+    <span id="count" style="font-size:12px;color:#8b949e"></span>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead><tr><th>Name</th><th>Query</th><th>Cron</th><th>Status</th><th>Last Run</th><th>Next Run</th><th>Actions</th></tr></thead>
+      <tbody id="sched-body"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</main>
+
+<!-- Create/Edit Modal -->
+<div class="modal-bg" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <h2 id="modal-title">New Scheduled Query</h2>
+    <div class="form-row"><label>Name</label><input id="f-name" placeholder="daily-error-report"></div>
+    <div class="form-row"><label>Query</label><textarea id="f-query" placeholder="SELECT service, count(*) FROM cluster_a.application_logs WHERE status >= 500 GROUP BY service"></textarea></div>
+    <div class="form-row"><label>Format</label><select id="f-format"><option value="sql">SQL</option><option value="ppl">PPL</option></select></div>
+    <div class="form-row"><label>Cron Expression</label><input id="f-cron" placeholder="0 */6 * * *" value="0 */6 * * *"></div>
+    <div class="form-row"><label>Alert on changes</label><select id="f-alert"><option value="none">None</option><option value="row_count">Row count change</option><option value="any">Any result change</option></select></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button onclick="closeModal()">Cancel</button>
+      <button class="primary" onclick="saveSchedule()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const API = '/api/fuse/schedules';
+
+if (localStorage.getItem('fuse-theme') === 'light') document.body.classList.add('light');
+
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error(await r.text());
+  return r.status === 204 ? null : r.json();
+}
+
+let editingId = null;
+
+async function loadSchedules() {
+  try {
+    const data = await api(API);
+    const list = Array.isArray(data) ? data : (data.schedules || []);
+    $('count').textContent = list.length + ' schedule' + (list.length !== 1 ? 's' : '');
+    if (!list.length) { $('sched-body').innerHTML = '<tr><td colspan="7" class="empty">No scheduled queries. Click + New Schedule to create one.</td></tr>'; return; }
+    $('sched-body').innerHTML = list.map(s => `<tr>
+      <td style="font-weight:600">${esc(s.name)}</td>
+      <td><span class="mono">${esc((s.query||'').substring(0,60))}${(s.query||'').length>60?'…':''}</span></td>
+      <td class="mono">${esc(s.cron||s.schedule||'')}</td>
+      <td><span class="badge ${s.status||'active'}">${s.status||'active'}</span></td>
+      <td style="font-size:12px;color:#8b949e">${s.last_run ? new Date(s.last_run).toLocaleString() : '—'}</td>
+      <td style="font-size:12px;color:#8b949e">${s.next_run ? new Date(s.next_run).toLocaleString() : '—'}</td>
+      <td>
+        <button onclick="toggleSchedule('${esc(s.id||s.name)}')" style="font-size:11px;padding:2px 8px">${s.status==='paused'?'▶':'⏸'}</button>
+        <button onclick="deleteSchedule('${esc(s.id||s.name)}')" style="font-size:11px;padding:2px 8px;color:#f85149">✕</button>
+      </td>
+    </tr>`).join('');
+  } catch (e) { $('sched-body').innerHTML = `<tr><td colspan="7" class="empty" style="color:#f85149">Failed to load: ${esc(e.message)}</td></tr>`; }
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function showCreate() {
+  editingId = null;
+  $('modal-title').textContent = 'New Scheduled Query';
+  $('f-name').value = ''; $('f-query').value = ''; $('f-cron').value = '0 */6 * * *'; $('f-format').value = 'sql'; $('f-alert').value = 'none';
+  $('modal').style.display = 'flex';
+}
+function closeModal() { $('modal').style.display = 'none'; }
+
+async function saveSchedule() {
+  const body = { name: $('f-name').value, query: $('f-query').value, format: $('f-format').value, cron: $('f-cron').value, alert_on: $('f-alert').value };
+  if (!body.name || !body.query) { alert('Name and query are required'); return; }
+  try {
+    await api(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    closeModal();
+    loadSchedules();
+  } catch (e) { alert('Failed: ' + e.message); }
+}
+
+async function toggleSchedule(id) {
+  try { await api(API + '/' + encodeURIComponent(id) + '/toggle', { method: 'POST' }); loadSchedules(); }
+  catch (e) { alert('Failed: ' + e.message); }
+}
+
+async function deleteSchedule(id) {
+  if (!confirm('Delete schedule "' + id + '"?')) return;
+  try { await api(API + '/' + encodeURIComponent(id), { method: 'DELETE' }); loadSchedules(); }
+  catch (e) { alert('Failed: ' + e.message); }
+}
+
+loadSchedules();
+</script>
+</body>
+</html>
