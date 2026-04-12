@@ -730,3 +730,71 @@ mod error_path_tests {
         assert_eq!(stats.success, 0);
     }
 }
+
+
+#[cfg(test)]
+mod validator_estimator_tests {
+    use crate::plan_builder::PlanBuilder;
+    use crate::plan_validator;
+    use crate::size_estimator;
+    use crate::predicate::Predicate;
+
+    #[test]
+    fn test_validator_complex_plan() {
+        let plan = PlanBuilder::scan("pg", "users")
+            .filter(&Predicate::gt("age", "18"))
+            .project(vec!["name"])
+            .sort("name", false)
+            .limit(50)
+            .build();
+        assert!(plan_validator::validate(&plan.root).is_empty());
+    }
+
+    #[test]
+    fn test_validator_empty_table() {
+        let plan = PlanBuilder::scan("ds", "").build();
+        assert!(!plan_validator::validate(&plan.root).is_empty());
+    }
+
+    #[test]
+    fn test_estimator_full_table() {
+        let e = size_estimator::estimate(100000, 200, 1.0, None);
+        assert_eq!(e.estimated_rows, 100000);
+        assert_eq!(e.estimated_bytes, 100000 * 200);
+    }
+
+    #[test]
+    fn test_estimator_selective() {
+        let e = size_estimator::estimate(100000, 200, 0.01, None);
+        assert_eq!(e.estimated_rows, 1000);
+    }
+
+    #[test]
+    fn test_estimator_limit_caps() {
+        let e = size_estimator::estimate(100000, 200, 1.0, Some(10));
+        assert_eq!(e.estimated_rows, 10);
+    }
+
+    #[test]
+    fn test_estimator_join_bounded() {
+        let e = size_estimator::estimate_join(1000, 1000, 0.001);
+        assert!(e.estimated_rows <= 2000);
+    }
+
+    #[test]
+    fn test_estimator_confidence() {
+        let e1 = size_estimator::estimate(1000, 100, 0.5, None);
+        let e2 = size_estimator::estimate(0, 100, 0.5, None);
+        assert!(e1.confidence > e2.confidence);
+    }
+
+    #[test]
+    fn test_validator_nested_errors() {
+        let plan = PlanBuilder::scan("", "")
+            .filter(&Predicate::eq("x", "1"))
+            .limit(0)
+            .build();
+        let errors = plan_validator::validate(&plan.root);
+        assert!(errors.len() >= 3); // empty ds + empty table + zero limit
+    }
+}
