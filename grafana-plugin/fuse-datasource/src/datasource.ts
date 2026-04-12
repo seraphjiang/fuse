@@ -139,7 +139,7 @@ export class FuseDatasource extends DataSourceApi<FuseQuery, FuseDataSourceOptio
         `${this.url}/api/fuse/health`,
         undefined, undefined, { headers: this.headers() }
       );
-      return health.status === 'ok'
+      return health.status === 'healthy'
         ? { status: 'success', message: `Connected to Fuse (${Object.keys(health.connectors || {}).length} connectors)` }
         : { status: 'error', message: `Fuse status: ${health.status}` };
     } catch (e: any) {
