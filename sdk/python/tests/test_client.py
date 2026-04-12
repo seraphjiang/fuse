@@ -99,3 +99,138 @@ def test_async_methods_exist():
     assert hasattr(c, "poll_async")
     assert hasattr(c, "cancel_async")
     assert hasattr(c, "wait_async")
+
+
+# ── Sprint 18 method tests (mock-based) ──
+
+def _mock_response(body, status=200):
+    """Create a mock urllib response."""
+    m = MagicMock()
+    m.read.return_value = json.dumps(body).encode()
+    m.__enter__ = lambda s: s
+    m.__exit__ = MagicMock(return_value=False)
+    return m
+
+
+@patch("fuse_client.client.urlopen")
+def test_webhooks(mock_urlopen):
+    mock_urlopen.return_value = _mock_response([{"id": "w1", "name": "alert"}])
+    c = FuseClient()
+    ws = c.webhooks()
+    assert len(ws) == 1
+    assert ws[0]["id"] == "w1"
+
+
+@patch("fuse_client.client.urlopen")
+def test_create_webhook(mock_urlopen):
+    mock_urlopen.return_value = _mock_response({"id": "w-new"})
+    c = FuseClient()
+    resp = c.create_webhook("alert", "SELECT count(*) FROM ds.logs", {"row_count_gt": 100}, "https://hook.example.com")
+    assert resp["id"] == "w-new"
+    sent = json.loads(mock_urlopen.call_args[0][0].data)
+    assert sent["name"] == "alert"
+    assert sent["callback_url"] == "https://hook.example.com"
+
+
+@patch("fuse_client.client.urlopen")
+def test_delete_webhook(mock_urlopen):
+    mock_urlopen.return_value = _mock_response({"ok": True})
+    c = FuseClient()
+    c.delete_webhook("w-1")
+    req = mock_urlopen.call_args[0][0]
+    assert req.method == "DELETE"
+    assert "/api/fuse/webhooks/w-1" in req.full_url
+
+
+@patch("fuse_client.client.urlopen")
+def test_test_webhook(mock_urlopen):
+    mock_urlopen.return_value = _mock_response({"fired": True, "row_count": 42})
+    c = FuseClient()
+    resp = c.test_webhook("w-1")
+    assert resp["fired"] is True
+    assert resp["row_count"] == 42
+
+
+@patch("fuse_client.client.urlopen")
+def test_relationships(mock_urlopen):
+    mock_urlopen.return_value = _mock_response([{"left_datasource": "a", "confidence": 0.8}])
+    c = FuseClient()
+    rels = c.relationships()
+    assert len(rels) == 1
+    assert rels[0]["confidence"] == 0.8
+
+
+@patch("fuse_client.client.urlopen")
+def test_cdc_status(mock_urlopen):
+    mock_urlopen.return_value = _mock_response({"enabled": True, "tracked_views": 3})
+    c = FuseClient()
+    s = c.cdc_status()
+    assert s["enabled"] is True
+
+
+@patch("fuse_client.client.urlopen")
+def test_cdc_event(mock_urlopen):
+    mock_urlopen.return_value = _mock_response({"accepted": True, "affected_views": ["v1"]})
+    c = FuseClient()
+    resp = c.cdc_event("ds1", "users", "update")
+    assert resp["accepted"] is True
+    sent = json.loads(mock_urlopen.call_args[0][0].data)
+    assert sent["datasource"] == "ds1"
+    assert sent["change_type"] == "update"
+    assert isinstance(sent["timestamp"], int)
+
+
+@patch("fuse_client.client.urlopen")
+def test_predict(mock_urlopen):
+    mock_urlopen.return_value = _mock_response({"estimated_ms": 150, "confidence": "medium"})
+    c = FuseClient()
+    p = c.predict("SELECT * FROM ds.logs")
+    assert p["estimated_ms"] == 150
+    assert p["confidence"] == "medium"
+
+
+@patch("fuse_client.client.urlopen")
+def test_explain(mock_urlopen):
+    mock_urlopen.return_value = _mock_response({"plan": "Scan: ds.logs"})
+    c = FuseClient()
+    e = c.explain("SELECT * FROM ds.logs")
+    assert e["plan"] == "Scan: ds.logs"
+
+
+@patch("fuse_client.client.urlopen")
+def test_validate(mock_urlopen):
+    mock_urlopen.return_value = _mock_response({"valid": True})
+    c = FuseClient()
+    v = c.validate("SELECT 1")
+    assert v["valid"] is True
+
+
+@patch("fuse_client.client.urlopen")
+def test_datasources(mock_urlopen):
+    mock_urlopen.return_value = _mock_response([{"id": "ds1", "type": "opensearch"}])
+    c = FuseClient()
+    ds = c.datasources()
+    assert len(ds) == 1
+    assert ds[0]["type"] == "opensearch"
+
+
+@patch("fuse_client.client.urlopen")
+def test_history(mock_urlopen):
+    mock_urlopen.return_value = _mock_response([{"query": "SELECT 1", "latency_ms": 10}])
+    c = FuseClient()
+    h = c.history()
+    assert len(h) == 1
+    assert h[0]["query"] == "SELECT 1"
+
+
+@patch("fuse_client.client.urlopen")
+def test_query_with_ppl(mock_urlopen):
+    mock_urlopen.return_value = _mock_response({
+        "columns": ["x"], "rows": [[1]],
+        "metadata": {"total_rows": 1, "format": "ppl", "trace_id": "t1"},
+    })
+    c = FuseClient()
+    r = c.query("source = ds.logs | head 10", format="ppl")
+    sent = json.loads(mock_urlopen.call_args[0][0].data)
+    assert sent["format"] == "ppl"
+    assert r.format == "ppl"
