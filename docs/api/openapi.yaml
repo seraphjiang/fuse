@@ -1407,3 +1407,151 @@ components:
       responses:
         "201":
           description: Alert rule created
+
+  /api/fuse/autotune:
+    get:
+      summary: Query auto-tuning recommendations
+      description: Analyze slow query history and suggest index/partition changes.
+      parameters:
+        - name: threshold_ms
+          in: query
+          schema: { type: integer, default: 1000 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 100 }
+      responses:
+        "200":
+          description: Tuning recommendations
+
+  /api/fuse/similarity:
+    get:
+      summary: Query similarity detection
+      description: Find duplicate/similar query patterns across tenants.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 500 }
+        - name: min_group
+          in: query
+          schema: { type: integer, default: 2 }
+      responses:
+        "200":
+          description: Similarity groups
+
+  /api/fuse/routing/stats:
+    get:
+      summary: Smart query routing stats
+      description: Per-connector latency stats and fastest connector selection.
+      responses:
+        "200":
+          description: Routing statistics
+
+  /api/fuse/query/export/csv:
+    post:
+      summary: Export query results as CSV
+      description: Execute query and return results as downloadable CSV file.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryRequest"
+      responses:
+        "200":
+          description: CSV file download
+          content:
+            text/csv: {}
+
+  /api/fuse/query/export/json:
+    post:
+      summary: Export query results as JSON
+      description: Execute query and return results as downloadable JSON file.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryRequest"
+      responses:
+        "200":
+          description: JSON file download
+
+  /api/fuse/query/diff:
+    post:
+      summary: Compare two query results
+      description: Execute two queries in parallel and return side-by-side diff.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query_a, query_b]
+              properties:
+                query_a: { type: string }
+                query_b: { type: string }
+                format: { type: string, default: sql }
+      responses:
+        "200":
+          description: Diff results with metadata
+
+  /api/fuse/graphql/ws:
+    get:
+      summary: GraphQL subscriptions (WebSocket)
+      description: WebSocket endpoint for GraphQL subscription transport.
+      responses:
+        "101":
+          description: WebSocket upgrade
+
+  /api/fuse/pool/stats:
+    get:
+      summary: Connection pool utilization
+      description: Pool stats per connector.
+      responses:
+        "200":
+          description: Pool statistics
+
+  /api/fuse/connectors/health-history:
+    get:
+      summary: Connector health history
+      description: Track uptime and latency over time per connector.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          description: Health history summaries
+
+  /api/fuse/load-scenarios:
+    get:
+      summary: Load test scenario presets
+      description: List available load test patterns (spike, soak, stress).
+      responses:
+        "200":
+          description: Scenario definitions
+
+  /api/fuse/audit:
+    get:
+      summary: Audit log
+      description: Query audit trail with tenant, timestamp, duration.
+      responses:
+        "200":
+          description: Audit entries
+
+  /api/fuse/keys/rotate:
+    post:
+      summary: Rotate API key
+      description: Rotate an API key with configurable grace period.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                identity: { type: string }
+                grace_period_secs: { type: integer }
+      responses:
+        "200":
+          description: New key returned
