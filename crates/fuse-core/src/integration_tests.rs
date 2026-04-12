@@ -561,3 +561,172 @@ mod advanced_tests {
         assert_eq!(crate::limit_pushdown::offset_fetch_limit(50, 100), 150);
     }
 }
+
+
+#[cfg(test)]
+mod error_path_tests {
+    use crate::predicate::Predicate;
+    use crate::plan_serde::PlanNode;
+    use crate::scalar_expr::ScalarExpr;
+    use crate::type_map;
+    use crate::expr::{self, CompareOp};
+    use serde_json::json;
+
+    // Predicate edge cases
+    #[test]
+    fn test_predicate_or_single() {
+        let p = Predicate::or(vec![Predicate::eq("x", "1")]);
+        assert!(p.to_sql().contains("x = '1'"));
+    }
+
+    #[test]
+    fn test_predicate_nested_not() {
+        let p = Predicate::not(Predicate::not(Predicate::eq("x", "1")));
+        assert!(p.to_sql().starts_with("NOT"));
+    }
+
+    #[test]
+    fn test_predicate_in_empty() {
+        let p = Predicate::in_list("x", vec![]);
+        assert!(p.to_sql().contains("IN ()"));
+    }
+
+    // Plan serde error paths
+    #[test]
+    fn test_plan_node_empty_json() {
+        assert!(PlanNode::from_json("{}").is_err());
+    }
+
+    #[test]
+    fn test_plan_node_no_children() {
+        let n = PlanNode::leaf("Scan", "t");
+        assert_eq!(n.node_count(), 1);
+        let json = n.to_json();
+        assert!(!json.contains("children")); // skip_serializing_if empty
+    }
+
+    // Scalar expr edge cases
+    #[test]
+    fn test_scalar_star_sql() {
+        assert_eq!(ScalarExpr::star().to_sql(), "*");
+    }
+
+    #[test]
+    fn test_scalar_func_no_args() {
+        let e = ScalarExpr::func("NOW", vec![]);
+        assert_eq!(e.to_sql(), "NOW()");
+    }
+
+    #[test]
+    fn test_scalar_func_multiple_args() {
+        let e = ScalarExpr::func("COALESCE", vec![ScalarExpr::col("a"), ScalarExpr::lit("default")]);
+        assert_eq!(e.to_sql(), "COALESCE(a, 'default')");
+    }
+
+    // Type map edge cases
+    #[test]
+    fn test_type_map_date() {
+        assert_eq!(type_map::from_type_name("date"), type_map::DataType::Date);
+    }
+
+    #[test]
+    fn test_type_map_binary() {
+        assert_eq!(type_map::from_type_name("bytea"), type_map::DataType::Binary);
+    }
+
+    #[test]
+    fn test_type_map_timestamp() {
+        assert_eq!(type_map::from_type_name("timestamptz"), type_map::DataType::Timestamp);
+    }
+
+    // Expr comparison edge cases
+    #[test]
+    fn test_compare_null_eq() {
+        assert!(!expr::compare(&json!(null), &CompareOp::Eq, &json!(1)));
+    }
+
+    #[test]
+    fn test_compare_string_neq() {
+        assert!(expr::compare(&json!("a"), &CompareOp::Neq, &json!("b")));
+    }
+
+    #[test]
+    fn test_compare_not_null_is_not_null() {
+        assert!(expr::compare(&json!("x"), &CompareOp::IsNotNull, &json!(null)));
+    }
+
+    // URL edge cases
+    #[test]
+    fn test_url_amqps() {
+        let u = crate::url::ConnectorUrl::parse("amqps://rabbit:5671/vhost").unwrap();
+        assert!(u.is_tls);
+    }
+
+    #[test]
+    fn test_url_roundtrip_no_port() {
+        let u = crate::url::ConnectorUrl::parse("http://host/path").unwrap();
+        assert_eq!(u.to_url(), "http://host/path");
+    }
+
+    // Config validator edge cases
+    #[test]
+    fn test_validator_empty_type() {
+        let errs = crate::config_validator::validate_connector_config("id", "", &std::collections::HashMap::new());
+        assert!(errs.iter().any(|e| e.field == "type"));
+    }
+
+    #[test]
+    fn test_validator_mysql_needs_url() {
+        let errs = crate::config_validator::validate_connector_config("my", "mysql", &std::collections::HashMap::new());
+        assert!(!errs.is_empty());
+    }
+
+    // Cost model edge cases
+    #[test]
+    fn test_total_cost_empty() {
+        let t = crate::cost_model::total_cost(&[]);
+        assert_eq!(t.estimated_rows, 0);
+        assert_eq!(t.estimated_cost, 0.0);
+    }
+
+    // Limit pushdown edge cases
+    #[test]
+    fn test_join_fetch_high_selectivity() {
+        let (build, probe) = crate::limit_pushdown::join_fetch_limits(100, 0.9);
+        assert_eq!(build, u64::MAX);
+        assert!(probe >= 100);
+    }
+
+    // Plan compare edge cases
+    #[test]
+    fn test_significantly_cheaper_zero_cost() {
+        let a = crate::cost_model::scan_cost(0, 0);
+        let b = crate::cost_model::scan_cost(100, 5);
+        assert!(!crate::plan_compare::is_significantly_cheaper(&a, &b, 0.5));
+    }
+
+    // Dependency graph edge cases
+    #[test]
+    fn test_neighbors_unknown() {
+        let g = crate::dependency_graph::DependencyGraph::new();
+        assert!(g.neighbors("unknown").is_empty());
+    }
+
+    // Health history edge cases
+    #[test]
+    fn test_health_history_max_entries() {
+        let h = crate::health_history::HealthHistory::new(3);
+        for i in 0..5 { h.record("ds", true, Some(i)); }
+        assert_eq!(h.get("ds").len(), 3);
+    }
+
+    // Query stats edge cases
+    #[test]
+    fn test_stats_error_tracking() {
+        let s = crate::query_stats::StatsCollector::new();
+        s.record("ds", false, 0, 100);
+        let stats = s.get("ds").unwrap();
+        assert_eq!(stats.errors, 1);
+        assert_eq!(stats.success, 0);
+    }
+}
