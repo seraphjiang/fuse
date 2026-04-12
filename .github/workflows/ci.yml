@@ -219,6 +219,21 @@ jobs:
       - name: Run Sprint 18 page tests
         run: bash tests/e2e/sprint18_pages_test.sh http://localhost:9400
 
+      - name: Run UI automation E2E tests
+        run: bash tests/e2e/ui_automation_test.sh http://localhost:9400
+
+      - name: Run Sprint 18 API coverage tests
+        run: bash tests/e2e/sprint18_api_coverage_test.sh http://localhost:9400
+
+      - name: Run operational API E2E tests
+        run: bash tests/e2e/operational_api_test.sh http://localhost:9400
+
+      - name: Run security E2E tests
+        run: bash tests/e2e/security_e2e_test.sh http://localhost:9400
+
+      - name: Run security auth/RBAC/tenant E2E tests
+        run: bash tests/e2e/security_test.sh http://localhost:9400
+
       - name: Stop server
         if: always()
         run: kill ${{ env.SERVER_PID }} 2>/dev/null || true
