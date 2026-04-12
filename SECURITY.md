@@ -105,6 +105,20 @@ Fuse is a read-only query engine. It never writes to, modifies, or deletes data 
 - All connector connections support TLS. Use `https://` endpoints for OpenSearch, Elasticsearch, and other connectors.
 - No data is stored persistently by Fuse — query results exist only in memory during execution.
 
+### Security Response Headers
+
+Every response includes standard security headers:
+
+- `X-Content-Type-Options: nosniff` — prevents MIME-type sniffing
+- `X-Frame-Options: DENY` — prevents clickjacking via iframes
+- `Referrer-Policy: strict-origin-when-cross-origin` — limits referrer leakage
+- `Content-Security-Policy: default-src 'self'` — restricts resource loading
+- `Permissions-Policy` — disables browser features by default
+
+### Request Size Limits
+
+Request bodies are limited to 10MB to prevent memory exhaustion from oversized payloads. Requests exceeding this limit receive HTTP 413.
+
 ## Security Checklist for Deployment
 
 - [ ] Enable API key authentication in production
@@ -114,3 +128,5 @@ Fuse is a read-only query engine. It never writes to, modifies, or deletes data 
 - [ ] Use IAM/SigV4 for AWS connectors instead of static credentials
 - [ ] Store `fuse.toml` credentials via environment variables or secrets manager
 - [ ] Review connector `max_concurrent_queries` to prevent overloading backends
+- [ ] Configure tenant isolation for multi-team deployments
+- [ ] Verify security response headers are present (`X-Content-Type-Options`, `X-Frame-Options`)
