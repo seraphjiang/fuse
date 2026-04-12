@@ -733,3 +733,19 @@ mod milestone_1450 {
     #[test] fn test_having_gte_boundary() { let r = vec![vec![json!(5)]]; assert_eq!(crate::having::having_gte(&r, 0, 5.0).len(), 1); }
     #[test] fn test_top_n_extract_large() { assert_eq!(crate::top_n::extract_top("SELECT TOP 99999 * FROM t"), Some(99999)); }
 }
+
+
+#[cfg(test)]
+mod milestone_1500 {
+    use serde_json::json;
+    #[test] fn test_1() { assert_eq!(crate::agg_functions::count_distinct(&[vec![json!(1)], vec![json!(2)], vec![json!(3)]], 0), 3); }
+    #[test] fn test_2() { let mut r = vec![vec![json!("  x  ")]]; crate::string_fn::trim(&mut r, 0); assert_eq!(r[0][0], json!("x")); }
+    #[test] fn test_3() { assert_eq!(crate::date_fn::extract_date(&[vec![json!("2024-12-31T23:59:59Z")]], 0)[0], json!("2024-12-31")); }
+    #[test] fn test_4() { let r = vec![vec![json!(7)]]; assert_eq!(crate::math_fn::modulo(&r, 0, 4.0)[0], json!(3.0)); }
+    #[test] fn test_5() { assert_eq!(crate::distinct::count_distinct(&[vec![json!("a")], vec![json!("a")]], 0), 1); }
+    #[test] fn test_6() { let r = crate::offset_pagination::page_info(0, 0, 10); assert_eq!(r.total_pages, 0); }
+    #[test] fn test_7() { assert!(crate::query_parser::is_read_only("SHOW DATABASES")); }
+    #[test] fn test_8() { let k = crate::cache_key::build_key_with_params("sql", "SELECT $1", &[]); assert!(!k.contains("|")); }
+    #[test] fn test_9() { let l = crate::lineage::QueryLineage::new("q", vec![("a","t1"),("b","t2")]); assert!(l.is_cross_source()); }
+    #[test] fn test_10() { let d = crate::delivery::recommend_delivery(Some(50000), None, 10000, 10_000_000); assert_eq!(d, crate::delivery::DeliveryMode::Streaming); }
+}
