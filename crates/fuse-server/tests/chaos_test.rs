@@ -146,8 +146,7 @@ async fn query(app: axum::Router, sql: &str) -> (StatusCode, serde_json::Value) 
 
 #[tokio::test]
 async fn test_single_source_connection_refused() {
-    let _lock = CHAOS_LOCK.lock().unwrap();
-    let app = build_app(vec![Arc::new(ConnectionRefusedConnector("broken".into()))]);
+    let app = { let _lock = CHAOS_LOCK.lock().unwrap(); build_app(vec![Arc::new(ConnectionRefusedConnector("broken".into()))]) };
     let (status, json) = query(app, "SELECT * FROM broken.logs").await;
     assert_ne!(status, StatusCode::OK);
     // Server errors are sanitized to prevent leaking internal details (see error_json).
@@ -156,11 +155,10 @@ async fn test_single_source_connection_refused() {
 
 #[tokio::test]
 async fn test_union_one_healthy_one_refused() {
-    let _lock = CHAOS_LOCK.lock().unwrap();
-    let app = build_app(vec![
+    let app = { let _lock = CHAOS_LOCK.lock().unwrap(); build_app(vec![
         Arc::new(HealthyConnector("good".into())),
         Arc::new(ConnectionRefusedConnector("bad".into())),
-    ]);
+    ]) };
     let (_status, json) = query(app, "SELECT host, status FROM good.logs UNION ALL SELECT host, status FROM bad.logs").await;
     // Should return partial results or clear error — not crash
     let has_data = json["rows"].as_array().map(|r| !r.is_empty()).unwrap_or(false);
@@ -170,22 +168,20 @@ async fn test_union_one_healthy_one_refused() {
 
 #[tokio::test]
 async fn test_union_all_sources_refused() {
-    let _lock = CHAOS_LOCK.lock().unwrap();
-    let app = build_app(vec![
+    let app = { let _lock = CHAOS_LOCK.lock().unwrap(); build_app(vec![
         Arc::new(ConnectionRefusedConnector("bad1".into())),
         Arc::new(ConnectionRefusedConnector("bad2".into())),
-    ]);
+    ]) };
     let (status, _) = query(app, "SELECT host, status FROM bad1.logs UNION ALL SELECT host, status FROM bad2.logs").await;
     assert_ne!(status, StatusCode::OK, "all-fail should not return 200");
 }
 
 #[tokio::test]
 async fn test_join_one_side_refused() {
-    let _lock = CHAOS_LOCK.lock().unwrap();
-    let app = build_app(vec![
+    let app = { let _lock = CHAOS_LOCK.lock().unwrap(); build_app(vec![
         Arc::new(HealthyConnector("good".into())),
         Arc::new(ConnectionRefusedConnector("bad".into())),
-    ]);
+    ]) };
     let (status, json) = query(app, "SELECT * FROM good.logs JOIN bad.logs ON good.logs.host = bad.logs.host").await;
     // JOIN requires both sides — should fail gracefully
     assert!(json["error"].is_string() || status != StatusCode::OK);
@@ -193,8 +189,7 @@ async fn test_join_one_side_refused() {
 
 #[tokio::test]
 async fn test_hanging_connector_times_out() {
-    let _lock = CHAOS_LOCK.lock().unwrap();
-    let app = build_app(vec![Arc::new(HangingConnector("slow".into()))]);
+    let app = { let _lock = CHAOS_LOCK.lock().unwrap(); build_app(vec![Arc::new(HangingConnector("slow".into()))]) };
     let body = serde_json::json!({"query": "SELECT * FROM slow.logs", "format": "sql", "timeout_ms": 2000});
     let req = Request::builder()
         .method("POST").uri("/api/fuse/query")
@@ -212,12 +207,10 @@ async fn test_hanging_connector_times_out() {
 
 #[tokio::test]
 async fn test_healthy_source_unaffected_by_other_failures() {
-    let _lock = CHAOS_LOCK.lock().unwrap();
-    // Query only the healthy source — should work fine regardless of broken connectors registered
-    let app = build_app(vec![
+    let app = { let _lock = CHAOS_LOCK.lock().unwrap(); build_app(vec![
         Arc::new(HealthyConnector("good".into())),
         Arc::new(ConnectionRefusedConnector("bad".into())),
-    ]);
+    ]) };
     let (status, json) = query(app, "SELECT * FROM good.logs").await;
     assert_eq!(status, StatusCode::OK);
     assert!(!json["rows"].as_array().unwrap().is_empty());
@@ -225,11 +218,10 @@ async fn test_healthy_source_unaffected_by_other_failures() {
 
 #[tokio::test]
 async fn test_health_endpoint_reports_unhealthy_connector() {
-    let _lock = CHAOS_LOCK.lock().unwrap();
-    let app = build_app(vec![
+    let app = { let _lock = CHAOS_LOCK.lock().unwrap(); build_app(vec![
         Arc::new(HealthyConnector("good".into())),
         Arc::new(ConnectionRefusedConnector("bad".into())),
-    ]);
+    ]) };
     let req = Request::builder().uri("/api/fuse/health").body(Body::empty()).unwrap();
     let resp = app.oneshot(req).await.unwrap();
     let bytes = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
