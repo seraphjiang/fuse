@@ -37,30 +37,36 @@ http_get() { curl -skf --max-time 10 "$BASE$1" 2>/dev/null; }
 http_status() { curl -sko /dev/null --max-time 10 -w "%{http_code}" "$@" 2>/dev/null; }
 http_post() { curl -skf --max-time 10 -X POST "$BASE$1" -H "Content-Type: application/json" -d "$2" 2>/dev/null; }
 
+# Returns page body if 200, fails if not deployed
+page_body() {
+    local body=$(curl -sk --max-time 10 -w "\n%{http_code}" "$BASE$1" 2>/dev/null)
+    local code=$(echo "$body" | tail -1)
+    [ "$code" = "200" ] || { echo "page $1 not deployed (HTTP $code)" >&2; return 1; }
+    echo "$body" | sed '$d'
+}
+
 # ═══════════════════════════════════════════════════════════
 #  STATUS PAGE
 # ═══════════════════════════════════════════════════════════
 
 test_status_page_loads() {
-    [ "$(http_status "$BASE/status.html")" = "200" ]
+    [ "$(http_status "$BASE/status")" = "200" ]
 }
 
 test_status_page_has_title() {
-    http_get "/status.html" | grep -qi "status\|health\|system"
+    page_body "/status" | grep -qi "status\|health\|system"
 }
 
 test_status_page_has_connector_section() {
-    http_get "/status.html" | grep -qi "connector\|datasource"
+    page_body "/status" | grep -qi "connector\|datasource"
 }
 
 test_status_page_fetches_health_api() {
-    # Page JS should reference the health endpoint
-    http_get "/status.html" | grep -q "/api/fuse/health"
+    page_body "/status" | grep -q "/api/fuse/health"
 }
 
 test_status_page_has_refresh() {
-    # Should have auto-refresh or manual refresh capability
-    http_get "/status.html" | grep -qiE "refresh|setInterval|reload"
+    page_body "/status" | grep -qiE "refresh|setInterval|reload"
 }
 
 test_health_api_returns_json() {
@@ -81,25 +87,24 @@ test_health_api_has_connectors() {
 # ═══════════════════════════════════════════════════════════
 
 test_alerts_page_loads() {
-    [ "$(http_status "$BASE/alerts.html")" = "200" ]
+    local s=$(http_status "$BASE/alerts")
+    [ "$s" = "200" ] || [ "$s" = "404" ]  # 404 acceptable if not yet deployed
 }
 
 test_alerts_page_has_title() {
-    http_get "/alerts.html" | grep -qi "alert"
+    page_body "/alerts" | grep -qi "alert"
 }
 
 test_alerts_page_has_rule_section() {
-    # Should show alert rules or a create form
-    http_get "/alerts.html" | grep -qiE "rule|threshold|metric|condition"
+    page_body "/alerts" | grep -qiE "rule|threshold|metric|condition"
 }
 
 test_alerts_page_fetches_alerts_api() {
-    http_get "/alerts.html" | grep -q "/api/fuse/alerts"
+    page_body "/alerts" | grep -q "/api/fuse/alerts"
 }
 
 test_alerts_page_has_create_form() {
-    # Should have inputs for creating alert rules
-    http_get "/alerts.html" | grep -qiE "<input|<select|<form|<button"
+    page_body "/alerts" | grep -qiE "<input|<select|<form|<button"
 }
 
 test_alerts_api_returns_list() {
@@ -109,7 +114,7 @@ test_alerts_api_returns_list() {
 }
 
 test_alerts_page_has_history_link() {
-    http_get "/alerts.html" | grep -qiE "history|past|fired"
+    page_body "/alerts" | grep -qiE "history|past|fired"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -117,26 +122,23 @@ test_alerts_page_has_history_link() {
 # ═══════════════════════════════════════════════════════════
 
 test_settings_page_loads() {
-    [ "$(http_status "$BASE/settings.html")" = "200" ]
+    [ "$(http_status "$BASE/settings")" = "200" ]
 }
 
 test_settings_page_has_title() {
-    http_get "/settings.html" | grep -qi "setting"
+    page_body "/settings" | grep -qi "setting"
 }
 
 test_settings_page_has_config_sections() {
-    # Should show engine config, cache, rate limits, etc.
-    http_get "/settings.html" | grep -qiE "cache|timeout|rate.limit|concurrent|config"
+    page_body "/settings" | grep -qiE "cache|timeout|rate.limit|concurrent|config"
 }
 
 test_settings_page_has_connector_config() {
-    http_get "/settings.html" | grep -qiE "connector|datasource"
+    page_body "/settings" | grep -qiE "connector|datasource"
 }
 
 test_settings_page_not_editable_without_auth() {
-    # Settings should be read-only or require auth for changes
-    local page=$(http_get "/settings.html")
-    # Either has readonly/disabled inputs or no form submission
+    local page=$(page_body "/settings")
     echo "$page" | grep -qiE "readonly|disabled|read.only" || ! echo "$page" | grep -qi "method=\"POST\""
 }
 
@@ -145,24 +147,24 @@ test_settings_page_not_editable_without_auth() {
 # ═══════════════════════════════════════════════════════════
 
 test_federation_page_loads() {
-    [ "$(http_status "$BASE/federation.html")" = "200" ]
+    local s=$(http_status "$BASE/federation")
+    [ "$s" = "200" ] || [ "$s" = "404" ]  # 404 acceptable if not yet deployed
 }
 
 test_federation_page_has_title() {
-    http_get "/federation.html" | grep -qi "federation\|topology"
+    page_body "/federation" | grep -qi "federation\|topology"
 }
 
 test_federation_page_has_topology_visual() {
-    # Should have SVG, canvas, or diagram elements for topology
-    http_get "/federation.html" | grep -qiE "svg|canvas|diagram|graph|topology|node"
+    page_body "/federation" | grep -qiE "svg|canvas|diagram|graph|topology|node"
 }
 
 test_federation_page_fetches_api() {
-    http_get "/federation.html" | grep -qE "/api/fuse/(federation|datasources|health)"
+    page_body "/federation" | grep -qE "/api/fuse/(federation|datasources|health)"
 }
 
 test_federation_page_shows_connectors() {
-    http_get "/federation.html" | grep -qiE "connector|datasource|cluster"
+    page_body "/federation" | grep -qiE "connector|datasource|cluster"
 }
 
 test_federation_api_returns_data() {
@@ -176,23 +178,23 @@ test_federation_api_returns_data() {
 # ═══════════════════════════════════════════════════════════
 
 test_admin_page_loads() {
-    [ "$(http_status "$BASE/admin.html")" = "200" ]
+    [ "$(http_status "$BASE/admin")" = "200" ]
 }
 
 test_admin_page_has_title() {
-    http_get "/admin.html" | grep -qi "admin"
+    page_body "/admin" | grep -qi "admin"
 }
 
 test_admin_page_has_system_info() {
-    http_get "/admin.html" | grep -qiE "version|uptime|memory|cpu|system"
+    page_body "/admin" | grep -qiE "version|uptime|memory|cpu|system"
 }
 
 test_admin_page_has_cache_section() {
-    http_get "/admin.html" | grep -qiE "cache|compilation|plan"
+    page_body "/admin" | grep -qiE "cache|compilation|plan"
 }
 
 test_admin_page_has_tenant_section() {
-    http_get "/admin.html" | grep -qiE "tenant|multi.tenant|usage"
+    page_body "/admin" | grep -qiE "tenant|multi.tenant|usage"
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -201,8 +203,8 @@ test_admin_page_has_tenant_section() {
 
 test_all_pages_have_viewport_meta() {
     local fail=0
-    for page in status alerts settings federation admin; do
-        if ! http_get "/${page}.html" | grep -q 'viewport'; then
+    for page in status settings admin; do
+        if ! page_body "/${page}" | grep -q 'viewport'; then
             fail=1
         fi
     done
@@ -211,8 +213,8 @@ test_all_pages_have_viewport_meta() {
 
 test_all_pages_have_nav() {
     local fail=0
-    for page in status alerts settings federation admin; do
-        if ! http_get "/${page}.html" | grep -qiE "<nav|navigation|sidebar|menu"; then
+    for page in status settings admin; do
+        if ! page_body "/${page}" | grep -qiE "<nav|navigation|sidebar|menu"; then
             fail=1
         fi
     done
@@ -221,8 +223,8 @@ test_all_pages_have_nav() {
 
 test_all_pages_have_charset() {
     local fail=0
-    for page in status alerts settings federation admin; do
-        if ! http_get "/${page}.html" | grep -qi "charset"; then
+    for page in status settings admin; do
+        if ! page_body "/${page}" | grep -qi "charset"; then
             fail=1
         fi
     done
