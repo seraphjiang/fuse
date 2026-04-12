@@ -28,7 +28,7 @@ pub fn estimate_cost(connector_type: &str, datasource: &str, estimated_rows: u64
     let (cost, breakdown) = match connector_type {
         "athena" => {
             let gb = estimated_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
-            let cost = gb * 5.0; // $5/TB = $0.005/GB
+            let cost = gb * 0.005; // $5/TB = $0.005/GB
             (cost, format!("{:.2} GB scanned × $5/TB", gb))
         }
         "bigquery" => {
@@ -89,11 +89,8 @@ mod tests {
     #[test]
     fn test_athena_cost() {
         let e = estimate_cost("athena", "my_athena", 1000, 1_073_741_824); // 1GB
-        assert!((e.estimated_cost_usd - 5.0).abs() < 0.01); // $5/TB × 1GB ≈ $0.005... wait, $5/TB = $0.00488/GB
-        // Actually: 1GB × $5/TB = 1GB × $0.00488 ≈ $0.005. Let me recalc.
-        // $5/TB means $5 per 1024GB. So 1GB = $5/1024 ≈ $0.00488
-        // But our formula: gb * 5.0 = 1.0 * 5.0 = $5.0. That's $5/GB not $5/TB.
-        // Fix: should be gb * 0.005 for $5/TB
+        // $5/TB = $0.005/GB → 1GB ≈ $0.005
+        assert!((e.estimated_cost_usd - 0.005).abs() < 0.001);
     }
 
     #[test]
@@ -147,5 +144,58 @@ mod tests {
         let e = estimate_cost("snowflake", "sf", 100_000, 0);
         assert!(e.estimated_cost_usd > 0.0);
         assert!(e.cost_breakdown.contains("credit"));
+    }
+
+    #[test]
+    fn test_athena_cost_is_5_per_tb_not_per_gb() {
+        // 1TB scanned should cost exactly $5
+        let e = estimate_cost("athena", "a", 0, 1_099_511_627_776); // 1TB
+        assert!((e.estimated_cost_usd - 5.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_zero_bytes_zero_cost() {
+        let e = estimate_cost("athena", "a", 0, 0);
+        assert_eq!(e.estimated_cost_usd, 0.0);
+    }
+
+    #[test]
+    fn test_cloudwatch_cost() {
+        let e = estimate_cost("cloudwatch", "cw", 0, 1_073_741_824); // 1GB
+        assert!((e.estimated_cost_usd - 0.005).abs() < 0.001);
+        assert!(e.cost_breakdown.contains("GB scanned"));
+    }
+
+    #[test]
+    fn test_timestream_cost() {
+        let e = estimate_cost("timestream", "ts", 0, 1_073_741_824); // 1GB
+        assert!((e.estimated_cost_usd - 0.01).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_query_cost_all_free_returns_zero() {
+        let est = estimate_query_cost(&[
+            ("pg", "postgres", 1000, 1000),
+            ("redis", "redis", 500, 500),
+        ]);
+        assert_eq!(est.total_cost_usd, 0.0);
+        assert_eq!(est.per_datasource.len(), 2);
+    }
+
+    #[test]
+    fn test_cost_estimate_serializes() {
+        let e = estimate_cost("athena", "a", 100, 1_000_000);
+        let json = serde_json::to_value(&e).unwrap();
+        assert!(json["estimated_cost_usd"].is_number());
+        assert!(json["cost_breakdown"].is_string());
+        assert_eq!(json["connector_type"], "athena");
+    }
+
+    #[test]
+    fn test_query_cost_estimate_serializes() {
+        let est = estimate_query_cost(&[("a", "athena", 100, 1_000_000)]);
+        let json = serde_json::to_value(&est).unwrap();
+        assert!(json["total_cost_usd"].is_number());
+        assert!(json["per_datasource"].is_array());
     }
 }

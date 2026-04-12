@@ -2829,6 +2829,8 @@ pub async fn lineage_handler(
     Json(req): Json<crate::lineage::LineageRequest>,
 ) -> impl IntoResponse {
     let graph = crate::lineage::extract_lineage(&req.query, &req.format);
+    Json(graph)
+}
 
 // ── Query Replay handlers (#1812) ──
 
@@ -2850,8 +2852,6 @@ pub async fn record_query(
 pub async fn clear_recordings(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     state.query_recorder.clear();
     StatusCode::NO_CONTENT
-}
-    Json(graph)
 }
 
 // ── Saved query handlers ──
