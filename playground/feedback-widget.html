@@ -1,4 +1,5 @@
 <!-- Fuse Feedback Widget — draggable button, auto-screenshot, console capture -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 <style>
 #fb-btn{position:fixed;bottom:24px;right:24px;background:#238636;color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:20px;cursor:grab;box-shadow:0 4px 12px rgba(0,0,0,.4);z-index:9000;transition:box-shadow .2s;user-select:none;touch-action:none}
 #fb-btn:hover{box-shadow:0 6px 20px rgba(0,0,0,.6)}
@@ -109,32 +110,41 @@ function fbOpen(){
 
 function captureScreen(cb){
   try{
-    var c=document.createElement('canvas'),w=document.documentElement.scrollWidth,h=document.documentElement.scrollHeight;
-    // Limit size
-    if(w>1920)w=1920;if(h>4000)h=4000;
-    c.width=w;c.height=h;
-    // Try html2canvas
-    if(typeof html2canvas==='function'){
-      html2canvas(document.body,{useCORS:true,scale:0.5,width:w,height:h,windowWidth:w,windowHeight:h}).then(function(cv){
-        ss=cv.toDataURL('image/jpeg',0.6);
+    var w=Math.min(document.documentElement.scrollWidth,1920);
+    var h=Math.min(document.documentElement.scrollHeight,4000);
+    // Wait for html2canvas to load if needed
+    function doCapture(){
+      if(typeof html2canvas==='function'){
+        html2canvas(document.body,{useCORS:true,allowTaint:true,scale:window.devicePixelRatio>1?0.5:1,width:w,height:h,logging:false}).then(function(cv){
+          ss=cv.toDataURL('image/jpeg',0.7);
+          showSS();cb();
+        }).catch(function(e){console.warn('html2canvas failed:',e);ss=null;showSS();cb()});
+      }else{
+        // No html2canvas — capture page info as text screenshot
+        var c=document.createElement('canvas');c.width=480;c.height=320;
+        var ctx=c.getContext('2d');
+        ctx.fillStyle='#0d1117';ctx.fillRect(0,0,480,320);
+        ctx.fillStyle='#58a6ff';ctx.font='bold 14px sans-serif';
+        ctx.fillText('Fuse — '+document.title,16,30);
+        ctx.fillStyle='#8b949e';ctx.font='12px monospace';
+        ctx.fillText(location.pathname,16,50);
+        ctx.fillText(new Date().toLocaleString(),16,68);
+        ctx.fillText(innerWidth+'x'+innerHeight,16,86);
+        // Capture visible text
+        var main=document.querySelector('main');
+        if(main){
+          var lines=main.innerText.substring(0,500).split('\n').filter(function(l){return l.trim()});
+          ctx.fillStyle='#e1e4e8';ctx.font='11px monospace';
+          for(var i=0;i<Math.min(lines.length,12);i++){
+            ctx.fillText(lines[i].substring(0,60),16,110+i*16);
+          }
+        }
+        ss=c.toDataURL('image/jpeg',0.8);
         showSS();cb();
-      }).catch(function(){ss=null;showSS();cb()});
-      return;
+      }
     }
-    // Fallback: capture via SVG foreignObject
-    var clone=document.documentElement.outerHTML;
-    var svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+innerWidth+'" height="'+innerHeight+'"><foreignObject width="100%" height="100%"><body xmlns="http://www.w3.org/1999/xhtml" style="margin:0;font:12px sans-serif;color:#8b949e;background:#0d1117;padding:16px"><pre>'+esc(location.href)+'\n'+esc(document.title)+'\nCaptured: '+new Date().toLocaleString()+'\nSize: '+innerWidth+'x'+innerHeight+'</pre></body></foreignObject></svg>';
-    var blob=new Blob([svg],{type:'image/svg+xml'});
-    var url=URL.createObjectURL(blob);
-    var img=new Image();
-    img.onload=function(){
-      var ctx=c.getContext('2d');c.width=innerWidth;c.height=innerHeight;
-      ctx.drawImage(img,0,0);
-      ss=c.toDataURL('image/jpeg',0.6);
-      URL.revokeObjectURL(url);showSS();cb();
-    };
-    img.onerror=function(){ss=null;URL.revokeObjectURL(url);showSS();cb()};
-    img.src=url;
+    // Give html2canvas 500ms to load if deferred
+    if(typeof html2canvas!=='function'){setTimeout(doCapture,500)}else{doCapture()}
   }catch(e){ss=null;showSS();cb()}
 }
 
