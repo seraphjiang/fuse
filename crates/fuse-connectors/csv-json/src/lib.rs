@@ -19,7 +19,7 @@ use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Instant;
 
-use arrow::datatypes::Schema;
+use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use async_trait::async_trait;
 use aws_sdk_s3::Client as S3Client;
@@ -307,6 +307,7 @@ impl ConnectorFactory for CsvJsonConnectorFactory {
 #[allow(clippy::assertions_on_constants)]
 mod tests {
     use super::*;
+    use arrow::datatypes::{DataType, Field};
 
     #[test]
     fn test_format_detection_csv() {
