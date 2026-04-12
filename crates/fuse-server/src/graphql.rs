@@ -247,7 +247,7 @@ impl MutationRoot {
             "ppl" => crate::api::parse_ppl_sources(&query),
             _ => crate::api::parse_sql_sources(&query),
         }
-        .map_err(|e| async_graphql::Error::new(e))?;
+        .map_err(async_graphql::Error::new)?;
 
         if refs.is_empty() {
             return Err(async_graphql::Error::new(
@@ -261,7 +261,7 @@ impl MutationRoot {
                 async_graphql::Error::new(format!("datasource '{}' not found", ds_id))
             })?;
             let sq = crate::api::build_sub_query(&query, &format, table)
-                .map_err(|e| async_graphql::Error::new(e))?;
+                .map_err(async_graphql::Error::new)?;
             let batches = connector
                 .execute(&sq)
                 .await
@@ -414,6 +414,7 @@ mod tests {
             adaptive_parallelism: Arc::new(crate::adaptive_parallelism::AdaptiveParallelism::new()),
             query_recorder: Arc::new(crate::query_replay::QueryRecorder::new(1000)),
             compilation_cache: Arc::new(crate::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: Arc::new(crate::cdc::CdcTracker::new(1000)),
+            adaptive_cache: Arc::new(crate::adaptive_cache::AdaptiveCache::new(60, 3, 10000)),
         })
     }
 

@@ -46,12 +46,14 @@ impl PlanCache {
     /// Uses normalized key for case/whitespace-insensitive matching.
     pub fn get(&self, key: &str) -> Option<CachedPlan> {
         let norm = normalize_query(key);
-        let entries = self.entries.lock().unwrap();
+        let mut entries = self.entries.lock().unwrap();
         let plan = entries.get(&norm)?;
         if plan.created.elapsed() < self.ttl {
             self.hits.fetch_add(1, Ordering::Relaxed);
             Some(plan.clone())
         } else {
+            // Evict expired entry on read to reclaim memory
+            entries.remove(&norm);
             self.misses.fetch_add(1, Ordering::Relaxed);
             None
         }
@@ -254,11 +256,13 @@ impl ResultCache {
     }
 
     pub fn get(&self, key: &str) -> Option<CachedResult> {
-        let entries = self.entries.lock().unwrap();
+        let mut entries = self.entries.lock().unwrap();
         let cached = entries.get(key)?;
         if cached.created.elapsed() < self.ttl {
             Some(cached.clone())
         } else {
+            // Evict expired entry on read to reclaim memory
+            entries.remove(key);
             None
         }
     }
@@ -335,5 +339,48 @@ mod result_cache_tests {
         cache.insert("b".into(), serde_json::json!({}));
         cache.clear();
         assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn test_result_cache_expiry() {
+        let cache = ResultCache::new(0, 10); // 0s TTL
+        cache.insert("k".into(), serde_json::json!({"x": 1}));
+        std::thread::sleep(Duration::from_millis(10));
+        assert!(cache.get("k").is_none());
+    }
+
+    #[test]
+    fn test_result_cache_eviction_at_capacity() {
+        let cache = ResultCache::new(60, 2);
+        cache.insert("a".into(), serde_json::json!(1));
+        cache.insert("b".into(), serde_json::json!(2));
+        cache.insert("c".into(), serde_json::json!(3));
+        assert!(cache.len() <= 2);
+    }
+
+    #[test]
+    fn test_result_cache_preserves_json() {
+        let cache = ResultCache::new(60, 10);
+        let val = serde_json::json!({"rows": [1, 2, 3], "total": 3});
+        cache.insert("q".into(), val.clone());
+        let cached = cache.get("q").unwrap();
+        assert_eq!(cached.response_json, val);
+    }
+
+    #[test]
+    fn test_result_cache_expired_evicted_on_read() {
+        let cache = ResultCache::new(0, 10);
+        cache.insert("k".into(), serde_json::json!({}));
+        std::thread::sleep(Duration::from_millis(10));
+        cache.get("k"); // triggers eviction
+        assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn test_invalidate_nonexistent_datasource() {
+        let cache = ResultCache::new(60, 10);
+        cache.insert("sql:SELECT 1".into(), serde_json::json!({}));
+        cache.invalidate_by_datasource("nope");
+        assert_eq!(cache.len(), 1);
     }
 }
