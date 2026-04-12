@@ -50,19 +50,48 @@ impl RefreshScheduler {
                 debug!("Refreshing {} stale view(s): {:?}", stale.len(), stale);
 
                 for name in stale {
-                    let query = {
+                    let (query, is_incremental, watermark_col, last_watermark) = {
                         let Some(view_arc) = registry.get(&name) else { continue };
                         let view = view_arc.read().unwrap();
-                        view.def.query.clone()
+                        (
+                            view.def.query.clone(),
+                            view.is_incremental(),
+                            view.watermark_column().map(String::from),
+                            view.watermark.clone(),
+                        )
                     };
 
-                    match execute_fn(query).await {
+                    // Build incremental query if watermark exists
+                    let effective_query = if is_incremental {
+                        if let (Some(col), Some(wm)) = (&watermark_col, &last_watermark) {
+                            format!("{} WHERE {} > '{}'", query, col, wm)
+                        } else {
+                            query.clone() // first load — full query
+                        }
+                    } else {
+                        query.clone()
+                    };
+
+                    match execute_fn(effective_query).await {
                         Ok(batches) => {
                             let Some(view_arc) = registry.get(&name) else { continue };
                             let mut view = view_arc.write().unwrap();
                             let row_count: usize = batches.iter().map(|b| b.num_rows()).sum();
-                            view.set_results(batches);
-                            debug!("Refreshed view '{}': {} rows", name, row_count);
+                            if is_incremental && last_watermark.is_some() {
+                                // Extract new watermark from last batch
+                                let new_wm = extract_max_watermark(&batches, watermark_col.as_deref().unwrap_or(""));
+                                view.append_results(batches, new_wm);
+                                debug!("Incremental refresh view '{}': +{} rows", name, row_count);
+                            } else {
+                                let new_wm = if is_incremental {
+                                    extract_max_watermark(&batches, watermark_col.as_deref().unwrap_or(""))
+                                } else {
+                                    None
+                                };
+                                view.set_results(batches);
+                                if let Some(wm) = new_wm { view.watermark = Some(wm); }
+                                debug!("Full refresh view '{}': {} rows", name, row_count);
+                            }
                         }
                         Err(e) => {
                             let Some(view_arc) = registry.get(&name) else { continue };
@@ -88,6 +117,26 @@ impl Drop for RefreshScheduler {
     fn drop(&mut self) {
         self.stop();
     }
+}
+
+/// Extract the maximum value of a watermark column from batches (as string).
+fn extract_max_watermark(batches: &[arrow::record_batch::RecordBatch], column: &str) -> Option<String> {
+    use arrow::array::Array;
+    let mut max_val: Option<String> = None;
+    for batch in batches {
+        let idx = batch.schema().index_of(column).ok()?;
+        let col = batch.column(idx);
+        let arr = arrow::compute::cast(col, &arrow::datatypes::DataType::Utf8).ok()?;
+        let str_arr = arr.as_any().downcast_ref::<arrow::array::StringArray>()?;
+        for i in 0..str_arr.len() {
+            if str_arr.is_null(i) { continue; }
+            let v = str_arr.value(i);
+            if max_val.as_deref().map_or(true, |m| v > m) {
+                max_val = Some(v.to_string());
+            }
+        }
+    }
+    max_val
 }
 
 #[cfg(test)]

@@ -55,6 +55,7 @@ sha2 = { workspace = true }
 hmac = "0.12"
 url = "2"
 hex = { workspace = true }
+regex = "1"
 
 [dev-dependencies]
 fuse-connector-kafka = { path = "../fuse-connectors/kafka" }
