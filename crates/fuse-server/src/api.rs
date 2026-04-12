@@ -371,7 +371,7 @@ fn connector_error_status(msg: &str) -> StatusCode {
         StatusCode::REQUEST_TIMEOUT
     } else if lower.contains("exceeds") && lower.contains("limit") {
         StatusCode::PAYLOAD_TOO_LARGE
-    } else if lower.contains("permission") || lower.contains("unauthorized") || lower.contains("access denied") {
+    } else if lower.contains("permission") || lower.contains("unauthorized") || lower.contains("not authorized") || lower.contains("access denied") || lower.contains("accessdenied") {
         StatusCode::FORBIDDEN
     } else {
         StatusCode::INTERNAL_SERVER_ERROR
@@ -4507,6 +4507,8 @@ mod tests {
     fn test_connector_error_status_auth() {
         assert_eq!(connector_error_status("access denied for table"), StatusCode::FORBIDDEN);
         assert_eq!(connector_error_status("unauthorized"), StatusCode::FORBIDDEN);
+        assert_eq!(connector_error_status("not authorized to perform: dynamodb:DescribeTable"), StatusCode::FORBIDDEN);
+        assert_eq!(connector_error_status("AccessDeniedException"), StatusCode::FORBIDDEN);
     }
 
     #[test]
@@ -4978,6 +4980,9 @@ pub async fn chaos_enable_handler(
         crate::auth::Role::Admin,
         auth_identity.is_some(),
     ) { return resp.into_response(); }
+    if !crate::chaos::is_allowed() {
+        return error_json(StatusCode::FORBIDDEN, "chaos testing disabled — set FUSE_CHAOS_ALLOWED=1").into_response();
+    }
     crate::chaos::enable_with_config(&cfg);
     Json(serde_json::json!({
         "status": if cfg.enabled { "enabled" } else { "disabled" },
