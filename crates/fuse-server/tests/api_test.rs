@@ -4761,3 +4761,102 @@ async fn test_bind_positional_multi_param_injection() {
     );
     assert_eq!(result, "SELECT * FROM t WHERE a = 'safe' AND b = ''' OR 1=1 --'");
 }
+
+// ── Pool Stats Integration Tests ──
+
+#[tokio::test]
+async fn test_pool_stats_endpoint_returns_200() {
+    let app = build_test_app();
+    let resp = app
+        .oneshot(Request::builder().uri("/api/fuse/pool-stats").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(json["pool_stats"].is_array());
+}
+
+#[tokio::test]
+async fn test_stats_endpoint_includes_pool_stats() {
+    let app = build_test_app();
+    let resp = app
+        .oneshot(Request::builder().uri("/api/fuse/stats").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(json.get("pool_stats").is_some(), "stats response must include pool_stats");
+}
+
+#[tokio::test]
+async fn test_pool_stats_with_registered_connector() {
+    let registry = ConnectorRegistry::new();
+    registry.register(Arc::new(MockConnector::new("myds"))).unwrap();
+    let pool_tracker = std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new());
+    pool_tracker.register("myds", 16);
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(fuse_server::history::QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: pool_tracker.clone(),
+    });
+    let app = fuse_server::build_router(state);
+    let resp = app
+        .oneshot(Request::builder().uri("/api/fuse/pool-stats").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let stats = json["pool_stats"].as_array().unwrap();
+    assert_eq!(stats.len(), 1);
+    assert_eq!(stats[0]["connector_id"], "myds");
+    assert_eq!(stats[0]["max_size"], 16);
+    assert_eq!(stats[0]["active"], 0);
+    assert_eq!(stats[0]["idle"], 16);
+}
+
+#[test]
+fn test_pool_tracker_utilization_pct() {
+    let tracker = fuse_server::pool_stats::PoolStatsTracker::new();
+    tracker.register("ds", 4);
+    tracker.acquire("ds");
+    tracker.acquire("ds");
+    let s = tracker.get("ds").unwrap();
+    assert!((s.utilization_pct - 50.0).abs() < 0.01);
+    assert_eq!(s.active, 2);
+    assert_eq!(s.idle, 2);
+}
+
+#[test]
+fn test_pool_tracker_timeout_counter() {
+    let tracker = fuse_server::pool_stats::PoolStatsTracker::new();
+    tracker.register("ds", 8);
+    tracker.acquire("ds");
+    tracker.timeout("ds");
+    tracker.timeout("ds");
+    tracker.release("ds");
+    let s = tracker.get("ds").unwrap();
+    assert_eq!(s.total_timeouts, 2);
+    assert_eq!(s.total_acquired, 1);
+    assert_eq!(s.active, 0);
+}
+
+#[test]
+fn test_pool_tracker_snapshot_all_connectors() {
+    let tracker = fuse_server::pool_stats::PoolStatsTracker::new();
+    tracker.register("pg", 10);
+    tracker.register("es", 20);
+    tracker.register("ddb", 5);
+    tracker.acquire("pg");
+    tracker.acquire("es");
+    let snap = tracker.snapshot();
+    assert_eq!(snap.len(), 3);
+    assert!(snap.iter().any(|s| s.connector_id == "pg" && s.active == 1));
+    assert!(snap.iter().any(|s| s.connector_id == "es" && s.active == 1));
+    assert!(snap.iter().any(|s| s.connector_id == "ddb" && s.active == 0));
+}

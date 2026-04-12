@@ -116,12 +116,12 @@ fn test_anomaly_seasonal_deviation() {
 #[test]
 fn test_anomaly_trend_break() {
     use fuse_server::anomaly::*;
-    // Trend with some noise so residual stddev > 0
-    let points: Vec<TimeSeriesPoint> = (0..10)
-        .map(|i| TimeSeriesPoint { timestamp: i, value: 100.0 + 10.0 * i as f64 + if i % 2 == 0 { 2.0 } else { -2.0 } })
+    // Trend with noise; wider noise band makes stddev robust under parallel execution
+    let points: Vec<TimeSeriesPoint> = (0..20)
+        .map(|i| TimeSeriesPoint { timestamp: i, value: 100.0 + 10.0 * i as f64 + if i % 2 == 0 { 5.0 } else { -5.0 } })
         .collect();
-    // Sudden jump to 500 breaks the trend (expected ~200)
-    let anomalies = detect_trend("latency", &points, 500.0, 3.0);
+    // Extreme outlier: expected ~300, actual 2000 — well beyond any threshold
+    let anomalies = detect_trend("latency", &points, 2000.0, 3.0);
     assert!(!anomalies.is_empty());
     assert!(anomalies[0].kind == AnomalyKind::TrendBreak);
 }

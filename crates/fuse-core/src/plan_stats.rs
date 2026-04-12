@@ -17,6 +17,12 @@ pub struct PlanStats {
     nodes: Mutex<HashMap<String, NodeStats>>,
 }
 
+impl Default for PlanStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PlanStats {
     pub fn new() -> Self {
         Self { nodes: Mutex::new(HashMap::new()) }

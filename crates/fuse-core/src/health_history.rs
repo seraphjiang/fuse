@@ -35,7 +35,7 @@ impl HealthHistory {
             .unwrap_or_default()
             .as_secs();
         let mut map = self.entries.lock().unwrap();
-        let history = map.entry(connector.to_string()).or_insert_with(VecDeque::new);
+        let history = map.entry(connector.to_string()).or_default();
         if history.len() >= self.max_entries {
             history.pop_front();
         }

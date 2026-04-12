@@ -76,7 +76,7 @@ impl IcebergConnector {
     /// Fetch table metadata from the REST catalog and extract data file paths
     /// from the current snapshot's manifests.
     async fn resolve_data_files(&self, table: &str) -> Result<Vec<String>, ConnectorError> {
-        let resp = self.client.get(&self.table_url(table)).send().await
+        let resp = self.client.get(self.table_url(table)).send().await
             .map_err(|e| ConnectorError::Connection(e.to_string()))?;
         let meta: serde_json::Value = resp.json().await
             .map_err(|e| ConnectorError::query(e.to_string()))?;
@@ -181,7 +181,7 @@ impl FederatedConnector for IcebergConnector {
     }
 
     async fn health_check(&self) -> ConnectorHealth {
-        match self.client.get(&format!("{}/v1/config", self.catalog_url)).send().await {
+        match self.client.get(format!("{}/v1/config", self.catalog_url)).send().await {
             Ok(r) if r.status().is_success() => ConnectorHealth { status: HealthStatus::Healthy, latency_ms: None, message: None },
             Ok(r) => ConnectorHealth { status: HealthStatus::Degraded, latency_ms: None, message: Some(format!("HTTP {}", r.status())) },
             Err(e) => ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some(e.to_string()) },
@@ -190,7 +190,7 @@ impl FederatedConnector for IcebergConnector {
 
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
         debug!(catalog = %self.catalog_url, ns = %self.namespace, "listing Iceberg tables");
-        let resp = self.client.get(&self.tables_url()).send().await
+        let resp = self.client.get(self.tables_url()).send().await
             .map_err(|e| ConnectorError::Connection(e.to_string()))?;
         let json: serde_json::Value = resp.json().await
             .map_err(|e| ConnectorError::query(e.to_string()))?;
@@ -203,7 +203,7 @@ impl FederatedConnector for IcebergConnector {
     }
 
     async fn get_schema(&self, table: &str) -> Result<Schema, ConnectorError> {
-        let resp = self.client.get(&self.table_url(table)).send().await
+        let resp = self.client.get(self.table_url(table)).send().await
             .map_err(|e| ConnectorError::Connection(e.to_string()))?;
         let json: serde_json::Value = resp.json().await
             .map_err(|e| ConnectorError::query(e.to_string()))?;
@@ -231,7 +231,7 @@ impl FederatedConnector for IcebergConnector {
                     if total_rows >= lim { break; }
                 }
             }
-            if limit.map_or(false, |lim| total_rows >= lim) { break; }
+            if limit.is_some_and(|lim| total_rows >= lim) { break; }
         }
 
         // Trim last batch if over limit

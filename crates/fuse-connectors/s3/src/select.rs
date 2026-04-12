@@ -200,6 +200,6 @@ mod tests {
 
     #[test]
     fn test_scalar_to_sql_float() {
-        assert_eq!(scalar_to_sql(&ScalarValue::Float64(3.14)), "3.14");
+        assert_eq!(scalar_to_sql(&ScalarValue::Float64(2.72)), "2.72");
     }
 }

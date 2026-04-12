@@ -11,6 +11,12 @@ pub struct FactoryRegistry {
     factories: Mutex<HashMap<String, FactoryFn>>,
 }
 
+impl Default for FactoryRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FactoryRegistry {
     pub fn new() -> Self {
         Self { factories: Mutex::new(HashMap::new()) }

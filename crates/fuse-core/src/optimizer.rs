@@ -32,7 +32,7 @@ pub fn optimize(ops: Vec<LogicalOp>) -> Vec<LogicalOp> {
     let mut filters_placed = false;
     for op in &others {
         if !filters_placed && matches!(op, LogicalOp::Join { .. } | LogicalOp::Aggregate { .. }) {
-            result.extend(filters.drain(..));
+            result.append(&mut filters);
             filters_placed = true;
         }
         result.push(op.clone());

@@ -253,7 +253,7 @@ impl FederatedConnector for DeltaLakeConnector {
                     if total_rows >= lim { break; }
                 }
             }
-            if limit.map_or(false, |lim| total_rows >= lim) { break; }
+            if limit.is_some_and(|lim| total_rows >= lim) { break; }
         }
 
         // Trim last batch if over limit

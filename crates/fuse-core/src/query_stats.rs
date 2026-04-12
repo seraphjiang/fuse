@@ -20,6 +20,12 @@ pub struct StatsCollector {
     stats: Mutex<HashMap<String, QueryStats>>,
 }
 
+impl Default for StatsCollector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StatsCollector {
     pub fn new() -> Self {
         Self { stats: Mutex::new(HashMap::new()) }
