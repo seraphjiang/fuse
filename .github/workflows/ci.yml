@@ -257,3 +257,33 @@ jobs:
       - name: Stop server
         if: always()
         run: kill ${{ env.SERVER_PID }} 2>/dev/null || true
+
+  chaos-tests:
+    name: Chaos & Fuzz Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-chaos-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-chaos-
+
+      - name: Chaos tests
+        run: cargo test --test chaos_test -- --test-threads=1
+        timeout-minutes: 10
+
+      - name: SQL injection fuzz tests
+        run: cargo test --test sql_injection_fuzz_test
+        timeout-minutes: 10
