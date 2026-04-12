@@ -360,6 +360,20 @@ pub struct ErrorResponse {
     pub error: String,
 }
 
+/// Map a connector/engine error string to an appropriate HTTP status code.
+fn connector_error_status(msg: &str) -> StatusCode {
+    let lower = msg.to_lowercase();
+    if lower.contains("not found") || lower.contains("does not exist") {
+        StatusCode::NOT_FOUND
+    } else if lower.contains("timed out") {
+        StatusCode::GATEWAY_TIMEOUT
+    } else if lower.contains("permission") || lower.contains("unauthorized") || lower.contains("access denied") {
+        StatusCode::FORBIDDEN
+    } else {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
+
 fn error_json(status: StatusCode, msg: impl ToString) -> impl IntoResponse {
     let message = msg.to_string();
     // For server errors, log the full detail but return a sanitized message to the client.
@@ -733,7 +747,7 @@ pub async fn query_handler(
         };
         let batches = match src_connector.execute(&sq).await {
             Ok(b) => b,
-            Err(e) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+            Err(e) => { let msg = e.to_string(); return error_json(connector_error_status(&msg), msg).into_response(); },
         };
         // Write to destination connector
         let dest_connector = match state.registry.get(&dest_ds) {
@@ -747,7 +761,7 @@ pub async fn query_handler(
                 "rows_written": written,
                 "rows_selected": row_count,
             }))).into_response(),
-            Err(e) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+            Err(e) => { let msg = e.to_string(); return error_json(connector_error_status(&msg), msg).into_response(); },
         }
     }
 
@@ -768,7 +782,7 @@ pub async fn query_handler(
         };
         let batches = match src_connector.execute(&sq).await {
             Ok(b) => b,
-            Err(e) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+            Err(e) => { let msg = e.to_string(); return error_json(connector_error_status(&msg), msg).into_response(); },
         };
         let dest_connector = match state.registry.get(&dest_ds) {
             Some(c) => c,
@@ -781,7 +795,7 @@ pub async fn query_handler(
                 "rows_written": written,
                 "rows_selected": row_count,
             })).into_response(),
-            Err(e) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+            Err(e) => { let msg = e.to_string(); return error_json(connector_error_status(&msg), msg).into_response(); },
         }
     }
 
@@ -1225,6 +1239,7 @@ pub async fn query_handler(
             for ds in &fed.datasources {
                 state.adaptive_timeout.record(ds, elapsed_ms);
                 state.smart_router.record(ds, elapsed_ms);
+                state.health_history.record(ds, true, elapsed_ms, None);
             }
             state.audit_log.record(crate::audit::AuditEntry {
                 timestamp: crate::history::now_secs(),
@@ -1608,15 +1623,16 @@ async fn execute_join(
 
     let schema_a = batches_a[0].schema();
     let schema_b = batches_b[0].schema();
-    let join_key = find_join_key(&schema_a, &schema_b)
+    let (key_a, key_b) = parse_on_keys(query)
+        .or_else(|| find_join_key(&schema_a, &schema_b))
         .ok_or_else(|| "no common column found for JOIN key".to_string())?;
 
     // Build-side selection: smaller table as build (right) side for memory efficiency
-    let (left_batches, right_batches, left_ds, right_ds, left_rows, right_rows, left_lat, right_lat) =
+    let (left_batches, right_batches, left_key, right_key, left_ds, right_ds, left_rows, right_rows, left_lat, right_lat) =
         if rows_a >= rows_b {
-            (batches_a, batches_b, ds_a, ds_b, rows_a, rows_b, latency_a, latency_b)
+            (batches_a, batches_b, key_a, key_b, ds_a, ds_b, rows_a, rows_b, latency_a, latency_b)
         } else {
-            (batches_b, batches_a, ds_b, ds_a, rows_b, rows_a, latency_b, latency_a)
+            (batches_b, batches_a, key_b, key_a, ds_b, ds_a, rows_b, rows_a, latency_b, latency_a)
         };
 
     let tagged_left = add_datasource_column(&left_batches, left_ds);
@@ -1625,9 +1641,9 @@ async fn execute_join(
     let join_start = std::time::Instant::now();
     let joined = fuse_engine::hash_join(
         &tagged_left,
-        &join_key,
+        &left_key,
         &tagged_right,
-        &join_key,
+        &right_key,
         fuse_engine::JoinType::Inner,
     )
     .map_err(|e| e.to_string())?;
@@ -1766,13 +1782,45 @@ fn filter_time_window(
     }).collect()
 }
 
+
+/// Extract join column name from an explicit ON clause (e.g. "ON a.user_id = b.user_id").
+/// Returns (key_in_schema_a, key_in_schema_b) from an explicit ON clause.
+fn parse_on_keys(query: &str) -> Option<(String, String)> {
+    let lower = query.to_lowercase();
+    let on_pos = lower.find(" on ")?;
+    let after = query[on_pos + 4..].trim();
+    // Expect: alias.col = alias.col
+    let eq_pos = after.find('=')?;
+    let left_part = after[..eq_pos].trim();
+    let right_part = after[eq_pos + 1..].trim();
+    // Take first token from right (stop at whitespace)
+    let right_token = right_part.split(|c: char| c.is_whitespace()).next()?;
+    let left_col = left_part.rsplit('.').next()?.trim();
+    let right_col = right_token.rsplit('.').next()?.trim();
+    if left_col.is_empty() || right_col.is_empty() { return None; }
+    Some((left_col.to_string(), right_col.to_string()))
+}
+
+/// Find a common join key across two schemas. Returns (key_in_a, key_in_b).
+/// Case-insensitive fallback handles cross-connector naming differences
+/// (e.g. OpenSearch lowercase vs DynamoDB mixed case).
 fn find_join_key(
     a: &arrow::datatypes::SchemaRef,
     b: &arrow::datatypes::SchemaRef,
-) -> Option<String> {
+) -> Option<(String, String)> {
+    // Exact match first
     for field in a.fields() {
         if b.field_with_name(field.name()).is_ok() {
-            return Some(field.name().clone());
+            return Some((field.name().clone(), field.name().clone()));
+        }
+    }
+    // Case-insensitive fallback
+    for fa in a.fields() {
+        let lower = fa.name().to_lowercase();
+        for fb in b.fields() {
+            if fb.name().to_lowercase() == lower {
+                return Some((fa.name().clone(), fb.name().clone()));
+            }
         }
     }
     None
@@ -1819,7 +1867,7 @@ pub async fn get_schemas(
                 Json(schemas).into_response()
             }
         }
-        Err(e) => error_json(StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+        Err(e) => error_json(connector_error_status(&e), &e).into_response(),
     }
 }
 
@@ -1859,7 +1907,7 @@ pub async fn get_fields(
                 Json(fields).into_response()
             }
         }
-        Err(e) => error_json(StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+        Err(e) => error_json(connector_error_status(&e), &e).into_response(),
     }
 }
 
@@ -3027,7 +3075,7 @@ pub async fn rotate_key_handler(
     if let Err(resp) = crate::auth::require_role(
         auth_identity.as_ref().map(|e| &e.0),
         crate::auth::Role::Admin,
-        true,
+        auth_identity.is_some(),
     ) {
         return resp.into_response();
     }

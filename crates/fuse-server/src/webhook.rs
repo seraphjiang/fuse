@@ -391,7 +391,7 @@ async fn create_webhook(
     if let Err(resp) = crate::auth::require_role(
         auth_identity.as_ref().map(|e| &e.0),
         crate::auth::Role::Editor,
-        true,
+        auth_identity.is_some(),
     ) {
         return resp.into_response();
     }
@@ -447,7 +447,7 @@ async fn delete_webhook(
     if let Err(resp) = crate::auth::require_role(
         auth_identity.as_ref().map(|e| &e.0),
         crate::auth::Role::Editor,
-        true,
+        auth_identity.is_some(),
     ) {
         return resp.into_response();
     }
@@ -472,7 +472,7 @@ async fn test_webhook(
     if let Err(resp) = crate::auth::require_role(
         auth_identity.as_ref().map(|e| &e.0),
         crate::auth::Role::Editor,
-        true,
+        auth_identity.is_some(),
     ) {
         return resp.into_response();
     }

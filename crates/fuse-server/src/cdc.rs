@@ -155,7 +155,7 @@ pub async fn ingest_event(
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
     if let Err(resp) = crate::auth::require_role(
-        auth_identity.as_ref().map(|e| &e.0), crate::auth::Role::Editor, true,
+        auth_identity.as_ref().map(|e| &e.0), crate::auth::Role::Editor, auth_identity.is_some(),
     ) { return resp.into_response(); }
     let affected = state.cdc_tracker.record_change(event);
     axum::Json(serde_json::json!({
@@ -387,7 +387,7 @@ pub async fn ingest_events_batch(
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
     if let Err(resp) = crate::auth::require_role(
-        auth_identity.as_ref().map(|e| &e.0), crate::auth::Role::Editor, true,
+        auth_identity.as_ref().map(|e| &e.0), crate::auth::Role::Editor, auth_identity.is_some(),
     ) { return resp.into_response(); }
     let mut all_affected: HashSet<String> = HashSet::new();
     for event in events {
@@ -430,7 +430,7 @@ pub async fn trigger_refresh(
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
     if let Err(resp) = crate::auth::require_role(
-        auth_identity.as_ref().map(|e| &e.0), crate::auth::Role::Editor, true,
+        auth_identity.as_ref().map(|e| &e.0), crate::auth::Role::Editor, auth_identity.is_some(),
     ) { return resp.into_response(); }
     let pending = state.cdc_tracker.take_pending();
     let mut refreshed = Vec::new();
