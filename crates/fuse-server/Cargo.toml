@@ -21,6 +21,8 @@ fuse-connector-clickhouse = { path = "../fuse-connectors/clickhouse" }
 fuse-connector-cloudwatch = { path = "../fuse-connectors/cloudwatch" }
 fuse-connector-csv-json = { path = "../fuse-connectors/csv-json" }
 fuse-connector-redis = { path = "../fuse-connectors/redis" }
+fuse-connector-delta-lake = { path = "../fuse-connectors/delta-lake" }
+fuse-connector-iceberg = { path = "../fuse-connectors/iceberg" }
 redis = { workspace = true }
 wasmtime = { workspace = true }
 arrow = { workspace = true }
@@ -40,7 +42,7 @@ opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 opentelemetry-otlp = { workspace = true }
 tracing-opentelemetry = { workspace = true }
-tower-http = { version = "0.6", features = ["trace", "cors"] }
+tower-http = { version = "0.6", features = ["trace", "cors", "compression-full"] }
 tower = { version = "0.5", features = ["util", "limit"] }
 governor = { version = "0.6", features = ["std", "dashmap"] }
 async-graphql = "7"

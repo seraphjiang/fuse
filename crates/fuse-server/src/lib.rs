@@ -125,6 +125,7 @@ use axum::response::{Html, IntoResponse};
 use axum::routing::{get, post};
 use axum::Router;
 use tower_http::trace::TraceLayer;
+use tower_http::compression::CompressionLayer;
 use tracing::Level;
 
 use api::AppState;
@@ -326,6 +327,7 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/api/fuse/replay/recordings", get(api::list_recordings).delete(api::clear_recordings))
         .route("/api/fuse/replay/record", post(api::record_query))
         .route("/api/fuse/graphql", get(graphql::graphiql_handler).post(graphql::graphql_handler))
+        .route("/api/fuse/graphql/ws", get(graphql::graphql_ws_handler))
         .route("/metrics", get(metrics::metrics_handler))
         // OTLP ingestion routes — active when otel connector is configured
         .nest("/v1", build_otel_routes(state.clone()))
@@ -342,6 +344,7 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .layer(TraceLayer::new_for_http()
             .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(Level::INFO))
             .on_response(tower_http::trace::DefaultOnResponse::new().level(Level::INFO)))
+        .layer(CompressionLayer::new())
         .layer(middleware::from_fn(security_headers::security_headers_middleware))
         .layer(DefaultBodyLimit::max(10 * 1024 * 1024)) // 10MB request body limit
         .with_state(state)
