@@ -1395,6 +1395,10 @@ async fn execute_single(
         }
     }
     let start = std::time::Instant::now();
+    crate::chaos::maybe_delay(ds_id).await;
+    if let Some(err) = crate::chaos::maybe_fail(ds_id) {
+        return Err(err);
+    }
     state.pool_tracker.acquire(ds_id);
     let result = connector.execute(&sub_query).await;
     state.pool_tracker.release(ds_id);
@@ -1579,6 +1583,15 @@ async fn execute_join(
     let start_a = std::time::Instant::now();
     let start_b = start_a;
     let per_conn_timeout = std::time::Duration::from_secs(25);
+    // Chaos injection for JOIN datasources
+    crate::chaos::maybe_delay(ds_a).await;
+    crate::chaos::maybe_delay(ds_b).await;
+    if let Some(err) = crate::chaos::maybe_fail(ds_a) {
+        return Err(err);
+    }
+    if let Some(err) = crate::chaos::maybe_fail(ds_b) {
+        return Err(err);
+    }
     state.pool_tracker.acquire(ds_a);
     state.pool_tracker.acquire(ds_b);
     let (res_a, res_b) = tokio::join!(
