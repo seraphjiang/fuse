@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Schema discovery cache — prevents repeated expensive schema lookups.
-//! Caches discover_schemas() and get_schema() results with a configurable TTL.
 
 use std::collections::HashMap;
 use std::sync::RwLock;
@@ -35,8 +34,7 @@ impl SchemaCache {
     }
 
     pub fn set(&self, key: String, value: serde_json::Value) {
-        let mut entries = self.entries.write().unwrap();
-        entries.insert(key, CacheEntry { value, inserted: Instant::now() });
+        self.entries.write().unwrap().insert(key, CacheEntry { value, inserted: Instant::now() });
     }
 
     pub fn invalidate(&self, key: &str) {
@@ -71,5 +69,23 @@ mod tests {
         cache.set("key".into(), serde_json::json!(1));
         cache.invalidate("key");
         assert!(cache.get("key").is_none());
+    }
+
+    #[test]
+    fn test_cache_overwrite() {
+        let cache = SchemaCache::new(60);
+        cache.set("k".into(), serde_json::json!(1));
+        cache.set("k".into(), serde_json::json!(2));
+        assert_eq!(cache.get("k").unwrap(), serde_json::json!(2));
+    }
+
+    #[test]
+    fn test_cache_clear() {
+        let cache = SchemaCache::new(60);
+        cache.set("a".into(), serde_json::json!(1));
+        cache.set("b".into(), serde_json::json!(2));
+        cache.clear();
+        assert!(cache.get("a").is_none());
+        assert!(cache.get("b").is_none());
     }
 }
