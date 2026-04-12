@@ -83,6 +83,7 @@ pub mod rate_limit;
 pub mod rate_monitor;pub mod redis_cache;
 pub mod refresh_scheduler;
 pub mod request_id;
+pub mod request_signing;
 pub mod renamer;
 pub mod reorder;
 pub mod response_builder;
@@ -116,6 +117,7 @@ pub mod timeout_tracker;
 pub mod union_typed;
 pub mod validate;
 pub mod tracing_ctx;
+pub mod api_versioning;
 
 use std::sync::Arc;
 
@@ -331,6 +333,8 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/api/fuse/graphql", get(graphql::graphiql_handler).post(graphql::graphql_handler))
         .route("/api/fuse/graphql/ws", get(graphql::graphql_ws_handler))
         .route("/metrics", get(metrics::metrics_handler))
+        .route("/api/versions", get(api_versioning::versions_handler))
+        .merge(api_versioning::versioned_api_routes(state.clone()))
         // OTLP ingestion routes — active when otel connector is configured
         .nest("/v1", build_otel_routes(state.clone()))
         // Alert rules CRUD — nested with AlertMonitor state
@@ -339,15 +343,18 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .nest("/api/fuse/webhooks", webhook::webhook_routes())
         // CDC — change data capture for materialized view refresh
         .nest("/api/fuse/cdc", cdc::cdc_routes())
+        // Versioned API routes — /api/v1/fuse/* and /api/v2/fuse/*
         .layer(middleware::from_fn(rate_limit::rate_limit_middleware))
         .layer(axum::Extension(rl))
         .layer(middleware::from_fn(auth::auth_middleware))
+        .layer(middleware::from_fn(request_signing::signing_middleware))
         .layer(axum::Extension(auth::AuthState::default()))
         .layer(TraceLayer::new_for_http()
             .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(Level::INFO))
             .on_response(tower_http::trace::DefaultOnResponse::new().level(Level::INFO)))
         .layer(CompressionLayer::new())
         .layer(middleware::from_fn(security_headers::security_headers_middleware))
+        .layer(middleware::from_fn(api_versioning::version_header_middleware))
         .layer(DefaultBodyLimit::max(10 * 1024 * 1024)) // 10MB request body limit
         .with_state(state)
 }
