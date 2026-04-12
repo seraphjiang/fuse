@@ -1,262 +1,236 @@
-<!-- Fuse Feedback Widget — include on any page -->
+<!-- Fuse Feedback Widget — draggable button, auto-screenshot, console capture -->
 <style>
-#fb-btn{position:fixed;bottom:24px;right:24px;background:#238636;color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:20px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.4);z-index:300;transition:transform .2s}
-#fb-btn:hover{transform:scale(1.1)}
-#fb-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:400}
-#fb-modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:520px;max-width:95vw;max-height:90vh;background:#161b22;border:1px solid #30363d;border-radius:12px;box-shadow:0 16px 48px rgba(0,0,0,.5);z-index:401;overflow-y:auto}
-#fb-modal .fb-header{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid #21262d}
-#fb-modal .fb-header h3{font-size:15px;color:#58a6ff;margin:0}
-#fb-modal .fb-close{background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer}
-#fb-modal .fb-body{padding:16px}
-.fb-row{margin-bottom:12px}
-.fb-row label{display:block;font-size:12px;color:#8b949e;margin-bottom:4px}
-.fb-row select,.fb-row input,.fb-row textarea{width:100%;background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:13px;font-family:inherit}
-.fb-row textarea{min-height:80px;resize:vertical}
-.fb-row select:focus,.fb-row input:focus,.fb-row textarea:focus{outline:none;border-color:#58a6ff}
-.fb-submit{background:#238636;color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:13px;font-weight:600;cursor:pointer;width:100%}
-.fb-submit:hover{background:#2ea043}
-.fb-screenshot-preview{max-width:100%;max-height:150px;border:1px solid #30363d;border-radius:6px;margin-top:6px;cursor:pointer}
-.fb-screenshot-preview:hover{border-color:#58a6ff}
-.fb-auto-info{background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:8px 10px;font-size:11px;color:#8b949e;font-family:"SF Mono",Consolas,monospace;max-height:100px;overflow:auto;white-space:pre-wrap}
-.fb-section{font-size:11px;color:#484f58;text-transform:uppercase;font-weight:600;margin:16px 0 6px;letter-spacing:.5px}
-.fb-errors{color:#f85149}
-.fb-success{text-align:center;padding:32px;color:#3fb950;font-size:15px}
-.fb-history{margin-top:12px;border-top:1px solid #21262d;padding-top:12px}
-.fb-history h4{font-size:11px;color:#484f58;text-transform:uppercase;margin-bottom:6px}
-.fb-entry{padding:6px 0;border-bottom:1px solid #21262d;font-size:11px;color:#8b949e}
-.fb-entry:last-child{border-bottom:none}
-.fb-cat{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600;margin-right:4px}
-.fb-cat-bug{background:#3a1a1a;color:#f85149}
-.fb-cat-feature{background:#1f3a5f;color:#58a6ff}
-.fb-cat-general{background:#1f2d1f;color:#3fb950}
-.fb-screenshot-btn{background:#21262d;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;width:100%}
-.fb-screenshot-btn:hover{background:#30363d}
+#fb-btn{position:fixed;bottom:24px;right:24px;background:#238636;color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:20px;cursor:grab;box-shadow:0 4px 12px rgba(0,0,0,.4);z-index:9000;transition:box-shadow .2s;user-select:none;touch-action:none}
+#fb-btn:hover{box-shadow:0 6px 20px rgba(0,0,0,.6)}
+#fb-btn:active{cursor:grabbing}
+#fb-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9001}
+#fb-modal{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:520px;max-width:95vw;max-height:90vh;background:#161b22;border:1px solid #30363d;border-radius:12px;box-shadow:0 16px 48px rgba(0,0,0,.5);z-index:9002;overflow-y:auto}
+.fb-hdr{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid #21262d}
+.fb-hdr h3{font-size:15px;color:#58a6ff;margin:0}
+.fb-x{background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer}
+.fb-bd{padding:16px}
+.fb-r{margin-bottom:12px}
+.fb-r label{display:block;font-size:12px;color:#8b949e;margin-bottom:4px}
+.fb-r select,.fb-r input,.fb-r textarea{width:100%;background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:13px;font-family:inherit;box-sizing:border-box}
+.fb-r textarea{min-height:80px;resize:vertical}
+.fb-r select:focus,.fb-r input:focus,.fb-r textarea:focus{outline:none;border-color:#58a6ff}
+.fb-go{background:#238636;color:#fff;border:none;border-radius:6px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;width:100%;margin-top:4px}
+.fb-go:hover{background:#2ea043}
+.fb-sec{font-size:11px;color:#484f58;text-transform:uppercase;font-weight:600;margin:14px 0 6px;letter-spacing:.5px}
+.fb-info{background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:8px 10px;font-size:11px;color:#8b949e;font-family:"SF Mono",Consolas,monospace;max-height:100px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+.fb-err{color:#f85149}
+.fb-img{max-width:100%;max-height:140px;border:1px solid #30363d;border-radius:6px;margin-top:6px;cursor:pointer}
+.fb-img:hover{border-color:#58a6ff}
+.fb-ok{text-align:center;padding:32px;color:#3fb950;font-size:15px}
+.fb-hist{margin-top:12px;border-top:1px solid #21262d;padding-top:12px}
+.fb-hist h4{font-size:11px;color:#484f58;text-transform:uppercase;margin-bottom:6px}
+.fb-ent{padding:6px 0;border-bottom:1px solid #21262d;font-size:11px;color:#8b949e}
+.fb-tag{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600;margin-right:4px}
+.fb-tag-bug{background:#3a1a1a;color:#f85149}
+.fb-tag-feature{background:#1f3a5f;color:#58a6ff}
+.fb-tag-general{background:#1f2d1f;color:#3fb950}
 body.light #fb-modal{background:#fff;border-color:#d1d9e0}
-body.light .fb-row select,body.light .fb-row input,body.light .fb-row textarea{background:#fff;color:#1f2328;border-color:#d1d9e0}
-body.light .fb-auto-info{background:#f6f8fa;border-color:#d1d9e0;color:#656d76}
+body.light .fb-r select,body.light .fb-r input,body.light .fb-r textarea{background:#fff;color:#1f2328;border-color:#d1d9e0}
+body.light .fb-info{background:#f6f8fa;border-color:#d1d9e0;color:#656d76}
 </style>
 
-<button id="fb-btn" onclick="fbOpen()" title="Send Feedback">💬</button>
-
-<div id="fb-overlay" onclick="fbClose()"></div>
-<div id="fb-modal" style="display:none">
-  <div class="fb-header">
-    <h3>💬 Submit Feedback</h3>
-    <button class="fb-close" onclick="fbClose()">✕</button>
-  </div>
-  <div class="fb-body" id="fb-body">
-    <div class="fb-row">
-      <label>Type</label>
-      <select id="fb-type">
-        <option value="bug">🐛 Bug Report</option>
-        <option value="feature">✨ Feature Request</option>
-        <option value="general">💬 General Feedback</option>
-      </select>
-    </div>
-    <div class="fb-row">
-      <label>Title</label>
-      <input id="fb-title" placeholder="Brief summary of your feedback">
-    </div>
-    <div class="fb-row">
-      <label>Description</label>
-      <textarea id="fb-desc" placeholder="Describe the issue, feature, or feedback in detail…"></textarea>
-    </div>
-
-    <div class="fb-section">📸 Screenshot</div>
-    <div class="fb-row">
-      <button class="fb-screenshot-btn" onclick="fbCapture()">📸 Capture Screenshot</button>
-      <div id="fb-screenshot-container"></div>
-    </div>
-
-    <div class="fb-section">🔍 Auto-collected Info</div>
-    <div class="fb-auto-info" id="fb-auto-info">Collecting...</div>
-
-    <div class="fb-section" id="fb-errors-label" style="display:none">⚠️ Console Errors</div>
-    <div class="fb-auto-info fb-errors" id="fb-errors" style="display:none"></div>
-
-    <div style="margin-top:16px">
-      <button class="fb-submit" onclick="fbSubmit()">Submit Feedback</button>
-    </div>
-
-    <div class="fb-history" id="fb-history"></div>
+<button id="fb-btn" title="Send Feedback">💬</button>
+<div id="fb-overlay"></div>
+<div id="fb-modal">
+  <div class="fb-hdr"><h3>💬 Submit Feedback</h3><button class="fb-x" id="fb-close">✕</button></div>
+  <div class="fb-bd" id="fb-bd">
+    <div class="fb-r"><label>Type</label><select id="fb-type"><option value="bug">🐛 Bug Report</option><option value="feature">✨ Feature Request</option><option value="general">💬 General Feedback</option></select></div>
+    <div class="fb-r"><label>Title</label><input id="fb-title" placeholder="Brief summary"></div>
+    <div class="fb-r"><label>Description</label><textarea id="fb-desc" placeholder="Details…"></textarea></div>
+    <div class="fb-sec">📸 Screenshot (auto-captured)</div>
+    <div id="fb-ss-box"><span style="font-size:11px;color:#8b949e">Capturing…</span></div>
+    <div class="fb-sec">🔍 Page Context</div>
+    <div class="fb-info" id="fb-ctx">Collecting…</div>
+    <div class="fb-sec" id="fb-err-lbl" style="display:none">⚠️ Console Errors</div>
+    <div class="fb-info fb-err" id="fb-errs" style="display:none"></div>
+    <div style="margin-top:16px"><button class="fb-go" id="fb-submit">Submit Feedback</button></div>
+    <div class="fb-hist" id="fb-hist"></div>
   </div>
 </div>
 
 <script>
 (function(){
-  var FB_KEY='fuse-feedback', fbScreenshot=null, consoleErrors=[];
+var FK='fuse-feedback',ss=null,errs=[],isDrag=false,dragOff={x:0,y:0};
+var btn=document.getElementById('fb-btn'),ov=document.getElementById('fb-overlay'),modal=document.getElementById('fb-modal');
 
-  // Capture console errors
-  var origError=console.error;
-  console.error=function(){
-    consoleErrors.push(Array.from(arguments).map(String).join(' '));
-    if(consoleErrors.length>20)consoleErrors.shift();
-    origError.apply(console,arguments);
-  };
-  window.addEventListener('error',function(e){consoleErrors.push(e.message+' at '+e.filename+':'+e.lineno)});
-  window.addEventListener('unhandledrejection',function(e){consoleErrors.push('Unhandled: '+String(e.reason))});
-
-  function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-
-  window.fbOpen=function(){
-    document.getElementById('fb-overlay').style.display='block';
-    document.getElementById('fb-modal').style.display='block';
-    fbCollectInfo();
-    fbShowErrors();
-    fbRenderHistory();
-  };
-
-  window.fbClose=function(){
-    document.getElementById('fb-overlay').style.display='none';
-    document.getElementById('fb-modal').style.display='none';
-  };
-
-  function fbCollectInfo(){
-    var info=[];
-    info.push('Page: '+location.pathname);
-    info.push('URL: '+location.href);
-    info.push('Time: '+new Date().toISOString());
-    info.push('Browser: '+navigator.userAgent.replace(/Mozilla\/5\.0 /,''));
-    info.push('Screen: '+screen.width+'x'+screen.height+' ('+devicePixelRatio+'x)');
-    info.push('Window: '+innerWidth+'x'+innerHeight);
-    info.push('Theme: '+(document.body.classList.contains('light')?'light':'dark'));
-    // Query context
-    var editor=document.getElementById('editor');
-    if(editor&&editor.value)info.push('Query: '+editor.value.substring(0,100)+(editor.value.length>100?'...':''));
-    var fmt=document.getElementById('format-select');
-    if(fmt)info.push('Format: '+fmt.value);
-    // Datasource count
-    var ds=document.querySelectorAll('.ds-item,.connector-row');
-    if(ds.length)info.push('Datasources: '+ds.length);
-    document.getElementById('fb-auto-info').textContent=info.join('\n');
+// --- Draggable button ---
+btn.addEventListener('pointerdown',function(e){
+  isDrag=false;
+  dragOff.x=e.clientX-btn.getBoundingClientRect().left;
+  dragOff.y=e.clientY-btn.getBoundingClientRect().top;
+  btn.setPointerCapture(e.pointerId);
+  btn.style.transition='none';
+  var moved=false;
+  function onMove(ev){
+    var dx=Math.abs(ev.clientX-e.clientX),dy=Math.abs(ev.clientY-e.clientY);
+    if(dx>3||dy>3)moved=true;
+    if(!moved)return;
+    isDrag=true;
+    var x=ev.clientX-dragOff.x,y=ev.clientY-dragOff.y;
+    x=Math.max(0,Math.min(x,innerWidth-48));
+    y=Math.max(0,Math.min(y,innerHeight-48));
+    btn.style.left=x+'px';btn.style.top=y+'px';
+    btn.style.right='auto';btn.style.bottom='auto';
   }
-
-  function fbShowErrors(){
-    var el=document.getElementById('fb-errors');
-    var lbl=document.getElementById('fb-errors-label');
-    if(consoleErrors.length){
-      el.textContent=consoleErrors.slice(-10).join('\n');
-      el.style.display='block';
-      lbl.style.display='block';
-    }else{
-      el.style.display='none';
-      lbl.style.display='none';
-    }
+  function onUp(){
+    btn.removeEventListener('pointermove',onMove);
+    btn.removeEventListener('pointerup',onUp);
+    btn.style.transition='box-shadow .2s';
+    if(!isDrag)fbOpen();
   }
+  btn.addEventListener('pointermove',onMove);
+  btn.addEventListener('pointerup',onUp);
+});
 
-  window.fbCapture=function(){
-    // Use canvas to capture the page
-    var modal=document.getElementById('fb-modal');
-    var overlay=document.getElementById('fb-overlay');
-    var btn=document.getElementById('fb-btn');
-    // Hide feedback UI temporarily
-    modal.style.display='none';
-    overlay.style.display='none';
-    btn.style.display='none';
+// --- Console error capture ---
+var _ce=console.error;
+console.error=function(){errs.push({msg:Array.from(arguments).map(String).join(' '),stack:(new Error).stack||'',ts:Date.now()});if(errs.length>30)errs.shift();_ce.apply(console,arguments)};
+window.addEventListener('error',function(e){errs.push({msg:e.message+' at '+(e.filename||'')+':'+(e.lineno||0),stack:e.error&&e.error.stack||'',ts:Date.now()})});
+window.addEventListener('unhandledrejection',function(e){errs.push({msg:'Unhandled: '+String(e.reason),stack:'',ts:Date.now()})});
 
-    // Try html2canvas if available, otherwise use native canvas approach
+// --- Open: auto-screenshot + collect context ---
+function fbOpen(){
+  // Hide UI, capture, then show modal
+  btn.style.display='none';
+  captureScreen(function(){
+    btn.style.display='block';
+    ov.style.display='block';
+    modal.style.display='block';
+    collectCtx();
+    showErrs();
+    renderHist();
+  });
+}
+
+function captureScreen(cb){
+  try{
+    var c=document.createElement('canvas'),w=document.documentElement.scrollWidth,h=document.documentElement.scrollHeight;
+    // Limit size
+    if(w>1920)w=1920;if(h>4000)h=4000;
+    c.width=w;c.height=h;
+    // Try html2canvas
     if(typeof html2canvas==='function'){
-      html2canvas(document.body,{useCORS:true,scale:1}).then(function(canvas){
-        fbScreenshot=canvas.toDataURL('image/png');
-        showPreview();
-        modal.style.display='block';
-        overlay.style.display='block';
-        btn.style.display='block';
-      });
-    }else{
-      // Fallback: capture visible area via DOM serialization
-      try{
-        var c=document.createElement('canvas');
-        c.width=innerWidth;c.height=innerHeight;
-        var ctx=c.getContext('2d');
-        var svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+innerWidth+'" height="'+innerHeight+'"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" style="font-size:12px;color:#8b949e;padding:20px;background:#0d1117"><p>Screenshot captured at '+new Date().toLocaleString()+'</p><p>Page: '+location.pathname+'</p><p>Window: '+innerWidth+'x'+innerHeight+'</p></div></foreignObject></svg>';
-        var img=new Image();
-        var blob=new Blob([svg],{type:'image/svg+xml;charset=utf-8'});
-        var url=URL.createObjectURL(blob);
-        img.onload=function(){
-          ctx.drawImage(img,0,0);
-          fbScreenshot=c.toDataURL('image/png');
-          URL.revokeObjectURL(url);
-          showPreview();
-          modal.style.display='block';
-          overlay.style.display='block';
-          btn.style.display='block';
-        };
-        img.onerror=function(){
-          // Last resort: just note the capture
-          fbScreenshot='data:text/plain;base64,'+btoa('Screenshot capture failed - page: '+location.pathname+' at '+new Date().toISOString());
-          showPreview();
-          modal.style.display='block';
-          overlay.style.display='block';
-          btn.style.display='block';
-        };
-        img.src=url;
-      }catch(e){
-        modal.style.display='block';
-        overlay.style.display='block';
-        btn.style.display='block';
-        alert('Screenshot failed: '+e.message);
-      }
+      html2canvas(document.body,{useCORS:true,scale:0.5,width:w,height:h,windowWidth:w,windowHeight:h}).then(function(cv){
+        ss=cv.toDataURL('image/jpeg',0.6);
+        showSS();cb();
+      }).catch(function(){ss=null;showSS();cb()});
+      return;
     }
-  };
-
-  function showPreview(){
-    var container=document.getElementById('fb-screenshot-container');
-    if(fbScreenshot&&fbScreenshot.startsWith('data:image')){
-      container.innerHTML='<img class="fb-screenshot-preview" src="'+fbScreenshot+'" onclick="window.open(this.src)" title="Click to enlarge"><br><button onclick="fbScreenshot=null;this.parentNode.innerHTML=\'Screenshot removed\'" style="font-size:11px;padding:2px 8px;margin-top:4px">✕ Remove</button>';
-    }else{
-      container.innerHTML='<div style="font-size:11px;color:#8b949e;margin-top:6px">📋 Page info captured (no visual screenshot without html2canvas)</div>';
-    }
-  }
-
-  window.fbSubmit=function(){
-    var type=document.getElementById('fb-type').value;
-    var title=document.getElementById('fb-title').value.trim();
-    var desc=document.getElementById('fb-desc').value.trim();
-    if(!title){alert('Please enter a title');return}
-    if(!desc){alert('Please enter a description');return}
-
-    var entry={
-      type:type,
-      title:title,
-      description:desc,
-      screenshot:fbScreenshot||null,
-      page:location.pathname,
-      url:location.href,
-      timestamp:Date.now(),
-      userAgent:navigator.userAgent,
-      screen:screen.width+'x'+screen.height,
-      window:innerWidth+'x'+innerHeight,
-      theme:document.body.classList.contains('light')?'light':'dark',
-      consoleErrors:consoleErrors.slice(-10),
-      autoInfo:document.getElementById('fb-auto-info').textContent
+    // Fallback: capture via SVG foreignObject
+    var clone=document.documentElement.outerHTML;
+    var svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+innerWidth+'" height="'+innerHeight+'"><foreignObject width="100%" height="100%"><body xmlns="http://www.w3.org/1999/xhtml" style="margin:0;font:12px sans-serif;color:#8b949e;background:#0d1117;padding:16px"><pre>'+esc(location.href)+'\n'+esc(document.title)+'\nCaptured: '+new Date().toLocaleString()+'\nSize: '+innerWidth+'x'+innerHeight+'</pre></body></foreignObject></svg>';
+    var blob=new Blob([svg],{type:'image/svg+xml'});
+    var url=URL.createObjectURL(blob);
+    var img=new Image();
+    img.onload=function(){
+      var ctx=c.getContext('2d');c.width=innerWidth;c.height=innerHeight;
+      ctx.drawImage(img,0,0);
+      ss=c.toDataURL('image/jpeg',0.6);
+      URL.revokeObjectURL(url);showSS();cb();
     };
+    img.onerror=function(){ss=null;URL.revokeObjectURL(url);showSS();cb()};
+    img.src=url;
+  }catch(e){ss=null;showSS();cb()}
+}
 
-    // Try POST to API
-    try{fetch('/api/fuse/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(entry)}).catch(function(){})}catch(e){}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 
-    // Save locally
-    var all=JSON.parse(localStorage.getItem(FB_KEY)||'[]');
-    // Don't store screenshot in localStorage (too large)
-    var local=Object.assign({},entry);
-    delete local.screenshot;
-    all.unshift(local);
-    localStorage.setItem(FB_KEY,JSON.stringify(all.slice(0,100)));
+function showSS(){
+  var box=document.getElementById('fb-ss-box');
+  if(ss&&ss.startsWith('data:image')){
+    box.innerHTML='<img class="fb-img" src="'+ss+'" onclick="window.open(this.src)" title="Click to enlarge"><br><button onclick="ss=null;this.parentNode.innerHTML=\'Removed\'" style="font-size:11px;padding:2px 8px;margin-top:4px;background:#21262d;color:#e1e4e8;border:1px solid #30363d;border-radius:4px;cursor:pointer">✕ Remove</button>';
+  }else{
+    box.innerHTML='<span style="font-size:11px;color:#8b949e">No screenshot (add html2canvas for full capture)</span>';
+  }
+}
 
-    // Success
-    fbScreenshot=null;
-    document.getElementById('fb-body').innerHTML='<div class="fb-success">✅ Feedback submitted!<br><span style="font-size:12px;color:#8b949e">Thank you for helping improve Fuse.</span></div>';
-    setTimeout(function(){location.reload()},2000);
+function collectCtx(){
+  var info=[];
+  info.push('Page: '+location.pathname);
+  info.push('URL: '+location.href);
+  info.push('Title: '+document.title);
+  info.push('Time: '+new Date().toISOString());
+  info.push('Browser: '+navigator.userAgent.split(') ').pop());
+  info.push('Screen: '+screen.width+'x'+screen.height+' @'+devicePixelRatio+'x');
+  info.push('Window: '+innerWidth+'x'+innerHeight);
+  info.push('Theme: '+(document.body.classList.contains('light')?'light':'dark'));
+  // Page-specific context
+  var ed=document.getElementById('editor');
+  if(ed&&ed.value.trim())info.push('Query: '+ed.value.trim().substring(0,200));
+  var fmt=document.getElementById('format-select');
+  if(fmt)info.push('Format: '+fmt.value);
+  // Visible text content summary
+  var main=document.querySelector('main');
+  if(main){
+    var txt=main.innerText.substring(0,300).replace(/\s+/g,' ').trim();
+    if(txt)info.push('Content: '+txt);
+  }
+  // Active element
+  if(document.activeElement&&document.activeElement.id)info.push('Focus: #'+document.activeElement.id);
+  document.getElementById('fb-ctx').textContent=info.join('\n');
+}
+
+function showErrs(){
+  var el=document.getElementById('fb-errs'),lbl=document.getElementById('fb-err-lbl');
+  if(errs.length){
+    el.textContent=errs.slice(-10).map(function(e){return e.msg+(e.stack?'\n  '+e.stack.split('\n').slice(1,3).join('\n  '):'')}).join('\n\n');
+    el.style.display='block';lbl.style.display='block';
+  }else{el.style.display='none';lbl.style.display='none'}
+}
+
+// --- Close ---
+ov.addEventListener('click',fbClose);
+document.getElementById('fb-close').addEventListener('click',fbClose);
+function fbClose(){ov.style.display='none';modal.style.display='none'}
+
+// --- Submit ---
+document.getElementById('fb-submit').addEventListener('click',function(){
+  var type=document.getElementById('fb-type').value;
+  var title=document.getElementById('fb-title').value.trim();
+  var desc=document.getElementById('fb-desc').value.trim();
+  if(!title){alert('Please enter a title');return}
+  if(!desc){alert('Please enter a description');return}
+
+  var entry={
+    type:type,title:title,description:desc,
+    screenshot:ss||null,
+    page:location.pathname,url:location.href,
+    timestamp:Date.now(),
+    userAgent:navigator.userAgent,
+    screen:screen.width+'x'+screen.height,
+    windowSize:innerWidth+'x'+innerHeight,
+    theme:document.body.classList.contains('light')?'light':'dark',
+    consoleErrors:errs.slice(-10),
+    pageContext:document.getElementById('fb-ctx').textContent
   };
 
-  function fbRenderHistory(){
-    var el=document.getElementById('fb-history');
-    if(!el)return;
-    var all=JSON.parse(localStorage.getItem(FB_KEY)||'[]').slice(0,5);
-    if(!all.length){el.innerHTML='';return}
-    el.innerHTML='<h4>Recent Feedback</h4>'+all.map(function(e){
-      return '<div class="fb-entry"><span class="fb-cat fb-cat-'+esc(e.type)+'">'+esc(e.type)+'</span><strong>'+esc(e.title||'')+'</strong><br><span style="font-size:10px;color:#484f58">'+new Date(e.timestamp).toLocaleString()+' · '+esc(e.page)+'</span></div>';
-    }).join('');
-  }
+  // POST to API
+  try{fetch('/api/fuse/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(entry)}).catch(function(){})}catch(e){}
+
+  // Save locally (no screenshot — too large)
+  var local=JSON.parse(JSON.stringify(entry));delete local.screenshot;
+  var all=JSON.parse(localStorage.getItem(FK)||'[]');
+  all.unshift(local);
+  localStorage.setItem(FK,JSON.stringify(all.slice(0,100)));
+
+  ss=null;
+  document.getElementById('fb-bd').innerHTML='<div class="fb-ok">✅ Feedback submitted!<br><span style="font-size:12px;color:#8b949e">Thank you for helping improve Fuse.</span></div>';
+  setTimeout(function(){fbClose();location.reload()},2000);
+});
+
+// --- History ---
+function renderHist(){
+  var el=document.getElementById('fb-hist');if(!el)return;
+  var all=JSON.parse(localStorage.getItem(FK)||'[]').slice(0,5);
+  if(!all.length){el.innerHTML='';return}
+  el.innerHTML='<h4>Recent Feedback</h4>'+all.map(function(e){
+    return '<div class="fb-ent"><span class="fb-tag fb-tag-'+esc(e.type)+'">'+esc(e.type)+'</span><strong>'+esc(e.title)+'</strong><br><span style="font-size:10px;color:#484f58">'+new Date(e.timestamp).toLocaleString()+' · '+esc(e.page)+'</span></div>';
+  }).join('');
+}
 })();
 </script>
