@@ -1267,3 +1267,60 @@ components:
         table: { type: string }
         change_type: { type: string, enum: [insert, update, delete, schema_change] }
         timestamp: { type: integer }
+
+  /api/fuse/lineage:
+    post:
+      summary: Extract query lineage graph
+      description: Parse SQL/PPL query and return data flow graph (source → transform → sink)
+      tags: [Lineage]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string }
+                format: { type: string, default: sql, enum: [sql, ppl] }
+      responses:
+        "200":
+          description: Lineage graph
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LineageGraph"
+
+  /api/fuse/replay/recordings:
+    get:
+      summary: List recorded queries
+      tags: [Replay]
+      responses:
+        "200":
+          description: Array of recorded queries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecordedQuery"
+    delete:
+      summary: Clear all recordings
+      tags: [Replay]
+      responses:
+        "204":
+          description: Recordings cleared
+
+  /api/fuse/replay/record:
+    post:
+      summary: Record a query for later replay
+      tags: [Replay]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordedQuery"
+      responses:
+        "201":
+          description: Query recorded
