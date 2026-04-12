@@ -61,6 +61,16 @@ redis:
 tenants:
   enabled: false
 
+networkPolicy:
+  enabled: true
+  allowFrom: []
+  # - podSelector:
+  #     matchLabels:
+  #       app: my-client
+  # - namespaceSelector:
+  #     matchLabels:
+  #       name: ingress
+
 serviceAccount:
   create: true
   name: ""

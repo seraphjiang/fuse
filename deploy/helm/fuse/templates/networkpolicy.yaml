@@ -1,0 +1,20 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "fuse.fullname" . }}
+  labels: {{- include "fuse.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "fuse.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - port: 9400
+          protocol: TCP
+      {{- if .Values.networkPolicy.allowFrom }}
+      from:
+        {{- toYaml .Values.networkPolicy.allowFrom | nindent 8 }}
+      {{- end }}
+{{- end }}
