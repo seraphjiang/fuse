@@ -5,7 +5,7 @@
   "info": {
     "description": "Fuse federated query engine datasource for Grafana",
     "author": { "name": "Fuse Team" },
-    "version": "1.0.0",
+    "version": "1.1.0",
     "logos": {
       "small": "img/logo.svg",
       "large": "img/logo.svg"
@@ -16,6 +16,6 @@
     "plugins": []
   },
   "metrics": true,
-  "annotations": false,
+  "annotations": true,
   "alerting": true
 }
