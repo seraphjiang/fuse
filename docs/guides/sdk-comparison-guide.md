@@ -53,18 +53,18 @@ const result = await fuse.query('SELECT service, count(*) as n FROM os.logs GROU
 
 ## API Parity
 
-Both SDKs expose identical methods:
+All three SDKs expose identical methods:
 
-| Method | Python | TypeScript |
-|--------|--------|-----------|
-| Query | `fuse.query(sql, format, params, page_size, cursor)` | `fuse.query(sql, { format, params, pageSize, cursor })` |
-| Paginate all | `fuse.query_all(sql, page_size)` | `fuse.queryAll(sql, { pageSize })` |
-| Explain | `fuse.explain(sql)` | `fuse.explain(sql)` |
-| Validate | `fuse.validate(sql)` | `fuse.validate(sql)` |
-| Health | `fuse.health()` | `fuse.health()` |
-| Datasources | `fuse.datasources()` | `fuse.datasources()` |
-| Trace | `fuse.trace(id)` | `fuse.trace(id)` |
-| History | `fuse.history()` | `fuse.history()` |
+| Method | Python | TypeScript | Go |
+|--------|--------|-----------|-----|
+| Query | `fuse.query(sql, format)` | `fuse.query(sql, { format })` | `client.Query(sql, format)` |
+| Explain | `fuse.explain(sql)` | `fuse.explain(sql)` | `client.Explain(sql, fmt)` |
+| Health | `fuse.health()` | `fuse.health()` | `client.Health()` |
+| Datasources | `fuse.datasources()` | `fuse.datasources()` | `client.Datasources()` |
+| Schedules | `fuse.schedules()` | `fuse.schedules()` | `client.Schedules()` |
+| Quality rules | `fuse.quality_rules()` | `fuse.qualityRules()` | `client.QualityRules()` |
+| Lineage | `fuse.lineage(query)` | `fuse.lineage(query)` | `client.Lineage(q, fmt)` |
+| Replay | `fuse.recordings()` | `fuse.recordings()` | `client.Recordings()` |
 
 ### Return Types
 
