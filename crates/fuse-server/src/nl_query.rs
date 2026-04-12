@@ -180,9 +180,8 @@ pub fn sanitize_nl_input(input: &str) -> String {
     ];
     for pat in &role_patterns {
         let lower = s.to_lowercase();
-        while let Some(pos) = lower.find(pat) {
+        if let Some(pos) = lower.find(pat) {
             s = format!("{}{}", &s[..pos], &s[pos + pat.len()..]);
-            break; // re-lowercase on next iteration if needed
         }
     }
 

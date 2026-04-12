@@ -568,8 +568,8 @@ mod tests {
     #[test]
     fn test_cell_to_sql_literal_float() {
         let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Float64, true)]));
-        let batch = RecordBatch::try_new(schema, vec![Arc::new(Float64Array::from(vec![3.14]))]).unwrap();
-        assert_eq!(cell_to_sql_literal(&batch, 0, 0), "3.14");
+        let batch = RecordBatch::try_new(schema, vec![Arc::new(Float64Array::from(vec![2.72]))]).unwrap();
+        assert_eq!(cell_to_sql_literal(&batch, 0, 0), "2.72");
     }
 
     #[test]

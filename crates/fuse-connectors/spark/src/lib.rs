@@ -365,6 +365,6 @@ mod edge_tests {
 
     #[test]
     fn test_float_scalar() {
-        assert_eq!(scalar_to_sql(&ScalarValue::Float64(3.14)), "3.14");
+        assert_eq!(scalar_to_sql(&ScalarValue::Float64(2.72)), "2.72");
     }
 }

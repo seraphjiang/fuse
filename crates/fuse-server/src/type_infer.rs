@@ -60,7 +60,7 @@ mod tests {
     fn test_infer_types() {
         assert_eq!(infer_type(&json!("hello")), InferredType::String);
         assert_eq!(infer_type(&json!(42)), InferredType::Integer);
-        assert_eq!(infer_type(&json!(3.14)), InferredType::Float);
+        assert_eq!(infer_type(&json!(2.72)), InferredType::Float);
         assert_eq!(infer_type(&json!(true)), InferredType::Boolean);
         assert_eq!(infer_type(&json!(null)), InferredType::Null);
     }

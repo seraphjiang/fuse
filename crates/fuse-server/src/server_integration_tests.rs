@@ -691,7 +691,7 @@ mod toward_1450_tests {
     #[test] fn test_arrow_boolean_col() { let a = crate::arrow_export::to_columnar(&["b".into()], &[vec![json!(true)], vec![json!(false)]]); assert_eq!(a[0].data_type, "boolean"); }
 
     // Coercer combinations
-    #[test] fn test_coerce_string_to_number() { assert_eq!(crate::coercer::to_number(&json!("3.14")), json!(3.14)); }
+    #[test] fn test_coerce_string_to_number() { assert_eq!(crate::coercer::to_number(&json!("2.72")), json!(2.72)); }
     #[test] fn test_coerce_invalid_string() { assert_eq!(crate::coercer::to_number(&json!("abc")), json!(null)); }
 
     // Null handler combinations
@@ -899,7 +899,7 @@ mod push_1600 {
     #[test] fn test_table_empty() { let t = crate::formatter::to_table(&["x".into()], &[]); assert!(t.contains("x")); }
 
     // Arrow export
-    #[test] fn test_arrow_float_col() { let a = crate::arrow_export::to_columnar(&["f".into()], &[vec![json!(3.14)]]); assert_eq!(a[0].data_type, "float64"); }
+    #[test] fn test_arrow_float_col() { let a = crate::arrow_export::to_columnar(&["f".into()], &[vec![json!(2.72)]]); assert_eq!(a[0].data_type, "float64"); }
 
     // Type infer
     #[test] fn test_infer_null() { assert_eq!(crate::type_infer::infer_type(&json!(null)), crate::type_infer::InferredType::Null); }

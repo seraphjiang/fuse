@@ -416,7 +416,7 @@ mod tests {
     fn test_scalar_to_sql_types() {
         assert_eq!(scalar_to_sql(&ScalarValue::Utf8("hello".into())), "'hello'");
         assert_eq!(scalar_to_sql(&ScalarValue::Int64(42)), "42");
-        assert_eq!(scalar_to_sql(&ScalarValue::Float64(3.14)), "3.14");
+        assert_eq!(scalar_to_sql(&ScalarValue::Float64(2.72)), "2.72");
         assert_eq!(scalar_to_sql(&ScalarValue::Boolean(true)), "TRUE");
         assert_eq!(scalar_to_sql(&ScalarValue::Null), "NULL");
     }

@@ -186,8 +186,8 @@ mod tests {
 
     #[test]
     fn test_parse_execute_float_param() {
-        let (_, params) = parse_execute("EXECUTE s USING 3.14").unwrap();
-        assert_eq!(params[0], serde_json::json!(3.14));
+        let (_, params) = parse_execute("EXECUTE s USING 2.72").unwrap();
+        assert_eq!(params[0], serde_json::json!(2.72));
     }
 
     #[test]
