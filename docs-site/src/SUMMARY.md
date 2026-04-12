@@ -72,6 +72,7 @@
 
 - [Roadmap](./roadmap.md)
 - [API Stability Guarantee](./api-stability.md)
+- [v2.0.0: Scheduling, Quality & 25 Connectors](./blog-v200-release.md)
 - [v1.1.0: 22 Connectors & Federation](./blog-v110-release.md)
 - [v1.0.0: General Availability](./blog-v100-ga.md)
 - [v0.6.0: Enterprise, AI & SDKs](./blog-v060-release.md)
