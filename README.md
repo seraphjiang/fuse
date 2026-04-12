@@ -33,7 +33,7 @@ Fuse federates queries across 25 connectors from a single SQL or PPL query. Join
 - **Multi-tenant SaaS mode** — tenant isolation, usage metering, rate limiting
 - **OpenTelemetry collector** — ingest OTLP traces/metrics/logs, query with SQL
 - **Query compilation** — skip re-parsing for hot query patterns
-- **2600+ tests** — unit, integration, E2E, and performance regression suite
+- **2700+ tests** — unit, integration, E2E, UI regression, and performance suite
 
 ## Architecture
 
