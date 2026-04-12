@@ -32,7 +32,7 @@ pub enum ChangeType {
 /// and records change events to trigger auto-refresh.
 pub struct CdcTracker {
     /// view_name → set of (datasource, table) dependencies
-    dependencies: RwLock<HashMap<String, HashSet<(String, String)>>>,
+    pub(crate) dependencies: RwLock<HashMap<String, HashSet<(String, String)>>>,
     /// Recent change events (bounded ring buffer)
     events: RwLock<Vec<ChangeEvent>>,
     /// Views that need refresh due to CDC events
@@ -113,6 +113,15 @@ impl CdcTracker {
             .collect()
     }
 
+    /// Get dependencies for a single view.
+    pub fn dependencies_for(&self, view_name: &str) -> Option<Vec<(String, String)>> {
+        self.dependencies
+            .read()
+            .unwrap()
+            .get(view_name)
+            .map(|s| s.iter().cloned().collect())
+    }
+
     /// Recent change events.
     pub fn recent_events(&self, limit: usize) -> Vec<ChangeEvent> {
         let events = self.events.read().unwrap();
@@ -170,10 +179,14 @@ pub async fn cdc_status(
 
 /// Build CDC routes.
 pub fn cdc_routes() -> axum::Router<Arc<crate::api::AppState>> {
-    use axum::routing::{get, post};
+    use axum::routing::{delete, get, post};
     axum::Router::new()
         .route("/events", post(ingest_event))
+        .route("/events/batch", post(ingest_events_batch))
         .route("/status", get(cdc_status))
+        .route("/views", get(list_dependencies).post(register_view))
+        .route("/views/{name}", delete(unregister_view_handler))
+        .route("/refresh", post(trigger_refresh))
 }
 
 #[cfg(test)]
@@ -297,6 +310,56 @@ mod tests {
         assert_eq!(a2, vec!["joined_view"]);
     }
 
+
+    #[test]
+    fn test_dependencies_for() {
+        let tracker = CdcTracker::new(100);
+        tracker.register_view(
+            "v1",
+            vec![("ds_a".into(), "logs".into()), ("ds_b".into(), "users".into())],
+        );
+        let deps = tracker.dependencies_for("v1").unwrap();
+        assert_eq!(deps.len(), 2);
+        assert!(tracker.dependencies_for("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_batch_changes_affect_multiple_views() {
+        let tracker = CdcTracker::new(100);
+        tracker.register_view("v1", vec![("ds".into(), "t1".into())]);
+        tracker.register_view("v2", vec![("ds".into(), "t2".into())]);
+        tracker.register_view("v3", vec![("ds".into(), "t1".into()), ("ds".into(), "t2".into())]);
+
+        // Change t1 affects v1 and v3
+        let mut a1 = tracker.record_change(make_event("ds", "t1"));
+        a1.sort();
+        assert_eq!(a1, vec!["v1", "v3"]);
+
+        // Change t2 affects v2 and v3
+        let mut a2 = tracker.record_change(make_event("ds", "t2"));
+        a2.sort();
+        assert_eq!(a2, vec!["v2", "v3"]);
+
+        // All 3 views pending
+        let mut pending = tracker.pending_views();
+        pending.sort();
+        assert_eq!(pending, vec!["v1", "v2", "v3"]);
+    }
+
+    #[test]
+    fn test_reregister_view_updates_deps() {
+        let tracker = CdcTracker::new(100);
+        tracker.register_view("v1", vec![("ds".into(), "old_table".into())]);
+        tracker.register_view("v1", vec![("ds".into(), "new_table".into())]);
+
+        let deps = tracker.dependencies_for("v1").unwrap();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0], ("ds".into(), "new_table".into()));
+
+        // Old table no longer triggers
+        let affected = tracker.record_change(make_event("ds", "old_table"));
+        assert!(affected.is_empty());
+    }
     #[test]
     fn test_change_type_serialization() {
         let event = ChangeEvent {
@@ -307,5 +370,116 @@ mod tests {
         };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("schema_change"));
+    }
+}
+
+// --- Multi-table CDC improvements ---
+
+/// Batch ingest multiple change events at once.
+pub async fn ingest_events_batch(
+    axum::extract::State(state): axum::extract::State<Arc<crate::api::AppState>>,
+    axum::Json(events): axum::Json<Vec<ChangeEvent>>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let mut all_affected: HashSet<String> = HashSet::new();
+    for event in events {
+        let affected = state.cdc_tracker.record_change(event);
+        all_affected.extend(affected);
+    }
+    axum::Json(serde_json::json!({
+        "accepted": true,
+        "affected_views": all_affected.into_iter().collect::<Vec<_>>(),
+    }))
+    .into_response()
+}
+
+/// Register a view's CDC dependencies from its query sources.
+#[derive(Deserialize)]
+pub struct RegisterViewRequest {
+    pub view_name: String,
+    /// List of (datasource, table) pairs this view depends on.
+    pub sources: Vec<(String, String)>,
+}
+
+pub async fn register_view(
+    axum::extract::State(state): axum::extract::State<Arc<crate::api::AppState>>,
+    axum::Json(req): axum::Json<RegisterViewRequest>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    state.cdc_tracker.register_view(&req.view_name, req.sources.clone());
+    axum::Json(serde_json::json!({
+        "registered": true,
+        "view": req.view_name,
+        "sources": req.sources,
+    }))
+    .into_response()
+}
+
+/// Trigger refresh for all pending views and return which were refreshed.
+pub async fn trigger_refresh(
+    axum::extract::State(state): axum::extract::State<Arc<crate::api::AppState>>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let pending = state.cdc_tracker.take_pending();
+    let mut refreshed = Vec::new();
+    for view_name in &pending {
+        if let Some(view_arc) = state.view_registry.get(view_name) {
+            let mut view = view_arc.write().unwrap();
+            view.last_refresh = None;
+            refreshed.push(view_name.clone());
+        }
+    }
+    axum::Json(serde_json::json!({
+        "refreshed": refreshed,
+        "not_found": pending.iter().filter(|v| !refreshed.contains(v)).collect::<Vec<_>>(),
+    }))
+    .into_response()
+}
+
+/// List all tracked view dependencies.
+pub async fn list_dependencies(
+    axum::extract::State(state): axum::extract::State<Arc<crate::api::AppState>>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let deps = state.cdc_tracker.dependencies.read().unwrap();
+    let result: HashMap<&String, Vec<(&String, &String)>> = deps
+        .iter()
+        .map(|(name, sources)| {
+            let src_list: Vec<(&String, &String)> = sources.iter().map(|(d, t)| (d, t)).collect();
+            (name, src_list)
+        })
+        .collect();
+    axum::Json(serde_json::json!(result)).into_response()
+}
+
+/// DELETE /api/fuse/cdc/views/{name} — unregister a view's CDC tracking.
+async fn unregister_view_handler(
+    axum::extract::State(state): axum::extract::State<Arc<crate::api::AppState>>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    state.cdc_tracker.unregister_view(&name);
+    axum::Json(serde_json::json!({"unregistered": name})).into_response()
+}
+
+/// Auto-register CDC dependencies for a materialized view from its query.
+pub fn auto_register_view_dependencies(
+    cdc_tracker: &CdcTracker,
+    view_name: &str,
+    query: &str,
+    format: &str,
+) {
+    let refs = match format {
+        "ppl" => crate::api::parse_ppl_sources(query),
+        _ => crate::api::parse_sql_sources(query),
+    };
+    if let Ok(sources) = refs {
+        let deps: Vec<(String, String)> = sources
+            .into_iter()
+            .map(|(ds, table)| (ds, table))
+            .collect();
+        if !deps.is_empty() {
+            cdc_tracker.register_view(view_name, deps);
+        }
     }
 }
