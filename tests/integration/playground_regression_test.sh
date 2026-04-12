@@ -22,7 +22,7 @@ echo ""
 
 # 1. All expected pages exist
 echo "── Page existence ──"
-PAGES=(index dashboard explore settings status help admin alerts views plugins changelog terminal federation)
+PAGES=(index dashboard explore settings status help admin alerts views plugins changelog terminal federation schedules quality lineage replay feedback-widget)
 for p in "${PAGES[@]}"; do
   [ -f "$DIR/$p.html" ] && check "$p.html exists" "ok" || check "$p.html exists" "missing"
 done
@@ -135,6 +135,53 @@ grep -q 'shareQuery\|🔗 Share' "$IDX" && check "Query sharing" "ok" || check "
 grep -q 'loadSaved\|saved-list' "$IDX" && check "Saved queries UI" "ok" || check "Saved queries UI" "missing"
 grep -q 'shortcuts-modal' "$IDX" && check "Keyboard shortcuts" "ok" || check "Keyboard shortcuts" "missing"
 grep -q 'snippet-menu\|toggleSnippets' "$IDX" && check "Query snippets" "ok" || check "Query snippets" "missing"
+
+# UX: Editor features
+echo "── Editor UX ──"
+grep -q 'highlightSQL' "$DIR/index.html" && check "Syntax highlighting function" "ok" || check "Syntax highlighting function" "missing"
+grep -q 'syncHighlight' "$DIR/index.html" && check "Highlight sync on input" "ok" || check "Highlight sync on input" "missing"
+grep -q 'line-gutter' "$DIR/index.html" && check "Line numbers gutter" "ok" || check "Line numbers gutter" "missing"
+grep -q 'getEditorQuery' "$DIR/index.html" && check "Run selected text support" "ok" || check "Run selected text support" "missing"
+grep -q 'keyboard-shortcuts\|shortcuts-modal\|Keyboard Shortcuts' "$DIR/index.html" && check "Keyboard shortcuts modal" "ok" || check "Keyboard shortcuts modal" "missing"
+grep -q 'savedQueries\|saved-tab\|Saved Queries\|SAVED TAB' "$DIR/index.html" && check "Saved queries UI" "ok" || check "Saved queries UI" "missing"
+grep -q 'snippet' "$DIR/index.html" && check "Query snippets dropdown" "ok" || check "Query snippets dropdown" "missing"
+grep -q 'shareQuery\|location\.hash' "$DIR/index.html" && check "Query sharing via URL" "ok" || check "Query sharing via URL" "missing"
+grep -q 'demoTour\|demo-bar' "$DIR/index.html" && check "Demo tour" "ok" || check "Demo tour" "missing"
+grep -q 'sortTable\|sortCol' "$DIR/index.html" && check "Column sorting in results" "ok" || check "Column sorting in results" "missing"
+
+# UX: Autocomplete
+echo "── Autocomplete UX ──"
+grep -q 'autocomplete\|suggestion' "$DIR/index.html" && check "Autocomplete present" "ok" || check "Autocomplete present" "missing"
+grep -q 'SQL_KEYWORDS\|SQL_KW_SET' "$DIR/index.html" && check "SQL keyword set" "ok" || check "SQL keyword set" "missing"
+grep -q 'PPL_KEYWORDS' "$DIR/index.html" && check "PPL keyword set" "ok" || check "PPL keyword set" "missing"
+
+# UX: Sprint 18 page features
+echo "── Sprint 18 page UX ──"
+grep -q 'cron\|schedule' "$DIR/schedules.html" && check "Schedules: cron support" "ok" || check "Schedules: cron support" "missing"
+grep -q 'pause\|resume\|toggle' "$DIR/schedules.html" && check "Schedules: pause/resume" "ok" || check "Schedules: pause/resume" "missing"
+grep -q 'null.rate\|freshness\|row.count\|cardinality' "$DIR/quality.html" && check "Quality: rule types" "ok" || check "Quality: rule types" "missing"
+grep -q 'evaluate\|runAll' "$DIR/quality.html" && check "Quality: evaluate all" "ok" || check "Quality: evaluate all" "missing"
+grep -q 'source.*transform\|node_type\|normalizeNodes' "$DIR/lineage.html" && check "Lineage: node types" "ok" || check "Lineage: node types" "missing"
+grep -q 'replay\|replayAll\|diff' "$DIR/replay.html" && check "Replay: diff detection" "ok" || check "Replay: diff detection" "missing"
+
+# UX: Status page widgets
+echo "── Status page UX ──"
+grep -q 'refreshOtel\|otel-body' "$DIR/status.html" && check "Status: OTel widget" "ok" || check "Status: OTel widget" "missing"
+grep -q 'adaptive.cache\|tracked.queries\|hot.queries' "$DIR/status.html" && check "Status: adaptive cache stats" "ok" || check "Status: adaptive cache stats" "missing"
+
+# UX: Theme support on all pages
+echo "── Theme UX ──"
+for p in schedules quality lineage replay; do
+  grep -q 'matchMedia.*prefers-color-scheme' "$DIR/$p.html" && check "$p: system theme detection" "ok" || check "$p: system theme detection" "missing"
+  grep -q 'body\.light' "$DIR/$p.html" && check "$p: light mode CSS" "ok" || check "$p: light mode CSS" "missing"
+done
+
+# UX: Accessibility
+echo "── Accessibility UX ──"
+grep -q 'aria-label' "$DIR/index.html" && check "Index: aria-labels present" "ok" || check "Index: aria-labels present" "missing"
+for p in schedules quality lineage replay; do
+  grep -q '<title>' "$DIR/$p.html" && check "$p: has page title" "ok" || check "$p: has page title" "missing"
+done
 
 # Summary
 echo ""
