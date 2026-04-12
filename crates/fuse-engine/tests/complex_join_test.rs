@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+#![allow(clippy::cloned_ref_to_slice_refs)]
 
 //! Complex JOIN tests: 3-way joins, self-joins, cross-source anti-joins,
 //! correlated subquery patterns, and multi-batch edge cases.

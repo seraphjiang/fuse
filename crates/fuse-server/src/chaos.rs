@@ -7,6 +7,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 static CHAOS_ENABLED: AtomicBool = AtomicBool::new(false);
+#[cfg(test)]
+static TEST_ALLOWED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static CHAOS_RATE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(10);
 static LATENCY_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
@@ -39,6 +41,8 @@ pub fn enable(rate_pct: u32) {
 /// Enable chaos with full config.
 /// Returns true if chaos testing is allowed (FUSE_CHAOS_ALLOWED=1).
 pub fn is_allowed() -> bool {
+    #[cfg(test)]
+    if TEST_ALLOWED.load(Ordering::Relaxed) { return true; }
     std::env::var("FUSE_CHAOS_ALLOWED").map(|v| v == "1" || v == "true").unwrap_or(false)
 }
 
@@ -135,7 +139,7 @@ mod tests {
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn allow_chaos() {
-        std::env::set_var("FUSE_CHAOS_ALLOWED", "1");
+        TEST_ALLOWED.store(true, Ordering::Relaxed);
     }
 
     #[test]
@@ -253,12 +257,15 @@ mod tests {
     #[tokio::test]
     async fn test_maybe_delay_with_latency() {
         allow_chaos();
-        enable_with_config(&ChaosConfig {
-            enabled: true,
-            failure_rate_pct: 0,
-            latency_ms: 50,
-            target_connectors: vec![],
-        });
+        {
+            let _lock = TEST_LOCK.lock().unwrap();
+            enable_with_config(&ChaosConfig {
+                enabled: true,
+                failure_rate_pct: 0,
+                latency_ms: 50,
+                target_connectors: vec![],
+            });
+        }
         let start = std::time::Instant::now();
         maybe_delay("test").await;
         assert!(start.elapsed().as_millis() >= 45);
@@ -268,6 +275,7 @@ mod tests {
     #[test]
     fn test_config_roundtrip() {
         allow_chaos();
+        let _lock = TEST_LOCK.lock().unwrap();
         let cfg = ChaosConfig {
             enabled: true,
             failure_rate_pct: 77,
@@ -287,6 +295,7 @@ mod tests {
     #[test]
     fn test_disable_clears_all() {
         allow_chaos();
+        let _lock = TEST_LOCK.lock().unwrap();
         enable_with_config(&ChaosConfig {
             enabled: true,
             failure_rate_pct: 50,

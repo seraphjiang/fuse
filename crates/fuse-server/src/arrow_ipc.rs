@@ -91,7 +91,7 @@ mod tests {
     #[test]
     fn test_roundtrip() {
         let batch = sample_batch();
-        let bytes = batches_to_ipc(&[batch.clone()]).unwrap();
+        let bytes = batches_to_ipc(std::slice::from_ref(&batch)).unwrap();
         // Verify we can read it back
         let cursor = std::io::Cursor::new(bytes);
         let mut reader = arrow::ipc::reader::StreamReader::try_new(cursor, None).unwrap();
