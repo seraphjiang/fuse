@@ -4286,3 +4286,36 @@ mod tests {
         assert!(super::check_result_size(&[batch], 1).is_err());
     }
 }
+
+/// GET /api/fuse/autotune — analyze slow query history and suggest tuning changes.
+pub async fn autotune_handler(
+    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let threshold: u64 = params.get("threshold_ms").and_then(|v| v.parse().ok()).unwrap_or(1000);
+    let limit: usize = params.get("limit").and_then(|v| v.parse().ok()).unwrap_or(100);
+
+    let history = state.history.recent(limit);
+    let samples: Vec<crate::query_autotuner::QuerySample> = history
+        .into_iter()
+        .filter_map(|h| {
+            let refs = parse_sql_sources(&h.query).ok()?;
+            let (ds, table) = refs.into_iter().next()?;
+            Some(crate::query_autotuner::QuerySample {
+                query: h.query,
+                datasource: ds,
+                table,
+                latency_ms: h.latency_ms,
+            })
+        })
+        .collect();
+
+    let recs = crate::query_autotuner::analyze(&samples, threshold);
+    axum::Json(serde_json::json!({
+        "recommendations": recs,
+        "analyzed_queries": samples.len(),
+        "threshold_ms": threshold,
+    }))
+    .into_response()
+}

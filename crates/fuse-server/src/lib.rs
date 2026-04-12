@@ -92,6 +92,7 @@ pub mod rewrite;
 pub mod row_limit;
 pub mod shutdown;
 pub mod slow_query;
+pub mod smart_routing;
 pub mod set_ops;
 pub mod sorter;
 pub mod string_fn;
@@ -119,7 +120,6 @@ pub mod validate;
 pub mod tracing_ctx;
 pub mod api_versioning;
 pub mod query_autotuner;
-pub mod smart_routing;
 
 use std::sync::Arc;
 
