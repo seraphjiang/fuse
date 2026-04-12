@@ -1,0 +1,25 @@
+# Grafana dev environment with Fuse datasource plugin pre-configured.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.grafana.yml up -d
+#
+# Opens:
+#   - Grafana:  http://localhost:3000 (admin/admin)
+#   - Fuse:     http://localhost:9400
+#   - OpenSearch: http://localhost:9200
+
+services:
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: fuse-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=fuse-datasource
+    volumes:
+      - ./grafana-plugin/fuse-datasource:/var/lib/grafana/plugins/fuse-datasource:ro
+      - ./grafana-plugin/fuse-datasource/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana-plugin/fuse-datasource/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana-plugin/fuse-datasource/dashboards:/var/lib/grafana/dashboards/fuse:ro
+    depends_on:
+      fuse-server:
+        condition: service_healthy
