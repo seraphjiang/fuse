@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuse — Webhooks</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e1e4e8;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #21262d;background:#161b22}
+header h1{font-size:18px;font-weight:600;color:#58a6ff}
+.nav-tabs{display:flex;gap:0}
+.nav-tab{padding:8px 16px;font-size:13px;color:#8b949e;text-decoration:none;border-bottom:2px solid transparent}
+.nav-tab:hover{color:#e1e4e8}
+.nav-tab.active{color:#58a6ff;border-bottom-color:#58a6ff;font-weight:600}
+main{max-width:1200px;width:100%;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:20px}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+button{padding:6px 14px;font-size:13px;border-radius:6px;border:1px solid #30363d;background:#21262d;color:#e1e4e8;cursor:pointer}
+button:hover{background:#30363d}
+button.primary{background:#238636;border-color:#238636;color:#fff}
+button.danger{background:#da3633;border-color:#da3633;color:#fff}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:8px 12px;border-bottom:2px solid #21262d;color:#8b949e;font-weight:600}
+td{padding:8px 12px;border-bottom:1px solid #21262d}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.badge.active{background:#238636;color:#fff}
+.badge.failed{background:#da3633;color:#fff}
+.card{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px}
+input,select{padding:6px 10px;font-size:13px;border-radius:6px;border:1px solid #30363d;background:#0d1117;color:#e1e4e8}
+textarea{width:100%;background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;padding:8px;font-family:"SF Mono",Consolas,monospace;font-size:12px;resize:vertical;min-height:60px}
+.form-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.form-row label{font-size:12px;color:#8b949e;min-width:80px}
+#dlq-section{margin-top:12px}
+body.light{background:#fff;color:#1f2328}
+body.light header{background:#f6f8fa;border-color:#d1d9e0}
+body.light .card{background:#fff;border-color:#d1d9e0}
+body.light input,body.light select,body.light textarea{background:#fff;color:#1f2328;border-color:#d1d9e0}
+body.light th{border-color:#d1d9e0;color:#656d76}
+body.light td{border-color:#d1d9e0}
+@media(max-width:768px){main{padding:12px}.form-row{flex-direction:column}}
+</style>
+<script>(function(){var t=localStorage.getItem('fuse-theme');if(t==='light'||(!t&&window.matchMedia('(prefers-color-scheme:light)').matches))document.body.classList.add('light');})();</script>
+</head>
+<body>
+<header>
+  <h1>🔔 Webhooks</h1>
+  <nav class="nav-tabs">
+    <a class="nav-tab" href="/">Query</a>
+    <a class="nav-tab" href="/dashboard">Dashboard</a>
+    <a class="nav-tab" href="/schedules">Schedules</a>
+    <a class="nav-tab active" href="/webhooks">Webhooks</a>
+    <a class="nav-tab" href="/status">Status</a>
+    <a class="nav-tab" href="/settings">Settings</a>
+  </nav>
+</header>
+<main>
+  <div class="card" id="create-form">
+    <h3 style="margin-bottom:12px">Create Webhook</h3>
+    <div class="form-row"><label>URL</label><input id="wh-url" placeholder="https://example.com/hook" style="flex:1"></div>
+    <div class="form-row" style="margin-top:8px"><label>Event</label>
+      <select id="wh-event"><option value="query_complete">Query Complete</option><option value="schedule_alert">Schedule Alert</option><option value="quality_fail">Quality Fail</option><option value="anomaly">Anomaly Detected</option></select>
+    </div>
+    <div class="form-row" style="margin-top:8px"><label>Filter (SQL)</label><textarea id="wh-filter" rows="2" placeholder="Optional: WHERE clause to filter events"></textarea></div>
+    <div style="margin-top:12px"><button class="primary" onclick="createWebhook()">+ Create</button></div>
+  </div>
+
+  <div class="toolbar">
+    <h2 style="font-size:16px;flex:1">Subscriptions</h2>
+    <button onclick="loadWebhooks()">🔄 Refresh</button>
+    <button onclick="toggleDLQ()">📭 Dead Letter Queue</button>
+  </div>
+  <table>
+    <thead><tr><th>URL</th><th>Event</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody id="wh-body"><tr><td colspan="4" style="color:#8b949e">Loading...</td></tr></tbody>
+  </table>
+
+  <div id="dlq-section" class="card" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3>Dead Letter Queue</h3>
+      <button class="danger" onclick="clearDLQ()">Clear All</button>
+    </div>
+    <table><thead><tr><th>Webhook</th><th>Error</th><th>Attempts</th><th>Last Attempt</th></tr></thead>
+    <tbody id="dlq-body"><tr><td colspan="4" style="color:#8b949e">Empty</td></tr></tbody></table>
+  </div>
+</main>
+<script>
+function $(id){return document.getElementById(id)}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+async function api(path,opts){var r=await fetch(path,opts);return r.json()}
+
+async function loadWebhooks(){
+  try{
+    var hooks=await api('/api/fuse/webhooks');
+    var list=Array.isArray(hooks)?hooks:(hooks.webhooks||hooks.data||[]);
+    if(!list.length){$('wh-body').innerHTML='<tr><td colspan="4" style="color:#8b949e">No webhooks. Create one above.</td></tr>';return}
+    $('wh-body').innerHTML=list.map(function(h){
+      var status=h.last_error?'<span class="badge failed">Failed</span>':'<span class="badge active">Active</span>';
+      return '<tr><td>'+esc(h.url||'')+'</td><td>'+esc(h.event||'')+'</td><td>'+status+'</td><td><button onclick="testWH(\''+esc(h.id)+'\')">🧪 Test</button> <button onclick="deleteWH(\''+esc(h.id)+'\')" style="color:#f85149">✕</button></td></tr>';
+    }).join('');
+  }catch(e){$('wh-body').innerHTML='<tr><td colspan="4" style="color:#f85149">Error: '+esc(e.message)+'</td></tr>'}
+}
+
+async function createWebhook(){
+  var url=$('wh-url').value.trim();
+  if(!url){alert('URL required');return}
+  try{
+    await api('/api/fuse/webhooks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url,event:$('wh-event').value,filter:$('wh-filter').value||null})});
+    $('wh-url').value='';$('wh-filter').value='';
+    loadWebhooks();
+  }catch(e){alert('Failed: '+e.message)}
+}
+
+async function testWH(id){try{await api('/api/fuse/webhooks/'+id+'/test',{method:'POST'});alert('Test sent!')}catch(e){alert('Failed: '+e.message)}}
+async function deleteWH(id){if(!confirm('Delete?'))return;try{await fetch('/api/fuse/webhooks/'+id,{method:'DELETE'});loadWebhooks()}catch(e){alert('Failed: '+e.message)}}
+
+function toggleDLQ(){var s=$('dlq-section');s.style.display=s.style.display==='none'?'block':'none';if(s.style.display==='block')loadDLQ()}
+async function loadDLQ(){
+  try{
+    var items=await api('/api/fuse/webhooks/dlq');
+    var list=Array.isArray(items)?items:(items.items||[]);
+    if(!list.length){$('dlq-body').innerHTML='<tr><td colspan="4" style="color:#8b949e">Empty — no failed deliveries</td></tr>';return}
+    $('dlq-body').innerHTML=list.map(function(d){return '<tr><td>'+esc(d.webhook_id||'')+'</td><td>'+esc(d.error||'')+'</td><td>'+esc(d.attempts||0)+'</td><td>'+esc(d.last_attempt||'')+'</td></tr>'}).join('');
+  }catch(e){$('dlq-body').innerHTML='<tr><td colspan="4" style="color:#f85149">'+esc(e.message)+'</td></tr>'}
+}
+async function clearDLQ(){if(!confirm('Clear DLQ?'))return;try{await fetch('/api/fuse/webhooks/dlq',{method:'DELETE'});loadDLQ()}catch(e){alert(e.message)}}
+
+loadWebhooks();
+</script>
+</body>
+</html>
