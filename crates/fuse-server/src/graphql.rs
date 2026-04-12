@@ -345,6 +345,7 @@ impl MutationRoot {
                 name: input.name.clone(),
                 query: input.query.clone(),
                 refresh_interval: std::time::Duration::from_secs(300),
+                refresh_mode: fuse_engine::materialized::RefreshMode::Full,
             },
         );
         Ok(ViewInfo {

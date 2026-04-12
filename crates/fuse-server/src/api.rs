@@ -138,10 +138,8 @@ pub struct AppState {
     pub column_rbac: Option<Arc<fuse_core::security::ResultFilter>>,
     /// API key rotation manager with grace period support.
     pub key_rotation: Arc<crate::auth::KeyRotationManager>,
-    /// Smart query routing — picks fastest connector by historical latency.
+    /// Smart query routing — route to fastest connector based on historical latency.
     pub smart_router: Arc<crate::smart_routing::SmartRouter>,
-    /// Connector health history — tracks uptime and latency over time.
-    pub health_history: Arc<crate::connector_health_history::HealthHistory>,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.
@@ -789,6 +787,7 @@ pub async fn query_handler(
             name: view_name.clone(),
             query: view_query.clone(),
             refresh_interval: std::time::Duration::from_secs(300),
+            refresh_mode: fuse_engine::materialized::RefreshMode::Full,
         };
         state.view_registry.register(def);
 
@@ -885,6 +884,7 @@ pub async fn query_handler(
             name: view_name.clone(),
             query: view_query.clone(),
             refresh_interval: std::time::Duration::from_secs(300),
+            refresh_mode: fuse_engine::materialized::RefreshMode::Full,
         };
         state.view_registry.register(def);
         return (StatusCode::CREATED, Json(serde_json::json!({
@@ -3275,6 +3275,7 @@ pub async fn create_view(
         name: req.name.clone(),
         query: req.query.clone(),
         refresh_interval: std::time::Duration::from_secs(refresh_secs),
+            refresh_mode: fuse_engine::materialized::RefreshMode::Full,
     };
     state.view_registry.register(def);
     (StatusCode::CREATED, Json(serde_json::json!({
@@ -4554,4 +4555,104 @@ pub async fn connector_health_history_handler(
         "connectors": summaries,
     }))
     .into_response()
+}
+
+/// POST /api/fuse/query/export/csv — execute query and return results as CSV download.
+pub async fn export_csv_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<QueryRequest>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let format = req.format.to_lowercase();
+    let query = rewrite_contains(&req.query);
+    let refs = match if format == "ppl" { parse_ppl_sources(&query) } else { parse_sql_sources(&query) } {
+        Ok(r) if !r.is_empty() => r,
+        _ => return error_json(StatusCode::BAD_REQUEST, "no datasource.table references found").into_response(),
+    };
+
+    let mut all_batches = Vec::new();
+    for (ds_id, table) in &refs {
+        let connector = match state.registry.get(ds_id) {
+            Some(c) => c,
+            None => return error_json(StatusCode::NOT_FOUND, format!("datasource '{}' not found", ds_id)).into_response(),
+        };
+        let sq = match build_sub_query(&query, &format, table) {
+            Ok(sq) => sq,
+            Err(e) => return error_json(StatusCode::BAD_REQUEST, e).into_response(),
+        };
+        match connector.execute(&sq).await {
+            Ok(b) => all_batches.extend(b),
+            Err(e) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+        }
+    }
+
+    let (columns, rows) = batches_to_json(&all_batches);
+    let mut csv = columns.join(",") + "\n";
+    for row in &rows {
+        let line: Vec<String> = row.iter().map(|v| match v {
+            serde_json::Value::String(s) => format!("\"{}\"", s.replace('"', "\"\"")),
+            serde_json::Value::Null => String::new(),
+            other => other.to_string(),
+        }).collect();
+        csv.push_str(&line.join(","));
+        csv.push('\n');
+    }
+
+    (
+        StatusCode::OK,
+        [
+            (axum::http::header::CONTENT_TYPE, "text/csv"),
+            (axum::http::header::CONTENT_DISPOSITION, "attachment; filename=\"results.csv\""),
+        ],
+        csv,
+    ).into_response()
+}
+
+/// POST /api/fuse/query/export/json — execute query and return results as JSON download.
+pub async fn export_json_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<QueryRequest>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let format = req.format.to_lowercase();
+    let query = rewrite_contains(&req.query);
+    let refs = match if format == "ppl" { parse_ppl_sources(&query) } else { parse_sql_sources(&query) } {
+        Ok(r) if !r.is_empty() => r,
+        _ => return error_json(StatusCode::BAD_REQUEST, "no datasource.table references found").into_response(),
+    };
+
+    let mut all_batches = Vec::new();
+    for (ds_id, table) in &refs {
+        let connector = match state.registry.get(ds_id) {
+            Some(c) => c,
+            None => return error_json(StatusCode::NOT_FOUND, format!("datasource '{}' not found", ds_id)).into_response(),
+        };
+        let sq = match build_sub_query(&query, &format, table) {
+            Ok(sq) => sq,
+            Err(e) => return error_json(StatusCode::BAD_REQUEST, e).into_response(),
+        };
+        match connector.execute(&sq).await {
+            Ok(b) => all_batches.extend(b),
+            Err(e) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+        }
+    }
+
+    let (columns, rows) = batches_to_json(&all_batches);
+    let records: Vec<serde_json::Value> = rows.iter().map(|row| {
+        let mut map = serde_json::Map::new();
+        for (i, col) in columns.iter().enumerate() {
+            map.insert(col.clone(), row.get(i).cloned().unwrap_or(serde_json::Value::Null));
+        }
+        serde_json::Value::Object(map)
+    }).collect();
+
+    let body = serde_json::to_string_pretty(&records).unwrap_or_default();
+    (
+        StatusCode::OK,
+        [
+            (axum::http::header::CONTENT_TYPE, "application/json"),
+            (axum::http::header::CONTENT_DISPOSITION, "attachment; filename=\"results.json\""),
+        ],
+        body,
+    ).into_response()
 }

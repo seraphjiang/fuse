@@ -12,6 +12,19 @@ use std::time::{Duration, Instant};
 
 use arrow::record_batch::RecordBatch;
 
+/// How a materialized view is refreshed.
+#[derive(Debug, Clone)]
+pub enum RefreshMode {
+    /// Re-execute the full query, replacing all cached data.
+    Full,
+    /// Append only new rows where watermark_column > last watermark value.
+    Incremental { watermark_column: String },
+}
+
+impl Default for RefreshMode {
+    fn default() -> Self { Self::Full }
+}
+
 /// Definition of a materialized view.
 #[derive(Debug, Clone)]
 pub struct MaterializedViewDef {
@@ -21,6 +34,8 @@ pub struct MaterializedViewDef {
     pub query: String,
     /// How often to refresh the cached results.
     pub refresh_interval: Duration,
+    /// Full or incremental refresh strategy.
+    pub refresh_mode: RefreshMode,
 }
 
 /// A materialized view with its cached state.
@@ -30,6 +45,19 @@ pub struct MaterializedView {
     pub batches: Vec<RecordBatch>,
     pub last_refresh: Option<Instant>,
     pub error: Option<String>,
+    /// High-watermark value for incremental refresh (string for flexibility).
+    pub watermark: Option<String>,
+    /// Refresh statistics.
+    pub stats: RefreshStats,
+}
+
+/// Tracks refresh statistics for a materialized view.
+#[derive(Debug, Clone, Default)]
+pub struct RefreshStats {
+    pub full_refreshes: u64,
+    pub incremental_refreshes: u64,
+    pub total_rows: usize,
+    pub last_appended_rows: usize,
 }
 
 impl MaterializedView {
@@ -39,6 +67,8 @@ impl MaterializedView {
             batches: vec![],
             last_refresh: None,
             error: None,
+            watermark: None,
+            stats: RefreshStats::default(),
         }
     }
 
@@ -50,11 +80,41 @@ impl MaterializedView {
         }
     }
 
-    /// Update the cached results after a successful refresh.
+    /// Update the cached results after a full refresh.
     pub fn set_results(&mut self, batches: Vec<RecordBatch>) {
+        self.stats.total_rows = batches.iter().map(|b| b.num_rows()).sum();
+        self.stats.full_refreshes += 1;
+        self.stats.last_appended_rows = self.stats.total_rows;
         self.batches = batches;
         self.last_refresh = Some(Instant::now());
         self.error = None;
+    }
+
+    /// Append new batches for incremental refresh.
+    pub fn append_results(&mut self, new_batches: Vec<RecordBatch>, new_watermark: Option<String>) {
+        let appended: usize = new_batches.iter().map(|b| b.num_rows()).sum();
+        self.batches.extend(new_batches);
+        self.stats.total_rows = self.batches.iter().map(|b| b.num_rows()).sum();
+        self.stats.incremental_refreshes += 1;
+        self.stats.last_appended_rows = appended;
+        if let Some(wm) = new_watermark {
+            self.watermark = Some(wm);
+        }
+        self.last_refresh = Some(Instant::now());
+        self.error = None;
+    }
+
+    /// Whether this view uses incremental refresh.
+    pub fn is_incremental(&self) -> bool {
+        matches!(self.def.refresh_mode, RefreshMode::Incremental { .. })
+    }
+
+    /// Get the watermark column name if incremental.
+    pub fn watermark_column(&self) -> Option<&str> {
+        match &self.def.refresh_mode {
+            RefreshMode::Incremental { watermark_column } => Some(watermark_column),
+            RefreshMode::Full => None,
+        }
     }
 
     /// Record a refresh failure.
@@ -139,6 +199,7 @@ mod tests {
             name: name.into(),
             query: "SELECT count(*) FROM logs".into(),
             refresh_interval: Duration::from_secs(60),
+            refresh_mode: RefreshMode::Full,
         }
     }
 
@@ -272,5 +333,52 @@ mod tests {
     fn test_registry_get_results_nonexistent() {
         let reg = MaterializedViewRegistry::new();
         assert!(reg.get_results("nope").is_none());
+    }
+
+    #[test]
+    fn test_incremental_append() {
+        let def = MaterializedViewDef {
+            refresh_mode: RefreshMode::Incremental { watermark_column: "ts".into() },
+            ..test_def("v1")
+        };
+        let mut view = MaterializedView::new(def);
+        assert!(view.is_incremental());
+        assert_eq!(view.watermark_column(), Some("ts"));
+
+        // Initial full load
+        view.set_results(test_batches());
+        assert_eq!(view.stats.full_refreshes, 1);
+        assert_eq!(view.stats.total_rows, 1);
+
+        // Incremental append
+        view.append_results(test_batches(), Some("2024-01-02".into()));
+        assert_eq!(view.stats.incremental_refreshes, 1);
+        assert_eq!(view.stats.total_rows, 2);
+        assert_eq!(view.batches.len(), 2);
+        assert_eq!(view.watermark.as_deref(), Some("2024-01-02"));
+    }
+
+    #[test]
+    fn test_full_refresh_resets_batches() {
+        let mut view = MaterializedView::new(test_def("v1"));
+        view.set_results(test_batches());
+        view.set_results(test_batches());
+        assert_eq!(view.batches.len(), 1); // replaced, not appended
+        assert_eq!(view.stats.full_refreshes, 2);
+    }
+
+    #[test]
+    fn test_refresh_stats_default() {
+        let stats = RefreshStats::default();
+        assert_eq!(stats.full_refreshes, 0);
+        assert_eq!(stats.incremental_refreshes, 0);
+        assert_eq!(stats.total_rows, 0);
+    }
+
+    #[test]
+    fn test_full_mode_not_incremental() {
+        let view = MaterializedView::new(test_def("v1"));
+        assert!(!view.is_incremental());
+        assert!(view.watermark_column().is_none());
     }
 }

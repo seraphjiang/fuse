@@ -2,6 +2,7 @@
 //! #842 Materialized view lifecycle — create, query, refresh, drop.
 
 use std::sync::Arc;
+use fuse_engine::materialized::RefreshMode;
 use std::time::Duration;
 use arrow::array::{ArrayRef, Int64Array};
 use arrow::datatypes::{DataType, Field, Schema};
@@ -16,14 +17,14 @@ fn make_batch(val: i64) -> Vec<RecordBatch> {
 #[test]
 fn test_create_and_list() {
     let reg = MaterializedViewRegistry::new();
-    reg.register(MaterializedViewDef { name: "error_summary".into(), query: "SELECT COUNT(*) FROM logs WHERE level='ERROR'".into(), refresh_interval: Duration::from_secs(60) });
+    reg.register(MaterializedViewDef { name: "error_summary".into(), query: "SELECT COUNT(*) FROM logs WHERE level='ERROR'".into(), refresh_interval: Duration::from_secs(60), refresh_mode: RefreshMode::Full });
     assert_eq!(reg.list(), vec!["error_summary".to_string()]);
 }
 
 #[test]
 fn test_query_returns_cached_results() {
     let reg = MaterializedViewRegistry::new();
-    reg.register(MaterializedViewDef { name: "v1".into(), query: "SELECT 1".into(), refresh_interval: Duration::from_secs(60) });
+    reg.register(MaterializedViewDef { name: "v1".into(), query: "SELECT 1".into(), refresh_interval: Duration::from_secs(60), refresh_mode: RefreshMode::Full });
 
     // Set cached results
     let view = reg.get("v1").unwrap();
@@ -38,7 +39,7 @@ fn test_query_returns_cached_results() {
 #[test]
 fn test_refresh_updates_results() {
     let reg = MaterializedViewRegistry::new();
-    reg.register(MaterializedViewDef { name: "v1".into(), query: "SELECT 1".into(), refresh_interval: Duration::from_secs(60) });
+    reg.register(MaterializedViewDef { name: "v1".into(), query: "SELECT 1".into(), refresh_interval: Duration::from_secs(60), refresh_mode: RefreshMode::Full });
 
     let view = reg.get("v1").unwrap();
     view.write().unwrap().set_results(make_batch(10));
@@ -52,7 +53,7 @@ fn test_refresh_updates_results() {
 #[test]
 fn test_drop_removes_view() {
     let reg = MaterializedViewRegistry::new();
-    reg.register(MaterializedViewDef { name: "v1".into(), query: "SELECT 1".into(), refresh_interval: Duration::from_secs(60) });
+    reg.register(MaterializedViewDef { name: "v1".into(), query: "SELECT 1".into(), refresh_interval: Duration::from_secs(60), refresh_mode: RefreshMode::Full });
     assert!(reg.remove("v1"));
     assert!(reg.list().is_empty());
     assert!(reg.get_results("v1").is_none());
@@ -67,7 +68,7 @@ fn test_drop_nonexistent_returns_false() {
 #[test]
 fn test_needs_refresh_before_first_execution() {
     let reg = MaterializedViewRegistry::new();
-    reg.register(MaterializedViewDef { name: "v1".into(), query: "SELECT 1".into(), refresh_interval: Duration::from_secs(0) });
+    reg.register(MaterializedViewDef { name: "v1".into(), query: "SELECT 1".into(), refresh_interval: Duration::from_secs(0), refresh_mode: RefreshMode::Full });
     let view = reg.get("v1").unwrap();
     assert!(view.read().unwrap().needs_refresh(), "should need refresh before first execution");
 }
@@ -75,7 +76,7 @@ fn test_needs_refresh_before_first_execution() {
 #[test]
 fn test_stale_views_detected() {
     let reg = MaterializedViewRegistry::new();
-    reg.register(MaterializedViewDef { name: "v1".into(), query: "SELECT 1".into(), refresh_interval: Duration::from_secs(0) });
+    reg.register(MaterializedViewDef { name: "v1".into(), query: "SELECT 1".into(), refresh_interval: Duration::from_secs(0), refresh_mode: RefreshMode::Full });
     let stale = reg.stale_views();
     assert!(stale.contains(&"v1".to_string()), "new view should be stale");
 }
@@ -83,7 +84,7 @@ fn test_stale_views_detected() {
 #[test]
 fn test_error_state_recorded() {
     let reg = MaterializedViewRegistry::new();
-    reg.register(MaterializedViewDef { name: "v1".into(), query: "SELECT 1".into(), refresh_interval: Duration::from_secs(60) });
+    reg.register(MaterializedViewDef { name: "v1".into(), query: "SELECT 1".into(), refresh_interval: Duration::from_secs(60), refresh_mode: RefreshMode::Full });
     let view = reg.get("v1").unwrap();
     view.write().unwrap().set_error("connection refused".into());
     let v = view.read().unwrap();
