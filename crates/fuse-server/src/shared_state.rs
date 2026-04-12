@@ -302,6 +302,12 @@ mod tests {
     /// Env-var tests race when run in parallel. Serialize them.
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+    /// Acquire ENV_LOCK, clear FUSE_REDIS_URL, build a value, then drop the lock.
+    fn with_no_redis<T>(f: impl FnOnce() -> T) -> T {
+        let _lock = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("FUSE_REDIS_URL");
+        f()
+    }
     fn sq(name: &str, query: &str) -> SavedQuery {
         SavedQuery { name: name.into(), query: query.into(), format: "sql".into(), description: String::new() }
     }
@@ -312,9 +318,7 @@ mod tests {
 
     #[test]
     fn test_saved_queries_no_redis() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("FUSE_REDIS_URL");
-        assert!(!SharedSavedQueries::from_env().is_redis());
+        assert!(!with_no_redis(SharedSavedQueries::from_env).is_redis());
     }
 
     #[test]
@@ -327,25 +331,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_saved_queries_save_get() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("FUSE_REDIS_URL");
-        let s = SharedSavedQueries::from_env();
+        let s = with_no_redis(SharedSavedQueries::from_env);
         s.save(sq("q1", "SELECT 1")).await;
         assert_eq!(s.get("q1").await.unwrap().query, "SELECT 1");
     }
 
     #[tokio::test]
     async fn test_saved_queries_get_miss() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("FUSE_REDIS_URL");
-        assert!(SharedSavedQueries::from_env().get("nope").await.is_none());
+        let s = with_no_redis(SharedSavedQueries::from_env);
+        assert!(s.get("nope").await.is_none());
     }
 
     #[tokio::test]
     async fn test_saved_queries_delete() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("FUSE_REDIS_URL");
-        let s = SharedSavedQueries::from_env();
+        let s = with_no_redis(SharedSavedQueries::from_env);
         s.save(sq("tmp", "SELECT 1")).await;
         assert!(s.delete("tmp").await);
         assert!(s.get("tmp").await.is_none());
@@ -354,9 +353,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_saved_queries_list() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("FUSE_REDIS_URL");
-        let s = SharedSavedQueries::from_env();
+        let s = with_no_redis(SharedSavedQueries::from_env);
         s.save(sq("a", "SELECT 1")).await;
         s.save(sq("b", "SELECT 2")).await;
         assert_eq!(s.list().await.len(), 2);
@@ -364,9 +361,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_saved_queries_overwrite() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("FUSE_REDIS_URL");
-        let s = SharedSavedQueries::from_env();
+        let s = with_no_redis(SharedSavedQueries::from_env);
         s.save(sq("q", "SELECT 1")).await;
         s.save(sq("q", "SELECT 2")).await;
         assert_eq!(s.get("q").await.unwrap().query, "SELECT 2");
@@ -374,9 +369,7 @@ mod tests {
 
     #[test]
     fn test_history_no_redis() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("FUSE_REDIS_URL");
-        assert!(!SharedQueryHistory::from_env().is_redis());
+        assert!(!with_no_redis(SharedQueryHistory::from_env).is_redis());
     }
 
     #[test]
@@ -389,9 +382,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_history_push_and_list() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("FUSE_REDIS_URL");
-        let h = SharedQueryHistory::from_env();
+        let h = with_no_redis(SharedQueryHistory::from_env);
         h.push(entry("SELECT 1", 1)).await;
         h.push(entry("SELECT 2", 2)).await;
         assert_eq!(h.list().await.len(), 2);
@@ -399,9 +390,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_history_recent() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("FUSE_REDIS_URL");
-        let h = SharedQueryHistory::from_env();
+        let h = with_no_redis(SharedQueryHistory::from_env);
         h.push(entry("a", 1)).await;
         h.push(entry("b", 2)).await;
         h.push(entry("c", 3)).await;
@@ -410,9 +399,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_history_empty() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("FUSE_REDIS_URL");
-        assert!(SharedQueryHistory::from_env().list().await.is_empty());
+        let h = with_no_redis(SharedQueryHistory::from_env);
+        assert!(h.list().await.is_empty());
     }
 
     // ── SharedAuditLog ──
@@ -428,9 +416,7 @@ mod tests {
 
     #[test]
     fn test_audit_no_redis() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("FUSE_REDIS_URL");
-        assert!(!SharedAuditLog::from_env().is_redis());
+        assert!(!with_no_redis(SharedAuditLog::from_env).is_redis());
     }
 
     #[test]
@@ -443,9 +429,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_audit_record_and_recent() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("FUSE_REDIS_URL");
-        let log = SharedAuditLog::from_env();
+        let log = with_no_redis(SharedAuditLog::from_env);
         log.record(audit_entry("user1")).await;
         log.record(audit_entry("user2")).await;
         let recent = log.recent(10).await;
@@ -454,9 +438,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_audit_empty() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("FUSE_REDIS_URL");
-        assert!(SharedAuditLog::from_env().recent(10).await.is_empty());
+        let log = with_no_redis(SharedAuditLog::from_env);
+        assert!(log.recent(10).await.is_empty());
     }
 
     // ── SharedTenantRegistry ──
@@ -467,9 +450,7 @@ mod tests {
 
     #[test]
     fn test_tenant_registry_no_redis() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("FUSE_REDIS_URL");
-        assert!(!SharedTenantRegistry::from_env(vec![]).is_redis());
+        assert!(!with_no_redis(|| SharedTenantRegistry::from_env(vec![])).is_redis());
     }
 
     #[test]
@@ -482,9 +463,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tenant_registry_put_and_get() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("FUSE_REDIS_URL");
-        let r = SharedTenantRegistry::from_env(vec![]);
+        let r = with_no_redis(|| SharedTenantRegistry::from_env(vec![]));
         r.put(tenant("t1")).await;
         assert!(r.get("t1").await.is_some());
         assert!(r.get("t2").await.is_none());
@@ -492,17 +471,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_tenant_registry_list() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("FUSE_REDIS_URL");
-        let r = SharedTenantRegistry::from_env(vec![tenant("a"), tenant("b")]);
+        let r = with_no_redis(|| SharedTenantRegistry::from_env(vec![tenant("a"), tenant("b")]));
         assert_eq!(r.list().await.len(), 2);
     }
 
     #[tokio::test]
     async fn test_tenant_registry_remove() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("FUSE_REDIS_URL");
-        let r = SharedTenantRegistry::from_env(vec![tenant("x")]);
+        let r = with_no_redis(|| SharedTenantRegistry::from_env(vec![tenant("x")]));
         assert!(r.remove("x").await);
         assert!(r.list().await.is_empty());
         assert!(!r.remove("x").await);
@@ -510,9 +485,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tenant_registry_reload() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::remove_var("FUSE_REDIS_URL");
-        let r = SharedTenantRegistry::from_env(vec![tenant("old")]);
+        let r = with_no_redis(|| SharedTenantRegistry::from_env(vec![tenant("old")]));
         r.reload(vec![tenant("new1"), tenant("new2")]).await;
         assert_eq!(r.list().await.len(), 2);
         assert!(r.get("old").await.is_none());
