@@ -75,6 +75,12 @@ networkPolicy:
   #     matchLabels:
   #       app: my-client
 
+plugins:
+  enabled: false
+  # Directory to load WASM connector plugins from
+  # Mount a PVC or ConfigMap with .wasm files + manifest.toml
+  mountPath: /etc/fuse/plugins
+
 serviceAccount:
   create: true
   name: ""

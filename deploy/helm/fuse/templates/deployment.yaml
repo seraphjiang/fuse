@@ -46,10 +46,19 @@ spec:
             - name: FUSE_REDIS_URL
               value: {{ .Values.redis.url | quote }}
             {{- end }}
+            {{- if .Values.plugins.enabled }}
+            - name: FUSE_PLUGIN_DIR
+              value: {{ .Values.plugins.mountPath | quote }}
+            {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/fuse
               readOnly: true
+            {{- if .Values.plugins.enabled }}
+            - name: plugins
+              mountPath: {{ .Values.plugins.mountPath }}
+              readOnly: true
+            {{- end }}
           securityContext:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
@@ -81,6 +90,10 @@ spec:
         - name: config
           configMap:
             name: {{ include "fuse.fullname" . }}-config
+      {{- if .Values.plugins.enabled }}
+        - name: plugins
+          emptyDir: {}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector: {{- toYaml . | nindent 8 }}
       {{- end }}
