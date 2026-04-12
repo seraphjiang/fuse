@@ -12,6 +12,7 @@ pub mod arrow_export;
 pub mod api;
 pub mod anomaly;
 pub mod anomaly_alert;
+pub mod arrow_ipc;
 pub mod async_query;
 pub mod audit;
 pub mod audit_meta;
