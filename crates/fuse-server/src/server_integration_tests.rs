@@ -749,3 +749,59 @@ mod milestone_1500 {
     #[test] fn test_9() { let l = crate::lineage::QueryLineage::new("q", vec![("a","t1"),("b","t2")]); assert!(l.is_cross_source()); }
     #[test] fn test_10() { let d = crate::delivery::recommend_delivery(Some(50000), None, 10000, 10_000_000); assert_eq!(d, crate::delivery::DeliveryMode::Streaming); }
 }
+
+
+#[cfg(test)]
+mod toward_1550 {
+    use serde_json::json;
+
+    #[test] fn test_merge_single_row() { let (_, r) = crate::aggregator::merge_results(vec![(vec!["x".into()], vec![vec![json!(1)]])]); assert_eq!(r.len(), 1); }
+    #[test] fn test_sort_numbers_asc() { let mut r = vec![vec![json!(3)], vec![json!(1)], vec![json!(2)]]; crate::sorter::sort_by_column(&mut r, 0, false); assert_eq!(r[0][0], json!(1)); assert_eq!(r[2][0], json!(3)); }
+    #[test] fn test_distinct_preserves_first() { let r = crate::distinct::distinct(vec![vec![json!(1), json!("a")], vec![json!(1), json!("a")]]); assert_eq!(r.len(), 1); assert_eq!(r[0][1], json!("a")); }
+    #[test] fn test_group_count_two() { let r = vec![vec![json!("a")], vec![json!("b")]]; assert_eq!(crate::grouper::group_count(&r, 0).len(), 2); }
+    #[test] fn test_hash_join_no_match() { assert!(crate::joiner::hash_join(&[vec![json!(1)]], 0, &[vec![json!(2)]], 0).is_empty()); }
+    #[test] fn test_semi_join_all() { let r = vec![vec![json!(1)]]; assert_eq!(crate::set_ops::semi_join(&r, 0, &r, 0).len(), 1); }
+    #[test] fn test_anti_join_none() { let r = vec![vec![json!(1)]]; assert!(crate::set_ops::anti_join(&r, 0, &r, 0).is_empty()); }
+    #[test] fn test_window_rank_empty() { assert!(crate::window_fn::add_rank(&[], 0).is_empty()); }
+    #[test] fn test_coerce_column_string() { let mut r = vec![vec![json!(42)]]; crate::coercer::coerce_column(&mut r, 0, "string"); assert_eq!(r[0][0], json!("42")); }
+    #[test] fn test_null_counts_all_present() { assert_eq!(crate::null_handler::null_counts(&[vec![json!(1)], vec![json!(2)]], 1), vec![0]); }
+    #[test] fn test_paginate_empty() { assert!(crate::offset_pagination::paginate(&[], 0, 10).is_empty()); }
+    #[test] fn test_row_limit_exact() { let r = crate::row_limit::enforce_limit(vec![vec![json!(1)]; 10], 10); assert!(!r.truncated); }
+    #[test] fn test_pivot_empty_rows() { let (c, r) = crate::pivot::pivot(&[], 0, 1, 2); assert_eq!(c, vec!["key"]); assert!(r.is_empty()); }
+    #[test] fn test_transpose_two_cols() { let (c, _) = crate::transpose::transpose(&["a".into(), "b".into()], &[vec![json!(1), json!(2)]]); assert_eq!(c.len(), 2); }
+    #[test] fn test_flatten_no_nesting() { let mut out = std::collections::BTreeMap::new(); crate::flattener::flatten_value("", &json!({"x": 1}), &mut out); assert_eq!(out.len(), 1); }
+    #[test] fn test_arrow_roundtrip() { let cols = vec!["a".into()]; let rows = vec![vec![json!(1)], vec![json!(2)]]; let c = crate::arrow_export::to_columnar(&cols, &rows); let back = crate::arrow_export::to_rows(&c); assert_eq!(back, rows); }
+    #[test] fn test_type_infer_object() { assert_eq!(crate::type_infer::infer_type(&json!({"k":"v"})), crate::type_infer::InferredType::Object); }
+    #[test] fn test_profiler_null_pct() { let p = crate::profiler::profile(&["x".into()], &[vec![json!(null)]]); assert_eq!(p[0].null_pct, 100.0); }
+    #[test] fn test_column_stats_min_max() { let s = crate::column_stats::compute_stats(&["x".into()], &[vec![json!("a")], vec![json!("z")]]); assert!(s[0].min.is_some()); assert!(s[0].max.is_some()); }
+    #[test] fn test_cache_key_tenant() { let k = crate::cache_key::build_key("sql", "SELECT 1", Some("t1")); assert!(k.starts_with("t1:")); }
+    #[test] fn test_policy_grant_denied() { let p = crate::query_policy::QueryPolicy::with_defaults(); assert!(matches!(p.check("GRANT ALL ON t TO user"), crate::query_policy::PolicyResult::Denied(_))); }
+    #[test] fn test_circuit_breaker_half_open() { let cb = crate::circuit_breaker::CircuitBreaker::new(1, 0); cb.record_failure("ds"); assert!(cb.allow("ds")); /* 0s recovery = immediate half-open */ }
+    #[test] fn test_rewrite_whitespace() { let r = crate::rewrite::apply_rules("  SELECT   1  ", &crate::rewrite::default_rules()); assert!(!r.contains("  ")); }
+    #[test] fn test_validate_empty_format() { let e = crate::validate::validate_request("SELECT 1", "xml", None, None); assert!(!e.is_empty()); }
+    #[test] fn test_explain_cache_overwrite() { let c = crate::explain_cache::ExplainCache::new(60, 10); c.insert("q".into(), json!({"v":1})); c.insert("q".into(), json!({"v":2})); assert_eq!(c.get("q").unwrap()["v"], json!(2)); }
+    #[test] fn test_slow_query_fast() { assert!(!crate::slow_query::check_slow_query("q", "sql", std::time::Duration::from_millis(1), &[], 0, None)); }
+    #[test] fn test_pagination_with_cursor() { let p = crate::pagination::PaginationMeta::with_cursor(20, "abc".into(), Some(100)); assert!(p.has_more); }
+    #[test] fn test_complexity_join() { let s = crate::complexity::score_query("SELECT * FROM a.t JOIN b.t ON a.t.id = b.t.id"); assert!(s.has_join); }
+    #[test] fn test_fingerprint_whitespace() { let f1 = crate::fingerprint::fingerprint("SELECT  *  FROM  t"); let f2 = crate::fingerprint::fingerprint("SELECT * FROM t"); assert_eq!(f1, f2); }
+    #[test] fn test_sanitize_nested_quotes() { let s = crate::sanitize::sanitize_query("WHERE x = 'it''s'"); assert!(s.contains("***")); }
+    #[test] fn test_query_parser_tables_union() { let t = crate::query_parser::extract_tables("SELECT * FROM a.t1 UNION ALL SELECT * FROM b.t2"); assert_eq!(t.len(), 2); }
+    #[test] fn test_top_n_no_top() { assert_eq!(crate::top_n::extract_top("SELECT * FROM t LIMIT 10"), None); }
+    #[test] fn test_case_when_multiple() { let c = crate::case_when::CaseWhen::new(json!("d")).when(|v| v == &json!(1), json!("one")).when(|v| v == &json!(2), json!("two")); assert_eq!(c.evaluate(&json!(2)), json!("two")); }
+    #[test] fn test_result_filter_lte() { let r = vec![vec![json!(5)], vec![json!(10)]]; assert_eq!(crate::result_filter::filter_rows(&r, &[crate::result_filter::FilterOp::Lte(0, 5.0)]).len(), 1); }
+    #[test] fn test_projector_single_col() { let (c, r) = crate::projector::project(&[vec![json!(1), json!(2)]], &["a".into(), "b".into()], &["b".into()]); assert_eq!(c, vec!["b"]); assert_eq!(r[0], vec![json!(2)]); }
+    #[test] fn test_renamer_parse_no_from() { let a = crate::renamer::parse_aliases("SELECT x AS y"); assert_eq!(a.get("x").map(|s| s.as_str()), Some("y")); }
+    #[test] fn test_reorder_empty() { let (c, r) = crate::reorder::reorder(&["a".into()], &[vec![json!(1)]], &[]); assert!(c.is_empty()); assert_eq!(r[0].len(), 0); }
+    #[test] fn test_union_typed_three_cols() { let l = vec!["a".into(), "b".into()]; let r = vec!["b".into(), "c".into()]; let (c, _) = crate::union_typed::union_aligned(&l, &[], &r, &[]); assert_eq!(c, vec!["a", "b", "c"]); }
+    #[test] fn test_formatter_csv_comma() { let csv = crate::formatter::to_csv(&["x".into()], &[vec![json!("a,b")]]); assert!(csv.contains("\"")); }
+    #[test] fn test_access_log_recent_order() { let l = crate::access_log::AccessLog::new(); l.record(crate::access_log::AccessEntry { method: "GET".into(), path: "/a".into(), status: 200, duration_ms: 1, timestamp: 0, client_ip: None }); l.record(crate::access_log::AccessEntry { method: "POST".into(), path: "/b".into(), status: 201, duration_ms: 2, timestamp: 1, client_ip: None }); assert_eq!(l.recent(1)[0].path, "/b"); }
+    #[test] fn test_timeout_tracker_recent() { let t = crate::timeout_tracker::TimeoutTracker::new(); t.record("q1", "ds", 5000, 5100); assert_eq!(t.recent(10).len(), 1); }
+    #[test] fn test_cost_tracker_record() { let t = crate::cost_tracker::CostTracker::new(); t.record("team", "pg", 100, 5000, 50); assert_eq!(t.for_tenant("team")["pg"].query_count, 1); }
+    #[test] fn test_rate_monitor_multiple() { let m = crate::rate_monitor::RateMonitor::new(60); for _ in 0..10 { m.record(); } assert_eq!(m.count(), 10); }
+    #[test] fn test_pool_stats_timeout() { let t = crate::pool_stats::PoolTracker::new(); t.timeout("ds"); assert_eq!(t.snapshot()["ds"].total_timeouts, 1); }
+    #[test] fn test_scheduler_record_run() { let r = crate::scheduler::ScheduleRegistry::new(); r.add(crate::scheduler::ScheduledQuery { id: "s".into(), name: "t".into(), query: "SELECT 1".into(), format: "sql".into(), cron: "* * * * *".into(), enabled: true, last_run: None, last_status: None, run_count: 0 }); r.record_run("s", "ok"); assert_eq!(r.get("s").unwrap().run_count, 1); }
+    #[test] fn test_lineage_with_join() { let l = crate::lineage::QueryLineage::new("q", vec![("a","t1"),("b","t2")]).with_join("hash"); assert_eq!(l.join_type.as_deref(), Some("hash")); }
+    #[test] fn test_delivery_streaming_bytes() { assert_eq!(crate::delivery::recommend_delivery(None, Some(100_000_000), 10000, 10_000_000), crate::delivery::DeliveryMode::Streaming); }
+    #[test] fn test_explain_cache_miss() { let c = crate::explain_cache::ExplainCache::new(60, 10); assert!(c.get("missing").is_none()); }
+    #[test] fn test_bookmarks_list_empty() { assert!(crate::bookmarks::BookmarkStore::new().list().is_empty()); }
+}
