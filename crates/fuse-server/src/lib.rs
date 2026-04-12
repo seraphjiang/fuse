@@ -70,6 +70,7 @@ pub mod query_policy;
 pub mod query_replay;
 pub mod profiler;
 pub mod query_parser;
+pub mod query_predictor;
 pub mod projector;
 pub mod registry_snapshot;pub mod query_context;
 pub mod prepared;
