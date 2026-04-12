@@ -102,6 +102,40 @@ for p in "${RESPONSIVE_PAGES[@]}"; do
   grep -q '@media' "$DIR/$p.html" && check "$p.html: @media" "ok" || check "$p.html: @media" "missing"
 done
 
+# 8. New Sprint 18 pages
+echo ""
+echo "── Sprint 18 pages ──"
+for page in schedules quality lineage; do
+  PG="$DIR/$page.html"
+  [ -f "$PG" ] && check "$page.html: exists" "ok" || { check "$page.html: exists" "missing"; continue; }
+  grep -q 'nav-tab' "$PG" && check "$page.html: nav" "ok" || check "$page.html: nav" "missing"
+  grep -q 'matchMedia' "$PG" && check "$page.html: system-pref" "ok" || check "$page.html: system-pref" "missing"
+  grep -q '@media' "$PG" && check "$page.html: responsive" "ok" || check "$page.html: responsive" "missing"
+  grep -q 'body.light' "$PG" && check "$page.html: light-mode" "ok" || check "$page.html: light-mode" "missing"
+done
+
+# 9. Demo tour & complex JOINs
+echo ""
+echo "── Demo & complex queries ──"
+IDX="$DIR/index.html"
+grep -q 'startDemo\|DEMO_STEPS' "$IDX" && check "Demo tour" "ok" || check "Demo tour" "missing"
+grep -q 'demo-bar' "$IDX" && check "Demo bar UI" "ok" || check "Demo bar UI" "missing"
+grep -q '3-Way JOIN\|3-way JOIN' "$IDX" && check "3-way JOIN demo" "ok" || check "3-way JOIN demo" "missing"
+grep -q 'NOT IN' "$IDX" && check "Anti-join example" "ok" || check "Anti-join example" "missing"
+grep -q 'EXISTS' "$IDX" && check "Correlated subquery" "ok" || check "Correlated subquery" "missing"
+grep -q 'PPL.*lookup\|lookup.*REPLACE' "$IDX" && check "PPL lookup example" "ok" || check "PPL lookup example" "missing"
+
+# 10. Playground editor features
+echo ""
+echo "── Editor features ──"
+grep -q 'line-gutter' "$IDX" && check "Line numbers" "ok" || check "Line numbers" "missing"
+grep -q 'getEditorQuery\|selectionStart' "$IDX" && check "Run selection" "ok" || check "Run selection" "missing"
+grep -q 'sortTable\|sortCol' "$IDX" && check "Column sorting" "ok" || check "Column sorting" "missing"
+grep -q 'shareQuery\|🔗 Share' "$IDX" && check "Query sharing" "ok" || check "Query sharing" "missing"
+grep -q 'loadSaved\|saved-list' "$IDX" && check "Saved queries UI" "ok" || check "Saved queries UI" "missing"
+grep -q 'shortcuts-modal' "$IDX" && check "Keyboard shortcuts" "ok" || check "Keyboard shortcuts" "missing"
+grep -q 'snippet-menu\|toggleSnippets' "$IDX" && check "Query snippets" "ok" || check "Query snippets" "missing"
+
 # Summary
 echo ""
 echo "════════════════════════════"
