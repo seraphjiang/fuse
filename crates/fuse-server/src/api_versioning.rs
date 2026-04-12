@@ -45,7 +45,7 @@ pub async fn version_header_middleware(req: Request, next: Next) -> impl IntoRes
 /// Build versioned route nesting for v1 and v2 prefixes.
 /// Core query/datasource routes are available under both prefixes.
 pub fn versioned_api_routes(
-    state: std::sync::Arc<crate::api::AppState>,
+    _state: std::sync::Arc<crate::api::AppState>,
 ) -> Router<std::sync::Arc<crate::api::AppState>> {
     let core_routes: Router<std::sync::Arc<crate::api::AppState>> = Router::new()
         .route("/query", axum::routing::post(crate::api::query_handler))

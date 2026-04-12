@@ -118,6 +118,7 @@ pub mod union_typed;
 pub mod validate;
 pub mod tracing_ctx;
 pub mod api_versioning;
+pub mod smart_routing;
 
 use std::sync::Arc;
 
