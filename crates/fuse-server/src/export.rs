@@ -111,4 +111,36 @@ mod tests {
     fn test_csv_empty() {
         assert_eq!(to_csv(&vec!["a".into()], &[]), "a\n");
     }
+
+    #[test]
+    fn test_csv_formula_injection_equals() {
+        let cols = vec!["x".into()];
+        let rows = vec![vec![json!("=HYPERLINK(\"http://evil\")")]];
+        let csv = to_csv(&cols, &rows);
+        assert!(csv.contains("'="), "= formula must be quote-prefixed");
+    }
+
+    #[test]
+    fn test_csv_formula_injection_plus() {
+        let csv = to_csv(&vec!["x".into()], &[vec![json!("+cmd|'/C calc'")]]);
+        assert!(csv.contains("'+"), "+ formula must be quote-prefixed");
+    }
+
+    #[test]
+    fn test_csv_formula_injection_minus() {
+        let csv = to_csv(&vec!["x".into()], &[vec![json!("-1+1")]]);
+        assert!(csv.contains("'-"), "- formula must be quote-prefixed");
+    }
+
+    #[test]
+    fn test_csv_formula_injection_at() {
+        let csv = to_csv(&vec!["x".into()], &[vec![json!("@SUM(A1)")]]);
+        assert!(csv.contains("'@"), "@ formula must be quote-prefixed");
+    }
+
+    #[test]
+    fn test_csv_safe_string_not_prefixed() {
+        let csv = to_csv(&vec!["x".into()], &[vec![json!("hello")]]);
+        assert!(!csv.contains("'hello"), "safe strings must not be prefixed");
+    }
 }

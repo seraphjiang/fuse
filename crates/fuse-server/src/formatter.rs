@@ -112,4 +112,13 @@ mod tests {
         let rows = vec![vec![json!(null)]];
         assert!(to_csv(&cols, &rows).contains("NULL"));
     }
+
+    #[test]
+    fn test_csv_formula_injection() {
+        assert!(csv_escape(&json!("=CMD")).starts_with("'"), "= must be prefixed");
+        assert!(csv_escape(&json!("+1")).starts_with("'"), "+ must be prefixed");
+        assert!(csv_escape(&json!("-1")).starts_with("'"), "- must be prefixed");
+        assert!(csv_escape(&json!("@SUM")).starts_with("'"), "@ must be prefixed");
+        assert!(!csv_escape(&json!("safe")).starts_with("'"), "safe must not be prefixed");
+    }
 }
