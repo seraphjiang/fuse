@@ -339,6 +339,19 @@ fn error_json(status: StatusCode, msg: impl ToString) -> impl IntoResponse {
     )
 }
 
+/// Extract client IP from request headers (X-Forwarded-For, then X-Real-IP).
+fn extract_client_ip(headers: &axum::http::HeaderMap) -> Option<String> {
+    headers.get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim().to_string())
+        .or_else(|| {
+            headers.get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.trim().to_string())
+        })
+}
+
 /// Substitute `$key` placeholders in query with parameter values.
 /// String values are single-quoted and escaped. Numbers/bools are inlined.
 /// Rewrite CONTAINS 'term' → LIKE '%term%' for full-text search syntax.
@@ -1164,7 +1177,7 @@ pub async fn query_handler(
                 row_count: total_rows,
                 status: crate::audit::AuditStatus::Success,
                 error: None,
-                client_ip: None,
+                client_ip: extract_client_ip(&headers),
             }).await;
             crate::metrics::record_query(&req.format, true, elapsed_ms);
             tracing::info!(
@@ -1254,6 +1267,18 @@ pub async fn query_handler(
                 error: Some(e.clone()),
             });
             crate::metrics::record_query(&req.format, false, t0.elapsed().as_millis() as u64);
+            state.audit_log.record(crate::audit::AuditEntry {
+                timestamp: crate::history::now_secs(),
+                identity: tenant_id.clone().unwrap_or_else(|| "anonymous".into()),
+                action: crate::audit::AuditAction::Query,
+                query: Some(req.query.clone()),
+                datasources: vec![],
+                duration_ms: t0.elapsed().as_millis() as u64,
+                row_count: 0,
+                status: crate::audit::AuditStatus::Error,
+                error: Some(e.clone()),
+                client_ip: extract_client_ip(&headers),
+            }).await;
             tracing::warn!(
                 query_id = %query_id,
                 format = %format,
@@ -1747,8 +1772,12 @@ pub async fn get_fields(
 /// POST /api/fuse/query/explain
 pub async fn explain_handler(
     State(state): State<Arc<AppState>>,
+    auth_identity: Option<Extension<crate::auth::AuthIdentity>>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<QueryRequest>,
 ) -> impl IntoResponse {
+    let t0 = std::time::Instant::now();
+    let identity = auth_identity.as_ref().map(|ext| ext.0.identity.clone()).unwrap_or_else(|| "anonymous".into());
     let format = req.format.to_lowercase();
     let parse_result = match format.as_str() {
         "ppl" => parse_ppl_sources(&req.query),
@@ -1828,6 +1857,18 @@ pub async fn explain_handler(
                 if est.total_cost_usd > 0.0 { Some(est) } else { None }
             };
 
+            state.audit_log.record(crate::audit::AuditEntry {
+                timestamp: crate::history::now_secs(),
+                identity: identity.clone(),
+                action: crate::audit::AuditAction::Explain,
+                query: Some(req.query.clone()),
+                datasources: refs.iter().map(|(ds, _)| ds.clone()).collect(),
+                duration_ms: t0.elapsed().as_millis() as u64,
+                row_count: 0,
+                status: crate::audit::AuditStatus::Success,
+                error: None,
+                client_ip: extract_client_ip(&headers),
+            }).await;
             Json(ExplainResponse {
                 plan: plan_text,
                 plan_tree: Some(plan_tree),
@@ -1837,15 +1878,33 @@ pub async fn explain_handler(
             })
             .into_response()
         }
-        Err(e) => error_json(StatusCode::BAD_REQUEST, e).into_response(),
+        Err(e) => {
+            state.audit_log.record(crate::audit::AuditEntry {
+                timestamp: crate::history::now_secs(),
+                identity: identity.clone(),
+                action: crate::audit::AuditAction::Explain,
+                query: Some(req.query.clone()),
+                datasources: vec![],
+                duration_ms: t0.elapsed().as_millis() as u64,
+                row_count: 0,
+                status: crate::audit::AuditStatus::Error,
+                error: Some(e.clone()),
+                client_ip: extract_client_ip(&headers),
+            }).await;
+            error_json(StatusCode::BAD_REQUEST, e).into_response()
+        }
     }
 }
 
 /// POST /api/fuse/query/validate
 pub async fn validate_handler(
     State(state): State<Arc<AppState>>,
+    auth_identity: Option<Extension<crate::auth::AuthIdentity>>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<QueryRequest>,
 ) -> impl IntoResponse {
+    let t0 = std::time::Instant::now();
+    let identity = auth_identity.as_ref().map(|ext| ext.0.identity.clone()).unwrap_or_else(|| "anonymous".into());
     let format = req.format.to_lowercase();
     let parse_result = match format.as_str() {
         "ppl" => parse_ppl_sources(&req.query),
@@ -1878,15 +1937,41 @@ pub async fn validate_handler(
                     }),
                 }
             }
+            state.audit_log.record(crate::audit::AuditEntry {
+                timestamp: crate::history::now_secs(),
+                identity: identity.clone(),
+                action: crate::audit::AuditAction::Validate,
+                query: Some(req.query.clone()),
+                datasources: refs.iter().map(|(ds, _)| ds.clone()).collect(),
+                duration_ms: t0.elapsed().as_millis() as u64,
+                row_count: 0,
+                status: crate::audit::AuditStatus::Success,
+                error: None,
+                client_ip: extract_client_ip(&headers),
+            }).await;
             Json(ValidateResponse {
                 valid: true,
                 error: None,
             })
         }
-        Err(e) => Json(ValidateResponse {
-            valid: false,
-            error: Some(e),
-        }),
+        Err(e) => {
+            state.audit_log.record(crate::audit::AuditEntry {
+                timestamp: crate::history::now_secs(),
+                identity: identity.clone(),
+                action: crate::audit::AuditAction::Validate,
+                query: Some(req.query.clone()),
+                datasources: vec![],
+                duration_ms: t0.elapsed().as_millis() as u64,
+                row_count: 0,
+                status: crate::audit::AuditStatus::Error,
+                error: Some(e.clone()),
+                client_ip: extract_client_ip(&headers),
+            }).await;
+            Json(ValidateResponse {
+                valid: false,
+                error: Some(e),
+            })
+        }
     }
 }
 
@@ -2806,6 +2891,48 @@ pub async fn history_handler(State(state): State<Arc<AppState>>) -> impl IntoRes
 }
 
 /// GET /api/fuse/stats — aggregated query statistics.
+/// GET /api/fuse/audit — query audit log entries.
+///
+/// Query params: `limit` (default 50), `identity` (filter by tenant/user),
+/// `since` (unix timestamp), `format` (`json` or `ndjson`).
+pub async fn audit_handler(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let limit = params.get("limit").and_then(|v| v.parse().ok()).unwrap_or(50usize);
+    let format = params.get("format").map(|s| s.as_str()).unwrap_or("json");
+
+    if let Some(identity) = params.get("identity") {
+        let entries = state.audit_log.for_identity(identity, limit).await;
+        if format == "ndjson" {
+            let body = entries.iter()
+                .filter_map(|e| serde_json::to_string(e).ok())
+                .collect::<Vec<_>>().join("\n");
+            return (StatusCode::OK, [(axum::http::header::CONTENT_TYPE, "application/x-ndjson")], body).into_response();
+        }
+        return Json(serde_json::json!({"entries": entries, "count": entries.len()})).into_response();
+    }
+
+    if let Some(since) = params.get("since").and_then(|v| v.parse::<u64>().ok()) {
+        let body = state.audit_log.export_since(since).await;
+        if format == "ndjson" {
+            return (StatusCode::OK, [(axum::http::header::CONTENT_TYPE, "application/x-ndjson")], body).into_response();
+        }
+        let entries: Vec<serde_json::Value> = body.lines()
+            .filter_map(|l| serde_json::from_str(l).ok()).collect();
+        return Json(serde_json::json!({"entries": entries, "count": entries.len()})).into_response();
+    }
+
+    let entries = state.audit_log.recent(limit).await;
+    if format == "ndjson" {
+        let body = entries.iter()
+            .filter_map(|e| serde_json::to_string(e).ok())
+            .collect::<Vec<_>>().join("\n");
+        return (StatusCode::OK, [(axum::http::header::CONTENT_TYPE, "application/x-ndjson")], body).into_response();
+    }
+    Json(serde_json::json!({"entries": entries, "count": entries.len()})).into_response()
+}
+
 pub async fn stats_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let history_stats = state.history.stats();
     let connector_count = state.registry.list().len();
