@@ -118,6 +118,7 @@ pub mod tracing_ctx;
 
 use std::sync::Arc;
 
+use axum::extract::DefaultBodyLimit;
 use axum::http::header;
 use axum::middleware;
 use axum::response::{Html, IntoResponse};
@@ -329,5 +330,6 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
             .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(Level::INFO))
             .on_response(tower_http::trace::DefaultOnResponse::new().level(Level::INFO)))
         .layer(middleware::from_fn(security_headers::security_headers_middleware))
+        .layer(DefaultBodyLimit::max(10 * 1024 * 1024)) // 10MB request body limit
         .with_state(state)
 }
