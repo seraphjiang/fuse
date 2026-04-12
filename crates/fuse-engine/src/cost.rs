@@ -71,7 +71,12 @@ pub struct QueryWorkload {
     pub projection_count: usize,
     /// Total columns in the table.
     pub total_columns: usize,
+    /// Whether the result is already cached (near-zero cost).
+    pub is_cached: bool,
 }
+
+/// Cost of serving a cached result — just a HashMap lookup.
+const CACHE_HIT_COST: f64 = 0.001;
 
 /// Latency multiplier per class. Higher latency = higher per-row network cost.
 fn latency_multiplier(class: &LatencyClass) -> f64 {
@@ -97,6 +102,10 @@ pub fn estimate_remote_cost(
     stats: &TableStats,
     workload: &QueryWorkload,
 ) -> CostEstimate {
+    if workload.is_cached {
+        return CostEstimate::new(CACHE_HIT_COST, 0.0);
+    }
+
     let base_rows = stats.estimated_rows as f64;
     let latency = latency_multiplier(&caps.latency_class);
 
@@ -140,6 +149,10 @@ pub fn estimate_local_cost(
     stats: &TableStats,
     workload: &QueryWorkload,
 ) -> CostEstimate {
+    if workload.is_cached {
+        return CostEstimate::new(CACHE_HIT_COST, 0.0);
+    }
+
     let base_rows = stats.estimated_rows as f64;
     let latency = latency_multiplier(&caps.latency_class);
 
@@ -244,6 +257,7 @@ mod tests {
             limit_value: Some(100),
             projection_count: 3,
             total_columns: 20,
+            is_cached: false,
         }
     }
 
@@ -342,5 +356,48 @@ mod tests {
     fn test_pick_cheapest_returns_none_for_empty() {
         let workload = QueryWorkload::default();
         assert_eq!(pick_cheapest_connector(&[], &workload), None);
+    }
+
+    #[test]
+    fn test_cached_remote_cost_near_zero() {
+        let caps = high_latency_caps();
+        let stats = big_table();
+        let workload = QueryWorkload { is_cached: true, ..Default::default() };
+        let cost = estimate_remote_cost(&caps, &stats, &workload);
+        assert!(cost.total < 0.01, "cached cost should be near-zero, got {}", cost.total);
+        assert_eq!(cost.network, 0.0);
+    }
+
+    #[test]
+    fn test_cached_local_cost_near_zero() {
+        let caps = high_latency_caps();
+        let stats = big_table();
+        let workload = QueryWorkload { is_cached: true, ..Default::default() };
+        let cost = estimate_local_cost(&caps, &stats, &workload);
+        assert!(cost.total < 0.01);
+    }
+
+    #[test]
+    fn test_cached_much_cheaper_than_uncached() {
+        let caps = low_latency_caps();
+        let stats = big_table();
+        let uncached = QueryWorkload { has_filter: true, ..Default::default() };
+        let cached = QueryWorkload { has_filter: true, is_cached: true, ..Default::default() };
+        let cost_uncached = estimate_remote_cost(&caps, &stats, &uncached);
+        let cost_cached = estimate_remote_cost(&caps, &stats, &cached);
+        assert!(cost_cached.total < cost_uncached.total * 0.01,
+            "cached should be <1% of uncached cost");
+    }
+
+    #[test]
+    fn test_cached_always_prefers_pushdown() {
+        // Even with no-agg caps, cached result should prefer pushdown
+        // because both remote and local are near-zero, and remote <= local
+        let caps = low_latency_caps();
+        let stats = big_table();
+        let workload = QueryWorkload { is_cached: true, has_aggregation: true, ..Default::default() };
+        // should_push_down checks caps first, so agg without support still returns false
+        // But with full caps + cached, it should push down
+        assert!(should_push_down(&caps, &stats, &workload));
     }
 }

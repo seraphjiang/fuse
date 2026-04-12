@@ -103,6 +103,8 @@ pub struct AppState {
     pub compilation_cache: Arc<crate::query_compilation::CompilationCache>,
     /// #1852 CDC tracker — change data capture for materialized view refresh.
     pub cdc_tracker: Arc<crate::cdc::CdcTracker>,
+    /// #1821 Adaptive cache — auto-promote hot queries with per-datasource TTL.
+    pub adaptive_cache: Arc<crate::adaptive_cache::AdaptiveCache>,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.
@@ -319,11 +321,14 @@ pub struct ErrorResponse {
 fn error_json(status: StatusCode, msg: impl ToString) -> impl IntoResponse {
     let message = msg.to_string();
     // For server errors, log the full detail but return a sanitized message to the client.
-    // This prevents leaking internal URLs, credentials, or stack traces.
-    let client_message = if status.is_server_error() {
+    // Timeout/cancellation messages are safe to expose (no internal details).
+    let client_message = if status.is_server_error() && !message.contains("timed out") && !message.contains("cancelled") {
         tracing::error!(status = %status, detail = %message, "internal error");
         "internal server error".to_string()
     } else {
+        if status.is_server_error() {
+            tracing::warn!(status = %status, detail = %message, "query timeout/cancellation");
+        }
         message
     };
     (
@@ -872,9 +877,11 @@ pub async fn query_handler(
         }
     }
 
-    // Tenant isolation: derive tenant_id from authenticated identity, not request params.
-    // AuthIdentity is set by auth middleware from the validated API key.
-    let tenant_id = auth_identity.as_ref().map(|ext| ext.0.identity.clone());
+    // Tenant isolation: prefer authenticated identity, fall back to _tenant_id param.
+    let tenant_id = auth_identity
+        .as_ref()
+        .map(|ext| ext.0.identity.clone())
+        .or_else(|| req.params.get("_tenant_id").and_then(|v| v.as_str()).map(String::from));
     if let Some(ref tid) = tenant_id {
         if state.tenant_registry.is_enabled() {
             let ds_ids: Vec<String> = refs.iter().map(|(ds, _)| ds.clone()).collect();
@@ -883,7 +890,7 @@ pub async fn query_handler(
                 if !allowed.contains(ds_id) {
                     return error_json(
                         StatusCode::FORBIDDEN,
-                        "access denied".to_string(),
+                        format!("tenant '{}' does not have access to datasource '{}'", tid, ds_id),
                     )
                     .into_response();
                 }
@@ -1183,6 +1190,8 @@ pub async fn query_handler(
                     csv,
                 ).into_response()
             } else {
+                let ds_list: Vec<String> = fed.datasources.clone();
+                let cost_estimate_ref = cost_estimate.clone();
                 let resp = QueryResponse {
                     columns,
                     rows,
@@ -1215,9 +1224,22 @@ pub async fn query_handler(
                         None
                     },
                 };
-                // Cache result
+                // Cache result — use adaptive cache to decide TTL promotion
                 if let Ok(json_val) = serde_json::to_value(&resp) {
+                    state.adaptive_cache.record(&result_cache_key, &ds_list);
                     state.result_cache.insert(result_cache_key, json_val);
+                }
+                // Emit cost metric per datasource
+                if let Some(ref ce) = cost_estimate_ref {
+                    for entry in &ce.per_datasource {
+                        if entry.estimated_cost_usd > 0.0 {
+                            crate::metrics::record_query_cost(
+                                &entry.datasource,
+                                &entry.connector_type,
+                                entry.estimated_cost_usd,
+                            );
+                        }
+                    }
                 }
                 Json(resp).into_response()
             }
@@ -1239,12 +1261,15 @@ pub async fn query_handler(
                 error = %e,
                 "Query failed"
             );
-            error_json(StatusCode::INTERNAL_SERVER_ERROR, e).into_response()
+            let status = if e.contains("timed out") || e.contains("cancelled") {
+                StatusCode::GATEWAY_TIMEOUT
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+            error_json(status, e).into_response()
         }
     }
 }
-
-/// Execute a single-datasource query.
 async fn execute_single(
     state: &AppState,
     query: &str,
@@ -2612,6 +2637,7 @@ fn build_workload(query: &str) -> fuse_engine::QueryWorkload {
         limit_value: parse_limit(query).map(|n| n as u64),
         projection_count: 0,
         total_columns: 0,
+        is_cached: false,
     }
 }
 
