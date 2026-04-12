@@ -98,3 +98,12 @@ podAnnotations: {}
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+metrics:
+  serviceMonitor:
+    enabled: false
+    interval: "30s"
+    scrapeTimeout: "10s"
+    path: "/metrics"
+    labels: {}
+    # release: prometheus  # match your Prometheus operator selector
