@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuse — Query Replay</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e1e4e8;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid #21262d;background:#161b22}
+header h1{font-size:18px;font-weight:600;color:#58a6ff}
+.nav-tabs{display:flex;gap:0}
+.nav-tab{padding:8px 16px;font-size:13px;color:#8b949e;text-decoration:none;border-bottom:2px solid transparent}
+.nav-tab:hover{color:#e1e4e8}
+.nav-tab.active{color:#58a6ff;border-bottom-color:#58a6ff;font-weight:600}
+main{max-width:1200px;width:100%;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:20px}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+button{padding:6px 14px;font-size:13px;border-radius:6px;border:1px solid #30363d;background:#21262d;color:#e1e4e8;cursor:pointer}
+button:hover{background:#30363d}
+button.primary{background:#238636;border-color:#238636;color:#fff}
+button.primary:hover{background:#2ea043}
+button.danger{color:#f85149;border-color:#f85149}
+.card{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px}
+.card h3{font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:8px 12px;color:#8b949e;border-bottom:1px solid #21262d;font-weight:600}
+td{padding:8px 12px;border-bottom:1px solid #21262d}
+.mono{font-family:"SF Mono",Consolas,monospace;font-size:12px;color:#79c0ff}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.badge.match{background:#238636;color:#fff}
+.badge.diff{background:#f85149;color:#fff}
+.badge.pending{background:#484f58;color:#e1e4e8}
+.empty{text-align:center;padding:40px;color:#8b949e}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.stat{font-size:28px;font-weight:700}
+body.light{background:#fff;color:#1f2328}
+body.light header{background:#f6f8fa;border-color:#d0d7de}
+body.light .card{background:#fff;border-color:#d0d7de}
+body.light th,body.light td{border-color:#d0d7de}
+body.light th{color:#656d76}
+body.light button{background:#f6f8fa;border-color:#d0d7de;color:#1f2328}
+body.light .nav-tab{color:#656d76}
+body.light .nav-tab.active{color:#0969da;border-bottom-color:#0969da}
+@media(max-width:768px){main{padding:12px}header{flex-wrap:wrap;padding:8px 12px}.nav-tabs{flex-wrap:wrap}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔗 Fuse</h1>
+  <div>
+    <nav class="nav-tabs">
+      <a href="/playground" class="nav-tab">Playground</a>
+      <a href="/dashboard" class="nav-tab">Dashboard</a>
+      <a href="/explore" class="nav-tab">Explore</a>
+      <a href="/lineage" class="nav-tab">Lineage</a>
+      <a href="/replay" class="nav-tab active">Replay</a>
+      <a href="/schedules" class="nav-tab">Schedules</a>
+      <a href="/status" class="nav-tab">Status</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="toolbar">
+    <button class="primary" onclick="replayAll()">▶ Replay All</button>
+    <button onclick="loadRecordings()">↻ Refresh</button>
+    <button class="danger" onclick="clearAll()">🗑 Clear All</button>
+    <span id="count" style="font-size:12px;color:#8b949e"></span>
+  </div>
+
+  <div class="grid" id="summary">
+    <div class="card"><h3>Recorded</h3><div class="stat" id="s-total" style="color:#58a6ff">—</div></div>
+    <div class="card"><h3>Matched</h3><div class="stat" id="s-match" style="color:#3fb950">—</div></div>
+    <div class="card"><h3>Diffs</h3><div class="stat" id="s-diff" style="color:#f85149">—</div></div>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead><tr><th>Query</th><th>Format</th><th>Datasources</th><th>Rows</th><th>Duration</th><th>Recorded</th><th>Replay</th></tr></thead>
+      <tbody id="rec-body"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="card" id="diff-card" style="display:none">
+    <h3>Replay Diff</h3>
+    <pre id="diff-output" style="font-size:12px;color:#8b949e;white-space:pre-wrap;max-height:300px;overflow:auto"></pre>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+(function(){var t=localStorage.getItem('fuse-theme');if(t==='light'||(!t&&window.matchMedia('(prefers-color-scheme:light)').matches))document.body.classList.add('light');})();
+
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error(await r.text());
+  return r.status === 204 ? null : r.json();
+}
+
+let recordings = [];
+let replayResults = {};
+
+async function loadRecordings() {
+  try {
+    const data = await api('/api/fuse/replay/recordings');
+    recordings = Array.isArray(data) ? data : (data.recordings || []);
+    $('s-total').textContent = recordings.length;
+    $('count').textContent = recordings.length + ' recording' + (recordings.length !== 1 ? 's' : '');
+    updateSummary();
+    renderTable();
+  } catch (e) {
+    $('rec-body').innerHTML = `<tr><td colspan="7" class="empty" style="color:#f85149">Failed: ${esc(e.message)}</td></tr>`;
+  }
+}
+
+function updateSummary() {
+  const results = Object.values(replayResults);
+  $('s-match').textContent = results.filter(r => r.matched).length;
+  $('s-diff').textContent = results.filter(r => r && !r.matched).length;
+}
+
+function renderTable() {
+  if (!recordings.length) {
+    $('rec-body').innerHTML = '<tr><td colspan="7" class="empty">No recorded queries. Run queries in the Playground to record them.</td></tr>';
+    return;
+  }
+  $('rec-body').innerHTML = recordings.map(r => {
+    const replay = replayResults[r.id];
+    const status = replay ? (replay.matched ? '<span class="badge match">✓ Match</span>' : '<span class="badge diff">✗ Diff</span>') : '<span class="badge pending">—</span>';
+    return `<tr>
+      <td><span class="mono" title="${esc(r.query)}">${esc(r.query.substring(0, 60))}${r.query.length > 60 ? '…' : ''}</span></td>
+      <td>${esc(r.format)}</td>
+      <td style="font-size:11px">${(r.datasources || []).map(d => esc(d)).join(', ')}</td>
+      <td>${r.row_count}</td>
+      <td>${r.duration_ms}ms</td>
+      <td style="font-size:11px;color:#8b949e">${r.recorded_at ? new Date(r.recorded_at * 1000).toLocaleString() : '—'}</td>
+      <td>${status}${replay && !replay.matched ? ' <button onclick="showDiff(\'' + esc(r.id) + '\')" style="font-size:11px;padding:2px 6px">View</button>' : ''}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function replayAll() {
+  for (const r of recordings) {
+    try {
+      const body = { query: r.query, format: r.format };
+      const res = await api('/api/fuse/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const rows = res.rows ? res.rows.length : 0;
+      const hash = JSON.stringify(res.rows || []);
+      replayResults[r.id] = {
+        matched: r.result_hash === hash || r.row_count === rows,
+        original_rows: r.row_count,
+        replay_rows: rows,
+        original_hash: r.result_hash,
+        replay_hash: hash.substring(0, 64),
+      };
+    } catch (e) {
+      replayResults[r.id] = { matched: false, error: e.message, original_rows: r.row_count, replay_rows: 0 };
+    }
+  }
+  updateSummary();
+  renderTable();
+}
+
+function showDiff(id) {
+  const r = replayResults[id];
+  if (!r) return;
+  $('diff-card').style.display = 'block';
+  $('diff-output').textContent = JSON.stringify(r, null, 2);
+}
+
+async function clearAll() {
+  if (!confirm('Clear all recordings?')) return;
+  try { await api('/api/fuse/replay/recordings', { method: 'DELETE' }); replayResults = {}; loadRecordings(); }
+  catch (e) { alert('Failed: ' + e.message); }
+}
+
+loadRecordings();
+</script>
+</body>
+</html>
