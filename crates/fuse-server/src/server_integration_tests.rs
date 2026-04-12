@@ -610,3 +610,35 @@ mod final_coverage_tests {
     #[test] fn test_circuit_breaker_success_resets() { let cb = crate::circuit_breaker::CircuitBreaker::new(2, 30); cb.record_failure("ds"); cb.record_success("ds"); assert_eq!(cb.state("ds"), crate::circuit_breaker::CircuitState::Closed); }
     #[test] fn test_rewrite_count_no_limit() { let r = crate::rewrite::apply_rules("SELECT COUNT(*) FROM t", &crate::rewrite::default_rules()); assert!(!r.contains("LIMIT")); }
 }
+
+
+#[cfg(test)]
+mod final_push_tests {
+    use serde_json::json;
+
+    #[test] fn test_merge_distinct_empty() { let (_, r) = crate::aggregator::merge_distinct(vec![]); assert!(r.is_empty()); }
+    #[test] fn test_sort_desc_strings() { let mut r = vec![vec![json!("a")], vec![json!("c")], vec![json!("b")]]; crate::sorter::sort_by_column(&mut r, 0, true); assert_eq!(r[0][0], json!("c")); }
+    #[test] fn test_distinct_single() { assert_eq!(crate::distinct::distinct(vec![vec![json!(1)]]).len(), 1); }
+    #[test] fn test_group_sum_empty() { assert!(crate::grouper::group_sum(&[], 0, 1).is_empty()); }
+    #[test] fn test_left_join_empty_right() { let r = crate::joiner::left_join(&[vec![json!(1)]], 0, &[], 0, 1); assert_eq!(r.len(), 1); }
+    #[test] fn test_except_identical() { let r = vec![vec![json!(1)]]; assert!(crate::intersect::except(&r, &r).is_empty()); }
+    #[test] fn test_anti_join_empty_left() { assert!(crate::set_ops::anti_join(&[], 0, &[vec![json!(1)]], 0).is_empty()); }
+    #[test] fn test_window_row_number_empty() { let (_, r) = crate::window_fn::add_row_number(&[], "rn"); assert!(r.is_empty()); }
+    #[test] fn test_pivot_single_row() { let (c, _) = crate::pivot::pivot(&[vec![json!("k"), json!("c"), json!(1)]], 0, 1, 2); assert!(c.len() >= 2); }
+    #[test] fn test_transpose_empty_cols() { let (_, r) = crate::transpose::transpose(&[], &[]); assert!(r.is_empty()); }
+    #[test] fn test_flatten_array() { let mut out = std::collections::BTreeMap::new(); crate::flattener::flatten_value("arr", &json!([1,2,3]), &mut out); assert_eq!(out["arr"], json!([1,2,3])); }
+    #[test] fn test_arrow_single_col() { let a = crate::arrow_export::to_columnar(&["x".into()], &[vec![json!(1)]]); assert_eq!(a[0].data_type, "int64"); }
+    #[test] fn test_type_infer_array() { assert_eq!(crate::type_infer::infer_type(&json!([1])), crate::type_infer::InferredType::Array); }
+    #[test] fn test_profiler_boolean() { let p = crate::profiler::profile(&["b".into()], &[vec![json!(true)]]); assert_eq!(p[0].data_type, "boolean"); }
+    #[test] fn test_column_stats_distinct() { let s = crate::column_stats::compute_stats(&["x".into()], &[vec![json!(1)], vec![json!(1)]]); assert_eq!(s[0].distinct_approx, 1); }
+    #[test] fn test_response_builder_with_ds() { let r = crate::response_builder::ResponseBuilder::new("q", "sql").datasources(vec!["pg".into()]).build(); assert!(r.metadata.datasources_queried.is_some()); }
+    #[test] fn test_bookmarks_delete_missing() { let s = crate::bookmarks::BookmarkStore::new(); assert!(!s.delete("missing")); }
+    #[test] fn test_tags_untag_missing() { let r = crate::tags::TagRegistry::new(); r.untag("q", "t"); assert!(r.get_tags("q").is_empty()); }
+    #[test] fn test_alias_list_empty() { let r = crate::alias::AliasRegistry::new(); assert!(r.list().is_empty()); }
+    #[test] fn test_access_log_status_counts() { let l = crate::access_log::AccessLog::new(); assert!(l.count_by_status().is_empty()); }
+    #[test] fn test_timeout_tracker_for_ds() { let t = crate::timeout_tracker::TimeoutTracker::new(); assert_eq!(t.count_for_datasource("x"), 0); }
+    #[test] fn test_cost_tracker_all_empty() { let t = crate::cost_tracker::CostTracker::new(); assert!(t.all().is_empty()); }
+    #[test] fn test_rate_monitor_count() { let m = crate::rate_monitor::RateMonitor::new(60); m.record(); assert_eq!(m.count(), 1); }
+    #[test] fn test_pool_stats_acquire_release() { let t = crate::pool_stats::PoolTracker::new(); t.acquire("ds"); t.release("ds"); let s = t.snapshot(); assert_eq!(s["ds"].active, 0); }
+    #[test] fn test_scheduler_count() { let r = crate::scheduler::ScheduleRegistry::new(); assert_eq!(r.count(), 0); }
+}
