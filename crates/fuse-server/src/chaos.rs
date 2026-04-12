@@ -37,7 +37,16 @@ pub fn enable(rate_pct: u32) {
 }
 
 /// Enable chaos with full config.
+/// Returns true if chaos testing is allowed (FUSE_CHAOS_ALLOWED=1).
+pub fn is_allowed() -> bool {
+    std::env::var("FUSE_CHAOS_ALLOWED").map(|v| v == "1" || v == "true").unwrap_or(false)
+}
+
 pub fn enable_with_config(cfg: &ChaosConfig) {
+    if !is_allowed() {
+        tracing::warn!("Chaos testing blocked — set FUSE_CHAOS_ALLOWED=1 to enable");
+        return;
+    }
     CHAOS_RATE.store(cfg.failure_rate_pct.min(100), Ordering::Relaxed);
     LATENCY_MS.store(cfg.latency_ms, Ordering::Relaxed);
     {
@@ -125,6 +134,10 @@ mod tests {
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
+    fn allow_chaos() {
+        std::env::set_var("FUSE_CHAOS_ALLOWED", "1");
+    }
+
     #[test]
     fn test_disabled_by_default() {
         let _lock = TEST_LOCK.lock().unwrap();
@@ -136,6 +149,7 @@ mod tests {
 
     #[test]
     fn test_enable_disable() {
+        allow_chaos();
         let _lock = TEST_LOCK.lock().unwrap();
         disable(); // reset state
         enable(50);
@@ -147,6 +161,7 @@ mod tests {
 
     #[test]
     fn test_100_pct_always_fails() {
+        allow_chaos();
         let _lock = TEST_LOCK.lock().unwrap();
         disable(); // reset state
         enable(100);
@@ -158,6 +173,7 @@ mod tests {
 
     #[test]
     fn test_0_pct_never_fails() {
+        allow_chaos();
         let _lock = TEST_LOCK.lock().unwrap();
         disable(); // reset state
         enable(0);
@@ -170,6 +186,7 @@ mod tests {
 
     #[test]
     fn test_targeted_connector() {
+        allow_chaos();
         let _lock = TEST_LOCK.lock().unwrap();
         disable(); // reset state
         enable_with_config(&ChaosConfig {
@@ -187,6 +204,7 @@ mod tests {
 
     #[test]
     fn test_empty_targets_affects_all() {
+        allow_chaos();
         let _lock = TEST_LOCK.lock().unwrap();
         disable(); // reset state
         enable_with_config(&ChaosConfig {
@@ -201,6 +219,7 @@ mod tests {
 
     #[test]
     fn test_config_includes_latency() {
+        allow_chaos();
         let _lock = TEST_LOCK.lock().unwrap();
         disable(); // reset state
         enable_with_config(&ChaosConfig {
@@ -216,6 +235,7 @@ mod tests {
     }
     #[test]
     fn test_rate_capped_at_100() {
+        allow_chaos();
         let _lock = TEST_LOCK.lock().unwrap();
         disable(); // reset state
         enable(200);
@@ -232,6 +252,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_maybe_delay_with_latency() {
+        allow_chaos();
         enable_with_config(&ChaosConfig {
             enabled: true,
             failure_rate_pct: 0,
@@ -246,6 +267,7 @@ mod tests {
 
     #[test]
     fn test_config_roundtrip() {
+        allow_chaos();
         let cfg = ChaosConfig {
             enabled: true,
             failure_rate_pct: 77,
@@ -264,6 +286,7 @@ mod tests {
 
     #[test]
     fn test_disable_clears_all() {
+        allow_chaos();
         enable_with_config(&ChaosConfig {
             enabled: true,
             failure_rate_pct: 50,
