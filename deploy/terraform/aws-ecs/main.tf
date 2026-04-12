@@ -216,3 +216,7 @@ resource "aws_appautoscaling_policy" "cpu" {
 output "alb_dns" { value = aws_lb.this.dns_name }
 output "fuse_url" { value = "http://${aws_lb.this.dns_name}" }
 output "redis_endpoint" { value = var.redis_enabled ? aws_elasticache_cluster.this[0].cache_nodes[0].address : "disabled" }
+output "ecs_cluster" { value = aws_ecs_cluster.this.name }
+output "ecs_service" { value = aws_ecs_service.this.name }
+output "log_group" { value = aws_cloudwatch_log_group.this.name }
+output "task_role_arn" { value = aws_iam_role.task.arn }
