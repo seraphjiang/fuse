@@ -50,6 +50,7 @@ pub mod health;
 pub mod intersect;
 pub mod joiner;
 pub mod health_monitor;
+pub mod connector_health_history;
 pub mod history;
 pub mod history_analytics;
 pub mod lineage;
