@@ -197,6 +197,55 @@ class FuseClient:
             time.sleep(poll_interval)
         raise TimeoutError(f"async query {job_id} did not complete within {timeout}s")
 
+    # ── Sprint 18: Webhooks (#1811) ──
+
+    def webhooks(self) -> List[Dict[str, Any]]:
+        """List webhook subscriptions."""
+        return self._request("GET", "/api/fuse/webhooks")
+
+    def create_webhook(self, name: str, query: str, condition: Dict[str, Any],
+                       callback_url: str, format: str = "sql") -> Dict[str, Any]:
+        """Create a webhook subscription."""
+        return self._request("POST", "/api/fuse/webhooks", {
+            "name": name, "query": query, "format": format,
+            "condition": condition, "callback_url": callback_url,
+        })
+
+    def delete_webhook(self, webhook_id: str) -> Dict[str, Any]:
+        """Delete a webhook subscription."""
+        return self._request("DELETE", f"/api/fuse/webhooks/{webhook_id}")
+
+    def test_webhook(self, webhook_id: str) -> Dict[str, Any]:
+        """Test-fire a webhook: run query, evaluate condition, deliver if met."""
+        return self._request("POST", f"/api/fuse/webhooks/{webhook_id}/test")
+
+    # ── Sprint 18: Schema Relationships (#1831) ──
+
+    def relationships(self) -> List[Dict[str, Any]]:
+        """Discover cross-datasource foreign key relationships."""
+        return self._request("GET", "/api/fuse/relationships")
+
+    # ── Sprint 18: CDC (#1852) ──
+
+    def cdc_status(self) -> Dict[str, Any]:
+        """Get CDC tracker status and pending views."""
+        return self._request("GET", "/api/fuse/cdc/status")
+
+    def cdc_event(self, datasource: str, table: str,
+                  change_type: str = "insert") -> Dict[str, Any]:
+        """Ingest a change event to trigger materialized view refresh."""
+        return self._request("POST", "/api/fuse/cdc/events", {
+            "datasource": datasource, "table": table,
+            "change_type": change_type,
+            "timestamp": int(__import__("time").time()),
+        })
+
+    # ── Predictive Performance ──
+
+    def predict(self, query: str) -> Dict[str, Any]:
+        """Predict query latency based on historical data."""
+        return self._request("GET", f"/api/fuse/predict?query={query}")
+
 
 class FuseError(Exception):
     """Error from the Fuse API."""
