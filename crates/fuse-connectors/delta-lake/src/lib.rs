@@ -69,19 +69,22 @@ pub fn parse_delta_schema(schema_json: &str) -> Result<Schema, ConnectorError> {
         .map_err(|e| ConnectorError::query(format!("invalid Delta schema: {e}")))?;
     let empty = vec![];
     let fields_json = val["fields"].as_array().unwrap_or(&empty);
-    let fields: Vec<Field> = fields_json.iter().filter_map(|f| {
-        let name = f["name"].as_str()?;
-        let dt = match f["type"].as_str().unwrap_or("string") {
-            "integer" | "int" => DataType::Int32,
-            "long" => DataType::Int64,
-            "float" => DataType::Float32,
-            "double" => DataType::Float64,
-            "boolean" => DataType::Boolean,
-            _ => DataType::Utf8,
-        };
-        let nullable = f["nullable"].as_bool().unwrap_or(true);
-        Some(Field::new(name, dt, nullable))
-    }).collect();
+    let fields: Vec<Field> = fields_json
+        .iter()
+        .filter_map(|f| {
+            let name = f["name"].as_str()?;
+            let dt = match f["type"].as_str().unwrap_or("string") {
+                "integer" | "int" => DataType::Int32,
+                "long" => DataType::Int64,
+                "float" => DataType::Float32,
+                "double" => DataType::Float64,
+                "boolean" => DataType::Boolean,
+                _ => DataType::Utf8,
+            };
+            let nullable = f["nullable"].as_bool().unwrap_or(true);
+            Some(Field::new(name, dt, nullable))
+        })
+        .collect();
     Ok(Schema::new(fields))
 }
 
@@ -109,23 +112,34 @@ pub struct DeltaLakeConnector {
 
 impl DeltaLakeConnector {
     pub fn new(id: String, table_uri: String, version: Option<i64>) -> Self {
-        Self { id, table_uri, version }
+        Self {
+            id,
+            table_uri,
+            version,
+        }
     }
 
     /// Read Parquet bytes into RecordBatches with optional column projection.
-    fn read_parquet(data: &Bytes, projections: &[String], batch_size: usize) -> Result<Vec<RecordBatch>, ConnectorError> {
+    fn read_parquet(
+        data: &Bytes,
+        projections: &[String],
+        batch_size: usize,
+    ) -> Result<Vec<RecordBatch>, ConnectorError> {
         let mut builder = ParquetRecordBatchReaderBuilder::try_new(data.clone())
             .map_err(ConnectorError::query)?;
         if !projections.is_empty() {
             let pq_schema = builder.parquet_schema().clone();
-            let indices: Vec<usize> = projections.iter()
+            let indices: Vec<usize> = projections
+                .iter()
                 .filter_map(|name| pq_schema.columns().iter().position(|c| c.name() == name))
                 .collect();
             if !indices.is_empty() {
                 builder = builder.with_projection(ProjectionMask::leaves(&pq_schema, indices));
             }
         }
-        builder.with_batch_size(batch_size).build()
+        builder
+            .with_batch_size(batch_size)
+            .build()
             .map_err(ConnectorError::query)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(ConnectorError::query)
@@ -139,8 +153,13 @@ impl DeltaLakeConnector {
     }
 
     /// Resolve the object_store and path from the table URI.
-    fn parse_store(&self) -> Result<(Box<dyn object_store::ObjectStore>, object_store::path::Path), ConnectorError> {
-        let url: url::Url = self.table_uri.parse()
+    fn parse_store(
+        &self,
+    ) -> Result<(Box<dyn object_store::ObjectStore>, object_store::path::Path), ConnectorError>
+    {
+        let url: url::Url = self
+            .table_uri
+            .parse()
             .map_err(|e| ConnectorError::Connection(format!("invalid table_uri: {e}")))?;
         let (store, path) = object_store::parse_url(&url)
             .map_err(|e| ConnectorError::Connection(format!("cannot open store: {e}")))?;
@@ -148,18 +167,34 @@ impl DeltaLakeConnector {
     }
 
     /// List and read _delta_log JSON entries, resolve active Parquet files.
-    async fn resolve_files(&self) -> Result<(Box<dyn object_store::ObjectStore>, object_store::path::Path, Vec<String>), ConnectorError> {
+    async fn resolve_files(
+        &self,
+    ) -> Result<
+        (
+            Box<dyn object_store::ObjectStore>,
+            object_store::path::Path,
+            Vec<String>,
+        ),
+        ConnectorError,
+    > {
         let (store, base) = self.parse_store()?;
         let log_prefix = object_store::path::Path::from(format!("{base}/_delta_log/"));
         let list = store.list(Some(&log_prefix));
         use futures::TryStreamExt;
-        let objects: Vec<_> = list.try_collect().await
+        let objects: Vec<_> = list
+            .try_collect()
+            .await
             .map_err(|e| ConnectorError::query(format!("failed to list _delta_log: {e}")))?;
 
-        let mut log_files: Vec<String> = objects.iter()
+        let mut log_files: Vec<String> = objects
+            .iter()
             .filter_map(|o| {
                 let p = o.location.to_string();
-                if p.ends_with(".json") { Some(p) } else { None }
+                if p.ends_with(".json") {
+                    Some(p)
+                } else {
+                    None
+                }
             })
             .collect();
         log_files.sort();
@@ -167,12 +202,17 @@ impl DeltaLakeConnector {
         let mut entries = Vec::new();
         for lf in &log_files {
             let path = object_store::path::Path::from(lf.as_str());
-            let data = store.get(&path).await
+            let data = store
+                .get(&path)
+                .await
                 .map_err(|e| ConnectorError::query(format!("failed to read {lf}: {e}")))?
-                .bytes().await
+                .bytes()
+                .await
                 .map_err(|e| ConnectorError::query(format!("failed to read bytes {lf}: {e}")))?;
             for line in data.split(|&b| b == b'\n') {
-                if line.is_empty() { continue; }
+                if line.is_empty() {
+                    continue;
+                }
                 if let Ok(entry) = serde_json::from_slice::<DeltaLogEntry>(line) {
                     entries.push(entry);
                 }
@@ -186,8 +226,12 @@ impl DeltaLakeConnector {
 
 #[async_trait]
 impl FederatedConnector for DeltaLakeConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "delta-lake" }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "delta-lake"
+    }
 
     fn capabilities(&self) -> ConnectorCapabilities {
         ConnectorCapabilities {
@@ -216,17 +260,25 @@ impl FederatedConnector for DeltaLakeConnector {
 
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
         let name = self.table_uri.rsplit('/').next().unwrap_or("delta_table");
-        Ok(vec![SchemaInfo { name: name.to_string(), schema_type: SchemaType::Table, estimated_row_count: None }])
+        Ok(vec![SchemaInfo {
+            name: name.to_string(),
+            schema_type: SchemaType::Table,
+            estimated_row_count: None,
+        }])
     }
 
     async fn get_schema(&self, _table: &str) -> Result<Schema, ConnectorError> {
         let (store, base, files) = self.resolve_files().await?;
-        let first = files.first()
+        let first = files
+            .first()
             .ok_or_else(|| ConnectorError::schema("no active Parquet files in Delta table"))?;
         let path = object_store::path::Path::from(format!("{base}/{first}"));
-        let data = store.get(&path).await
+        let data = store
+            .get(&path)
+            .await
             .map_err(|e| ConnectorError::schema(format!("failed to read {first}: {e}")))?
-            .bytes().await
+            .bytes()
+            .await
             .map_err(|e| ConnectorError::schema(format!("failed to read bytes: {e}")))?;
         Self::read_parquet_schema(&data)
     }
@@ -241,19 +293,26 @@ impl FederatedConnector for DeltaLakeConnector {
 
         for file in &files {
             let path = object_store::path::Path::from(format!("{base}/{file}"));
-            let data = store.get(&path).await
+            let data = store
+                .get(&path)
+                .await
                 .map_err(|e| ConnectorError::query(format!("failed to read {file}: {e}")))?
-                .bytes().await
+                .bytes()
+                .await
                 .map_err(|e| ConnectorError::query(format!("bytes error: {e}")))?;
             let batches = Self::read_parquet(&data, &query.projections, 8192)?;
             for batch in batches {
                 total_rows += batch.num_rows();
                 all_batches.push(batch);
                 if let Some(lim) = limit {
-                    if total_rows >= lim { break; }
+                    if total_rows >= lim {
+                        break;
+                    }
                 }
             }
-            if limit.is_some_and(|lim| total_rows >= lim) { break; }
+            if limit.is_some_and(|lim| total_rows >= lim) {
+                break;
+            }
         }
 
         // Trim last batch if over limit
@@ -271,29 +330,44 @@ impl FederatedConnector for DeltaLakeConnector {
         Ok(all_batches)
     }
 
-    async fn execute_streaming(&self, query: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>) -> Result<(), ConnectorError> {
+    async fn execute_streaming(
+        &self,
+        query: &SubQuery,
+        tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+    ) -> Result<(), ConnectorError> {
         let (store, base, files) = self.resolve_files().await?;
         let limit = query.limit.map(|n| n as usize);
         let mut sent = 0usize;
 
         for file in &files {
             let path = object_store::path::Path::from(format!("{base}/{file}"));
-            let data = store.get(&path).await
+            let data = store
+                .get(&path)
+                .await
                 .map_err(|e| ConnectorError::query(format!("failed to read {file}: {e}")))?
-                .bytes().await
+                .bytes()
+                .await
                 .map_err(|e| ConnectorError::query(format!("bytes error: {e}")))?;
             let batches = Self::read_parquet(&data, &query.projections, 8192)?;
             for batch in batches {
                 let batch = if let Some(lim) = limit {
-                    if sent >= lim { return Ok(()); }
+                    if sent >= lim {
+                        return Ok(());
+                    }
                     let remaining = lim - sent;
-                    let b = if batch.num_rows() > remaining { batch.slice(0, remaining) } else { batch };
+                    let b = if batch.num_rows() > remaining {
+                        batch.slice(0, remaining)
+                    } else {
+                        batch
+                    };
                     sent += b.num_rows();
                     b
                 } else {
                     batch
                 };
-                tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+                tx.send(Ok(batch))
+                    .await
+                    .map_err(|_| ConnectorError::ChannelClosed)?;
             }
         }
         Ok(())
@@ -304,13 +378,29 @@ pub struct DeltaLakeConnectorFactory;
 
 #[async_trait]
 impl ConnectorFactory for DeltaLakeConnectorFactory {
-    fn connector_type(&self) -> &str { "delta-lake" }
+    fn connector_type(&self) -> &str {
+        "delta-lake"
+    }
 
-    async fn create(&self, config: &ConnectorConfig) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
-        let table_uri = config.properties.get("table_uri").and_then(|v| v.as_str())
-            .ok_or_else(|| ConnectorError::Connection("'table_uri' is required".into()))?.to_string();
-        let version = config.properties.get("version").and_then(|v| v.as_integer());
-        Ok(Arc::new(DeltaLakeConnector::new(config.id.clone(), table_uri, version)))
+    async fn create(
+        &self,
+        config: &ConnectorConfig,
+    ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
+        let table_uri = config
+            .properties
+            .get("table_uri")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ConnectorError::Connection("'table_uri' is required".into()))?
+            .to_string();
+        let version = config
+            .properties
+            .get("version")
+            .and_then(|v| v.as_integer());
+        Ok(Arc::new(DeltaLakeConnector::new(
+            config.id.clone(),
+            table_uri,
+            version,
+        )))
     }
 }
 
@@ -336,9 +426,31 @@ mod tests {
     #[test]
     fn test_resolve_active_files() {
         let entries = vec![
-            DeltaLogEntry { add: Some(AddAction { path: "a.parquet".into(), size: Some(100), partition_values: None }), remove: None, metadata: None },
-            DeltaLogEntry { add: Some(AddAction { path: "b.parquet".into(), size: Some(200), partition_values: None }), remove: None, metadata: None },
-            DeltaLogEntry { add: None, remove: Some(RemoveAction { path: "a.parquet".into() }), metadata: None },
+            DeltaLogEntry {
+                add: Some(AddAction {
+                    path: "a.parquet".into(),
+                    size: Some(100),
+                    partition_values: None,
+                }),
+                remove: None,
+                metadata: None,
+            },
+            DeltaLogEntry {
+                add: Some(AddAction {
+                    path: "b.parquet".into(),
+                    size: Some(200),
+                    partition_values: None,
+                }),
+                remove: None,
+                metadata: None,
+            },
+            DeltaLogEntry {
+                add: None,
+                remove: Some(RemoveAction {
+                    path: "a.parquet".into(),
+                }),
+                metadata: None,
+            },
         ];
         let files = resolve_active_files(&entries);
         assert_eq!(files.len(), 1);
@@ -391,12 +503,48 @@ mod edge_tests {
     #[test]
     fn test_multi_version_log_resolution() {
         let entries = vec![
-            DeltaLogEntry { add: Some(AddAction { path: "v0/a.parquet".into(), size: Some(100), partition_values: None }), remove: None, metadata: None },
-            DeltaLogEntry { add: Some(AddAction { path: "v0/b.parquet".into(), size: Some(200), partition_values: None }), remove: None, metadata: None },
+            DeltaLogEntry {
+                add: Some(AddAction {
+                    path: "v0/a.parquet".into(),
+                    size: Some(100),
+                    partition_values: None,
+                }),
+                remove: None,
+                metadata: None,
+            },
+            DeltaLogEntry {
+                add: Some(AddAction {
+                    path: "v0/b.parquet".into(),
+                    size: Some(200),
+                    partition_values: None,
+                }),
+                remove: None,
+                metadata: None,
+            },
             // Version 1: compact a+b into c, remove a and b
-            DeltaLogEntry { add: None, remove: Some(RemoveAction { path: "v0/a.parquet".into() }), metadata: None },
-            DeltaLogEntry { add: None, remove: Some(RemoveAction { path: "v0/b.parquet".into() }), metadata: None },
-            DeltaLogEntry { add: Some(AddAction { path: "v1/c.parquet".into(), size: Some(300), partition_values: None }), remove: None, metadata: None },
+            DeltaLogEntry {
+                add: None,
+                remove: Some(RemoveAction {
+                    path: "v0/a.parquet".into(),
+                }),
+                metadata: None,
+            },
+            DeltaLogEntry {
+                add: None,
+                remove: Some(RemoveAction {
+                    path: "v0/b.parquet".into(),
+                }),
+                metadata: None,
+            },
+            DeltaLogEntry {
+                add: Some(AddAction {
+                    path: "v1/c.parquet".into(),
+                    size: Some(300),
+                    partition_values: None,
+                }),
+                remove: None,
+                metadata: None,
+            },
         ];
         let files = resolve_active_files(&entries);
         assert_eq!(files.len(), 1);
@@ -406,9 +554,31 @@ mod edge_tests {
     #[test]
     fn test_concurrent_add_remove_same_file() {
         let entries = vec![
-            DeltaLogEntry { add: Some(AddAction { path: "x.parquet".into(), size: Some(100), partition_values: None }), remove: None, metadata: None },
-            DeltaLogEntry { add: None, remove: Some(RemoveAction { path: "x.parquet".into() }), metadata: None },
-            DeltaLogEntry { add: Some(AddAction { path: "x.parquet".into(), size: Some(200), partition_values: None }), remove: None, metadata: None },
+            DeltaLogEntry {
+                add: Some(AddAction {
+                    path: "x.parquet".into(),
+                    size: Some(100),
+                    partition_values: None,
+                }),
+                remove: None,
+                metadata: None,
+            },
+            DeltaLogEntry {
+                add: None,
+                remove: Some(RemoveAction {
+                    path: "x.parquet".into(),
+                }),
+                metadata: None,
+            },
+            DeltaLogEntry {
+                add: Some(AddAction {
+                    path: "x.parquet".into(),
+                    size: Some(200),
+                    partition_values: None,
+                }),
+                remove: None,
+                metadata: None,
+            },
         ];
         let files = resolve_active_files(&entries);
         assert_eq!(files.len(), 1); // re-added

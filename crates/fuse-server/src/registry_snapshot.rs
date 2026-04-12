@@ -46,8 +46,18 @@ mod tests {
     #[test]
     fn test_snapshot() {
         let snap = RegistrySnapshot::new(vec![
-            DatasourceInfo { id: "pg".into(), connector_type: "postgres".into(), healthy: true, table_count: Some(5) },
-            DatasourceInfo { id: "es".into(), connector_type: "elasticsearch".into(), healthy: false, table_count: None },
+            DatasourceInfo {
+                id: "pg".into(),
+                connector_type: "postgres".into(),
+                healthy: true,
+                table_count: Some(5),
+            },
+            DatasourceInfo {
+                id: "es".into(),
+                connector_type: "elasticsearch".into(),
+                healthy: false,
+                table_count: None,
+            },
         ]);
         assert_eq!(snap.total, 2);
         assert_eq!(snap.healthy, 1);

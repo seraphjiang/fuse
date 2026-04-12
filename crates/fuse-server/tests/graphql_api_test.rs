@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Integration tests for the GraphQL HTTP endpoint: POST /api/fuse/graphql
 
-use std::sync::Arc;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use fuse_core::registry::ConnectorRegistry;
 use fuse_server::api::{AppState, RunningQueries};
 use fuse_server::history::QueryHistory;
+use std::sync::Arc;
 use tower::ServiceExt;
 
 fn build_app() -> axum::Router {
@@ -31,13 +31,23 @@ fn build_app() -> axum::Router {
         datasource_limiter: Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
         otel_store: None,
         query_recorder: Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
-        adaptive_parallelism: Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()),
+        adaptive_parallelism: Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
         webhook_registry: Arc::new(fuse_server::webhook::WebhookRegistry::new()),
-        compilation_cache: Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)),
+        compilation_cache: Arc::new(fuse_server::query_compilation::CompilationCache::new(
+            300, 5000,
+        )),
         cdc_tracker: Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
-        adaptive_cache: Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        adaptive_cache: Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
         schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
-        health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
         smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
     });
@@ -45,16 +55,20 @@ fn build_app() -> axum::Router {
 }
 
 async fn json_body(resp: axum::http::Response<Body>) -> serde_json::Value {
-    let bytes = axum::body::to_bytes(resp.into_body(), 10_000_000).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), 10_000_000)
+        .await
+        .unwrap();
     serde_json::from_slice(&bytes).unwrap_or_default()
 }
 
 fn gql_req(query: &str) -> Request<Body> {
     let body = serde_json::json!({"query": query});
     Request::builder()
-        .method("POST").uri("/api/fuse/graphql")
+        .method("POST")
+        .uri("/api/fuse/graphql")
         .header("content-type", "application/json")
-        .body(Body::from(serde_json::to_string(&body).unwrap())).unwrap()
+        .body(Body::from(serde_json::to_string(&body).unwrap()))
+        .unwrap()
 }
 
 #[tokio::test]
@@ -70,7 +84,10 @@ async fn test_graphql_health_via_http() {
 #[tokio::test]
 async fn test_graphql_datasources_empty_via_http() {
     let app = build_app();
-    let resp = app.oneshot(gql_req("{ datasources { id connectorType } }")).await.unwrap();
+    let resp = app
+        .oneshot(gql_req("{ datasources { id connectorType } }"))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let json = json_body(resp).await;
     assert!(json["data"]["datasources"].as_array().unwrap().is_empty());
@@ -79,11 +96,19 @@ async fn test_graphql_datasources_empty_via_http() {
 #[tokio::test]
 async fn test_graphql_introspection_via_http() {
     let app = build_app();
-    let resp = app.oneshot(gql_req("{ __schema { queryType { name } mutationType { name } } }")).await.unwrap();
+    let resp = app
+        .oneshot(gql_req(
+            "{ __schema { queryType { name } mutationType { name } } }",
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let json = json_body(resp).await;
     assert_eq!(json["data"]["__schema"]["queryType"]["name"], "QueryRoot");
-    assert_eq!(json["data"]["__schema"]["mutationType"]["name"], "MutationRoot");
+    assert_eq!(
+        json["data"]["__schema"]["mutationType"]["name"],
+        "MutationRoot"
+    );
 }
 
 #[tokio::test]
@@ -99,12 +124,19 @@ async fn test_graphql_saved_query_crud_via_http() {
     assert_eq!(json["data"]["saveQuery"]["name"], "q1");
 
     // List
-    let resp = app.clone().oneshot(gql_req("{ savedQueries { name query format } }")).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(gql_req("{ savedQueries { name query format } }"))
+        .await
+        .unwrap();
     let json = json_body(resp).await;
     assert_eq!(json["data"]["savedQueries"][0]["name"], "q1");
 
     // Delete
-    let resp = app.oneshot(gql_req(r#"mutation { deleteSavedQuery(name: "q1") }"#)).await.unwrap();
+    let resp = app
+        .oneshot(gql_req(r#"mutation { deleteSavedQuery(name: "q1") }"#))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
@@ -113,28 +145,42 @@ async fn test_graphql_view_crud_via_http() {
     let app = build_app();
 
     // Create view
-    let resp = app.clone().oneshot(gql_req(
-        r#"mutation { createView(input: { name: "v1", query: "SELECT 1" }) { name stale } }"#
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(gql_req(
+            r#"mutation { createView(input: { name: "v1", query: "SELECT 1" }) { name stale } }"#,
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let json = json_body(resp).await;
     assert_eq!(json["data"]["createView"]["name"], "v1");
     assert_eq!(json["data"]["createView"]["stale"], true);
 
     // List views
-    let resp = app.clone().oneshot(gql_req("{ views { name } }")).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(gql_req("{ views { name } }"))
+        .await
+        .unwrap();
     let json = json_body(resp).await;
     assert_eq!(json["data"]["views"][0]["name"], "v1");
 
     // Delete view
-    let resp = app.oneshot(gql_req(r#"mutation { deleteView(name: "v1") }"#)).await.unwrap();
+    let resp = app
+        .oneshot(gql_req(r#"mutation { deleteView(name: "v1") }"#))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
 #[tokio::test]
 async fn test_graphql_history_empty_via_http() {
     let app = build_app();
-    let resp = app.oneshot(gql_req("{ history { query format latencyMs } }")).await.unwrap();
+    let resp = app
+        .oneshot(gql_req("{ history { query format latencyMs } }"))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let json = json_body(resp).await;
     assert!(json["data"]["history"].as_array().unwrap().is_empty());
@@ -152,9 +198,19 @@ async fn test_graphql_invalid_query_returns_errors() {
 #[tokio::test]
 async fn test_graphiql_playground_get() {
     let app = build_app();
-    let resp = app.oneshot(Request::builder().uri("/api/fuse/graphql").body(Body::empty()).unwrap()).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/graphql")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), 1_000_000)
+        .await
+        .unwrap();
     let html = String::from_utf8_lossy(&bytes);
     assert!(html.contains("graphiql") || html.contains("GraphiQL") || html.contains("graphql"));
 }

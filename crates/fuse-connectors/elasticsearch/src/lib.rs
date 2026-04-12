@@ -31,7 +31,10 @@ use pushdown::translate_to_query_dsl;
 
 /// Elasticsearch major version.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum EsVersion { V7, V8 }
+pub enum EsVersion {
+    V7,
+    V8,
+}
 
 #[derive(Debug)]
 pub struct ElasticsearchConnector {
@@ -44,11 +47,18 @@ pub struct ElasticsearchConnector {
 
 impl ElasticsearchConnector {
     pub fn new(id: String, client: reqwest::Client, base_url: String, version: EsVersion) -> Self {
-        Self { id, client, base_url: base_url.trim_end_matches('/').to_string(), version }
+        Self {
+            id,
+            client,
+            base_url: base_url.trim_end_matches('/').to_string(),
+            version,
+        }
     }
 
     pub async fn from_config(config: &ConnectorConfig) -> Result<Self, ConnectorError> {
-        let url = config.properties.get("url")
+        let url = config
+            .properties
+            .get("url")
             .and_then(|v| v.as_str())
             .unwrap_or("http://localhost:9200")
             .to_string();
@@ -74,7 +84,11 @@ impl ElasticsearchConnector {
             headers.insert(AUTHORIZATION, val);
         }
 
-        let tls_insecure = config.properties.get("tls_insecure").and_then(|v| v.as_bool()).unwrap_or(false);
+        let tls_insecure = config
+            .properties
+            .get("tls_insecure")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         if tls_insecure {
             tracing::warn!(connector = %config.id, "tls_insecure=true — TLS certificate validation disabled");
         }
@@ -83,10 +97,13 @@ impl ElasticsearchConnector {
             .default_headers(headers)
             .danger_accept_invalid_certs(tls_insecure)
             .pool_max_idle_per_host(config.max_connections(16) as usize)
-            .timeout(std::time::Duration::from_secs(config.connection_timeout_secs(30)));
+            .timeout(std::time::Duration::from_secs(
+                config.connection_timeout_secs(30),
+            ));
 
         if let Some(tls) = config.tls_config() {
-            tls.validate().map_err(|e| ConnectorError::Connection(e.to_string()))?;
+            tls.validate()
+                .map_err(|e| ConnectorError::Connection(e.to_string()))?;
             client_builder = tls
                 .apply_to_reqwest(client_builder)
                 .map_err(|e| ConnectorError::Connection(e.to_string()))?;
@@ -97,8 +114,16 @@ impl ElasticsearchConnector {
             .map_err(|e| ConnectorError::Connection(e.to_string()))?;
 
         // Detect version from /_cluster/health or config override
-        let version = if let Some(v) = config.properties.get("version").and_then(|v| v.as_integer()) {
-            if v >= 8 { EsVersion::V8 } else { EsVersion::V7 }
+        let version = if let Some(v) = config
+            .properties
+            .get("version")
+            .and_then(|v| v.as_integer())
+        {
+            if v >= 8 {
+                EsVersion::V8
+            } else {
+                EsVersion::V7
+            }
         } else {
             detect_version(&client, &url).await
         };
@@ -108,18 +133,31 @@ impl ElasticsearchConnector {
 
     async fn get_json(&self, path: &str) -> Result<serde_json::Value, ConnectorError> {
         let url = format!("{}{}", self.base_url, path);
-        self.client.get(&url).send().await
+        self.client
+            .get(&url)
+            .send()
+            .await
             .map_err(ConnectorError::query)?
-            .json().await
+            .json()
+            .await
             .map_err(ConnectorError::query)
     }
 
-    async fn post_json(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, ConnectorError> {
+    async fn post_json(
+        &self,
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, ConnectorError> {
         let url = format!("{}{}", self.base_url, path);
         debug!(url = url.as_str(), "Elasticsearch POST");
-        self.client.post(&url).json(&body).send().await
+        self.client
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
             .map_err(ConnectorError::query)?
-            .json().await
+            .json()
+            .await
             .map_err(ConnectorError::query)
     }
 }
@@ -128,12 +166,17 @@ async fn detect_version(client: &reqwest::Client, base_url: &str) -> EsVersion {
     let resp = client.get(base_url).send().await;
     if let Ok(r) = resp {
         if let Ok(body) = r.json::<serde_json::Value>().await {
-            let major = body.pointer("/version/number")
+            let major = body
+                .pointer("/version/number")
                 .and_then(|v| v.as_str())
                 .and_then(|s| s.split('.').next())
                 .and_then(|s| s.parse::<u64>().ok())
                 .unwrap_or(7);
-            return if major >= 8 { EsVersion::V8 } else { EsVersion::V7 };
+            return if major >= 8 {
+                EsVersion::V8
+            } else {
+                EsVersion::V7
+            };
         }
     }
     EsVersion::V7 // safe default
@@ -141,8 +184,12 @@ async fn detect_version(client: &reqwest::Client, base_url: &str) -> EsVersion {
 
 #[async_trait]
 impl FederatedConnector for ElasticsearchConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "elasticsearch" }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "elasticsearch"
+    }
 
     fn capabilities(&self) -> ConnectorCapabilities {
         ConnectorCapabilities {
@@ -162,47 +209,97 @@ impl FederatedConnector for ElasticsearchConnector {
         let start = Instant::now();
         match self.get_json("/_cluster/health").await {
             Ok(body) => {
-                let status = body.get("status").and_then(|v| v.as_str()).unwrap_or("unknown");
-                let hs = if status == "red" { HealthStatus::Unhealthy } else if status == "yellow" { HealthStatus::Degraded } else { HealthStatus::Healthy };
-                ConnectorHealth { status: hs, latency_ms: Some(start.elapsed().as_millis() as u64), message: Some(status.into()) }
+                let status = body
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+                let hs = if status == "red" {
+                    HealthStatus::Unhealthy
+                } else if status == "yellow" {
+                    HealthStatus::Degraded
+                } else {
+                    HealthStatus::Healthy
+                };
+                ConnectorHealth {
+                    status: hs,
+                    latency_ms: Some(start.elapsed().as_millis() as u64),
+                    message: Some(status.into()),
+                }
             }
-            Err(e) => ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some(e.to_string()) },
+            Err(e) => ConnectorHealth {
+                status: HealthStatus::Unhealthy,
+                latency_ms: None,
+                message: Some(e.to_string()),
+            },
         }
     }
 
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
-        let body = self.get_json("/_cat/indices?format=json&h=index,docs.count").await?;
-        let indices = body.as_array().ok_or_else(|| ConnectorError::schema("unexpected _cat/indices response"))?;
-        Ok(indices.iter().filter_map(|idx| {
-            let name = idx.get("index")?.as_str()?;
-            if name.starts_with('.') { return None; } // skip system indices
-            let rows = idx.get("docs.count").and_then(|v| v.as_str()).and_then(|s| s.parse().ok());
-            Some(SchemaInfo { name: name.to_string(), schema_type: SchemaType::Index, estimated_row_count: rows })
-        }).collect())
+        let body = self
+            .get_json("/_cat/indices?format=json&h=index,docs.count")
+            .await?;
+        let indices = body
+            .as_array()
+            .ok_or_else(|| ConnectorError::schema("unexpected _cat/indices response"))?;
+        Ok(indices
+            .iter()
+            .filter_map(|idx| {
+                let name = idx.get("index")?.as_str()?;
+                if name.starts_with('.') {
+                    return None;
+                } // skip system indices
+                let rows = idx
+                    .get("docs.count")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse().ok());
+                Some(SchemaInfo {
+                    name: name.to_string(),
+                    schema_type: SchemaType::Index,
+                    estimated_row_count: rows,
+                })
+            })
+            .collect())
     }
 
     async fn get_schema(&self, table: &str) -> Result<Schema, ConnectorError> {
         let body = self.get_json(&format!("/{table}/_mapping")).await?;
-        let props = body.pointer(&format!("/{table}/mappings/properties"))
-            .or_else(|| body.as_object().and_then(|m| m.values().next()).and_then(|v| v.pointer("/mappings/properties")))
+        let props = body
+            .pointer(&format!("/{table}/mappings/properties"))
+            .or_else(|| {
+                body.as_object()
+                    .and_then(|m| m.values().next())
+                    .and_then(|v| v.pointer("/mappings/properties"))
+            })
             .ok_or_else(|| ConnectorError::schema(format!("no mappings for index '{table}'")))?;
 
-        let fields: Vec<Field> = props.as_object()
-            .map(|obj| obj.iter().map(|(name, def)| {
-                let es_type = def.get("type").and_then(|v| v.as_str()).unwrap_or("keyword");
-                Field::new(name, es_type_to_arrow(es_type), true)
-            }).collect())
+        let fields: Vec<Field> = props
+            .as_object()
+            .map(|obj| {
+                obj.iter()
+                    .map(|(name, def)| {
+                        let es_type = def
+                            .get("type")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("keyword");
+                        Field::new(name, es_type_to_arrow(es_type), true)
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
 
         if fields.is_empty() {
-            return Err(ConnectorError::schema(format!("empty mappings for '{table}'")));
+            return Err(ConnectorError::schema(format!(
+                "empty mappings for '{table}'"
+            )));
         }
         Ok(Schema::new(fields))
     }
 
     async fn execute(&self, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
         let dsl = translate_to_query_dsl(query);
-        let body = self.post_json(&format!("/{}/_search", query.table), dsl).await?;
+        let body = self
+            .post_json(&format!("/{}/_search", query.table), dsl)
+            .await?;
         parse_hits(&body, query)
     }
 
@@ -212,7 +309,9 @@ impl FederatedConnector for ElasticsearchConnector {
         tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
     ) -> Result<(), ConnectorError> {
         for batch in self.execute(query).await? {
-            tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+            tx.send(Ok(batch))
+                .await
+                .map_err(|_| ConnectorError::ChannelClosed)?;
         }
         Ok(())
     }
@@ -235,12 +334,18 @@ fn get_nested<'a>(mut val: &'a serde_json::Value, path: &str) -> Option<&'a serd
     Some(val)
 }
 
-fn parse_hits(body: &serde_json::Value, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
-    let hits = body.pointer("/hits/hits")
+fn parse_hits(
+    body: &serde_json::Value,
+    query: &SubQuery,
+) -> Result<Vec<RecordBatch>, ConnectorError> {
+    let hits = body
+        .pointer("/hits/hits")
         .and_then(|v| v.as_array())
         .ok_or_else(|| ConnectorError::query("no hits in Elasticsearch response"))?;
 
-    if hits.is_empty() { return Ok(vec![]); }
+    if hits.is_empty() {
+        return Ok(vec![]);
+    }
 
     // Collect field names from projections or first hit
     let cols: Vec<String> = if !query.projections.is_empty() {
@@ -251,7 +356,9 @@ fn parse_hits(body: &serde_json::Value, query: &SubQuery) -> Result<Vec<RecordBa
         for hit in hits {
             if let Some(src) = hit.get("_source").and_then(|v| v.as_object()) {
                 for k in src.keys() {
-                    if seen.insert(k.clone()) { cols.push(k.clone()); }
+                    if seen.insert(k.clone()) {
+                        cols.push(k.clone());
+                    }
                 }
             }
         }
@@ -264,25 +371,46 @@ fn parse_hits(body: &serde_json::Value, query: &SubQuery) -> Result<Vec<RecordBa
 
     for col in &cols {
         // Infer type from first non-null value — use get_nested for dot-path support
-        let first = hits.iter().find_map(|h| h.get("_source").and_then(|s| get_nested(s, col)));
+        let first = hits
+            .iter()
+            .find_map(|h| h.get("_source").and_then(|s| get_nested(s, col)));
         match first {
             Some(serde_json::Value::Number(n)) if n.is_i64() => {
-                let vals: Vec<Option<i64>> = hits.iter().map(|h| h.get("_source").and_then(|s| get_nested(s, col)).and_then(|v| v.as_i64())).collect();
+                let vals: Vec<Option<i64>> = hits
+                    .iter()
+                    .map(|h| {
+                        h.get("_source")
+                            .and_then(|s| get_nested(s, col))
+                            .and_then(|v| v.as_i64())
+                    })
+                    .collect();
                 fields.push(Field::new(col, DataType::Int64, true));
                 arrays.push(Arc::new(Int64Array::from(vals)) as ArrayRef);
             }
             Some(serde_json::Value::Number(_)) => {
-                let vals: Vec<Option<f64>> = hits.iter().map(|h| h.get("_source").and_then(|s| get_nested(s, col)).and_then(|v| v.as_f64())).collect();
+                let vals: Vec<Option<f64>> = hits
+                    .iter()
+                    .map(|h| {
+                        h.get("_source")
+                            .and_then(|s| get_nested(s, col))
+                            .and_then(|v| v.as_f64())
+                    })
+                    .collect();
                 fields.push(Field::new(col, DataType::Float64, true));
                 arrays.push(Arc::new(Float64Array::from(vals)) as ArrayRef);
             }
             _ => {
-                let vals: Vec<Option<String>> = hits.iter().map(|h| {
-                    h.get("_source").and_then(|s| get_nested(s, col)).map(|v| match v {
-                        serde_json::Value::String(s) => s.clone(),
-                        other => other.to_string(),
+                let vals: Vec<Option<String>> = hits
+                    .iter()
+                    .map(|h| {
+                        h.get("_source")
+                            .and_then(|s| get_nested(s, col))
+                            .map(|v| match v {
+                                serde_json::Value::String(s) => s.clone(),
+                                other => other.to_string(),
+                            })
                     })
-                }).collect();
+                    .collect();
                 fields.push(Field::new(col, DataType::Utf8, true));
                 arrays.push(Arc::new(StringArray::from(vals)) as ArrayRef);
             }
@@ -301,8 +429,13 @@ pub struct ElasticsearchConnectorFactory;
 
 #[async_trait]
 impl ConnectorFactory for ElasticsearchConnectorFactory {
-    fn connector_type(&self) -> &str { "elasticsearch" }
-    async fn create(&self, config: &ConnectorConfig) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
+    fn connector_type(&self) -> &str {
+        "elasticsearch"
+    }
+    async fn create(
+        &self,
+        config: &ConnectorConfig,
+    ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
         Ok(Arc::new(ElasticsearchConnector::from_config(config).await?))
     }
 }
@@ -332,7 +465,18 @@ mod tests {
     #[test]
     fn test_parse_hits_empty() {
         let body = serde_json::json!({"hits": {"hits": []}});
-        let q = SubQuery { table: "idx".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None };
+        let q = SubQuery {
+            table: "idx".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            having: None,
+            sort: vec![],
+            limit: None,
+            passthrough: None,
+            offset: None,
+        };
         let result = parse_hits(&body, &q).unwrap();
         assert!(result.is_empty());
     }
@@ -345,7 +489,18 @@ mod tests {
                 {"_source": {"name": "bob", "age": 25}}
             ]}
         });
-        let q = SubQuery { table: "users".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None };
+        let q = SubQuery {
+            table: "users".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            having: None,
+            sort: vec![],
+            limit: None,
+            passthrough: None,
+            offset: None,
+        };
         let batches = parse_hits(&body, &q).unwrap();
         assert_eq!(batches[0].num_rows(), 2);
     }
@@ -357,7 +512,18 @@ mod tests {
                 {"_source": {"name": "alice", "age": 30, "email": "a@b.com"}}
             ]}
         });
-        let q = SubQuery { table: "users".into(), projections: vec!["name".into()], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None };
+        let q = SubQuery {
+            table: "users".into(),
+            projections: vec!["name".into()],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            having: None,
+            sort: vec![],
+            limit: None,
+            passthrough: None,
+            offset: None,
+        };
         let batches = parse_hits(&body, &q).unwrap();
         assert_eq!(batches[0].num_columns(), 1);
         assert_eq!(batches[0].schema().field(0).name(), "name");
@@ -389,7 +555,18 @@ mod tests {
                 {"_source": {"name": "bob", "score": 80.0, "active": false}}
             ]}
         });
-        let q = SubQuery { table: "t".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None };
+        let q = SubQuery {
+            table: "t".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            having: None,
+            sort: vec![],
+            limit: None,
+            passthrough: None,
+            offset: None,
+        };
         let batches = parse_hits(&body, &q).unwrap();
         assert_eq!(batches[0].num_rows(), 2);
         assert!(batches[0].num_columns() >= 3);
@@ -402,7 +579,18 @@ mod tests {
                 {"_source": {"name": "alice", "email": null}}
             ]}
         });
-        let q = SubQuery { table: "t".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None };
+        let q = SubQuery {
+            table: "t".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            having: None,
+            sort: vec![],
+            limit: None,
+            passthrough: None,
+            offset: None,
+        };
         let batches = parse_hits(&body, &q).unwrap();
         assert_eq!(batches[0].num_rows(), 1);
     }

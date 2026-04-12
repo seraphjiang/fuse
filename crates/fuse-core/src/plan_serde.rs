@@ -18,7 +18,13 @@ pub struct PlanNode {
 
 impl PlanNode {
     pub fn leaf(op: &str, detail: &str) -> Self {
-        Self { op: op.into(), detail: detail.into(), children: vec![], estimated_rows: None, estimated_cost: None }
+        Self {
+            op: op.into(),
+            detail: detail.into(),
+            children: vec![],
+            estimated_rows: None,
+            estimated_cost: None,
+        }
     }
 
     pub fn with_child(mut self, child: PlanNode) -> Self {

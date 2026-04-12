@@ -21,9 +21,15 @@ pub fn fingerprint(query: &str) -> String {
                     }
                 }
             }
-        } else if c.is_ascii_digit() && !result.ends_with(|ch: char| ch.is_ascii_alphanumeric() || ch == '_') {
+        } else if c.is_ascii_digit()
+            && !result.ends_with(|ch: char| ch.is_ascii_alphanumeric() || ch == '_')
+        {
             result.push('?');
-            while chars.peek().map(|ch| ch.is_ascii_digit() || *ch == '.').unwrap_or(false) {
+            while chars
+                .peek()
+                .map(|ch| ch.is_ascii_digit() || *ch == '.')
+                .unwrap_or(false)
+            {
                 chars.next();
             }
         } else {

@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 //! #1030 Federation integration — two independent Fuse instances, cross-cluster queries.
 
-use std::sync::Arc;
 use arrow::array::{ArrayRef, Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use async_trait::async_trait;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use tokio::sync::mpsc;
-use tower::ServiceExt;
 use fuse_core::connector::*;
 use fuse_core::error::ConnectorError;
 use fuse_core::registry::ConnectorRegistry;
 use fuse_server::api::{AppState, RunningQueries};
+use std::sync::Arc;
+use tokio::sync::mpsc;
+use tower::ServiceExt;
 
 fn schema_users() -> Schema {
     Schema::new(vec![
@@ -30,40 +30,94 @@ fn schema_orders() -> Schema {
 }
 
 #[derive(Debug)]
-struct ClusterConnector { id: String, schema: Schema, batches: Vec<RecordBatch> }
+struct ClusterConnector {
+    id: String,
+    schema: Schema,
+    batches: Vec<RecordBatch>,
+}
 
 #[async_trait]
 impl FederatedConnector for ClusterConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "mock" }
-    fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
-    async fn health_check(&self) -> ConnectorHealth { ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(1), message: None } }
-    async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
-        Ok(vec![SchemaInfo { name: "data".into(), schema_type: SchemaType::Table, estimated_row_count: Some(self.batches.iter().map(|b| b.num_rows() as u64).sum::<u64>()) }])
+    fn id(&self) -> &str {
+        &self.id
     }
-    async fn get_schema(&self, _: &str) -> Result<Schema, ConnectorError> { Ok(self.schema.clone()) }
-    async fn execute(&self, _: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> { Ok(self.batches.clone()) }
-    async fn execute_streaming(&self, q: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>) -> Result<(), ConnectorError> {
-        for b in self.execute(q).await? { tx.send(Ok(b)).await.map_err(|_| ConnectorError::ChannelClosed)?; } Ok(())
+    fn connector_type(&self) -> &str {
+        "mock"
+    }
+    fn capabilities(&self) -> ConnectorCapabilities {
+        ConnectorCapabilities::full()
+    }
+    async fn health_check(&self) -> ConnectorHealth {
+        ConnectorHealth {
+            status: HealthStatus::Healthy,
+            latency_ms: Some(1),
+            message: None,
+        }
+    }
+    async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
+        Ok(vec![SchemaInfo {
+            name: "data".into(),
+            schema_type: SchemaType::Table,
+            estimated_row_count: Some(
+                self.batches
+                    .iter()
+                    .map(|b| b.num_rows() as u64)
+                    .sum::<u64>(),
+            ),
+        }])
+    }
+    async fn get_schema(&self, _: &str) -> Result<Schema, ConnectorError> {
+        Ok(self.schema.clone())
+    }
+    async fn execute(&self, _: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
+        Ok(self.batches.clone())
+    }
+    async fn execute_streaming(
+        &self,
+        q: &SubQuery,
+        tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+    ) -> Result<(), ConnectorError> {
+        for b in self.execute(q).await? {
+            tx.send(Ok(b))
+                .await
+                .map_err(|_| ConnectorError::ChannelClosed)?;
+        }
+        Ok(())
     }
 }
 
 fn make_users() -> ClusterConnector {
     let schema = schema_users();
-    let batch = RecordBatch::try_new(Arc::new(schema.clone()), vec![
-        Arc::new(Int64Array::from(vec![1, 2, 3])) as ArrayRef,
-        Arc::new(StringArray::from(vec!["alice", "bob", "carol"])) as ArrayRef,
-    ]).unwrap();
-    ClusterConnector { id: "cluster_users".into(), schema, batches: vec![batch] }
+    let batch = RecordBatch::try_new(
+        Arc::new(schema.clone()),
+        vec![
+            Arc::new(Int64Array::from(vec![1, 2, 3])) as ArrayRef,
+            Arc::new(StringArray::from(vec!["alice", "bob", "carol"])) as ArrayRef,
+        ],
+    )
+    .unwrap();
+    ClusterConnector {
+        id: "cluster_users".into(),
+        schema,
+        batches: vec![batch],
+    }
 }
 
 fn make_orders() -> ClusterConnector {
     let schema = schema_orders();
-    let batch = RecordBatch::try_new(Arc::new(schema.clone()), vec![
-        Arc::new(Int64Array::from(vec![1, 1, 2])) as ArrayRef,
-        Arc::new(Int64Array::from(vec![100, 200, 50])) as ArrayRef,
-    ]).unwrap();
-    ClusterConnector { id: "cluster_orders".into(), schema, batches: vec![batch] }
+    let batch = RecordBatch::try_new(
+        Arc::new(schema.clone()),
+        vec![
+            Arc::new(Int64Array::from(vec![1, 1, 2])) as ArrayRef,
+            Arc::new(Int64Array::from(vec![100, 200, 50])) as ArrayRef,
+        ],
+    )
+    .unwrap();
+    ClusterConnector {
+        id: "cluster_orders".into(),
+        schema,
+        batches: vec![batch],
+    }
 }
 
 fn build_federated_app() -> axum::Router {
@@ -84,9 +138,29 @@ fn build_federated_app() -> axum::Router {
         adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
         shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
         shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
-        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
         schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
-        health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
         smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
         tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::new(vec![])),
@@ -97,12 +171,16 @@ fn build_federated_app() -> axum::Router {
 async fn query(app: axum::Router, sql: &str) -> (StatusCode, serde_json::Value) {
     let body = serde_json::json!({"query": sql, "format": "sql"});
     let req = Request::builder()
-        .method("POST").uri("/api/fuse/query")
+        .method("POST")
+        .uri("/api/fuse/query")
         .header("content-type", "application/json")
-        .body(Body::from(serde_json::to_string(&body).unwrap())).unwrap();
+        .body(Body::from(serde_json::to_string(&body).unwrap()))
+        .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     let status = resp.status();
-    let bytes = axum::body::to_bytes(resp.into_body(), 10_000_000).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), 10_000_000)
+        .await
+        .unwrap();
     (status, serde_json::from_slice(&bytes).unwrap_or_default())
 }
 
@@ -118,9 +196,11 @@ async fn test_cross_cluster_join() {
 
 #[tokio::test]
 async fn test_cross_cluster_union() {
-    let (status, json) = query(build_federated_app(),
-        "SELECT user_id FROM cluster_users.data UNION ALL SELECT user_id FROM cluster_orders.data"
-    ).await;
+    let (status, json) = query(
+        build_federated_app(),
+        "SELECT user_id FROM cluster_users.data UNION ALL SELECT user_id FROM cluster_orders.data",
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 6, "3 users + 3 orders = 6 rows");
@@ -133,12 +213,16 @@ async fn test_cross_cluster_join_with_analyze() {
         "format": "sql", "analyze": true
     });
     let req = Request::builder()
-        .method("POST").uri("/api/fuse/query")
+        .method("POST")
+        .uri("/api/fuse/query")
         .header("content-type", "application/json")
-        .body(Body::from(serde_json::to_string(&body).unwrap())).unwrap();
+        .body(Body::from(serde_json::to_string(&body).unwrap()))
+        .unwrap();
     let resp = build_federated_app().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), 10_000_000).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), 10_000_000)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert!(json["execution_profile"].is_object(), "should have profile");
     assert!(!json["rows"].as_array().unwrap().is_empty());
@@ -162,14 +246,21 @@ async fn test_cross_cluster_explain() {
         "format": "sql"
     });
     let req = Request::builder()
-        .method("POST").uri("/api/fuse/query/explain")
+        .method("POST")
+        .uri("/api/fuse/query/explain")
         .header("content-type", "application/json")
-        .body(Body::from(serde_json::to_string(&body).unwrap())).unwrap();
+        .body(Body::from(serde_json::to_string(&body).unwrap()))
+        .unwrap();
     let resp = build_federated_app().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), 10_000_000).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), 10_000_000)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let plan = json["plan"].as_str().unwrap();
-    assert!(plan.contains("cluster_users") && plan.contains("cluster_orders"),
-        "plan should reference both clusters: {}", plan);
+    assert!(
+        plan.contains("cluster_users") && plan.contains("cluster_orders"),
+        "plan should reference both clusters: {}",
+        plan
+    );
 }

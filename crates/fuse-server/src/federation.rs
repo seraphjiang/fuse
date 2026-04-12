@@ -4,9 +4,9 @@
 //! GET /api/fuse/federation — show connected Fuse instances, their
 //! datasources, health status, and topology.
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use serde::{Deserialize, Serialize};
 
 /// A remote Fuse instance in the federation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,7 +49,10 @@ impl FederationRegistry {
     }
 
     pub fn register(&self, instance: FederatedInstance) {
-        self.instances.lock().unwrap().insert(instance.id.clone(), instance);
+        self.instances
+            .lock()
+            .unwrap()
+            .insert(instance.id.clone(), instance);
     }
 
     pub fn remove(&self, id: &str) -> bool {
@@ -122,7 +125,10 @@ impl FederationRegistry {
         let instances = self.instances.lock().unwrap();
         let mut candidates: Vec<(&FederatedInstance, u64)> = instances
             .values()
-            .filter(|i| i.status == InstanceStatus::Healthy && i.datasources.contains(&datasource.to_string()))
+            .filter(|i| {
+                i.status == InstanceStatus::Healthy
+                    && i.datasources.contains(&datasource.to_string())
+            })
             .map(|i| {
                 let cost = route_cost(i);
                 (i, cost)
@@ -143,7 +149,10 @@ impl FederationRegistry {
 
     pub fn topology(&self) -> FederationTopology {
         let instances = self.list();
-        let healthy = instances.iter().filter(|i| i.status == InstanceStatus::Healthy).count();
+        let healthy = instances
+            .iter()
+            .filter(|i| i.status == InstanceStatus::Healthy)
+            .count();
         let total_datasources: usize = instances.iter().map(|i| i.datasources.len()).sum();
         FederationTopology {
             instance_count: instances.len(),
@@ -169,10 +178,7 @@ pub enum RouteTarget {
     /// Datasource is available on this Fuse instance.
     Local,
     /// Datasource is owned by a remote Fuse instance.
-    Remote {
-        instance_id: String,
-        url: String,
-    },
+    Remote { instance_id: String, url: String },
     /// Datasource not found locally or in any federated instance.
     NotFound,
 }
@@ -299,18 +305,49 @@ mod tests {
         struct MockConn;
         #[async_trait::async_trait]
         impl FederatedConnector for MockConn {
-            fn id(&self) -> &str { "local_ds" }
-            fn connector_type(&self) -> &str { "mock" }
-            fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
-            async fn health_check(&self) -> ConnectorHealth {
-                ConnectorHealth { status: HealthStatus::Healthy, latency_ms: None, message: None }
+            fn id(&self) -> &str {
+                "local_ds"
             }
-            async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, fuse_core::error::ConnectorError> { Ok(vec![]) }
-            async fn get_schema(&self, _: &str) -> Result<arrow::datatypes::Schema, fuse_core::error::ConnectorError> {
+            fn connector_type(&self) -> &str {
+                "mock"
+            }
+            fn capabilities(&self) -> ConnectorCapabilities {
+                ConnectorCapabilities::full()
+            }
+            async fn health_check(&self) -> ConnectorHealth {
+                ConnectorHealth {
+                    status: HealthStatus::Healthy,
+                    latency_ms: None,
+                    message: None,
+                }
+            }
+            async fn discover_schemas(
+                &self,
+            ) -> Result<Vec<SchemaInfo>, fuse_core::error::ConnectorError> {
+                Ok(vec![])
+            }
+            async fn get_schema(
+                &self,
+                _: &str,
+            ) -> Result<arrow::datatypes::Schema, fuse_core::error::ConnectorError> {
                 Ok(arrow::datatypes::Schema::empty())
             }
-            async fn execute(&self, _: &SubQuery) -> Result<Vec<arrow::record_batch::RecordBatch>, fuse_core::error::ConnectorError> { Ok(vec![]) }
-            async fn execute_streaming(&self, _: &SubQuery, _: tokio::sync::mpsc::Sender<Result<arrow::record_batch::RecordBatch, fuse_core::error::ConnectorError>>) -> Result<(), fuse_core::error::ConnectorError> { Ok(()) }
+            async fn execute(
+                &self,
+                _: &SubQuery,
+            ) -> Result<Vec<arrow::record_batch::RecordBatch>, fuse_core::error::ConnectorError>
+            {
+                Ok(vec![])
+            }
+            async fn execute_streaming(
+                &self,
+                _: &SubQuery,
+                _: tokio::sync::mpsc::Sender<
+                    Result<arrow::record_batch::RecordBatch, fuse_core::error::ConnectorError>,
+                >,
+            ) -> Result<(), fuse_core::error::ConnectorError> {
+                Ok(())
+            }
         }
 
         let reg = FederationRegistry::new();
@@ -370,18 +407,49 @@ mod tests {
         struct MockConn;
         #[async_trait::async_trait]
         impl fuse_core::connector::FederatedConnector for MockConn {
-            fn id(&self) -> &str { "local_ds" }
-            fn connector_type(&self) -> &str { "mock" }
-            fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
-            async fn health_check(&self) -> ConnectorHealth {
-                ConnectorHealth { status: fuse_core::connector::HealthStatus::Healthy, latency_ms: None, message: None }
+            fn id(&self) -> &str {
+                "local_ds"
             }
-            async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, fuse_core::error::ConnectorError> { Ok(vec![]) }
-            async fn get_schema(&self, _: &str) -> Result<arrow::datatypes::Schema, fuse_core::error::ConnectorError> {
+            fn connector_type(&self) -> &str {
+                "mock"
+            }
+            fn capabilities(&self) -> ConnectorCapabilities {
+                ConnectorCapabilities::full()
+            }
+            async fn health_check(&self) -> ConnectorHealth {
+                ConnectorHealth {
+                    status: fuse_core::connector::HealthStatus::Healthy,
+                    latency_ms: None,
+                    message: None,
+                }
+            }
+            async fn discover_schemas(
+                &self,
+            ) -> Result<Vec<SchemaInfo>, fuse_core::error::ConnectorError> {
+                Ok(vec![])
+            }
+            async fn get_schema(
+                &self,
+                _: &str,
+            ) -> Result<arrow::datatypes::Schema, fuse_core::error::ConnectorError> {
                 Ok(arrow::datatypes::Schema::empty())
             }
-            async fn execute(&self, _: &SubQuery) -> Result<Vec<arrow::record_batch::RecordBatch>, fuse_core::error::ConnectorError> { Ok(vec![]) }
-            async fn execute_streaming(&self, _: &SubQuery, _: tokio::sync::mpsc::Sender<Result<arrow::record_batch::RecordBatch, fuse_core::error::ConnectorError>>) -> Result<(), fuse_core::error::ConnectorError> { Ok(()) }
+            async fn execute(
+                &self,
+                _: &SubQuery,
+            ) -> Result<Vec<arrow::record_batch::RecordBatch>, fuse_core::error::ConnectorError>
+            {
+                Ok(vec![])
+            }
+            async fn execute_streaming(
+                &self,
+                _: &SubQuery,
+                _: tokio::sync::mpsc::Sender<
+                    Result<arrow::record_batch::RecordBatch, fuse_core::error::ConnectorError>,
+                >,
+            ) -> Result<(), fuse_core::error::ConnectorError> {
+                Ok(())
+            }
         }
         let _ = local.register(std::sync::Arc::new(MockConn));
         assert_eq!(reg.cost_based_route("local_ds", &local), RouteTarget::Local);

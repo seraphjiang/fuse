@@ -14,7 +14,11 @@ type ExprResult = Option<(String, Vec<(String, String)>, Vec<(String, AttributeV
 /// Returns (expression, name_aliases, value_aliases).
 pub fn build_key_condition(filter: &FilterExpr, pk: &str) -> ExprResult {
     match filter {
-        FilterExpr::Comparison { field, op: ComparisonOp::Eq, value } if field == pk => {
+        FilterExpr::Comparison {
+            field,
+            op: ComparisonOp::Eq,
+            value,
+        } if field == pk => {
             let av = scalar_to_av(value)?;
             Some((
                 "#pk = :pk".to_string(),
@@ -22,9 +26,7 @@ pub fn build_key_condition(filter: &FilterExpr, pk: &str) -> ExprResult {
                 vec![(":pk".to_string(), av)],
             ))
         }
-        FilterExpr::And(l, r) => {
-            build_key_condition(l, pk).or_else(|| build_key_condition(r, pk))
-        }
+        FilterExpr::And(l, r) => build_key_condition(l, pk).or_else(|| build_key_condition(r, pk)),
         _ => None,
     }
 }
@@ -37,12 +39,17 @@ pub fn build_filter_expression(filter: &FilterExpr, pk: Option<&str>) -> ExprRes
     let mut counter = Counter::default();
 
     let expr = translate(filter, pk, &mut names, &mut values, &mut counter)?;
-    if expr.is_empty() { return None; }
+    if expr.is_empty() {
+        return None;
+    }
     Some((expr, names, values))
 }
 
 #[derive(Default)]
-struct Counter { n: usize, v: usize }
+struct Counter {
+    n: usize,
+    v: usize,
+}
 impl Counter {
     fn name(&mut self, field: &str) -> (String, String) {
         let alias = format!("#n{}", self.n);
@@ -107,7 +114,10 @@ fn translate(
             };
             Some(format!("{na} {op_str} {va}"))
         }
-        FilterExpr::In { field, values: vals } => {
+        FilterExpr::In {
+            field,
+            values: vals,
+        } => {
             let (na, nv) = c.name(field);
             names.push((na.clone(), nv));
             let mut placeholders = Vec::new();
@@ -118,7 +128,9 @@ fn translate(
                     placeholders.push(va);
                 }
             }
-            if placeholders.is_empty() { return None; }
+            if placeholders.is_empty() {
+                return None;
+            }
             Some(format!("{na} IN ({})", placeholders.join(", ")))
         }
         FilterExpr::IsNull(field) => {
@@ -212,7 +224,10 @@ mod tests {
     fn test_filter_expression_in() {
         let f = FilterExpr::In {
             field: "status".into(),
-            values: vec![ScalarValue::Utf8("active".into()), ScalarValue::Utf8("pending".into())],
+            values: vec![
+                ScalarValue::Utf8("active".into()),
+                ScalarValue::Utf8("pending".into()),
+            ],
         };
         let result = build_filter_expression(&f, None).unwrap();
         assert!(result.0.contains(" IN ("));
@@ -235,7 +250,10 @@ mod tests {
 
     #[test]
     fn test_scalar_to_av_int() {
-        assert_eq!(scalar_to_av(&ScalarValue::Int64(42)), Some(AttributeValue::N("42".into())));
+        assert_eq!(
+            scalar_to_av(&ScalarValue::Int64(42)),
+            Some(AttributeValue::N("42".into()))
+        );
     }
 
     #[test]
@@ -248,8 +266,16 @@ mod tests {
     #[test]
     fn test_key_condition_and_extracts_pk_from_left() {
         let f = FilterExpr::And(
-            Box::new(FilterExpr::Comparison { field: "user_id".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("u1".into()) }),
-            Box::new(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Gte, value: ScalarValue::Int64(200) }),
+            Box::new(FilterExpr::Comparison {
+                field: "user_id".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Utf8("u1".into()),
+            }),
+            Box::new(FilterExpr::Comparison {
+                field: "status".into(),
+                op: ComparisonOp::Gte,
+                value: ScalarValue::Int64(200),
+            }),
         );
         let kc = build_key_condition(&f, "user_id");
         assert!(kc.is_some(), "should extract PK from left side of AND");
@@ -258,8 +284,16 @@ mod tests {
     #[test]
     fn test_key_condition_and_extracts_pk_from_right() {
         let f = FilterExpr::And(
-            Box::new(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Gte, value: ScalarValue::Int64(200) }),
-            Box::new(FilterExpr::Comparison { field: "user_id".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("u1".into()) }),
+            Box::new(FilterExpr::Comparison {
+                field: "status".into(),
+                op: ComparisonOp::Gte,
+                value: ScalarValue::Int64(200),
+            }),
+            Box::new(FilterExpr::Comparison {
+                field: "user_id".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Utf8("u1".into()),
+            }),
         );
         let kc = build_key_condition(&f, "user_id");
         assert!(kc.is_some(), "should extract PK from right side of AND");
@@ -269,8 +303,16 @@ mod tests {
     fn test_filter_expression_excludes_pk() {
         // AND(pk=val, status>=200) → filter should only have status, not pk
         let f = FilterExpr::And(
-            Box::new(FilterExpr::Comparison { field: "user_id".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("u1".into()) }),
-            Box::new(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Gte, value: ScalarValue::Int64(200) }),
+            Box::new(FilterExpr::Comparison {
+                field: "user_id".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Utf8("u1".into()),
+            }),
+            Box::new(FilterExpr::Comparison {
+                field: "status".into(),
+                op: ComparisonOp::Gte,
+                value: ScalarValue::Int64(200),
+            }),
         );
         let fe = build_filter_expression(&f, Some("user_id"));
         assert!(fe.is_some());
@@ -281,7 +323,11 @@ mod tests {
     #[test]
     fn test_key_condition_non_eq_returns_none() {
         // PK with >= (not =) should not produce a key condition
-        let f = FilterExpr::Comparison { field: "user_id".into(), op: ComparisonOp::Gte, value: ScalarValue::Utf8("u1".into()) };
+        let f = FilterExpr::Comparison {
+            field: "user_id".into(),
+            op: ComparisonOp::Gte,
+            value: ScalarValue::Utf8("u1".into()),
+        };
         assert!(build_key_condition(&f, "user_id").is_none());
     }
 
@@ -289,10 +335,22 @@ mod tests {
     fn test_filter_expression_complex_and_or() {
         let f = FilterExpr::And(
             Box::new(FilterExpr::Or(
-                Box::new(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(200) }),
-                Box::new(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(500) }),
+                Box::new(FilterExpr::Comparison {
+                    field: "status".into(),
+                    op: ComparisonOp::Eq,
+                    value: ScalarValue::Int64(200),
+                }),
+                Box::new(FilterExpr::Comparison {
+                    field: "status".into(),
+                    op: ComparisonOp::Eq,
+                    value: ScalarValue::Int64(500),
+                }),
             )),
-            Box::new(FilterExpr::Comparison { field: "host".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("h1".into()) }),
+            Box::new(FilterExpr::Comparison {
+                field: "host".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Utf8("h1".into()),
+            }),
         );
         let fe = build_filter_expression(&f, None);
         assert!(fe.is_some());

@@ -77,7 +77,8 @@ impl JobStore {
         self.evict_expired(&mut jobs);
         if jobs.len() >= self.max_jobs {
             // Evict oldest completed job
-            if let Some(key) = jobs.iter()
+            if let Some(key) = jobs
+                .iter()
                 .filter(|(_, j)| matches!(j.status, JobStatus::Completed | JobStatus::Failed))
                 .min_by_key(|(_, j)| j.submitted_at)
                 .map(|(k, _)| k.clone())
@@ -171,7 +172,9 @@ pub struct AsyncQueryRequest {
     pub format: String,
 }
 
-fn default_format() -> String { "sql".into() }
+fn default_format() -> String {
+    "sql".into()
+}
 
 /// Submit response with job_id for polling.
 #[derive(Debug, Serialize)]
@@ -270,10 +273,13 @@ mod tests {
     #[test]
     fn test_submit_async_query() {
         let store = Arc::new(JobStore::new(300, 100));
-        let resp = submit_async_query(&store, AsyncQueryRequest {
-            query: "SELECT * FROM t".into(),
-            format: "sql".into(),
-        });
+        let resp = submit_async_query(
+            &store,
+            AsyncQueryRequest {
+                query: "SELECT * FROM t".into(),
+                format: "sql".into(),
+            },
+        );
         assert_eq!(resp.status, JobStatus::Pending);
         assert!(resp.job_id.starts_with("job-"));
         assert!(resp.poll_url.contains(&resp.job_id));

@@ -83,7 +83,11 @@ pub async fn stream_handler(
     State(state): State<Arc<AppState>>,
     Json(req): Json<StreamRequest>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let batch_size = req.batch_size.unwrap_or(DEFAULT_BATCH_SIZE).max(1).min(10_000);
+    let batch_size = req
+        .batch_size
+        .unwrap_or(DEFAULT_BATCH_SIZE)
+        .max(1)
+        .min(10_000);
     let query_req = req.query;
 
     let stream = async_stream::stream! {
@@ -344,9 +348,8 @@ mod tests {
         use arrow::array::Int64Array;
         use arrow::datatypes::{DataType, Field, Schema};
 
-        let schema = std::sync::Arc::new(Schema::new(vec![
-            Field::new("x", DataType::Int64, false),
-        ]));
+        let schema =
+            std::sync::Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, false)]));
         let batch = arrow::record_batch::RecordBatch::try_new(
             schema,
             vec![std::sync::Arc::new(Int64Array::from(Vec::<i64>::new()))],

@@ -20,9 +20,13 @@ pub fn batches_to_ipc(batches: &[RecordBatch]) -> Result<Vec<u8>, String> {
         let mut writer = StreamWriter::try_new(&mut buf, &schema)
             .map_err(|e| format!("IPC writer init failed: {e}"))?;
         for batch in batches {
-            writer.write(batch).map_err(|e| format!("IPC write failed: {e}"))?;
+            writer
+                .write(batch)
+                .map_err(|e| format!("IPC write failed: {e}"))?;
         }
-        writer.finish().map_err(|e| format!("IPC finish failed: {e}"))?;
+        writer
+            .finish()
+            .map_err(|e| format!("IPC finish failed: {e}"))?;
     }
     Ok(buf)
 }
@@ -47,10 +51,14 @@ mod tests {
             Field::new("id", DataType::Int64, false),
             Field::new("name", DataType::Utf8, true),
         ]));
-        RecordBatch::try_new(schema, vec![
-            Arc::new(Int64Array::from(vec![1, 2, 3])),
-            Arc::new(StringArray::from(vec![Some("alice"), Some("bob"), None])),
-        ]).unwrap()
+        RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(Int64Array::from(vec![1, 2, 3])),
+                Arc::new(StringArray::from(vec![Some("alice"), Some("bob"), None])),
+            ],
+        )
+        .unwrap()
     }
 
     #[test]
@@ -79,7 +87,9 @@ mod tests {
     #[test]
     fn test_accepts_arrow_true() {
         assert!(accepts_arrow(Some("application/vnd.apache.arrow.stream")));
-        assert!(accepts_arrow(Some("text/html, application/vnd.apache.arrow.stream")));
+        assert!(accepts_arrow(Some(
+            "text/html, application/vnd.apache.arrow.stream"
+        )));
     }
 
     #[test]

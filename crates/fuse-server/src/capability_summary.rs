@@ -16,15 +16,32 @@ pub struct CapabilitySummary {
 }
 
 impl CapabilitySummary {
-    pub fn from_capabilities(caps: &HashMap<String, fuse_core::connector::ConnectorCapabilities>) -> Self {
-        let mut s = Self { total: caps.len(), ..Default::default() };
+    pub fn from_capabilities(
+        caps: &HashMap<String, fuse_core::connector::ConnectorCapabilities>,
+    ) -> Self {
+        let mut s = Self {
+            total: caps.len(),
+            ..Default::default()
+        };
         for c in caps.values() {
-            if c.supports_filtering { s.supports_filtering += 1; }
-            if c.supports_projection { s.supports_projection += 1; }
-            if c.supports_aggregation { s.supports_aggregation += 1; }
-            if c.supports_sorting { s.supports_sorting += 1; }
-            if c.supports_limit { s.supports_limit += 1; }
-            if c.supports_streaming { s.supports_streaming += 1; }
+            if c.supports_filtering {
+                s.supports_filtering += 1;
+            }
+            if c.supports_projection {
+                s.supports_projection += 1;
+            }
+            if c.supports_aggregation {
+                s.supports_aggregation += 1;
+            }
+            if c.supports_sorting {
+                s.supports_sorting += 1;
+            }
+            if c.supports_limit {
+                s.supports_limit += 1;
+            }
+            if c.supports_streaming {
+                s.supports_streaming += 1;
+            }
         }
         s
     }

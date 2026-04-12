@@ -42,7 +42,10 @@ pub fn normalize_query(sql: &str) -> String {
             }
             c if c.is_ascii_digit() => {
                 // Skip entire number
-                while chars.peek().is_some_and(|p| p.is_ascii_digit() || *p == '.') {
+                while chars
+                    .peek()
+                    .is_some_and(|p| p.is_ascii_digit() || *p == '.')
+                {
                     chars.next();
                 }
                 result.push('?');
@@ -81,19 +84,21 @@ pub fn find_similar(entries: &[QueryEntry], min_group_size: usize) -> Vec<Simila
     for entry in entries {
         let norm = normalize_query(&entry.query);
         let fp = fingerprint(&norm);
-        groups.entry(fp).or_insert_with(|| (norm, Vec::new())).1.push(entry);
+        groups
+            .entry(fp)
+            .or_insert_with(|| (norm, Vec::new()))
+            .1
+            .push(entry);
     }
 
     let mut result: Vec<SimilarityGroup> = groups
         .into_iter()
         .filter(|(_, (_, entries))| entries.len() >= min_group_size)
         .map(|(fp, (norm, entries))| {
-            let avg_latency = entries.iter().map(|e| e.latency_ms).sum::<u64>()
-                / entries.len().max(1) as u64;
-            let mut tenants: Vec<String> = entries
-                .iter()
-                .filter_map(|e| e.tenant.clone())
-                .collect();
+            let avg_latency =
+                entries.iter().map(|e| e.latency_ms).sum::<u64>() / entries.len().max(1) as u64;
+            let mut tenants: Vec<String> =
+                entries.iter().filter_map(|e| e.tenant.clone()).collect();
             tenants.sort();
             tenants.dedup();
             let examples: Vec<String> = entries.iter().take(3).map(|e| e.query.clone()).collect();
@@ -145,10 +150,26 @@ mod tests {
     #[test]
     fn test_find_similar_groups() {
         let entries = vec![
-            QueryEntry { query: "SELECT * FROM t WHERE id = 1".into(), latency_ms: 100, tenant: Some("a".into()) },
-            QueryEntry { query: "SELECT * FROM t WHERE id = 2".into(), latency_ms: 200, tenant: Some("b".into()) },
-            QueryEntry { query: "SELECT * FROM t WHERE id = 3".into(), latency_ms: 150, tenant: Some("a".into()) },
-            QueryEntry { query: "SELECT name FROM t2".into(), latency_ms: 50, tenant: Some("a".into()) },
+            QueryEntry {
+                query: "SELECT * FROM t WHERE id = 1".into(),
+                latency_ms: 100,
+                tenant: Some("a".into()),
+            },
+            QueryEntry {
+                query: "SELECT * FROM t WHERE id = 2".into(),
+                latency_ms: 200,
+                tenant: Some("b".into()),
+            },
+            QueryEntry {
+                query: "SELECT * FROM t WHERE id = 3".into(),
+                latency_ms: 150,
+                tenant: Some("a".into()),
+            },
+            QueryEntry {
+                query: "SELECT name FROM t2".into(),
+                latency_ms: 50,
+                tenant: Some("a".into()),
+            },
         ];
         let groups = find_similar(&entries, 2);
         assert_eq!(groups.len(), 1);

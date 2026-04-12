@@ -4,9 +4,9 @@
 //! Periodically evaluates alert rules against query history and fires
 //! notifications (webhook) when thresholds are breached.
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use serde::{Deserialize, Serialize};
 
 /// An alert rule definition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,7 +26,9 @@ pub struct AlertRule {
     pub enabled: bool,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 /// A fired alert instance.
 #[derive(Debug, Clone, Serialize)]
@@ -187,9 +189,7 @@ pub fn spawn_alert_loop(
     interval_secs: u64,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(
-            tokio::time::Duration::from_secs(interval_secs),
-        );
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(interval_secs));
         loop {
             interval.tick().await;
             let metrics = metrics_fn();

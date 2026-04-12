@@ -7,10 +7,16 @@ use std::collections::HashSet;
 /// Remove duplicate rows.
 pub fn distinct(rows: Vec<Vec<Value>>) -> Vec<Vec<Value>> {
     let mut seen = HashSet::new();
-    rows.into_iter().filter(|row| {
-        let key = row.iter().map(|v| v.to_string()).collect::<Vec<_>>().join("\x00");
-        seen.insert(key)
-    }).collect()
+    rows.into_iter()
+        .filter(|row| {
+            let key = row
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join("\x00");
+            seen.insert(key)
+        })
+        .collect()
 }
 
 /// Count distinct values in a specific column.

@@ -38,13 +38,18 @@ impl CircuitBreaker {
     pub fn allow(&self, datasource: &str) -> bool {
         let mut map = self.breakers.lock().unwrap();
         let b = map.entry(datasource.to_string()).or_insert(BreakerState {
-            state: CircuitState::Closed, failure_count: 0,
-            last_failure: None, last_success: None,
+            state: CircuitState::Closed,
+            failure_count: 0,
+            last_failure: None,
+            last_success: None,
         });
         match b.state {
             CircuitState::Closed => true,
             CircuitState::Open => {
-                if b.last_failure.map(|t| t.elapsed() > self.recovery_timeout).unwrap_or(true) {
+                if b.last_failure
+                    .map(|t| t.elapsed() > self.recovery_timeout)
+                    .unwrap_or(true)
+                {
                     b.state = CircuitState::HalfOpen;
                     true
                 } else {
@@ -69,8 +74,10 @@ impl CircuitBreaker {
     pub fn record_failure(&self, datasource: &str) {
         let mut map = self.breakers.lock().unwrap();
         let b = map.entry(datasource.to_string()).or_insert(BreakerState {
-            state: CircuitState::Closed, failure_count: 0,
-            last_failure: None, last_success: None,
+            state: CircuitState::Closed,
+            failure_count: 0,
+            last_failure: None,
+            last_success: None,
         });
         b.failure_count += 1;
         b.last_failure = Some(Instant::now());
@@ -80,7 +87,9 @@ impl CircuitBreaker {
     }
 
     pub fn state(&self, datasource: &str) -> CircuitState {
-        self.breakers.lock().unwrap()
+        self.breakers
+            .lock()
+            .unwrap()
             .get(datasource)
             .map(|b| b.state.clone())
             .unwrap_or(CircuitState::Closed)

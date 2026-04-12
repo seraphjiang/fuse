@@ -58,10 +58,18 @@ fn wider_type(a: &DataType, b: &DataType) -> DataType {
         (DataType::Float32, DataType::Float64) => DataType::Float64,
         (DataType::Float64, DataType::Float32) => DataType::Float64,
         // Int → Float
-        (DataType::Int8 | DataType::Int16 | DataType::Int32 | DataType::Int64, DataType::Float64) => DataType::Float64,
-        (DataType::Float64, DataType::Int8 | DataType::Int16 | DataType::Int32 | DataType::Int64) => DataType::Float64,
+        (
+            DataType::Int8 | DataType::Int16 | DataType::Int32 | DataType::Int64,
+            DataType::Float64,
+        ) => DataType::Float64,
+        (
+            DataType::Float64,
+            DataType::Int8 | DataType::Int16 | DataType::Int32 | DataType::Int64,
+        ) => DataType::Float64,
         // String widening
-        (DataType::Utf8, DataType::LargeUtf8) | (DataType::LargeUtf8, DataType::Utf8) => DataType::LargeUtf8,
+        (DataType::Utf8, DataType::LargeUtf8) | (DataType::LargeUtf8, DataType::Utf8) => {
+            DataType::LargeUtf8
+        }
         // Default: keep first
         _ => a.clone(),
     }
@@ -300,9 +308,7 @@ mod tests {
 
     #[test]
     fn test_schema_alignment() {
-        let s1 = Arc::new(Schema::new(vec![
-            Field::new("a", DataType::Int64, false),
-        ]));
+        let s1 = Arc::new(Schema::new(vec![Field::new("a", DataType::Int64, false)]));
         let s2 = Arc::new(Schema::new(vec![
             Field::new("a", DataType::Int64, false),
             Field::new("b", DataType::Utf8, false),
@@ -310,11 +316,7 @@ mod tests {
         let target = union_schema(&[s1.clone(), s2.clone()]);
         assert_eq!(target.fields().len(), 2);
 
-        let batch = RecordBatch::try_new(
-            s1,
-            vec![Arc::new(Int64Array::from(vec![1, 2]))],
-        )
-        .unwrap();
+        let batch = RecordBatch::try_new(s1, vec![Arc::new(Int64Array::from(vec![1, 2]))]).unwrap();
         let aligned = align_batch(&batch, &target).unwrap();
         assert_eq!(aligned.num_columns(), 2);
         assert_eq!(aligned.num_rows(), 2);
@@ -339,12 +341,8 @@ mod tests {
 
     #[test]
     fn test_union_schema_merges_fields() {
-        let s1 = Arc::new(Schema::new(vec![
-            Field::new("x", DataType::Int64, false),
-        ]));
-        let s2 = Arc::new(Schema::new(vec![
-            Field::new("y", DataType::Utf8, false),
-        ]));
+        let s1 = Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, false)]));
+        let s2 = Arc::new(Schema::new(vec![Field::new("y", DataType::Utf8, false)]));
         let merged = union_schema(&[s1, s2]);
         assert_eq!(merged.fields().len(), 2);
         assert_eq!(merged.field(0).name(), "x");
@@ -405,15 +403,30 @@ mod tests {
 
     #[test]
     fn test_wider_type_int_widening() {
-        assert_eq!(wider_type(&DataType::Int32, &DataType::Int64), DataType::Int64);
-        assert_eq!(wider_type(&DataType::Int64, &DataType::Int32), DataType::Int64);
-        assert_eq!(wider_type(&DataType::Int8, &DataType::Int32), DataType::Int32);
+        assert_eq!(
+            wider_type(&DataType::Int32, &DataType::Int64),
+            DataType::Int64
+        );
+        assert_eq!(
+            wider_type(&DataType::Int64, &DataType::Int32),
+            DataType::Int64
+        );
+        assert_eq!(
+            wider_type(&DataType::Int8, &DataType::Int32),
+            DataType::Int32
+        );
     }
 
     #[test]
     fn test_wider_type_float() {
-        assert_eq!(wider_type(&DataType::Float32, &DataType::Float64), DataType::Float64);
-        assert_eq!(wider_type(&DataType::Int32, &DataType::Float64), DataType::Float64);
+        assert_eq!(
+            wider_type(&DataType::Float32, &DataType::Float64),
+            DataType::Float64
+        );
+        assert_eq!(
+            wider_type(&DataType::Int32, &DataType::Float64),
+            DataType::Float64
+        );
     }
 
     #[test]
@@ -423,12 +436,8 @@ mod tests {
 
     #[test]
     fn test_union_schema_type_widening() {
-        let s1 = Arc::new(Schema::new(vec![
-            Field::new("val", DataType::Int32, false),
-        ]));
-        let s2 = Arc::new(Schema::new(vec![
-            Field::new("val", DataType::Int64, false),
-        ]));
+        let s1 = Arc::new(Schema::new(vec![Field::new("val", DataType::Int32, false)]));
+        let s2 = Arc::new(Schema::new(vec![Field::new("val", DataType::Int64, false)]));
         let merged = union_schema(&[s1, s2]);
         assert_eq!(merged.field(0).data_type(), &DataType::Int64);
     }
@@ -437,16 +446,11 @@ mod tests {
     fn test_align_batch_casts_types() {
         use arrow::array::Int32Array;
         // Source has Int32, target expects Int64
-        let src_schema = Arc::new(Schema::new(vec![
-            Field::new("val", DataType::Int32, false),
-        ]));
-        let target = Arc::new(Schema::new(vec![
-            Field::new("val", DataType::Int64, true),
-        ]));
-        let batch = RecordBatch::try_new(
-            src_schema,
-            vec![Arc::new(Int32Array::from(vec![1, 2, 3]))],
-        ).unwrap();
+        let src_schema = Arc::new(Schema::new(vec![Field::new("val", DataType::Int32, false)]));
+        let target = Arc::new(Schema::new(vec![Field::new("val", DataType::Int64, true)]));
+        let batch =
+            RecordBatch::try_new(src_schema, vec![Arc::new(Int32Array::from(vec![1, 2, 3]))])
+                .unwrap();
         let aligned = align_batch(&batch, &target).unwrap();
         assert_eq!(aligned.schema().field(0).data_type(), &DataType::Int64);
         assert_eq!(aligned.num_rows(), 3);

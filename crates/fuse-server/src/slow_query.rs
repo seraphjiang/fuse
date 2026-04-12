@@ -40,8 +40,12 @@ mod tests {
     #[test]
     fn test_slow_query_detected() {
         let is_slow = check_slow_query(
-            "q-1", "sql", Duration::from_secs(10),
-            &["cluster_a".into()], 1000, None,
+            "q-1",
+            "sql",
+            Duration::from_secs(10),
+            &["cluster_a".into()],
+            1000,
+            None,
         );
         assert!(is_slow);
     }
@@ -49,18 +53,19 @@ mod tests {
     #[test]
     fn test_fast_query_not_slow() {
         let is_slow = check_slow_query(
-            "q-2", "sql", Duration::from_millis(100),
-            &["cluster_a".into()], 50, None,
+            "q-2",
+            "sql",
+            Duration::from_millis(100),
+            &["cluster_a".into()],
+            50,
+            None,
         );
         assert!(!is_slow);
     }
 
     #[test]
     fn test_custom_threshold() {
-        let is_slow = check_slow_query(
-            "q-3", "sql", Duration::from_millis(200),
-            &[], 0, Some(100),
-        );
+        let is_slow = check_slow_query("q-3", "sql", Duration::from_millis(200), &[], 0, Some(100));
         assert!(is_slow);
     }
 }

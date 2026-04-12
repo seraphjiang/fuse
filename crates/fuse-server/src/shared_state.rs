@@ -7,8 +7,8 @@
 use std::sync::Arc;
 use tracing::{debug, warn};
 
-use crate::history::{HistoryEntry, QueryHistory};
 use crate::audit::{AuditEntry, AuditLog};
+use crate::history::{HistoryEntry, QueryHistory};
 use crate::saved_queries::{SavedQuery, SavedQueryRegistry};
 use crate::tenant::TenantConfig;
 
@@ -36,20 +36,34 @@ impl SharedSavedQueries {
         match redis_client() {
             Some(client) => {
                 debug!("Saved queries: Redis");
-                Self::Redis { client, key: "fuse:saved_queries".into() }
+                Self::Redis {
+                    client,
+                    key: "fuse:saved_queries".into(),
+                }
             }
             None => Self::InMemory(Arc::new(SavedQueryRegistry::new())),
         }
     }
 
-    pub fn is_redis(&self) -> bool { matches!(self, Self::Redis { .. }) }
+    pub fn is_redis(&self) -> bool {
+        matches!(self, Self::Redis { .. })
+    }
 
     pub async fn save(&self, sq: SavedQuery) {
         match self {
             Self::Redis { client, key } => {
-                let Ok(mut conn) = client.get_multiplexed_async_connection().await else { return };
-                let Ok(json) = serde_json::to_string(&sq) else { return };
-                let _: Result<(), _> = redis::cmd("HSET").arg(key).arg(&sq.name).arg(json).query_async(&mut conn).await;
+                let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+                    return;
+                };
+                let Ok(json) = serde_json::to_string(&sq) else {
+                    return;
+                };
+                let _: Result<(), _> = redis::cmd("HSET")
+                    .arg(key)
+                    .arg(&sq.name)
+                    .arg(json)
+                    .query_async(&mut conn)
+                    .await;
             }
             Self::InMemory(reg) => reg.save(sq),
         }
@@ -59,7 +73,12 @@ impl SharedSavedQueries {
         match self {
             Self::Redis { client, key } => {
                 let mut conn = client.get_multiplexed_async_connection().await.ok()?;
-                let data: Option<String> = redis::cmd("HGET").arg(key).arg(name).query_async(&mut conn).await.ok()?;
+                let data: Option<String> = redis::cmd("HGET")
+                    .arg(key)
+                    .arg(name)
+                    .query_async(&mut conn)
+                    .await
+                    .ok()?;
                 data.and_then(|s| serde_json::from_str(&s).ok())
             }
             Self::InMemory(reg) => reg.get(name),
@@ -69,8 +88,15 @@ impl SharedSavedQueries {
     pub async fn delete(&self, name: &str) -> bool {
         match self {
             Self::Redis { client, key } => {
-                let Ok(mut conn) = client.get_multiplexed_async_connection().await else { return false };
-                let removed: i64 = redis::cmd("HDEL").arg(key).arg(name).query_async(&mut conn).await.unwrap_or(0);
+                let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+                    return false;
+                };
+                let removed: i64 = redis::cmd("HDEL")
+                    .arg(key)
+                    .arg(name)
+                    .query_async(&mut conn)
+                    .await
+                    .unwrap_or(0);
                 removed > 0
             }
             Self::InMemory(reg) => reg.delete(name),
@@ -80,9 +106,17 @@ impl SharedSavedQueries {
     pub async fn list(&self) -> Vec<SavedQuery> {
         match self {
             Self::Redis { client, key } => {
-                let Ok(mut conn) = client.get_multiplexed_async_connection().await else { return vec![] };
-                let vals: Vec<String> = redis::cmd("HVALS").arg(key).query_async(&mut conn).await.unwrap_or_default();
-                vals.iter().filter_map(|s| serde_json::from_str(s).ok()).collect()
+                let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+                    return vec![];
+                };
+                let vals: Vec<String> = redis::cmd("HVALS")
+                    .arg(key)
+                    .query_async(&mut conn)
+                    .await
+                    .unwrap_or_default();
+                vals.iter()
+                    .filter_map(|s| serde_json::from_str(s).ok())
+                    .collect()
             }
             Self::InMemory(reg) => reg.list(),
         }
@@ -111,15 +145,30 @@ impl SharedQueryHistory {
         }
     }
 
-    pub fn is_redis(&self) -> bool { matches!(self, Self::Redis { .. }) }
+    pub fn is_redis(&self) -> bool {
+        matches!(self, Self::Redis { .. })
+    }
 
     pub async fn push(&self, entry: HistoryEntry) {
         match self {
             Self::Redis { client } => {
-                let Ok(mut conn) = client.get_multiplexed_async_connection().await else { return };
-                let Ok(json) = serde_json::to_string(&entry) else { return };
-                let _: Result<(), _> = redis::cmd("LPUSH").arg(HISTORY_KEY).arg(json).query_async(&mut conn).await;
-                let _: Result<(), _> = redis::cmd("LTRIM").arg(HISTORY_KEY).arg(0i64).arg((MAX_HISTORY - 1) as i64).query_async(&mut conn).await;
+                let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+                    return;
+                };
+                let Ok(json) = serde_json::to_string(&entry) else {
+                    return;
+                };
+                let _: Result<(), _> = redis::cmd("LPUSH")
+                    .arg(HISTORY_KEY)
+                    .arg(json)
+                    .query_async(&mut conn)
+                    .await;
+                let _: Result<(), _> = redis::cmd("LTRIM")
+                    .arg(HISTORY_KEY)
+                    .arg(0i64)
+                    .arg((MAX_HISTORY - 1) as i64)
+                    .query_async(&mut conn)
+                    .await;
             }
             Self::InMemory(h) => h.push(entry),
         }
@@ -128,9 +177,19 @@ impl SharedQueryHistory {
     pub async fn list(&self) -> Vec<HistoryEntry> {
         match self {
             Self::Redis { client } => {
-                let Ok(mut conn) = client.get_multiplexed_async_connection().await else { return vec![] };
-                let vals: Vec<String> = redis::cmd("LRANGE").arg(HISTORY_KEY).arg(0i64).arg(-1i64).query_async(&mut conn).await.unwrap_or_default();
-                vals.iter().filter_map(|s| serde_json::from_str(s).ok()).collect()
+                let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+                    return vec![];
+                };
+                let vals: Vec<String> = redis::cmd("LRANGE")
+                    .arg(HISTORY_KEY)
+                    .arg(0i64)
+                    .arg(-1i64)
+                    .query_async(&mut conn)
+                    .await
+                    .unwrap_or_default();
+                vals.iter()
+                    .filter_map(|s| serde_json::from_str(s).ok())
+                    .collect()
             }
             Self::InMemory(h) => h.list(),
         }
@@ -139,9 +198,19 @@ impl SharedQueryHistory {
     pub async fn recent(&self, max: usize) -> Vec<HistoryEntry> {
         match self {
             Self::Redis { client } => {
-                let Ok(mut conn) = client.get_multiplexed_async_connection().await else { return vec![] };
-                let vals: Vec<String> = redis::cmd("LRANGE").arg(HISTORY_KEY).arg(0i64).arg((max - 1) as i64).query_async(&mut conn).await.unwrap_or_default();
-                vals.iter().filter_map(|s| serde_json::from_str(s).ok()).collect()
+                let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+                    return vec![];
+                };
+                let vals: Vec<String> = redis::cmd("LRANGE")
+                    .arg(HISTORY_KEY)
+                    .arg(0i64)
+                    .arg((max - 1) as i64)
+                    .query_async(&mut conn)
+                    .await
+                    .unwrap_or_default();
+                vals.iter()
+                    .filter_map(|s| serde_json::from_str(s).ok())
+                    .collect()
             }
             Self::InMemory(h) => h.recent(max),
         }
@@ -170,15 +239,30 @@ impl SharedAuditLog {
         }
     }
 
-    pub fn is_redis(&self) -> bool { matches!(self, Self::Redis { .. }) }
+    pub fn is_redis(&self) -> bool {
+        matches!(self, Self::Redis { .. })
+    }
 
     pub async fn record(&self, entry: AuditEntry) {
         match self {
             Self::Redis { client } => {
-                let Ok(mut conn) = client.get_multiplexed_async_connection().await else { return };
-                let Ok(json) = serde_json::to_string(&entry) else { return };
-                let _: Result<(), _> = redis::cmd("LPUSH").arg(AUDIT_KEY).arg(json).query_async(&mut conn).await;
-                let _: Result<(), _> = redis::cmd("LTRIM").arg(AUDIT_KEY).arg(0i64).arg((MAX_AUDIT - 1) as i64).query_async(&mut conn).await;
+                let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+                    return;
+                };
+                let Ok(json) = serde_json::to_string(&entry) else {
+                    return;
+                };
+                let _: Result<(), _> = redis::cmd("LPUSH")
+                    .arg(AUDIT_KEY)
+                    .arg(json)
+                    .query_async(&mut conn)
+                    .await;
+                let _: Result<(), _> = redis::cmd("LTRIM")
+                    .arg(AUDIT_KEY)
+                    .arg(0i64)
+                    .arg((MAX_AUDIT - 1) as i64)
+                    .query_async(&mut conn)
+                    .await;
             }
             Self::InMemory(log) => log.record(entry).await,
         }
@@ -187,9 +271,19 @@ impl SharedAuditLog {
     pub async fn recent(&self, limit: usize) -> Vec<AuditEntry> {
         match self {
             Self::Redis { client } => {
-                let Ok(mut conn) = client.get_multiplexed_async_connection().await else { return vec![] };
-                let vals: Vec<String> = redis::cmd("LRANGE").arg(AUDIT_KEY).arg(0i64).arg((limit - 1) as i64).query_async(&mut conn).await.unwrap_or_default();
-                vals.iter().filter_map(|s| serde_json::from_str(s).ok()).collect()
+                let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+                    return vec![];
+                };
+                let vals: Vec<String> = redis::cmd("LRANGE")
+                    .arg(AUDIT_KEY)
+                    .arg(0i64)
+                    .arg((limit - 1) as i64)
+                    .query_async(&mut conn)
+                    .await
+                    .unwrap_or_default();
+                vals.iter()
+                    .filter_map(|s| serde_json::from_str(s).ok())
+                    .collect()
             }
             Self::InMemory(log) => log.recent(limit).await,
         }
@@ -219,14 +313,24 @@ impl SharedTenantRegistry {
         }
     }
 
-    pub fn is_redis(&self) -> bool { matches!(self, Self::Redis { .. }) }
+    pub fn is_redis(&self) -> bool {
+        matches!(self, Self::Redis { .. })
+    }
 
     pub async fn list(&self) -> Vec<TenantConfig> {
         match self {
             Self::Redis { client } => {
-                let Ok(mut conn) = client.get_multiplexed_async_connection().await else { return vec![] };
-                let vals: Vec<String> = redis::cmd("HVALS").arg(TENANT_KEY).query_async(&mut conn).await.unwrap_or_default();
-                vals.iter().filter_map(|s| serde_json::from_str(s).ok()).collect()
+                let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+                    return vec![];
+                };
+                let vals: Vec<String> = redis::cmd("HVALS")
+                    .arg(TENANT_KEY)
+                    .query_async(&mut conn)
+                    .await
+                    .unwrap_or_default();
+                vals.iter()
+                    .filter_map(|s| serde_json::from_str(s).ok())
+                    .collect()
             }
             Self::InMemory(configs) => configs.read().unwrap().clone(),
         }
@@ -236,19 +340,38 @@ impl SharedTenantRegistry {
         match self {
             Self::Redis { client } => {
                 let mut conn = client.get_multiplexed_async_connection().await.ok()?;
-                let data: Option<String> = redis::cmd("HGET").arg(TENANT_KEY).arg(tenant_id).query_async(&mut conn).await.ok()?;
+                let data: Option<String> = redis::cmd("HGET")
+                    .arg(TENANT_KEY)
+                    .arg(tenant_id)
+                    .query_async(&mut conn)
+                    .await
+                    .ok()?;
                 data.and_then(|s| serde_json::from_str(&s).ok())
             }
-            Self::InMemory(configs) => configs.read().unwrap().iter().find(|c| c.tenant_id == tenant_id).cloned(),
+            Self::InMemory(configs) => configs
+                .read()
+                .unwrap()
+                .iter()
+                .find(|c| c.tenant_id == tenant_id)
+                .cloned(),
         }
     }
 
     pub async fn put(&self, config: TenantConfig) {
         match self {
             Self::Redis { client } => {
-                let Ok(mut conn) = client.get_multiplexed_async_connection().await else { return };
-                let Ok(json) = serde_json::to_string(&config) else { return };
-                let _: Result<(), _> = redis::cmd("HSET").arg(TENANT_KEY).arg(&config.tenant_id).arg(json).query_async(&mut conn).await;
+                let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+                    return;
+                };
+                let Ok(json) = serde_json::to_string(&config) else {
+                    return;
+                };
+                let _: Result<(), _> = redis::cmd("HSET")
+                    .arg(TENANT_KEY)
+                    .arg(&config.tenant_id)
+                    .arg(json)
+                    .query_async(&mut conn)
+                    .await;
             }
             Self::InMemory(configs) => {
                 let mut w = configs.write().unwrap();
@@ -264,8 +387,15 @@ impl SharedTenantRegistry {
     pub async fn remove(&self, tenant_id: &str) -> bool {
         match self {
             Self::Redis { client } => {
-                let Ok(mut conn) = client.get_multiplexed_async_connection().await else { return false };
-                let removed: i64 = redis::cmd("HDEL").arg(TENANT_KEY).arg(tenant_id).query_async(&mut conn).await.unwrap_or(0);
+                let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+                    return false;
+                };
+                let removed: i64 = redis::cmd("HDEL")
+                    .arg(TENANT_KEY)
+                    .arg(tenant_id)
+                    .query_async(&mut conn)
+                    .await
+                    .unwrap_or(0);
                 removed > 0
             }
             Self::InMemory(configs) => {
@@ -281,11 +411,23 @@ impl SharedTenantRegistry {
     pub async fn reload(&self, configs: Vec<TenantConfig>) {
         match self {
             Self::Redis { client } => {
-                let Ok(mut conn) = client.get_multiplexed_async_connection().await else { return };
-                let _: Result<(), _> = redis::cmd("DEL").arg(TENANT_KEY).query_async(&mut conn).await;
+                let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+                    return;
+                };
+                let _: Result<(), _> = redis::cmd("DEL")
+                    .arg(TENANT_KEY)
+                    .query_async(&mut conn)
+                    .await;
                 for tc in &configs {
-                    let Ok(json) = serde_json::to_string(tc) else { continue };
-                    let _: Result<(), _> = redis::cmd("HSET").arg(TENANT_KEY).arg(&tc.tenant_id).arg(json).query_async(&mut conn).await;
+                    let Ok(json) = serde_json::to_string(tc) else {
+                        continue;
+                    };
+                    let _: Result<(), _> = redis::cmd("HSET")
+                        .arg(TENANT_KEY)
+                        .arg(&tc.tenant_id)
+                        .arg(json)
+                        .query_async(&mut conn)
+                        .await;
                 }
             }
             Self::InMemory(store) => {
@@ -309,11 +451,23 @@ mod tests {
         f()
     }
     fn sq(name: &str, query: &str) -> SavedQuery {
-        SavedQuery { name: name.into(), query: query.into(), format: "sql".into(), description: String::new() }
+        SavedQuery {
+            name: name.into(),
+            query: query.into(),
+            format: "sql".into(),
+            description: String::new(),
+        }
     }
 
     fn entry(q: &str, rows: u64) -> HistoryEntry {
-        HistoryEntry { query: q.into(), format: "sql".into(), timestamp: 0, latency_ms: 10, row_count: rows, error: None }
+        HistoryEntry {
+            query: q.into(),
+            format: "sql".into(),
+            timestamp: 0,
+            latency_ms: 10,
+            row_count: rows,
+            error: None,
+        }
     }
 
     #[test]
@@ -407,10 +561,16 @@ mod tests {
 
     fn audit_entry(identity: &str) -> AuditEntry {
         AuditEntry {
-            timestamp: 0, identity: identity.into(),
-            action: crate::audit::AuditAction::Query, query: Some("SELECT 1".into()),
-            datasources: vec![], duration_ms: 5, row_count: 1,
-            status: crate::audit::AuditStatus::Success, error: None, client_ip: None,
+            timestamp: 0,
+            identity: identity.into(),
+            action: crate::audit::AuditAction::Query,
+            query: Some("SELECT 1".into()),
+            datasources: vec![],
+            duration_ms: 5,
+            row_count: 1,
+            status: crate::audit::AuditStatus::Success,
+            error: None,
+            client_ip: None,
         }
     }
 

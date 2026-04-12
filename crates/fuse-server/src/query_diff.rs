@@ -26,8 +26,10 @@ pub struct Difference {
 
 /// Compare two query results. Returns diff summary.
 pub fn diff(
-    left_cols: &[String], left_rows: &[Vec<serde_json::Value>],
-    right_cols: &[String], right_rows: &[Vec<serde_json::Value>],
+    left_cols: &[String],
+    left_rows: &[Vec<serde_json::Value>],
+    right_cols: &[String],
+    right_rows: &[Vec<serde_json::Value>],
     max_diffs: usize,
 ) -> DiffResult {
     let schema_match = left_cols == right_cols;
@@ -38,19 +40,29 @@ pub fn diff(
     let compare_rows = left_rows.len().min(right_rows.len());
 
     for row_idx in 0..compare_rows {
-        let col_count = left_rows[row_idx].len().min(right_rows[row_idx].len()).min(cols.len());
+        let col_count = left_rows[row_idx]
+            .len()
+            .min(right_rows[row_idx].len())
+            .min(cols.len());
         for col_idx in 0..col_count {
             if left_rows[row_idx][col_idx] != right_rows[row_idx][col_idx] {
                 differences.push(Difference {
                     row: row_idx,
-                    column: cols.get(col_idx).cloned().unwrap_or_else(|| format!("col_{}", col_idx)),
+                    column: cols
+                        .get(col_idx)
+                        .cloned()
+                        .unwrap_or_else(|| format!("col_{}", col_idx)),
                     left: left_rows[row_idx][col_idx].clone(),
                     right: right_rows[row_idx][col_idx].clone(),
                 });
-                if differences.len() >= max_diffs { break; }
+                if differences.len() >= max_diffs {
+                    break;
+                }
             }
         }
-        if differences.len() >= max_diffs { break; }
+        if differences.len() >= max_diffs {
+            break;
+        }
     }
 
     DiffResult {

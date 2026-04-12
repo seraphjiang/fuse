@@ -96,8 +96,14 @@ pub struct RegressionSummary {
 }
 
 pub fn summarize(results: &[RegressionResult]) -> RegressionSummary {
-    let regressed = results.iter().filter(|r| r.status == RegressionStatus::Regressed).count();
-    let improved = results.iter().filter(|r| r.status == RegressionStatus::Improved).count();
+    let regressed = results
+        .iter()
+        .filter(|r| r.status == RegressionStatus::Regressed)
+        .count();
+    let improved = results
+        .iter()
+        .filter(|r| r.status == RegressionStatus::Improved)
+        .count();
     RegressionSummary {
         total: results.len(),
         regressed,
@@ -112,7 +118,14 @@ mod tests {
     use super::*;
 
     fn bench(name: &str, avg: f64, p95: u64, qps: f64) -> BenchmarkResult {
-        BenchmarkResult { name: name.into(), avg_ms: avg, p50_ms: (avg * 0.9) as u64, p95_ms: p95, p99_ms: p95 + 10, throughput_qps: qps }
+        BenchmarkResult {
+            name: name.into(),
+            avg_ms: avg,
+            p50_ms: (avg * 0.9) as u64,
+            p95_ms: p95,
+            p99_ms: p95 + 10,
+            throughput_qps: qps,
+        }
     }
 
     #[test]
@@ -150,8 +163,8 @@ mod tests {
         ];
         let current = vec![
             bench("a", 150.0, 300, 30.0), // regressed
-            bench("b", 60.0, 120, 80.0),   // improved
-            bench("c", 102.0, 204, 49.0),  // stable
+            bench("b", 60.0, 120, 80.0),  // improved
+            bench("c", 102.0, 204, 49.0), // stable
         ];
         let results = detect_regressions(&baseline, &current, 10.0);
         let summary = summarize(&results);

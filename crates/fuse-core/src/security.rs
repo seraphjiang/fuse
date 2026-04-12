@@ -72,10 +72,7 @@ impl PolicyEngine {
     fn matching_policies(&self, datasource: &str, index: &str) -> Vec<&PolicyConfig> {
         self.policies
             .iter()
-            .filter(|p| {
-                p.datasource == datasource
-                    && p.index.as_ref().is_none_or(|i| i == index)
-            })
+            .filter(|p| p.datasource == datasource && p.index.as_ref().is_none_or(|i| i == index))
             .collect()
     }
 
@@ -163,7 +160,9 @@ impl ResultFilter {
             .collect();
 
         let new_schema = Arc::new(Schema::new(
-            kept.iter().map(|(_, f, _)| (*f).clone()).collect::<Vec<_>>(),
+            kept.iter()
+                .map(|(_, f, _)| (*f).clone())
+                .collect::<Vec<_>>(),
         ));
 
         batches
@@ -180,8 +179,7 @@ impl ResultFilter {
                         }
                     })
                     .collect();
-                RecordBatch::try_new(new_schema.clone(), columns)
-                    .map_err(FuseError::Arrow)
+                RecordBatch::try_new(new_schema.clone(), columns).map_err(FuseError::Arrow)
             })
             .collect()
     }
@@ -279,56 +277,80 @@ mod rbac_tests {
     #[test]
     fn test_analyst_can_read_prod() {
         let rbac = DatasourceRbac::new(rules());
-        let user = UserContext { username: "alice".into(), roles: vec!["analyst".into()] };
+        let user = UserContext {
+            username: "alice".into(),
+            roles: vec!["analyst".into()],
+        };
         assert!(rbac.check(&user, "prod_logs", &DatasourcePermission::Read));
     }
 
     #[test]
     fn test_analyst_cannot_write_prod() {
         let rbac = DatasourceRbac::new(rules());
-        let user = UserContext { username: "alice".into(), roles: vec!["analyst".into()] };
+        let user = UserContext {
+            username: "alice".into(),
+            roles: vec!["analyst".into()],
+        };
         assert!(!rbac.check(&user, "prod_logs", &DatasourcePermission::Write));
     }
 
     #[test]
     fn test_admin_can_write_prod() {
         let rbac = DatasourceRbac::new(rules());
-        let user = UserContext { username: "bob".into(), roles: vec!["admin".into()] };
+        let user = UserContext {
+            username: "bob".into(),
+            roles: vec!["admin".into()],
+        };
         assert!(rbac.check(&user, "prod_logs", &DatasourcePermission::Write));
     }
 
     #[test]
     fn test_developer_can_write_dev() {
         let rbac = DatasourceRbac::new(rules());
-        let user = UserContext { username: "carol".into(), roles: vec!["developer".into()] };
+        let user = UserContext {
+            username: "carol".into(),
+            roles: vec!["developer".into()],
+        };
         assert!(rbac.check(&user, "dev_logs", &DatasourcePermission::Write));
     }
 
     #[test]
     fn test_unknown_datasource_denied() {
         let rbac = DatasourceRbac::new(rules());
-        let user = UserContext { username: "bob".into(), roles: vec!["admin".into()] };
+        let user = UserContext {
+            username: "bob".into(),
+            roles: vec!["admin".into()],
+        };
         assert!(!rbac.check(&user, "secret_db", &DatasourcePermission::Read));
     }
 
     #[test]
     fn test_no_roles_denied() {
         let rbac = DatasourceRbac::new(rules());
-        let user = UserContext { username: "nobody".into(), roles: vec![] };
+        let user = UserContext {
+            username: "nobody".into(),
+            roles: vec![],
+        };
         assert!(!rbac.check(&user, "prod_logs", &DatasourcePermission::Read));
     }
 
     #[test]
     fn test_empty_rules_allows_all() {
         let rbac = DatasourceRbac::new(vec![]);
-        let user = UserContext { username: "anyone".into(), roles: vec![] };
+        let user = UserContext {
+            username: "anyone".into(),
+            roles: vec![],
+        };
         assert!(rbac.check(&user, "anything", &DatasourcePermission::Read));
     }
 
     #[test]
     fn test_filter_readable() {
         let rbac = DatasourceRbac::new(rules());
-        let user = UserContext { username: "carol".into(), roles: vec!["developer".into()] };
+        let user = UserContext {
+            username: "carol".into(),
+            roles: vec!["developer".into()],
+        };
         let all = vec!["prod_logs".into(), "dev_logs".into(), "secret_db".into()];
         let readable = rbac.filter_readable(&user, &all);
         assert_eq!(readable, vec!["dev_logs"]);
@@ -432,11 +454,7 @@ mod tests {
         assert_eq!(b.schema().field(0).name(), "name");
         assert_eq!(b.schema().field(1).name(), "email");
         // email should be masked
-        let email_col = b
-            .column(1)
-            .as_any()
-            .downcast_ref::<StringArray>()
-            .unwrap();
+        let email_col = b.column(1).as_any().downcast_ref::<StringArray>().unwrap();
         assert_eq!(email_col.value(0), "****");
         assert_eq!(email_col.value(1), "****");
     }
@@ -496,17 +514,16 @@ mod tests {
             username: "analyst".into(),
             roles: vec![],
         };
-        let result = filter.filter_batches(vec![], "prod", "logs", &user).unwrap();
+        let result = filter
+            .filter_batches(vec![], "prod", "logs", &user)
+            .unwrap();
         assert!(result.is_empty());
     }
 
     #[test]
     fn test_mask_column_with_nulls() {
-        let col: Arc<dyn Array> = Arc::new(StringArray::from(vec![
-            Some("real"),
-            None,
-            Some("data"),
-        ]));
+        let col: Arc<dyn Array> =
+            Arc::new(StringArray::from(vec![Some("real"), None, Some("data")]));
         let masked = mask_column(&col);
         let arr = masked.as_any().downcast_ref::<StringArray>().unwrap();
         assert_eq!(arr.value(0), "****");

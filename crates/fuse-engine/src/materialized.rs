@@ -13,8 +13,7 @@ use std::time::{Duration, Instant};
 use arrow::record_batch::RecordBatch;
 
 /// How a materialized view is refreshed.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub enum RefreshMode {
     /// Re-execute the full query, replacing all cached data.
     #[default]
@@ -22,7 +21,6 @@ pub enum RefreshMode {
     /// Append only new rows where watermark_column > last watermark value.
     Incremental { watermark_column: String },
 }
-
 
 /// Definition of a materialized view.
 #[derive(Debug, Clone)]
@@ -337,7 +335,9 @@ mod tests {
     #[test]
     fn test_incremental_append() {
         let def = MaterializedViewDef {
-            refresh_mode: RefreshMode::Incremental { watermark_column: "ts".into() },
+            refresh_mode: RefreshMode::Incremental {
+                watermark_column: "ts".into(),
+            },
             ..test_def("v1")
         };
         let mut view = MaterializedView::new(def);

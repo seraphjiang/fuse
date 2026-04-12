@@ -20,9 +20,9 @@ use arrow::array::StringArray;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use async_trait::async_trait;
+use sha2::{Digest, Sha256};
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
-use sha2::{Sha256, Digest};
 use wasmtime::*;
 
 use fuse_core::connector::*;
@@ -37,13 +37,15 @@ const WASM_MAX_INPUT_SIZE: usize = 1024 * 1024;
 
 /// Verify SHA-256 hash of a WASM module file.
 fn verify_wasm_sha256(path: &Path, expected_hex: &str) -> Result<(), String> {
-    let bytes = std::fs::read(path)
-        .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+    let bytes =
+        std::fs::read(path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
     let actual = hex::encode(Sha256::digest(&bytes));
     if actual != expected_hex.to_lowercase() {
         return Err(format!(
             "SHA-256 mismatch for {}: expected {}, got {}",
-            path.display(), expected_hex, actual
+            path.display(),
+            expected_hex,
+            actual
         ));
     }
     Ok(())
@@ -71,7 +73,11 @@ impl fmt::Debug for WasmPlugin {
 
 impl WasmPlugin {
     /// Load a WASM plugin from a `.wasm` file with security constraints.
-    pub fn load(id: &str, path: &Path, security: PluginSecurityConfig) -> Result<Self, ConnectorError> {
+    pub fn load(
+        id: &str,
+        path: &Path,
+        security: PluginSecurityConfig,
+    ) -> Result<Self, ConnectorError> {
         // Verify integrity if sha256 is specified
         if let Some(ref expected) = security.sha256 {
             verify_wasm_sha256(path, expected)
@@ -85,15 +91,19 @@ impl WasmPlugin {
         config.consume_fuel(true);
         let engine = Engine::new(&config)
             .map_err(|e| ConnectorError::Connection(format!("wasm engine: {e}")))?;
-        let module = Module::from_file(&engine, path)
-            .map_err(|e| ConnectorError::Connection(format!("wasm load '{}': {e}", path.display())))?;
+        let module = Module::from_file(&engine, path).map_err(|e| {
+            ConnectorError::Connection(format!("wasm load '{}': {e}", path.display()))
+        })?;
 
         // Reject modules that import WASI when not allowed
         if !security.allow_wasi {
             for import in module.imports() {
-                if import.module() == "wasi_snapshot_preview1" || import.module().starts_with("wasi:") {
+                if import.module() == "wasi_snapshot_preview1"
+                    || import.module().starts_with("wasi:")
+                {
                     return Err(ConnectorError::Connection(format!(
-                        "wasm plugin '{}' requires WASI but allow_wasi=false in manifest", id
+                        "wasm plugin '{}' requires WASI but allow_wasi=false in manifest",
+                        id
                     )));
                 }
             }
@@ -105,7 +115,9 @@ impl WasmPlugin {
 
         info!(
             "Loaded WASM plugin '{}' (type: {}, fuel: {}, mem: {}MiB, wasi: {}) from {}",
-            id, connector_type_name, fuel,
+            id,
+            connector_type_name,
+            fuel,
             security.max_memory_mb.unwrap_or(64),
             security.allow_wasi,
             path.display()
@@ -121,28 +133,40 @@ impl WasmPlugin {
         })
     }
 
-    fn probe_connector_type(engine: &Engine, module: &Module, fuel: u64) -> Result<String, ConnectorError> {
+    fn probe_connector_type(
+        engine: &Engine,
+        module: &Module,
+        fuel: u64,
+    ) -> Result<String, ConnectorError> {
         let mut store = Store::new(engine, ());
         store.set_fuel(fuel).ok();
         let linker = Linker::new(engine);
-        let instance = linker.instantiate(&mut store, module)
+        let instance = linker
+            .instantiate(&mut store, module)
             .map_err(|e| ConnectorError::Connection(format!("wasm instantiate: {e}")))?;
 
         // Call connector_type() -> (ptr, len) to get the type string
-        let func = instance.get_typed_func::<(), (i32, i32)>(&mut store, "connector_type")
-            .map_err(|_| ConnectorError::Connection("wasm: missing 'connector_type' export".into()))?;
+        let func = instance
+            .get_typed_func::<(), (i32, i32)>(&mut store, "connector_type")
+            .map_err(|_| {
+                ConnectorError::Connection("wasm: missing 'connector_type' export".into())
+            })?;
 
-        let (ptr, len) = func.call(&mut store, ())
+        let (ptr, len) = func
+            .call(&mut store, ())
             .map_err(|e| ConnectorError::Connection(format!("wasm connector_type call: {e}")))?;
 
-        let memory = instance.get_memory(&mut store, "memory")
+        let memory = instance
+            .get_memory(&mut store, "memory")
             .ok_or_else(|| ConnectorError::Connection("wasm: no memory export".into()))?;
 
         let data = memory.data(&store);
         let start = ptr as usize;
         let end = start + len as usize;
         if end > data.len() {
-            return Err(ConnectorError::Connection("wasm: connector_type out of bounds".into()));
+            return Err(ConnectorError::Connection(
+                "wasm: connector_type out of bounds".into(),
+            ));
         }
 
         String::from_utf8(data[start..end].to_vec())
@@ -153,42 +177,56 @@ impl WasmPlugin {
     fn call_json_fn(&self, func_name: &str, input: &str) -> Result<String, ConnectorError> {
         if input.len() > WASM_MAX_INPUT_SIZE {
             return Err(ConnectorError::QueryFailed(format!(
-                "wasm input too large: {} bytes (max {})", input.len(), WASM_MAX_INPUT_SIZE
+                "wasm input too large: {} bytes (max {})",
+                input.len(),
+                WASM_MAX_INPUT_SIZE
             )));
         }
 
         let mut store = Store::new(&self.engine, ());
-        store.set_fuel(self.security.max_fuel.unwrap_or(WASM_FUEL_LIMIT)).ok();
+        store
+            .set_fuel(self.security.max_fuel.unwrap_or(WASM_FUEL_LIMIT))
+            .ok();
         let linker = Linker::new(&self.engine);
-        let instance = linker.instantiate(&mut store, &self.module)
+        let instance = linker
+            .instantiate(&mut store, &self.module)
             .map_err(|e| ConnectorError::Connection(format!("wasm instantiate: {e}")))?;
 
-        let memory = instance.get_memory(&mut store, "memory")
+        let memory = instance
+            .get_memory(&mut store, "memory")
             .ok_or_else(|| ConnectorError::Connection("wasm: no memory export".into()))?;
 
         // Write input to WASM memory via alloc
-        let alloc = instance.get_typed_func::<i32, i32>(&mut store, "alloc")
+        let alloc = instance
+            .get_typed_func::<i32, i32>(&mut store, "alloc")
             .map_err(|_| ConnectorError::Connection("wasm: missing 'alloc' export".into()))?;
 
         let input_bytes = input.as_bytes();
-        let input_ptr = alloc.call(&mut store, input_bytes.len() as i32)
+        let input_ptr = alloc
+            .call(&mut store, input_bytes.len() as i32)
             .map_err(|e| ConnectorError::Connection(format!("wasm alloc: {e}")))?;
 
         memory.data_mut(&mut store)[input_ptr as usize..input_ptr as usize + input_bytes.len()]
             .copy_from_slice(input_bytes);
 
         // Call the function
-        let func = instance.get_typed_func::<(i32, i32), (i32, i32)>(&mut store, func_name)
-            .map_err(|_| ConnectorError::Connection(format!("wasm: missing '{}' export", func_name)))?;
+        let func = instance
+            .get_typed_func::<(i32, i32), (i32, i32)>(&mut store, func_name)
+            .map_err(|_| {
+                ConnectorError::Connection(format!("wasm: missing '{}' export", func_name))
+            })?;
 
-        let (out_ptr, out_len) = func.call(&mut store, (input_ptr, input_bytes.len() as i32))
+        let (out_ptr, out_len) = func
+            .call(&mut store, (input_ptr, input_bytes.len() as i32))
             .map_err(|e| ConnectorError::QueryFailed(format!("wasm {func_name}: {e}")))?;
 
         let data = memory.data(&store);
         let start = out_ptr as usize;
         let end = start + out_len as usize;
         if end > data.len() {
-            return Err(ConnectorError::QueryFailed(format!("wasm {func_name}: output out of bounds")));
+            return Err(ConnectorError::QueryFailed(format!(
+                "wasm {func_name}: output out of bounds"
+            )));
         }
 
         String::from_utf8(data[start..end].to_vec())
@@ -198,8 +236,12 @@ impl WasmPlugin {
 
 #[async_trait]
 impl FederatedConnector for WasmPlugin {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { &self.connector_type_name }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        &self.connector_type_name
+    }
 
     fn capabilities(&self) -> ConnectorCapabilities {
         ConnectorCapabilities {
@@ -216,25 +258,37 @@ impl FederatedConnector for WasmPlugin {
     }
 
     async fn health_check(&self) -> ConnectorHealth {
-        ConnectorHealth { status: HealthStatus::Healthy, latency_ms: None, message: Some("wasm plugin".into()) }
+        ConnectorHealth {
+            status: HealthStatus::Healthy,
+            latency_ms: None,
+            message: Some("wasm plugin".into()),
+        }
     }
 
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
         let json = self.call_json_fn("discover_schemas", "{}")?;
         let names: Vec<String> = serde_json::from_str(&json)
             .map_err(|e| ConnectorError::SchemaDiscovery(format!("wasm: {e}")))?;
-        Ok(names.into_iter().map(|n| SchemaInfo {
-            name: n,
-            schema_type: SchemaType::Table,
-            estimated_row_count: None,
-        }).collect())
+        Ok(names
+            .into_iter()
+            .map(|n| SchemaInfo {
+                name: n,
+                schema_type: SchemaType::Table,
+                estimated_row_count: None,
+            })
+            .collect())
     }
 
     async fn get_schema(&self, table: &str) -> Result<arrow::datatypes::Schema, ConnectorError> {
         let json = self.call_json_fn("get_schema", table)?;
         let fields: Vec<String> = serde_json::from_str(&json)
             .map_err(|e| ConnectorError::SchemaDiscovery(format!("wasm: {e}")))?;
-        Ok(Schema::new(fields.into_iter().map(|f| Field::new(f, DataType::Utf8, true)).collect::<Vec<_>>()))
+        Ok(Schema::new(
+            fields
+                .into_iter()
+                .map(|f| Field::new(f, DataType::Utf8, true))
+                .collect::<Vec<_>>(),
+        ))
     }
 
     async fn execute(&self, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
@@ -242,7 +296,8 @@ impl FederatedConnector for WasmPlugin {
             "table": query.table,
             "projections": query.projections,
             "limit": query.limit,
-        }).to_string();
+        })
+        .to_string();
 
         let result_json = self.call_json_fn("execute", &query_json)?;
 
@@ -250,20 +305,31 @@ impl FederatedConnector for WasmPlugin {
         let rows: Vec<HashMap<String, serde_json::Value>> = serde_json::from_str(&result_json)
             .map_err(|e| ConnectorError::QueryFailed(format!("wasm result parse: {e}")))?;
 
-        if rows.is_empty() { return Ok(vec![]); }
+        if rows.is_empty() {
+            return Ok(vec![]);
+        }
 
         // Infer columns from first row
         let columns: Vec<String> = rows[0].keys().cloned().collect();
-        let fields: Vec<Field> = columns.iter().map(|c| Field::new(c, DataType::Utf8, true)).collect();
-        let arrays: Vec<Arc<dyn arrow::array::Array>> = columns.iter().map(|col| {
-            let vals: Vec<Option<String>> = rows.iter().map(|r| {
-                r.get(col).map(|v| match v {
-                    serde_json::Value::String(s) => s.clone(),
-                    other => other.to_string(),
-                })
-            }).collect();
-            Arc::new(StringArray::from(vals)) as Arc<dyn arrow::array::Array>
-        }).collect();
+        let fields: Vec<Field> = columns
+            .iter()
+            .map(|c| Field::new(c, DataType::Utf8, true))
+            .collect();
+        let arrays: Vec<Arc<dyn arrow::array::Array>> = columns
+            .iter()
+            .map(|col| {
+                let vals: Vec<Option<String>> = rows
+                    .iter()
+                    .map(|r| {
+                        r.get(col).map(|v| match v {
+                            serde_json::Value::String(s) => s.clone(),
+                            other => other.to_string(),
+                        })
+                    })
+                    .collect();
+                Arc::new(StringArray::from(vals)) as Arc<dyn arrow::array::Array>
+            })
+            .collect();
 
         let schema = Arc::new(Schema::new(fields));
         let batch = RecordBatch::try_new(schema, arrays)
@@ -278,7 +344,9 @@ impl FederatedConnector for WasmPlugin {
     ) -> Result<(), ConnectorError> {
         let batches = self.execute(query).await?;
         for batch in batches {
-            if tx.send(Ok(batch)).await.is_err() { break; }
+            if tx.send(Ok(batch)).await.is_err() {
+                break;
+            }
         }
         Ok(())
     }
@@ -323,8 +391,7 @@ pub struct PluginManifest {
 }
 
 /// Security constraints for a WASM plugin.
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
 pub struct PluginSecurityConfig {
     /// SHA-256 hex digest of the `.wasm` file. If set, module is rejected on mismatch.
     #[serde(default)]
@@ -343,14 +410,12 @@ pub struct PluginSecurityConfig {
     pub allow_wasi: bool,
 }
 
-
 impl PluginManifest {
     /// Load a manifest from a TOML file.
     pub fn from_file(path: &Path) -> Result<Self, String> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
-        toml::from_str(&content)
-            .map_err(|e| format!("failed to parse {}: {e}", path.display()))
+        toml::from_str(&content).map_err(|e| format!("failed to parse {}: {e}", path.display()))
     }
 }
 
@@ -376,17 +441,27 @@ pub fn load_plugins_from_dir(dir: &Path) -> Vec<WasmPlugin> {
                         }
                         let wasm_path = path.join(format!("{}.wasm", manifest.id));
                         if wasm_path.exists() {
-                            match WasmPlugin::load(&manifest.id, &wasm_path, manifest.security.clone()) {
+                            match WasmPlugin::load(
+                                &manifest.id,
+                                &wasm_path,
+                                manifest.security.clone(),
+                            ) {
                                 Ok(plugin) => {
-                                    info!("Loaded plugin '{}' v{} from manifest",
+                                    info!(
+                                        "Loaded plugin '{}' v{} from manifest",
                                         manifest.id,
-                                        manifest.version.as_deref().unwrap_or("unknown"));
+                                        manifest.version.as_deref().unwrap_or("unknown")
+                                    );
                                     plugins.push(plugin);
                                 }
                                 Err(e) => warn!("Failed to load plugin '{}': {}", manifest.id, e),
                             }
                         } else {
-                            warn!("Manifest for '{}' found but no .wasm file at {}", manifest.id, wasm_path.display());
+                            warn!(
+                                "Manifest for '{}' found but no .wasm file at {}",
+                                manifest.id,
+                                wasm_path.display()
+                            );
                         }
                     }
                     Err(e) => warn!("Bad manifest in {}: {}", path.display(), e),
@@ -397,11 +472,21 @@ pub fn load_plugins_from_dir(dir: &Path) -> Vec<WasmPlugin> {
 
         // Case 2: bare .wasm file — loaded with default (restrictive) security
         if path.extension().is_some_and(|e| e == "wasm") {
-            let id = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
-            warn!("Loading bare WASM plugin '{}' without manifest — no integrity verification", id);
+            let id = path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            warn!(
+                "Loading bare WASM plugin '{}' without manifest — no integrity verification",
+                id
+            );
             match WasmPlugin::load(&id, &path, PluginSecurityConfig::default()) {
                 Ok(plugin) => {
-                    info!("Loaded WASM plugin: {} ({})", id, plugin.connector_type_name);
+                    info!(
+                        "Loaded WASM plugin: {} ({})",
+                        id, plugin.connector_type_name
+                    );
                     plugins.push(plugin);
                 }
                 Err(e) => warn!("Failed to load WASM plugin {}: {}", path.display(), e),
@@ -424,7 +509,9 @@ impl Default for PluginRegistry {
 
 impl PluginRegistry {
     pub fn new() -> Self {
-        Self { plugins: std::sync::Mutex::new(Vec::new()) }
+        Self {
+            plugins: std::sync::Mutex::new(Vec::new()),
+        }
     }
 
     /// Load plugins from a directory and register them.
@@ -441,7 +528,12 @@ impl PluginRegistry {
 
     /// List all loaded plugin IDs.
     pub fn list(&self) -> Vec<String> {
-        self.plugins.lock().unwrap().iter().map(|p| p.id.clone()).collect()
+        self.plugins
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|p| p.id.clone())
+            .collect()
     }
 
     /// Get plugin count.
@@ -456,7 +548,11 @@ mod tests {
 
     #[test]
     fn test_load_nonexistent_file() {
-        let result = WasmPlugin::load("test", Path::new("/nonexistent.wasm"), PluginSecurityConfig::default());
+        let result = WasmPlugin::load(
+            "test",
+            Path::new("/nonexistent.wasm"),
+            PluginSecurityConfig::default(),
+        );
         assert!(result.is_err());
     }
 
@@ -555,7 +651,11 @@ enabled = false
         let dir = std::env::temp_dir().join("fuse_manifest_disabled");
         let plugin_dir = dir.join("off-plugin");
         let _ = std::fs::create_dir_all(&plugin_dir);
-        std::fs::write(plugin_dir.join("manifest.toml"), "id = \"off-plugin\"\nenabled = false").unwrap();
+        std::fs::write(
+            plugin_dir.join("manifest.toml"),
+            "id = \"off-plugin\"\nenabled = false",
+        )
+        .unwrap();
         std::fs::write(plugin_dir.join("off-plugin.wasm"), b"fake").unwrap();
         let plugins = load_plugins_from_dir(&dir);
         assert!(plugins.is_empty()); // disabled
@@ -599,7 +699,10 @@ enabled = false
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join("test.wasm");
         std::fs::write(&path, b"content").unwrap();
-        let result = verify_wasm_sha256(&path, "0000000000000000000000000000000000000000000000000000000000000000");
+        let result = verify_wasm_sha256(
+            &path,
+            "0000000000000000000000000000000000000000000000000000000000000000",
+        );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("SHA-256 mismatch"));
         let _ = std::fs::remove_dir_all(&dir);

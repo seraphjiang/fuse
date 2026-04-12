@@ -38,11 +38,16 @@ pub fn approx_percentiles(values: &[f64], percentiles: &[f64]) -> Vec<Option<f64
     }
     let mut sorted = values.to_vec();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    percentiles.iter().map(|&p| {
-        if !(0.0..=1.0).contains(&p) { return None; }
-        let idx = ((p * (sorted.len() - 1) as f64).round()) as usize;
-        Some(sorted[idx.min(sorted.len() - 1)])
-    }).collect()
+    percentiles
+        .iter()
+        .map(|&p| {
+            if !(0.0..=1.0).contains(&p) {
+                return None;
+            }
+            let idx = ((p * (sorted.len() - 1) as f64).round()) as usize;
+            Some(sorted[idx.min(sorted.len() - 1)])
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -51,7 +56,10 @@ mod tests {
 
     #[test]
     fn test_approx_count_distinct() {
-        let vals: Vec<String> = vec!["a", "b", "c", "a", "b"].into_iter().map(String::from).collect();
+        let vals: Vec<String> = vec!["a", "b", "c", "a", "b"]
+            .into_iter()
+            .map(String::from)
+            .collect();
         assert_eq!(approx_count_distinct(&vals), 3);
     }
 

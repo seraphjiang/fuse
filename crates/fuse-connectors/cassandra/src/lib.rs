@@ -23,16 +23,41 @@ use fuse_core::sql::quote_ident;
 
 /// Convert SubQuery to CQL SELECT statement.
 pub fn subquery_to_cql(sq: &SubQuery, keyspace: &str) -> String {
-    let cols = if sq.projections.is_empty() { "*".into() } else {
-        sq.projections.iter().map(|p| if p == "*" { "*".to_string() } else { quote_ident(p) }).collect::<Vec<_>>().join(", ")
+    let cols = if sq.projections.is_empty() {
+        "*".into()
+    } else {
+        sq.projections
+            .iter()
+            .map(|p| {
+                if p == "*" {
+                    "*".to_string()
+                } else {
+                    quote_ident(p)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
     };
-    let mut cql = format!("SELECT {} FROM {}.{}", cols, quote_ident(keyspace), quote_ident(&sq.table));
+    let mut cql = format!(
+        "SELECT {} FROM {}.{}",
+        cols,
+        quote_ident(keyspace),
+        quote_ident(&sq.table)
+    );
     if let Some(ref f) = sq.filter {
         cql.push_str(&format!(" WHERE {}", filter_to_cql(f)));
     }
     if !sq.sort.is_empty() {
-        let clauses: Vec<String> = sq.sort.iter()
-            .map(|s| format!("{} {}", quote_ident(&s.field), if s.descending { "DESC" } else { "ASC" }))
+        let clauses: Vec<String> = sq
+            .sort
+            .iter()
+            .map(|s| {
+                format!(
+                    "{} {}",
+                    quote_ident(&s.field),
+                    if s.descending { "DESC" } else { "ASC" }
+                )
+            })
             .collect();
         cql.push_str(&format!(" ORDER BY {}", clauses.join(", ")));
     }
@@ -49,9 +74,12 @@ fn filter_to_cql(f: &FilterExpr) -> String {
     match f {
         FilterExpr::Comparison { field, op, value } => {
             let op_str = match op {
-                ComparisonOp::Eq => "=", ComparisonOp::Neq => "!=",
-                ComparisonOp::Gt => ">", ComparisonOp::Gte => ">=",
-                ComparisonOp::Lt => "<", ComparisonOp::Lte => "<=",
+                ComparisonOp::Eq => "=",
+                ComparisonOp::Neq => "!=",
+                ComparisonOp::Gt => ">",
+                ComparisonOp::Gte => ">=",
+                ComparisonOp::Lt => "<",
+                ComparisonOp::Lte => "<=",
                 ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => "=",
             };
             format!("{} {} {}", quote_ident(field), op_str, scalar_to_cql(value))
@@ -95,10 +123,14 @@ pub struct CassandraConnector {
 
 impl CassandraConnector {
     pub async fn from_config(config: &ConnectorConfig) -> Result<Self, ConnectorError> {
-        let hosts = config.properties.get("hosts")
+        let hosts = config
+            .properties
+            .get("hosts")
             .and_then(|v| v.as_str())
             .unwrap_or("127.0.0.1:9042");
-        let keyspace = config.properties.get("keyspace")
+        let keyspace = config
+            .properties
+            .get("keyspace")
             .and_then(|v| v.as_str())
             .unwrap_or("default")
             .to_string();
@@ -106,7 +138,8 @@ impl CassandraConnector {
         // Validate TLS config at startup (fail-fast) even though scylla
         // TLS requires the `ssl` feature + openssl at compile time.
         if let Some(tls) = config.tls_config() {
-            tls.validate().map_err(|e| ConnectorError::Connection(e.to_string()))?;
+            tls.validate()
+                .map_err(|e| ConnectorError::Connection(e.to_string()))?;
             tracing::warn!(
                 connector = %config.id,
                 "TLS configured but Cassandra connector requires scylla 'ssl' feature + openssl. \
@@ -121,14 +154,20 @@ impl CassandraConnector {
             .await
             .map_err(|e| ConnectorError::Connection(e.to_string()))?;
 
-        Ok(Self { id: config.id.clone(), session: Arc::new(session), keyspace })
+        Ok(Self {
+            id: config.id.clone(),
+            session: Arc::new(session),
+            keyspace,
+        })
     }
 
     async fn run_cql(&self, cql: &str) -> Result<Vec<RecordBatch>, ConnectorError> {
         let t0 = Instant::now();
         debug!(connector = %self.id, cql = cql, "Cassandra query");
 
-        let result = self.session.query_unpaged(cql, &[])
+        let result = self
+            .session
+            .query_unpaged(cql, &[])
             .await
             .map_err(|e| ConnectorError::query(e.to_string()))?;
 
@@ -137,13 +176,16 @@ impl CassandraConnector {
             return Ok(vec![]);
         }
 
-        let fields: Vec<Field> = col_specs.iter()
+        let fields: Vec<Field> = col_specs
+            .iter()
             .map(|c| Field::new(&c.name, DataType::Utf8, true))
             .collect();
         let schema = Arc::new(Schema::new(fields));
         let num_cols = col_specs.len();
 
-        let rows = result.rows().map_err(|e| ConnectorError::query(e.to_string()))?;
+        let rows = result
+            .rows()
+            .map_err(|e| ConnectorError::query(e.to_string()))?;
         if rows.is_empty() {
             return Ok(vec![RecordBatch::new_empty(schema)]);
         }
@@ -156,7 +198,8 @@ impl CassandraConnector {
             }
         }
 
-        let arrays: Vec<ArrayRef> = col_values.into_iter()
+        let arrays: Vec<ArrayRef> = col_values
+            .into_iter()
             .map(|vals| Arc::new(StringArray::from(vals)) as ArrayRef)
             .collect();
 
@@ -165,27 +208,46 @@ impl CassandraConnector {
         debug!(connector = %self.id, rows = batch.num_rows(), elapsed_ms = t0.elapsed().as_millis() as u64, "Cassandra query complete");
         Ok(vec![batch])
     }
-
 }
 #[async_trait::async_trait]
 impl FederatedConnector for CassandraConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "cassandra" }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "cassandra"
+    }
 
     fn capabilities(&self) -> ConnectorCapabilities {
         ConnectorCapabilities {
-            supports_filtering: true, supports_projection: true,
-            supports_aggregation: false, supports_sorting: true,
-            supports_limit: true, supports_join: false,
-            max_concurrent_queries: 8, supports_streaming: true,
+            supports_filtering: true,
+            supports_projection: true,
+            supports_aggregation: false,
+            supports_sorting: true,
+            supports_limit: true,
+            supports_join: false,
+            max_concurrent_queries: 8,
+            supports_streaming: true,
             latency_class: LatencyClass::Low,
         }
     }
 
     async fn health_check(&self) -> ConnectorHealth {
-        match self.session.query_unpaged("SELECT now() FROM system.local", &[]).await {
-            Ok(_) => ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(1), message: None },
-            Err(e) => ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some(e.to_string()) },
+        match self
+            .session
+            .query_unpaged("SELECT now() FROM system.local", &[])
+            .await
+        {
+            Ok(_) => ConnectorHealth {
+                status: HealthStatus::Healthy,
+                latency_ms: Some(1),
+                message: None,
+            },
+            Err(e) => ConnectorHealth {
+                status: HealthStatus::Unhealthy,
+                latency_ms: None,
+                message: Some(e.to_string()),
+            },
         }
     }
 
@@ -194,15 +256,31 @@ impl FederatedConnector for CassandraConnector {
             "SELECT table_name FROM system_schema.tables WHERE keyspace_name = '{}'",
             self.keyspace.replace('\'', "''")
         );
-        let result = self.session.query_unpaged(cql.as_str(), &[]).await
+        let result = self
+            .session
+            .query_unpaged(cql.as_str(), &[])
+            .await
             .map_err(|e| ConnectorError::schema(e.to_string()))?;
-        let rows = result.rows().map_err(|e| ConnectorError::schema(e.to_string()))?;
-        let tables = rows.iter().filter_map(|row| {
-            row.columns.first()?.as_ref().and_then(|v| {
-                if let scylla::frame::response::result::CqlValue::Text(s) = v { Some(s.clone()) } else { None }
+        let rows = result
+            .rows()
+            .map_err(|e| ConnectorError::schema(e.to_string()))?;
+        let tables = rows
+            .iter()
+            .filter_map(|row| {
+                row.columns.first()?.as_ref().and_then(|v| {
+                    if let scylla::frame::response::result::CqlValue::Text(s) = v {
+                        Some(s.clone())
+                    } else {
+                        None
+                    }
+                })
             })
-        }).map(|name| SchemaInfo { name, schema_type: SchemaType::Table, estimated_row_count: None })
-        .collect();
+            .map(|name| SchemaInfo {
+                name,
+                schema_type: SchemaType::Table,
+                estimated_row_count: None,
+            })
+            .collect();
         Ok(tables)
     }
 
@@ -211,18 +289,39 @@ impl FederatedConnector for CassandraConnector {
             "SELECT column_name, type FROM system_schema.columns WHERE keyspace_name = '{}' AND table_name = '{}'",
             self.keyspace.replace('\'', "''"), table.replace('\'', "''")
         );
-        let result = self.session.query_unpaged(cql.as_str(), &[]).await
+        let result = self
+            .session
+            .query_unpaged(cql.as_str(), &[])
+            .await
             .map_err(|e| ConnectorError::schema(e.to_string()))?;
-        let rows = result.rows().map_err(|e| ConnectorError::schema(e.to_string()))?;
-        let fields: Vec<Field> = rows.iter().filter_map(|row| {
-            let name = row.columns.first()?.as_ref().and_then(|v| {
-                if let scylla::frame::response::result::CqlValue::Text(s) = v { Some(s.clone()) } else { None }
-            })?;
-            let dtype = row.columns.get(1)?.as_ref().and_then(|v| {
-                if let scylla::frame::response::result::CqlValue::Text(s) = v { Some(s.clone()) } else { None }
-            }).unwrap_or_else(|| "text".into());
-            Some(Field::new(name.as_str(), cql_type_to_arrow(&dtype), true))
-        }).collect();
+        let rows = result
+            .rows()
+            .map_err(|e| ConnectorError::schema(e.to_string()))?;
+        let fields: Vec<Field> = rows
+            .iter()
+            .filter_map(|row| {
+                let name = row.columns.first()?.as_ref().and_then(|v| {
+                    if let scylla::frame::response::result::CqlValue::Text(s) = v {
+                        Some(s.clone())
+                    } else {
+                        None
+                    }
+                })?;
+                let dtype = row
+                    .columns
+                    .get(1)?
+                    .as_ref()
+                    .and_then(|v| {
+                        if let scylla::frame::response::result::CqlValue::Text(s) = v {
+                            Some(s.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or_else(|| "text".into());
+                Some(Field::new(name.as_str(), cql_type_to_arrow(&dtype), true))
+            })
+            .collect();
         Ok(Schema::new(fields))
     }
 
@@ -231,9 +330,15 @@ impl FederatedConnector for CassandraConnector {
         self.run_cql(&cql).await
     }
 
-    async fn execute_streaming(&self, query: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>) -> Result<(), ConnectorError> {
+    async fn execute_streaming(
+        &self,
+        query: &SubQuery,
+        tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+    ) -> Result<(), ConnectorError> {
         for b in self.execute(query).await? {
-            tx.send(Ok(b)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+            tx.send(Ok(b))
+                .await
+                .map_err(|_| ConnectorError::ChannelClosed)?;
         }
         Ok(())
     }
@@ -243,8 +348,13 @@ pub struct CassandraConnectorFactory;
 
 #[async_trait::async_trait]
 impl ConnectorFactory for CassandraConnectorFactory {
-    fn connector_type(&self) -> &str { "cassandra" }
-    async fn create(&self, config: &ConnectorConfig) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
+    fn connector_type(&self) -> &str {
+        "cassandra"
+    }
+    async fn create(
+        &self,
+        config: &ConnectorConfig,
+    ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
         Ok(Arc::new(CassandraConnector::from_config(config).await?))
     }
 }
@@ -254,21 +364,36 @@ mod tests {
     use super::*;
 
     fn simple_sq(table: &str) -> SubQuery {
-        SubQuery { table: table.into(), projections: vec![], filter: None,
-            aggregations: vec![], group_by: vec![], sort: vec![],
-            limit: None, having: None, offset: None, passthrough: None }
+        SubQuery {
+            table: table.into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            having: None,
+            offset: None,
+            passthrough: None,
+        }
     }
 
     #[test]
     fn test_subquery_to_cql_simple() {
-        assert_eq!(subquery_to_cql(&simple_sq("users"), "mykeyspace"), "SELECT * FROM \"mykeyspace\".\"users\"");
+        assert_eq!(
+            subquery_to_cql(&simple_sq("users"), "mykeyspace"),
+            "SELECT * FROM \"mykeyspace\".\"users\""
+        );
     }
 
     #[test]
     fn test_subquery_to_cql_with_projections() {
         let mut sq = simple_sq("t");
         sq.projections = vec!["id".into(), "name".into()];
-        assert_eq!(subquery_to_cql(&sq, "ks"), "SELECT \"id\", \"name\" FROM \"ks\".\"t\"");
+        assert_eq!(
+            subquery_to_cql(&sq, "ks"),
+            "SELECT \"id\", \"name\" FROM \"ks\".\"t\""
+        );
     }
 
     #[test]
@@ -282,7 +407,9 @@ mod tests {
     fn test_subquery_to_cql_with_filter_adds_allow_filtering() {
         let mut sq = simple_sq("t");
         sq.filter = Some(FilterExpr::Comparison {
-            field: "status".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("active".into()),
+            field: "status".into(),
+            op: ComparisonOp::Eq,
+            value: ScalarValue::Utf8("active".into()),
         });
         let cql = subquery_to_cql(&sq, "ks");
         assert!(cql.contains("WHERE \"status\" = 'active'"));
@@ -303,7 +430,10 @@ mod tests {
     #[test]
     fn test_subquery_to_cql_sort() {
         let mut sq = simple_sq("t");
-        sq.sort = vec![SortExpr { field: "ts".into(), descending: true }];
+        sq.sort = vec![SortExpr {
+            field: "ts".into(),
+            descending: true,
+        }];
         assert!(subquery_to_cql(&sq, "ks").contains("ORDER BY \"ts\" DESC"));
     }
 
@@ -330,15 +460,28 @@ mod tests {
             table: "events".into(),
             projections: vec!["ts".into(), "value".into()],
             filter: Some(FilterExpr::Comparison {
-                field: "region".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("us-east-1".into()),
+                field: "region".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Utf8("us-east-1".into()),
             }),
-            aggregations: vec![], group_by: vec![],
-            sort: vec![SortExpr { field: "ts".into(), descending: true }],
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![SortExpr {
+                field: "ts".into(),
+                descending: true,
+            }],
             limit: Some(100),
-            having: None, offset: None, passthrough: None,
+            having: None,
+            offset: None,
+            passthrough: None,
         };
         let cql = subquery_to_cql(&sq, "prod");
-        assert!(cql.contains("ts") && cql.contains("value") && cql.contains("prod") && cql.contains("events"));
+        assert!(
+            cql.contains("ts")
+                && cql.contains("value")
+                && cql.contains("prod")
+                && cql.contains("events")
+        );
         assert!(cql.contains("region") && cql.contains("'us-east-1'"));
         assert!(cql.contains("ts") && cql.contains("DESC"));
         assert!(cql.contains("LIMIT 100"));
@@ -348,8 +491,16 @@ mod tests {
     #[test]
     fn test_filter_and_compound() {
         let f = FilterExpr::And(
-            Box::new(FilterExpr::Comparison { field: "a".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(1) }),
-            Box::new(FilterExpr::Comparison { field: "b".into(), op: ComparisonOp::Gt, value: ScalarValue::Float64(2.5) }),
+            Box::new(FilterExpr::Comparison {
+                field: "a".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Int64(1),
+            }),
+            Box::new(FilterExpr::Comparison {
+                field: "b".into(),
+                op: ComparisonOp::Gt,
+                value: ScalarValue::Float64(2.5),
+            }),
         );
         let cql = filter_to_cql(&f);
         assert!(cql.contains("= 1"));
@@ -360,6 +511,9 @@ mod tests {
     #[test]
     fn test_scalar_quote_escaping() {
         assert_eq!(scalar_to_cql(&ScalarValue::Utf8("it's".into())), "'it''s'");
-        assert_eq!(scalar_to_cql(&ScalarValue::Utf8("O'Brien".into())), "'O''Brien'");
+        assert_eq!(
+            scalar_to_cql(&ScalarValue::Utf8("O'Brien".into())),
+            "'O''Brien'"
+        );
     }
 }

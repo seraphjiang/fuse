@@ -60,7 +60,8 @@ pub fn require_role(
                     "insufficient permissions: role {:?} required, you have {:?}",
                     required, id.role
                 )
-            }).to_string();
+            })
+            .to_string();
             Err(Response::builder()
                 .status(StatusCode::FORBIDDEN)
                 .header("content-type", "application/json")
@@ -81,13 +82,17 @@ pub struct AuthState {
 impl AuthState {
     /// Create with no keys (auth disabled — all requests pass).
     pub fn disabled() -> Self {
-        Self { keys: Arc::new(HashMap::new()) }
+        Self {
+            keys: Arc::new(HashMap::new()),
+        }
     }
 
     /// Create with a set of API keys (auth enabled).
     pub fn new(entries: Vec<ApiKeyEntry>) -> Self {
         let keys = entries.into_iter().map(|e| (e.key.clone(), e)).collect();
-        Self { keys: Arc::new(keys) }
+        Self {
+            keys: Arc::new(keys),
+        }
     }
 
     /// Whether auth is enabled (at least one key configured).
@@ -106,7 +111,6 @@ impl Default for AuthState {
         Self::disabled()
     }
 }
-
 
 // ── API Key Rotation ──
 
@@ -139,7 +143,10 @@ pub struct RotationResult {
 
 impl KeyRotationManager {
     pub fn new(initial_keys: Vec<ApiKeyEntry>) -> Self {
-        let active = initial_keys.into_iter().map(|e| (e.key.clone(), e)).collect();
+        let active = initial_keys
+            .into_iter()
+            .map(|e| (e.key.clone(), e))
+            .collect();
         Self {
             state: std::sync::RwLock::new(RotationState {
                 active,
@@ -154,7 +161,11 @@ impl KeyRotationManager {
         let mut state = self.state.write().ok()?;
 
         // Find the current key for this identity
-        let old_entry = state.active.values().find(|e| e.identity == identity)?.clone();
+        let old_entry = state
+            .active
+            .values()
+            .find(|e| e.identity == identity)?
+            .clone();
         let old_key = old_entry.key.clone();
 
         // Generate new key
@@ -178,7 +189,8 @@ impl KeyRotationManager {
         let expires_unix = std::time::SystemTime::now()
             .duration_since(std::time::SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
-            .as_secs() + grace_secs;
+            .as_secs()
+            + grace_secs;
 
         Some(RotationResult {
             identity: identity.to_string(),
@@ -203,7 +215,9 @@ impl KeyRotationManager {
         }
 
         // Check grace period keys
-        state.grace.iter()
+        state
+            .grace
+            .iter()
             .find(|g| g.entry.key == key)
             .map(|g| g.entry.clone())
     }
@@ -224,8 +238,13 @@ impl KeyRotationManager {
 /// Generate a random API key (32 hex chars).
 fn generate_api_key() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
-    let random_part: u64 = (ts as u64).wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let random_part: u64 = (ts as u64)
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     format!("fuse-{:016x}{:016x}", ts as u64, random_part)
 }
 
@@ -235,8 +254,16 @@ mod rotation_tests {
 
     fn test_entries() -> Vec<ApiKeyEntry> {
         vec![
-            ApiKeyEntry { key: "key-alice".into(), identity: "alice".into(), role: Role::Admin },
-            ApiKeyEntry { key: "key-bob".into(), identity: "bob".into(), role: Role::Viewer },
+            ApiKeyEntry {
+                key: "key-alice".into(),
+                identity: "alice".into(),
+                role: Role::Admin,
+            },
+            ApiKeyEntry {
+                key: "key-bob".into(),
+                identity: "bob".into(),
+                role: Role::Viewer,
+            },
         ]
     }
 
@@ -337,10 +364,7 @@ fn extract_api_key(req: &Request) -> Option<String> {
 }
 
 /// Auth middleware. Insert as layer before route handlers.
-pub async fn auth_middleware(
-    req: Request,
-    next: Next,
-) -> Response<Body> {
+pub async fn auth_middleware(req: Request, next: Next) -> Response<Body> {
     let auth_state = req.extensions().get::<AuthState>().cloned();
 
     let auth = match auth_state {
@@ -401,8 +425,16 @@ mod tests {
 
     fn test_keys() -> AuthState {
         AuthState::new(vec![
-            ApiKeyEntry { key: "key-abc".into(), identity: "alice".into(), role: Role::Admin },
-            ApiKeyEntry { key: "key-xyz".into(), identity: "bob".into(), role: Role::Viewer },
+            ApiKeyEntry {
+                key: "key-abc".into(),
+                identity: "alice".into(),
+                role: Role::Admin,
+            },
+            ApiKeyEntry {
+                key: "key-xyz".into(),
+                identity: "bob".into(),
+                role: Role::Viewer,
+            },
         ])
     }
 
@@ -507,13 +539,19 @@ mod tests {
 
     #[test]
     fn test_require_role_sufficient() {
-        let id = AuthIdentity { identity: "alice".into(), role: Role::Admin };
+        let id = AuthIdentity {
+            identity: "alice".into(),
+            role: Role::Admin,
+        };
         assert!(require_role(Some(&id), Role::Editor, true).is_ok());
     }
 
     #[test]
     fn test_require_role_insufficient() {
-        let id = AuthIdentity { identity: "bob".into(), role: Role::Viewer };
+        let id = AuthIdentity {
+            identity: "bob".into(),
+            role: Role::Viewer,
+        };
         let result = require_role(Some(&id), Role::Editor, true);
         assert!(result.is_err());
     }
@@ -526,7 +564,10 @@ mod tests {
 
     #[test]
     fn test_auth_identity_clone() {
-        let id = AuthIdentity { identity: "test".into(), role: Role::Editor };
+        let id = AuthIdentity {
+            identity: "test".into(),
+            role: Role::Editor,
+        };
         let id2 = id.clone();
         assert_eq!(id2.identity, "test");
     }

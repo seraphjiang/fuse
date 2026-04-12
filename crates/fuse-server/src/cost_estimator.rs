@@ -24,7 +24,12 @@ pub struct QueryCostEstimate {
 }
 
 /// Per-connector cost model.
-pub fn estimate_cost(connector_type: &str, datasource: &str, estimated_rows: u64, estimated_bytes: u64) -> CostEstimate {
+pub fn estimate_cost(
+    connector_type: &str,
+    datasource: &str,
+    estimated_rows: u64,
+    estimated_bytes: u64,
+) -> CostEstimate {
     let (cost, breakdown) = match connector_type {
         "athena" => {
             let tb = estimated_bytes as f64 / (1024.0 * 1024.0 * 1024.0 * 1024.0);
@@ -42,7 +47,9 @@ pub fn estimate_cost(connector_type: &str, datasource: &str, estimated_rows: u64
             (cost, format!("{:.0} RCUs × $0.25/M", rcus))
         }
         "s3" | "s3-o11y" => {
-            let requests = (estimated_bytes as f64 / (64.0 * 1024.0 * 1024.0)).ceil().max(1.0);
+            let requests = (estimated_bytes as f64 / (64.0 * 1024.0 * 1024.0))
+                .ceil()
+                .max(1.0);
             let cost = requests * 0.0004; // $0.0004/GET
             (cost, format!("{:.0} GET requests × $0.0004", requests))
         }
@@ -67,7 +74,8 @@ pub fn estimate_cost(connector_type: &str, datasource: &str, estimated_rows: u64
     CostEstimate {
         datasource: datasource.into(),
         connector_type: connector_type.into(),
-        estimated_rows, estimated_bytes,
+        estimated_rows,
+        estimated_bytes,
         estimated_cost_usd: cost,
         cost_breakdown: breakdown,
     }
@@ -75,11 +83,15 @@ pub fn estimate_cost(connector_type: &str, datasource: &str, estimated_rows: u64
 
 /// Estimate total cost for a multi-datasource query.
 pub fn estimate_query_cost(datasources: &[(&str, &str, u64, u64)]) -> QueryCostEstimate {
-    let per_datasource: Vec<CostEstimate> = datasources.iter()
+    let per_datasource: Vec<CostEstimate> = datasources
+        .iter()
         .map(|(ds, ct, rows, bytes)| estimate_cost(ct, ds, *rows, *bytes))
         .collect();
     let total = per_datasource.iter().map(|e| e.estimated_cost_usd).sum();
-    QueryCostEstimate { total_cost_usd: total, per_datasource }
+    QueryCostEstimate {
+        total_cost_usd: total,
+        per_datasource,
+    }
 }
 
 #[cfg(test)]
@@ -89,7 +101,7 @@ mod tests {
     #[test]
     fn test_athena_cost() {
         let e = estimate_cost("athena", "my_athena", 1000, 1_073_741_824); // 1GB
-        // $5/TB = $0.005/GB → 1GB ≈ $0.005
+                                                                           // $5/TB = $0.005/GB → 1GB ≈ $0.005
         assert!((e.estimated_cost_usd - 0.005).abs() < 0.001);
     }
 
@@ -174,10 +186,8 @@ mod tests {
 
     #[test]
     fn test_query_cost_all_free_returns_zero() {
-        let est = estimate_query_cost(&[
-            ("pg", "postgres", 1000, 1000),
-            ("redis", "redis", 500, 500),
-        ]);
+        let est =
+            estimate_query_cost(&[("pg", "postgres", 1000, 1000), ("redis", "redis", 500, 500)]);
         assert_eq!(est.total_cost_usd, 0.0);
         assert_eq!(est.per_datasource.len(), 2);
     }

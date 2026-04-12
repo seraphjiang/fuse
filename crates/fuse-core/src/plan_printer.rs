@@ -11,7 +11,10 @@ pub fn print_plan(op: &PlanOp, indent: usize) -> String {
         PlanOp::Filter { predicate, .. } => format!("{}Filter: {}", prefix, predicate),
         PlanOp::Project { columns, .. } => format!("{}Project: [{}]", prefix, columns.join(", ")),
         PlanOp::Sort { keys, .. } => {
-            let k: Vec<String> = keys.iter().map(|(c, d)| format!("{} {}", c, if *d { "DESC" } else { "ASC" })).collect();
+            let k: Vec<String> = keys
+                .iter()
+                .map(|(c, d)| format!("{} {}", c, if *d { "DESC" } else { "ASC" }))
+                .collect();
             format!("{}Sort: {}", prefix, k.join(", "))
         }
         PlanOp::Limit { count, .. } => format!("{}Limit: {}", prefix, count),

@@ -56,15 +56,31 @@ pub fn detect(current: &CurrentSnapshot, baseline: &ColumnBaseline) -> Vec<Anoma
             anomalies.push(Anomaly {
                 kind: AnomalyKind::Spike,
                 column: baseline.column.clone(),
-                message: format!("Value spike: current mean {:.2} is {:.1} std devs above baseline {:.2}", current.mean, z, baseline.mean),
-                severity: if z > 5.0 { AnomalySeverity::High } else { AnomalySeverity::Medium },
+                message: format!(
+                    "Value spike: current mean {:.2} is {:.1} std devs above baseline {:.2}",
+                    current.mean, z, baseline.mean
+                ),
+                severity: if z > 5.0 {
+                    AnomalySeverity::High
+                } else {
+                    AnomalySeverity::Medium
+                },
             });
         } else if z < -3.0 {
             anomalies.push(Anomaly {
                 kind: AnomalyKind::Drop,
                 column: baseline.column.clone(),
-                message: format!("Value drop: current mean {:.2} is {:.1} std devs below baseline {:.2}", current.mean, z.abs(), baseline.mean),
-                severity: if z < -5.0 { AnomalySeverity::High } else { AnomalySeverity::Medium },
+                message: format!(
+                    "Value drop: current mean {:.2} is {:.1} std devs below baseline {:.2}",
+                    current.mean,
+                    z.abs(),
+                    baseline.mean
+                ),
+                severity: if z < -5.0 {
+                    AnomalySeverity::High
+                } else {
+                    AnomalySeverity::Medium
+                },
             });
         }
     }
@@ -74,8 +90,16 @@ pub fn detect(current: &CurrentSnapshot, baseline: &ColumnBaseline) -> Vec<Anoma
         anomalies.push(Anomaly {
             kind: AnomalyKind::HighNullRate,
             column: baseline.column.clone(),
-            message: format!("Null rate increased: {:.1}% → {:.1}%", baseline.null_rate * 100.0, current.null_rate * 100.0),
-            severity: if current.null_rate > 0.5 { AnomalySeverity::High } else { AnomalySeverity::Medium },
+            message: format!(
+                "Null rate increased: {:.1}% → {:.1}%",
+                baseline.null_rate * 100.0,
+                current.null_rate * 100.0
+            ),
+            severity: if current.null_rate > 0.5 {
+                AnomalySeverity::High
+            } else {
+                AnomalySeverity::Medium
+            },
         });
     }
 
@@ -86,14 +110,20 @@ pub fn detect(current: &CurrentSnapshot, baseline: &ColumnBaseline) -> Vec<Anoma
             anomalies.push(Anomaly {
                 kind: AnomalyKind::CardinalityChange,
                 column: baseline.column.clone(),
-                message: format!("Cardinality spike: {} → {} distinct values", baseline.distinct_count, current.distinct_count),
+                message: format!(
+                    "Cardinality spike: {} → {} distinct values",
+                    baseline.distinct_count, current.distinct_count
+                ),
                 severity: AnomalySeverity::Low,
             });
         } else if ratio < 0.5 && baseline.distinct_count > 10 {
             anomalies.push(Anomaly {
                 kind: AnomalyKind::CardinalityChange,
                 column: baseline.column.clone(),
-                message: format!("Cardinality drop: {} → {} distinct values", baseline.distinct_count, current.distinct_count),
+                message: format!(
+                    "Cardinality drop: {} → {} distinct values",
+                    baseline.distinct_count, current.distinct_count
+                ),
                 severity: AnomalySeverity::Medium,
             });
         }
@@ -131,7 +161,11 @@ pub fn detect_seasonal(
         return vec![];
     }
     let mean: f64 = historical.iter().map(|p| p.value).sum::<f64>() / historical.len() as f64;
-    let variance: f64 = historical.iter().map(|p| (p.value - mean).powi(2)).sum::<f64>() / historical.len() as f64;
+    let variance: f64 = historical
+        .iter()
+        .map(|p| (p.value - mean).powi(2))
+        .sum::<f64>()
+        / historical.len() as f64;
     let stddev = variance.sqrt();
     if stddev < f64::EPSILON {
         return vec![];
@@ -143,9 +177,16 @@ pub fn detect_seasonal(
             column: column.to_string(),
             message: format!(
                 "Seasonal deviation: current {:.2} vs historical mean {:.2} (z={:.1}, window={})",
-                current_value, mean, z, historical.len()
+                current_value,
+                mean,
+                z,
+                historical.len()
             ),
-            severity: if z.abs() > 4.0 { AnomalySeverity::High } else { AnomalySeverity::Medium },
+            severity: if z.abs() > 4.0 {
+                AnomalySeverity::High
+            } else {
+                AnomalySeverity::Medium
+            },
         }]
     } else {
         vec![]
@@ -169,7 +210,11 @@ pub fn detect_trend(
     let ys: Vec<f64> = points.iter().map(|p| p.value).collect();
     let x_mean = xs.iter().sum::<f64>() / n;
     let y_mean = ys.iter().sum::<f64>() / n;
-    let num: f64 = xs.iter().zip(ys.iter()).map(|(x, y)| (x - x_mean) * (y - y_mean)).sum();
+    let num: f64 = xs
+        .iter()
+        .zip(ys.iter())
+        .map(|(x, y)| (x - x_mean) * (y - y_mean))
+        .sum();
     let den: f64 = xs.iter().map(|x| (x - x_mean).powi(2)).sum();
     if den.abs() < f64::EPSILON {
         return vec![];
@@ -181,7 +226,9 @@ pub fn detect_trend(
     let projected = slope * n + intercept;
 
     // Residual standard deviation
-    let residuals: Vec<f64> = xs.iter().zip(ys.iter())
+    let residuals: Vec<f64> = xs
+        .iter()
+        .zip(ys.iter())
         .map(|(x, y)| y - (slope * x + intercept))
         .collect();
     let res_var = residuals.iter().map(|r| r.powi(2)).sum::<f64>() / n;
@@ -211,9 +258,17 @@ pub fn detect_trend(
             column: column.to_string(),
             message: format!(
                 "Trend break: current {:.2} is {:.1} std devs {} projected {:.2} (slope={:.3})",
-                current_value, deviation.abs(), direction, projected, slope
+                current_value,
+                deviation.abs(),
+                direction,
+                projected,
+                slope
             ),
-            severity: if deviation.abs() > 4.0 { AnomalySeverity::High } else { AnomalySeverity::Medium },
+            severity: if deviation.abs() > 4.0 {
+                AnomalySeverity::High
+            } else {
+                AnomalySeverity::Medium
+            },
         }]
     } else {
         vec![]
@@ -225,68 +280,117 @@ mod tests {
     use super::*;
 
     fn baseline() -> ColumnBaseline {
-        ColumnBaseline { column: "latency".into(), mean: 100.0, stddev: 10.0, null_rate: 0.01, distinct_count: 50 }
+        ColumnBaseline {
+            column: "latency".into(),
+            mean: 100.0,
+            stddev: 10.0,
+            null_rate: 0.01,
+            distinct_count: 50,
+        }
     }
 
     #[test]
     fn test_no_anomaly_normal_values() {
-        let snap = CurrentSnapshot { mean: 105.0, null_rate: 0.02, distinct_count: 48 };
+        let snap = CurrentSnapshot {
+            mean: 105.0,
+            null_rate: 0.02,
+            distinct_count: 48,
+        };
         assert!(detect(&snap, &baseline()).is_empty());
     }
 
     #[test]
     fn test_spike_detected() {
-        let snap = CurrentSnapshot { mean: 150.0, null_rate: 0.01, distinct_count: 50 };
+        let snap = CurrentSnapshot {
+            mean: 150.0,
+            null_rate: 0.01,
+            distinct_count: 50,
+        };
         let a = detect(&snap, &baseline());
         assert!(a.iter().any(|a| a.kind == AnomalyKind::Spike));
     }
 
     #[test]
     fn test_drop_detected() {
-        let snap = CurrentSnapshot { mean: 50.0, null_rate: 0.01, distinct_count: 50 };
+        let snap = CurrentSnapshot {
+            mean: 50.0,
+            null_rate: 0.01,
+            distinct_count: 50,
+        };
         let a = detect(&snap, &baseline());
         assert!(a.iter().any(|a| a.kind == AnomalyKind::Drop));
     }
 
     #[test]
     fn test_high_null_rate() {
-        let snap = CurrentSnapshot { mean: 100.0, null_rate: 0.30, distinct_count: 50 };
+        let snap = CurrentSnapshot {
+            mean: 100.0,
+            null_rate: 0.30,
+            distinct_count: 50,
+        };
         let a = detect(&snap, &baseline());
         assert!(a.iter().any(|a| a.kind == AnomalyKind::HighNullRate));
     }
 
     #[test]
     fn test_cardinality_spike() {
-        let snap = CurrentSnapshot { mean: 100.0, null_rate: 0.01, distinct_count: 120 };
+        let snap = CurrentSnapshot {
+            mean: 100.0,
+            null_rate: 0.01,
+            distinct_count: 120,
+        };
         let a = detect(&snap, &baseline());
         assert!(a.iter().any(|a| a.kind == AnomalyKind::CardinalityChange));
     }
 
     #[test]
     fn test_cardinality_drop() {
-        let snap = CurrentSnapshot { mean: 100.0, null_rate: 0.01, distinct_count: 20 };
+        let snap = CurrentSnapshot {
+            mean: 100.0,
+            null_rate: 0.01,
+            distinct_count: 20,
+        };
         let a = detect(&snap, &baseline());
         assert!(a.iter().any(|a| a.kind == AnomalyKind::CardinalityChange));
     }
 
     #[test]
     fn test_severe_spike_is_high() {
-        let snap = CurrentSnapshot { mean: 200.0, null_rate: 0.01, distinct_count: 50 }; // z=10
+        let snap = CurrentSnapshot {
+            mean: 200.0,
+            null_rate: 0.01,
+            distinct_count: 50,
+        }; // z=10
         let a = detect(&snap, &baseline());
         assert!(a.iter().any(|a| a.severity == AnomalySeverity::High));
     }
 
     #[test]
     fn test_zero_stddev_no_panic() {
-        let b = ColumnBaseline { column: "x".into(), mean: 5.0, stddev: 0.0, null_rate: 0.0, distinct_count: 1 };
-        let snap = CurrentSnapshot { mean: 100.0, null_rate: 0.0, distinct_count: 1 };
+        let b = ColumnBaseline {
+            column: "x".into(),
+            mean: 5.0,
+            stddev: 0.0,
+            null_rate: 0.0,
+            distinct_count: 1,
+        };
+        let snap = CurrentSnapshot {
+            mean: 100.0,
+            null_rate: 0.0,
+            distinct_count: 1,
+        };
         let a = detect(&snap, &b);
         assert!(a.is_empty()); // can't compute z-score with zero stddev
     }
 
     #[test]
     fn test_seasonal_deviation_detected() {
-        let historical: Vec<TimeSeriesPoint> = (0..20).map(|i| TimeSeriesPoint { timestamp: i, value: 100.0 + (i as f64) * 0.1 }).collect();
+        let historical: Vec<TimeSeriesPoint> = (0..20)
+            .map(|i| TimeSeriesPoint {
+                timestamp: i,
+                value: 100.0 + (i as f64) * 0.1,
+            })
+            .collect();
         let anomalies = detect_seasonal("latency", 200.0, &historical, 3.0);
         assert!(!anomalies.is_empty());
         assert!(anomalies[0].kind == AnomalyKind::SeasonalDeviation);
@@ -294,7 +398,12 @@ mod tests {
 
     #[test]
     fn test_seasonal_no_deviation() {
-        let historical: Vec<TimeSeriesPoint> = (0..20).map(|i| TimeSeriesPoint { timestamp: i, value: 100.0 }).collect();
+        let historical: Vec<TimeSeriesPoint> = (0..20)
+            .map(|i| TimeSeriesPoint {
+                timestamp: i,
+                value: 100.0,
+            })
+            .collect();
         let anomalies = detect_seasonal("latency", 100.0, &historical, 3.0);
         assert!(anomalies.is_empty());
     }
@@ -302,7 +411,12 @@ mod tests {
     #[test]
     fn test_trend_break_detected() {
         // Linear trend: 100, 110, 120, 130, 140 — then suddenly 300
-        let points: Vec<TimeSeriesPoint> = (0..5).map(|i| TimeSeriesPoint { timestamp: i, value: 100.0 + 10.0 * i as f64 }).collect();
+        let points: Vec<TimeSeriesPoint> = (0..5)
+            .map(|i| TimeSeriesPoint {
+                timestamp: i,
+                value: 100.0 + 10.0 * i as f64,
+            })
+            .collect();
         let anomalies = detect_trend("latency", &points, 300.0, 3.0);
         assert!(!anomalies.is_empty());
         assert!(anomalies[0].kind == AnomalyKind::TrendBreak);
@@ -310,7 +424,12 @@ mod tests {
 
     #[test]
     fn test_trend_no_break() {
-        let points: Vec<TimeSeriesPoint> = (0..5).map(|i| TimeSeriesPoint { timestamp: i, value: 100.0 + 10.0 * i as f64 }).collect();
+        let points: Vec<TimeSeriesPoint> = (0..5)
+            .map(|i| TimeSeriesPoint {
+                timestamp: i,
+                value: 100.0 + 10.0 * i as f64,
+            })
+            .collect();
         // Next expected ~150
         let anomalies = detect_trend("latency", &points, 150.0, 3.0);
         assert!(anomalies.is_empty());
@@ -318,7 +437,12 @@ mod tests {
 
     #[test]
     fn test_insufficient_data_no_seasonal() {
-        let historical: Vec<TimeSeriesPoint> = (0..3).map(|i| TimeSeriesPoint { timestamp: i, value: 100.0 }).collect();
+        let historical: Vec<TimeSeriesPoint> = (0..3)
+            .map(|i| TimeSeriesPoint {
+                timestamp: i,
+                value: 100.0,
+            })
+            .collect();
         let anomalies = detect_seasonal("x", 999.0, &historical, 3.0);
         assert!(anomalies.is_empty());
     }
@@ -326,7 +450,12 @@ mod tests {
     #[test]
     fn test_seasonal_high_severity() {
         // z > 4.0 should be High severity — need variance in historical data
-        let historical: Vec<TimeSeriesPoint> = (0..20).map(|i| TimeSeriesPoint { timestamp: i, value: 100.0 + (i as f64 % 3.0) }).collect();
+        let historical: Vec<TimeSeriesPoint> = (0..20)
+            .map(|i| TimeSeriesPoint {
+                timestamp: i,
+                value: 100.0 + (i as f64 % 3.0),
+            })
+            .collect();
         let anomalies = detect_seasonal("latency", 500.0, &historical, 2.0);
         assert!(!anomalies.is_empty());
         assert_eq!(anomalies[0].severity, AnomalySeverity::High);
@@ -335,10 +464,12 @@ mod tests {
     #[test]
     fn test_trend_below_projected() {
         // Noisy upward trend, then sudden drop
-        let points: Vec<TimeSeriesPoint> = (0..10).map(|i| TimeSeriesPoint {
-            timestamp: i,
-            value: 100.0 + 10.0 * i as f64 + if i % 2 == 0 { 3.0 } else { -3.0 },
-        }).collect();
+        let points: Vec<TimeSeriesPoint> = (0..10)
+            .map(|i| TimeSeriesPoint {
+                timestamp: i,
+                value: 100.0 + 10.0 * i as f64 + if i % 2 == 0 { 3.0 } else { -3.0 },
+            })
+            .collect();
         let anomalies = detect_trend("latency", &points, 10.0, 3.0);
         assert!(!anomalies.is_empty());
         assert_eq!(anomalies[0].kind, AnomalyKind::TrendBreak);
@@ -346,9 +477,19 @@ mod tests {
 
     #[test]
     fn test_multiple_anomaly_types_simultaneously() {
-        let baseline = ColumnBaseline { column: "x".into(), mean: 100.0, stddev: 10.0, null_rate: 0.01, distinct_count: 50 };
+        let baseline = ColumnBaseline {
+            column: "x".into(),
+            mean: 100.0,
+            stddev: 10.0,
+            null_rate: 0.01,
+            distinct_count: 50,
+        };
         // Spike + high null rate + cardinality change all at once
-        let snap = CurrentSnapshot { mean: 200.0, null_rate: 0.60, distinct_count: 200 };
+        let snap = CurrentSnapshot {
+            mean: 200.0,
+            null_rate: 0.60,
+            distinct_count: 200,
+        };
         let anomalies = detect(&snap, &baseline);
         let kinds: Vec<_> = anomalies.iter().map(|a| a.kind).collect();
         assert!(kinds.contains(&AnomalyKind::Spike));
@@ -358,7 +499,12 @@ mod tests {
 
     #[test]
     fn test_trend_insufficient_data() {
-        let points: Vec<TimeSeriesPoint> = (0..3).map(|i| TimeSeriesPoint { timestamp: i, value: 100.0 }).collect();
+        let points: Vec<TimeSeriesPoint> = (0..3)
+            .map(|i| TimeSeriesPoint {
+                timestamp: i,
+                value: 100.0,
+            })
+            .collect();
         let anomalies = detect_trend("x", &points, 999.0, 3.0);
         assert!(anomalies.is_empty());
     }

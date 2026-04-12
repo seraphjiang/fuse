@@ -21,10 +21,18 @@ pub struct RetryConfig {
     #[serde(default = "default_max_backoff_ms")]
     pub max_backoff_ms: u64,
 }
-fn default_max_retries() -> u32 { 5 }
-fn default_initial_backoff_ms() -> u64 { 500 }
-fn default_backoff_multiplier() -> f64 { 2.0 }
-fn default_max_backoff_ms() -> u64 { 30_000 }
+fn default_max_retries() -> u32 {
+    5
+}
+fn default_initial_backoff_ms() -> u64 {
+    500
+}
+fn default_backoff_multiplier() -> f64 {
+    2.0
+}
+fn default_max_backoff_ms() -> u64 {
+    30_000
+}
 impl Default for RetryConfig {
     fn default() -> Self {
         Self {
@@ -60,17 +68,30 @@ pub struct DeadLetterQueue {
 }
 impl DeadLetterQueue {
     pub fn new(max_entries: usize) -> Self {
-        Self { entries: RwLock::new(Vec::new()), max_entries }
+        Self {
+            entries: RwLock::new(Vec::new()),
+            max_entries,
+        }
     }
     pub fn push(&self, entry: DeadLetterEntry) {
         let mut v = self.entries.write().unwrap();
-        if v.len() >= self.max_entries { v.remove(0); }
+        if v.len() >= self.max_entries {
+            v.remove(0);
+        }
         v.push(entry);
     }
-    pub fn list(&self) -> Vec<DeadLetterEntry> { self.entries.read().unwrap().clone() }
-    pub fn len(&self) -> usize { self.entries.read().unwrap().len() }
-    pub fn is_empty(&self) -> bool { self.len() == 0 }
-    pub fn clear(&self) { self.entries.write().unwrap().clear(); }
+    pub fn list(&self) -> Vec<DeadLetterEntry> {
+        self.entries.read().unwrap().clone()
+    }
+    pub fn len(&self) -> usize {
+        self.entries.read().unwrap().len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    pub fn clear(&self) {
+        self.entries.write().unwrap().clear();
+    }
 }
 
 /// Delivery result after retries.
@@ -81,7 +102,6 @@ pub struct DeliveryOutcome {
     pub error: Option<String>,
 }
 
-
 /// Condition that triggers the webhook.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -89,7 +109,11 @@ pub enum WebhookCondition {
     /// Fire when query returns any rows.
     RowsReturned,
     /// Fire when a column value exceeds a threshold.
-    Threshold { column: String, operator: ThresholdOp, value: f64 },
+    Threshold {
+        column: String,
+        operator: ThresholdOp,
+        value: f64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -262,12 +286,14 @@ pub fn evaluate_condition(
 }
 
 /// Deliver a webhook payload (single attempt, no retry).
-async fn try_deliver(client: &reqwest::Client, url: &str, payload: &WebhookPayload) -> Result<(), String> {
+async fn try_deliver(
+    client: &reqwest::Client,
+    url: &str,
+    payload: &WebhookPayload,
+) -> Result<(), String> {
     // Re-validate URL at delivery time to prevent DNS rebinding attacks
-    crate::url_validator::validate_callback_url(url)
-        .map_err(|e| format!("SSRF blocked: {e}"))?;
-    let body = serde_json::to_vec(payload)
-        .map_err(|e| format!("serialize failed: {e}"))?;
+    crate::url_validator::validate_callback_url(url).map_err(|e| format!("SSRF blocked: {e}"))?;
+    let body = serde_json::to_vec(payload).map_err(|e| format!("serialize failed: {e}"))?;
     // HMAC-SHA256 signature for webhook payload verification
     let signature = compute_webhook_signature(&body);
     let resp = client
@@ -297,7 +323,13 @@ pub async fn deliver_webhook_with_retry(
         .build()
     {
         Ok(c) => c,
-        Err(e) => return DeliveryOutcome { success: false, attempts: 0, error: Some(format!("client build failed: {e}")) },
+        Err(e) => {
+            return DeliveryOutcome {
+                success: false,
+                attempts: 0,
+                error: Some(format!("client build failed: {e}")),
+            }
+        }
     };
 
     let total_attempts = config.max_retries + 1;
@@ -307,25 +339,48 @@ pub async fn deliver_webhook_with_retry(
             tokio::time::sleep(config.backoff_duration(attempt - 1)).await;
         }
         match try_deliver(&client, url, payload).await {
-            Ok(()) => return DeliveryOutcome { success: true, attempts: attempt + 1, error: None },
+            Ok(()) => {
+                return DeliveryOutcome {
+                    success: true,
+                    attempts: attempt + 1,
+                    error: None,
+                }
+            }
             Err(e) => last_err = e,
         }
     }
-    DeliveryOutcome { success: false, attempts: total_attempts, error: Some(last_err) }
+    DeliveryOutcome {
+        success: false,
+        attempts: total_attempts,
+        error: Some(last_err),
+    }
 }
 
 /// Backward-compatible single-attempt delivery.
 pub async fn deliver_webhook(url: &str, payload: &WebhookPayload) -> Result<(), String> {
-    let outcome = deliver_webhook_with_retry(url, payload, &RetryConfig { max_retries: 0, ..Default::default() }).await;
-    if outcome.success { Ok(()) } else { Err(outcome.error.unwrap_or_default()) }
+    let outcome = deliver_webhook_with_retry(
+        url,
+        payload,
+        &RetryConfig {
+            max_retries: 0,
+            ..Default::default()
+        },
+    )
+    .await;
+    if outcome.success {
+        Ok(())
+    } else {
+        Err(outcome.error.unwrap_or_default())
+    }
 }
 
 /// Build REST routes for webhook subscriptions.
 /// Compute HMAC-SHA256 signature for webhook payload verification.
 /// Recipients can verify using the shared secret from FUSE_WEBHOOK_SECRET env var.
 fn compute_webhook_signature(body: &[u8]) -> String {
-    use sha2::{Sha256, Digest};
-    let secret = std::env::var("FUSE_WEBHOOK_SECRET").unwrap_or_else(|_| "fuse-default-secret".into());
+    use sha2::{Digest, Sha256};
+    let secret =
+        std::env::var("FUSE_WEBHOOK_SECRET").unwrap_or_else(|_| "fuse-default-secret".into());
     let mut hasher = Sha256::new();
     hasher.update(secret.as_bytes());
     hasher.update(body);
@@ -341,7 +396,6 @@ pub fn webhook_routes() -> axum::Router<Arc<crate::api::AppState>> {
         .route("/dlq", get(list_dlq).delete(clear_dlq))
 }
 
-
 async fn list_dlq(
     axum::extract::State(state): axum::extract::State<Arc<crate::api::AppState>>,
 ) -> axum::response::Response {
@@ -349,7 +403,8 @@ async fn list_dlq(
     axum::Json(serde_json::json!({
         "count": state.webhook_registry.dlq().len(),
         "entries": state.webhook_registry.dlq().list(),
-    })).into_response()
+    }))
+    .into_response()
 }
 
 async fn clear_dlq(
@@ -400,7 +455,8 @@ async fn create_webhook(
         return (
             axum::http::StatusCode::BAD_REQUEST,
             axum::Json(serde_json::json!({"error": format!("invalid callback_url: {}", e)})),
-        ).into_response();
+        )
+            .into_response();
     }
     let sub = WebhookSubscription {
         id: String::new(),
@@ -543,7 +599,8 @@ async fn test_webhook(
             username: "webhook".into(),
             roles: vec![],
         };
-        rbac.filter_batches(batches, ds_id, table, &user_ctx).unwrap_or_default()
+        rbac.filter_batches(batches, ds_id, table, &user_ctx)
+            .unwrap_or_default()
     } else {
         batches
     };
@@ -561,8 +618,13 @@ async fn test_webhook(
             sample_rows,
             fired_at: now,
         };
-        let outcome = deliver_webhook_with_retry(&sub.callback_url, &payload, &sub.retry_config).await;
-        let error = if outcome.success { None } else { outcome.error.clone() };
+        let outcome =
+            deliver_webhook_with_retry(&sub.callback_url, &payload, &sub.retry_config).await;
+        let error = if outcome.success {
+            None
+        } else {
+            outcome.error.clone()
+        };
         state
             .webhook_registry
             .update_after_fire(&id, now, error.clone());
@@ -712,7 +774,6 @@ mod tests {
         assert!(!json.is_empty());
     }
 
-
     #[test]
     fn test_retry_config_default() {
         let cfg = RetryConfig::default();
@@ -724,12 +785,29 @@ mod tests {
 
     #[test]
     fn test_retry_backoff_duration() {
-        let cfg = RetryConfig { max_retries: 5, initial_backoff_ms: 100, backoff_multiplier: 2.0, max_backoff_ms: 5000 };
-        assert_eq!(cfg.backoff_duration(0), std::time::Duration::from_millis(100));
-        assert_eq!(cfg.backoff_duration(1), std::time::Duration::from_millis(200));
-        assert_eq!(cfg.backoff_duration(2), std::time::Duration::from_millis(400));
+        let cfg = RetryConfig {
+            max_retries: 5,
+            initial_backoff_ms: 100,
+            backoff_multiplier: 2.0,
+            max_backoff_ms: 5000,
+        };
+        assert_eq!(
+            cfg.backoff_duration(0),
+            std::time::Duration::from_millis(100)
+        );
+        assert_eq!(
+            cfg.backoff_duration(1),
+            std::time::Duration::from_millis(200)
+        );
+        assert_eq!(
+            cfg.backoff_duration(2),
+            std::time::Duration::from_millis(400)
+        );
         // Capped at max
-        assert_eq!(cfg.backoff_duration(10), std::time::Duration::from_millis(5000));
+        assert_eq!(
+            cfg.backoff_duration(10),
+            std::time::Duration::from_millis(5000)
+        );
     }
 
     #[test]
@@ -756,7 +834,11 @@ mod tests {
 
     #[test]
     fn test_delivery_outcome_serialization() {
-        let outcome = DeliveryOutcome { success: false, attempts: 3, error: Some("timeout".into()) };
+        let outcome = DeliveryOutcome {
+            success: false,
+            attempts: 3,
+            error: Some("timeout".into()),
+        };
         let json = serde_json::to_string(&outcome).unwrap();
         assert!(json.contains("\"attempts\":3"));
     }

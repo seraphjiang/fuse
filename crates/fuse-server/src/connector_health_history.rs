@@ -39,10 +39,18 @@ impl Default for HealthHistory {
 
 impl HealthHistory {
     pub fn new() -> Self {
-        Self { records: Mutex::new(HashMap::new()) }
+        Self {
+            records: Mutex::new(HashMap::new()),
+        }
     }
 
-    pub fn record(&self, connector_id: &str, healthy: bool, latency_ms: u64, message: Option<String>) {
+    pub fn record(
+        &self,
+        connector_id: &str,
+        healthy: bool,
+        latency_ms: u64,
+        message: Option<String>,
+    ) {
         let mut map = self.records.lock().unwrap();
         let entries = map.entry(connector_id.to_string()).or_default();
         entries.push_back(HealthRecord {
@@ -63,16 +71,25 @@ impl HealthHistory {
         let healthy = entries.iter().filter(|r| r.healthy).count();
         let avg_latency = if total > 0 {
             entries.iter().map(|r| r.latency_ms).sum::<u64>() as f64 / total as f64
-        } else { 0.0 };
+        } else {
+            0.0
+        };
         let mut latencies: Vec<u64> = entries.iter().map(|r| r.latency_ms).collect();
         latencies.sort_unstable();
-        let p99 = latencies.get((latencies.len() * 99 / 100).min(latencies.len().saturating_sub(1))).copied().unwrap_or(0);
+        let p99 = latencies
+            .get((latencies.len() * 99 / 100).min(latencies.len().saturating_sub(1)))
+            .copied()
+            .unwrap_or(0);
         let recent: Vec<HealthRecord> = entries.iter().rev().take(limit).cloned().collect();
         Some(ConnectorHealthSummary {
             connector_id: connector_id.to_string(),
             total_checks: total,
             healthy_checks: healthy,
-            uptime_pct: if total > 0 { healthy as f64 / total as f64 * 100.0 } else { 0.0 },
+            uptime_pct: if total > 0 {
+                healthy as f64 / total as f64 * 100.0
+            } else {
+                0.0
+            },
             avg_latency_ms: avg_latency,
             p99_latency_ms: p99,
             recent,
@@ -81,7 +98,9 @@ impl HealthHistory {
 
     pub fn all_summaries(&self, limit: usize) -> Vec<ConnectorHealthSummary> {
         let ids = self.list_connectors();
-        ids.iter().filter_map(|id| self.summary(id, limit)).collect()
+        ids.iter()
+            .filter_map(|id| self.summary(id, limit))
+            .collect()
     }
 
     pub fn list_connectors(&self) -> Vec<String> {

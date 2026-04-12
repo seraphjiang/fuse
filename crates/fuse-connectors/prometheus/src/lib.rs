@@ -36,7 +36,11 @@ fn timeseries_schema() -> Schema {
     Schema::new(vec![
         Field::new("__name__", DataType::Utf8, true),
         Field::new("labels", DataType::Utf8, true), // JSON-encoded label set
-        Field::new("timestamp", DataType::Timestamp(TimeUnit::Millisecond, Some("UTC".into())), false),
+        Field::new(
+            "timestamp",
+            DataType::Timestamp(TimeUnit::Millisecond, Some("UTC".into())),
+            false,
+        ),
         Field::new("value", DataType::Float64, false),
     ])
 }
@@ -102,8 +106,8 @@ impl PrometheusConnector {
                         .and_then(|v: &toml::Value| v.as_str())
                         .unwrap_or_default();
                     use base64::Engine as _;
-                    let encoded = base64::engine::general_purpose::STANDARD
-                        .encode(format!("{user}:{pass}"));
+                    let encoded =
+                        base64::engine::general_purpose::STANDARD.encode(format!("{user}:{pass}"));
                     if let Ok(val) = HeaderValue::from_str(&format!("Basic {encoded}")) {
                         headers.insert(AUTHORIZATION, val);
                     }
@@ -115,10 +119,13 @@ impl PrometheusConnector {
         let mut client_builder = reqwest::Client::builder()
             .default_headers(headers)
             .pool_max_idle_per_host(config.max_connections(8) as usize)
-            .timeout(std::time::Duration::from_secs(config.connection_timeout_secs(30)));
+            .timeout(std::time::Duration::from_secs(
+                config.connection_timeout_secs(30),
+            ));
 
         if let Some(tls) = config.tls_config() {
-            tls.validate().map_err(|e| ConnectorError::Connection(e.to_string()))?;
+            tls.validate()
+                .map_err(|e| ConnectorError::Connection(e.to_string()))?;
             client_builder = tls
                 .apply_to_reqwest(client_builder)
                 .map_err(|e| ConnectorError::Connection(e.to_string()))?;
@@ -144,10 +151,7 @@ impl PrometheusConnector {
             .await
             .map_err(ConnectorError::query)?;
 
-        let body: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(ConnectorError::query)?;
+        let body: serde_json::Value = resp.json().await.map_err(ConnectorError::query)?;
 
         if body.get("status").and_then(|s| s.as_str()) != Some("success") {
             let err = body
@@ -184,10 +188,7 @@ impl PrometheusConnector {
             .await
             .map_err(ConnectorError::query)?;
 
-        let body: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(ConnectorError::query)?;
+        let body: serde_json::Value = resp.json().await.map_err(ConnectorError::query)?;
 
         if body.get("status").and_then(|s| s.as_str()) != Some("success") {
             let err = body
@@ -260,10 +261,7 @@ impl FederatedConnector for PrometheusConnector {
             .await
             .map_err(ConnectorError::schema)?;
 
-        let body: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(ConnectorError::schema)?;
+        let body: serde_json::Value = resp.json().await.map_err(ConnectorError::schema)?;
 
         let names = body
             .pointer("/data")
@@ -342,9 +340,7 @@ impl FederatedConnector for PrometheusConnector {
 }
 
 /// Parse instant vector results into a RecordBatch.
-fn parse_vector_results(
-    results: &[serde_json::Value],
-) -> Result<Vec<RecordBatch>, ConnectorError> {
+fn parse_vector_results(results: &[serde_json::Value]) -> Result<Vec<RecordBatch>, ConnectorError> {
     if results.is_empty() {
         return Ok(vec![]);
     }
@@ -385,9 +381,7 @@ fn parse_vector_results(
 }
 
 /// Parse range matrix results into a RecordBatch (one row per sample).
-fn parse_matrix_results(
-    results: &[serde_json::Value],
-) -> Result<Vec<RecordBatch>, ConnectorError> {
+fn parse_matrix_results(results: &[serde_json::Value]) -> Result<Vec<RecordBatch>, ConnectorError> {
     if results.is_empty() {
         return Ok(vec![]);
     }
@@ -662,7 +656,11 @@ mod tests {
             })),
             offset: None,
         };
-        let is_range = sq.passthrough.as_ref().and_then(|p| p.get("start")).is_some();
+        let is_range = sq
+            .passthrough
+            .as_ref()
+            .and_then(|p| p.get("start"))
+            .is_some();
         assert!(is_range);
     }
 
@@ -678,9 +676,14 @@ mod tests {
             having: None,
             sort: vec![],
             limit: None,
-            offset: None, passthrough: None,
+            offset: None,
+            passthrough: None,
         };
-        let is_range = sq.passthrough.as_ref().and_then(|p| p.get("start")).is_some();
+        let is_range = sq
+            .passthrough
+            .as_ref()
+            .and_then(|p| p.get("start"))
+            .is_some();
         assert!(!is_range);
     }
 }

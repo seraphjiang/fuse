@@ -43,9 +43,7 @@ pub fn parse_lines(data: &[u8]) -> Vec<serde_json::Map<String, serde_json::Value
 
 /// Discover schema from NDJSON records by sampling field names.
 /// All fields are typed as Utf8 (string) since NDJSON is untyped.
-pub fn discover_schema(
-    records: &[serde_json::Map<String, serde_json::Value>],
-) -> Schema {
+pub fn discover_schema(records: &[serde_json::Map<String, serde_json::Value>]) -> Schema {
     let mut fields: BTreeMap<String, ()> = BTreeMap::new();
     for record in records.iter().take(100) {
         for key in record.keys() {
@@ -79,9 +77,7 @@ pub fn records_to_batch(
         return Ok(RecordBatch::new_empty(Arc::new(schema.clone())));
     }
 
-    let proj_schema = Schema::new(
-        fields.iter().map(|f| (*f).clone()).collect::<Vec<_>>(),
-    );
+    let proj_schema = Schema::new(fields.iter().map(|f| (*f).clone()).collect::<Vec<_>>());
 
     let arrays: Vec<Arc<dyn arrow::array::Array>> = fields
         .iter()
@@ -100,8 +96,7 @@ pub fn records_to_batch(
         })
         .collect();
 
-    RecordBatch::try_new(Arc::new(proj_schema), arrays)
-        .map_err(ConnectorError::query)
+    RecordBatch::try_new(Arc::new(proj_schema), arrays).map_err(ConnectorError::query)
 }
 
 /// Apply a simple client-side limit to records.
@@ -202,17 +197,17 @@ mod tests {
     fn test_records_to_batch_projection() {
         let records = parse_lines(sample_ndjson().as_bytes());
         let schema = discover_schema(&records);
-        let batch = records_to_batch(
-            &records,
-            &schema,
-            &["service".into(), "trace_id".into()],
-        )
-        .unwrap();
+        let batch =
+            records_to_batch(&records, &schema, &["service".into(), "trace_id".into()]).unwrap();
         assert_eq!(batch.num_columns(), 2);
         assert_eq!(batch.schema().field(0).name(), "service");
         assert_eq!(batch.schema().field(1).name(), "trace_id");
 
-        let svc = batch.column(0).as_any().downcast_ref::<StringArray>().unwrap();
+        let svc = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
         assert_eq!(svc.value(0), "api-gw");
         assert_eq!(svc.value(1), "auth");
     }
@@ -225,7 +220,11 @@ mod tests {
         let schema = discover_schema(&records);
         let batch = records_to_batch(&records, &schema, &[]).unwrap();
         assert_eq!(batch.num_rows(), 2);
-        let col_b = batch.column(1).as_any().downcast_ref::<StringArray>().unwrap();
+        let col_b = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
         assert!(col_b.is_null(0));
         assert!(col_b.is_null(1));
     }
@@ -261,7 +260,11 @@ mod tests {
         let records = parse_lines(data);
         let schema = discover_schema(&records);
         let batch = records_to_batch(&records, &schema, &[]).unwrap();
-        let col = batch.column(2).as_any().downcast_ref::<StringArray>().unwrap();
+        let col = batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
         assert_eq!(col.value(0), "500"); // numeric → string
     }
 }

@@ -6,8 +6,10 @@ use std::collections::HashMap;
 
 /// Inner hash join on key columns.
 pub fn hash_join(
-    left: &[Vec<Value>], left_key: usize,
-    right: &[Vec<Value>], right_key: usize,
+    left: &[Vec<Value>],
+    left_key: usize,
+    right: &[Vec<Value>],
+    right_key: usize,
 ) -> Vec<Vec<Value>> {
     // Build hash table from right side
     let mut table: HashMap<String, Vec<&Vec<Value>>> = HashMap::new();
@@ -24,7 +26,9 @@ pub fn hash_join(
                 for rrow in matches {
                     let mut combined = lrow.clone();
                     for (i, val) in rrow.iter().enumerate() {
-                        if i != right_key { combined.push(val.clone()); }
+                        if i != right_key {
+                            combined.push(val.clone());
+                        }
                     }
                     result.push(combined);
                 }
@@ -36,8 +40,10 @@ pub fn hash_join(
 
 /// Left outer join — includes unmatched left rows with nulls.
 pub fn left_join(
-    left: &[Vec<Value>], left_key: usize,
-    right: &[Vec<Value>], right_key: usize,
+    left: &[Vec<Value>],
+    left_key: usize,
+    right: &[Vec<Value>],
+    right_key: usize,
     right_col_count: usize,
 ) -> Vec<Vec<Value>> {
     let mut table: HashMap<String, Vec<&Vec<Value>>> = HashMap::new();
@@ -54,7 +60,9 @@ pub fn left_join(
                 for rrow in matches {
                     let mut combined = lrow.clone();
                     for (i, val) in rrow.iter().enumerate() {
-                        if i != right_key { combined.push(val.clone()); }
+                        if i != right_key {
+                            combined.push(val.clone());
+                        }
                     }
                     result.push(combined);
                 }

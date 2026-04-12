@@ -34,7 +34,13 @@ impl SchemaCache {
     }
 
     pub fn set(&self, key: String, value: serde_json::Value) {
-        self.entries.write().unwrap().insert(key, CacheEntry { value, inserted: Instant::now() });
+        self.entries.write().unwrap().insert(
+            key,
+            CacheEntry {
+                value,
+                inserted: Instant::now(),
+            },
+        );
     }
 
     pub fn invalidate(&self, key: &str) {

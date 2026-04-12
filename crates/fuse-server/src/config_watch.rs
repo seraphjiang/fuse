@@ -5,11 +5,7 @@ use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 /// Watch a config file for changes and notify via callback.
-pub async fn watch_config(
-    path: &Path,
-    interval: Duration,
-    mut on_change: impl FnMut(),
-) {
+pub async fn watch_config(path: &Path, interval: Duration, mut on_change: impl FnMut()) {
     let mut last_modified = file_mtime(path);
     let mut ticker = tokio::time::interval(interval);
     loop {
@@ -42,7 +38,10 @@ mod tests {
         let dir = std::env::temp_dir().join("fuse_config_watch");
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join("test.toml");
-        std::fs::File::create(&path).unwrap().write_all(b"[engine]").unwrap();
+        std::fs::File::create(&path)
+            .unwrap()
+            .write_all(b"[engine]")
+            .unwrap();
         assert!(file_mtime(&path).is_some());
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -58,7 +57,10 @@ mod tests {
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join("test.toml");
         let before = SystemTime::now() - Duration::from_secs(10);
-        std::fs::File::create(&path).unwrap().write_all(b"x").unwrap();
+        std::fs::File::create(&path)
+            .unwrap()
+            .write_all(b"x")
+            .unwrap();
         assert!(config_changed_since(&path, before));
         let _ = std::fs::remove_dir_all(&dir);
     }

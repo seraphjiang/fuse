@@ -25,7 +25,10 @@ pub fn to_ndjson(columns: &[String], rows: &[Vec<serde_json::Value>]) -> String 
     for row in rows {
         let mut map = serde_json::Map::new();
         for (i, col) in columns.iter().enumerate() {
-            map.insert(col.clone(), row.get(i).cloned().unwrap_or(serde_json::Value::Null));
+            map.insert(
+                col.clone(),
+                row.get(i).cloned().unwrap_or(serde_json::Value::Null),
+            );
         }
         out.push_str(&serde_json::Value::Object(map).to_string());
         out.push('\n');
@@ -39,9 +42,12 @@ fn csv_escape(v: &serde_json::Value) -> String {
         serde_json::Value::String(s) => {
             // Prefix formula-triggering characters to prevent CSV injection
             // when opened in spreadsheet applications (Excel, Sheets)
-            let safe = if s.starts_with('=') || s.starts_with('+')
-                || s.starts_with('-') || s.starts_with('@')
-                || s.starts_with('\t') || s.starts_with('\r')
+            let safe = if s.starts_with('=')
+                || s.starts_with('+')
+                || s.starts_with('-')
+                || s.starts_with('@')
+                || s.starts_with('\t')
+                || s.starts_with('\r')
             {
                 format!("'{}", s)
             } else {
@@ -65,10 +71,7 @@ mod tests {
     #[test]
     fn test_csv_simple() {
         let cols = vec!["id".into(), "name".into()];
-        let rows = vec![
-            vec![json!(1), json!("alice")],
-            vec![json!(2), json!("bob")],
-        ];
+        let rows = vec![vec![json!(1), json!("alice")], vec![json!(2), json!("bob")]];
         let csv = to_csv(&cols, &rows);
         assert_eq!(csv, "id,name\n1,alice\n2,bob\n");
     }

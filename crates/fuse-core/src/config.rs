@@ -73,12 +73,24 @@ impl Default for CacheConfig {
     }
 }
 
-fn default_cache_max_entries() -> usize { 1024 }
-fn default_cache_max_bytes() -> usize { 256 * 1024 * 1024 }
-fn default_plan_cache_ttl() -> u64 { 300 }
-fn default_plan_cache_max_entries() -> usize { 1000 }
-fn default_result_cache_ttl() -> u64 { 60 }
-fn default_result_cache_max_entries() -> usize { 500 }
+fn default_cache_max_entries() -> usize {
+    1024
+}
+fn default_cache_max_bytes() -> usize {
+    256 * 1024 * 1024
+}
+fn default_plan_cache_ttl() -> u64 {
+    300
+}
+fn default_plan_cache_max_entries() -> usize {
+    1000
+}
+fn default_result_cache_ttl() -> u64 {
+    60
+}
+fn default_result_cache_max_entries() -> usize {
+    500
+}
 
 fn default_bind() -> String {
     "0.0.0.0:9400".to_string()
@@ -143,8 +155,8 @@ impl ConnectorConfig {
 
 impl FuseConfig {
     pub fn from_file(path: &str) -> Result<Self, crate::error::FuseError> {
-        let content =
-            std::fs::read_to_string(path).map_err(|e| crate::error::FuseError::config(e.to_string()))?;
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| crate::error::FuseError::config(e.to_string()))?;
         toml::from_str(&content).map_err(|e| crate::error::FuseError::config(e.to_string()))
     }
 
@@ -254,7 +266,10 @@ url = "https://localhost:9200"
         assert_eq!(cfg.connector.len(), 1);
         assert_eq!(cfg.connector[0].id, "test_cluster");
         assert_eq!(cfg.connector[0].connector_type, "opensearch");
-        assert_eq!(cfg.connector[0].properties["url"].as_str(), Some("https://localhost:9200"));
+        assert_eq!(
+            cfg.connector[0].properties["url"].as_str(),
+            Some("https://localhost:9200")
+        );
     }
 
     #[test]
@@ -273,7 +288,10 @@ bucket = "my-bucket"
 "#;
         let cfg: FuseConfig = toml::from_str(toml).unwrap();
         assert_eq!(cfg.connector.len(), 2);
-        assert_eq!(cfg.connector[1].properties["bucket"].as_str(), Some("my-bucket"));
+        assert_eq!(
+            cfg.connector[1].properties["bucket"].as_str(),
+            Some("my-bucket")
+        );
     }
 
     #[test]
@@ -331,7 +349,11 @@ max_result_bytes = 0
 
     #[test]
     fn test_connector_config_max_connections_default() {
-        let config = ConnectorConfig { id: "x".into(), connector_type: "pg".into(), properties: Default::default() };
+        let config = ConnectorConfig {
+            id: "x".into(),
+            connector_type: "pg".into(),
+            properties: Default::default(),
+        };
         assert_eq!(config.max_connections(10), 10);
     }
 
@@ -339,19 +361,31 @@ max_result_bytes = 0
     fn test_connector_config_max_connections_from_properties() {
         let mut props = HashMap::new();
         props.insert("max_connections".into(), toml::Value::Integer(25));
-        let config = ConnectorConfig { id: "x".into(), connector_type: "pg".into(), properties: props };
+        let config = ConnectorConfig {
+            id: "x".into(),
+            connector_type: "pg".into(),
+            properties: props,
+        };
         assert_eq!(config.max_connections(10), 25);
     }
 
     #[test]
     fn test_connector_config_timeout_default() {
-        let config = ConnectorConfig { id: "x".into(), connector_type: "es".into(), properties: Default::default() };
+        let config = ConnectorConfig {
+            id: "x".into(),
+            connector_type: "es".into(),
+            properties: Default::default(),
+        };
         assert_eq!(config.connection_timeout_secs(30), 30);
     }
 
     #[test]
     fn test_connector_config_tls_none() {
-        let config = ConnectorConfig { id: "x".into(), connector_type: "es".into(), properties: Default::default() };
+        let config = ConnectorConfig {
+            id: "x".into(),
+            connector_type: "es".into(),
+            properties: Default::default(),
+        };
         assert!(config.tls_config().is_none());
     }
 
@@ -374,7 +408,26 @@ ca_cert = "/tmp/ca.pem"
         assert!(tls.client_cert.is_none());
     }
 
-    const KNOWN: &[&str] = &["opensearch", "elasticsearch", "postgres", "mysql", "dynamodb", "s3", "s3-o11y", "prometheus", "cloudwatch", "redis", "csv-json", "mongodb", "influxdb", "clickhouse", "kafka", "redshift", "duckdb", "sqlite"];
+    const KNOWN: &[&str] = &[
+        "opensearch",
+        "elasticsearch",
+        "postgres",
+        "mysql",
+        "dynamodb",
+        "s3",
+        "s3-o11y",
+        "prometheus",
+        "cloudwatch",
+        "redis",
+        "csv-json",
+        "mongodb",
+        "influxdb",
+        "clickhouse",
+        "kafka",
+        "redshift",
+        "duckdb",
+        "sqlite",
+    ];
 
     #[test]
     fn test_validate_valid_config() {
@@ -465,7 +518,9 @@ max_concurrent_queries = 0
 "#;
         let cfg: FuseConfig = toml::from_str(toml).unwrap();
         let err = cfg.validate(KNOWN).unwrap_err();
-        assert!(err.to_string().contains("max_concurrent_queries must be > 0"));
+        assert!(err
+            .to_string()
+            .contains("max_concurrent_queries must be > 0"));
     }
 
     #[test]

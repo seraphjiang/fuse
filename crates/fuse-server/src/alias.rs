@@ -16,15 +16,25 @@ impl Default for AliasRegistry {
 
 impl AliasRegistry {
     pub fn new() -> Self {
-        Self { aliases: Mutex::new(HashMap::new()) }
+        Self {
+            aliases: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn set(&self, alias: &str, datasource_id: &str) {
-        self.aliases.lock().unwrap().insert(alias.to_string(), datasource_id.to_string());
+        self.aliases
+            .lock()
+            .unwrap()
+            .insert(alias.to_string(), datasource_id.to_string());
     }
 
     pub fn resolve(&self, name: &str) -> String {
-        self.aliases.lock().unwrap().get(name).cloned().unwrap_or_else(|| name.to_string())
+        self.aliases
+            .lock()
+            .unwrap()
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| name.to_string())
     }
 
     pub fn remove(&self, alias: &str) -> bool {
@@ -32,7 +42,12 @@ impl AliasRegistry {
     }
 
     pub fn list(&self) -> Vec<(String, String)> {
-        self.aliases.lock().unwrap().iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+        self.aliases
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
     }
 }
 

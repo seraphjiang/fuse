@@ -28,7 +28,9 @@ impl Default for SmartRouter {
 
 impl SmartRouter {
     pub fn new() -> Self {
-        Self { samples: Mutex::new(HashMap::new()) }
+        Self {
+            samples: Mutex::new(HashMap::new()),
+        }
     }
 
     /// Record a query latency for a connector.
@@ -45,7 +47,9 @@ impl SmartRouter {
     pub fn stats(&self, connector_id: &str) -> Option<ConnectorLatencyStats> {
         let map = self.samples.lock().unwrap();
         let v = map.get(connector_id)?;
-        if v.is_empty() { return None; }
+        if v.is_empty() {
+            return None;
+        }
         let mut sorted = v.clone();
         sorted.sort_unstable();
         let n = sorted.len();
@@ -61,10 +65,13 @@ impl SmartRouter {
     /// Pick the fastest connector from candidates based on historical p50 latency.
     pub fn fastest(&self, candidates: &[&str]) -> Option<String> {
         let map = self.samples.lock().unwrap();
-        candidates.iter()
+        candidates
+            .iter()
             .filter_map(|id| {
                 let v = map.get(*id)?;
-                if v.is_empty() { return None; }
+                if v.is_empty() {
+                    return None;
+                }
                 let mut sorted = v.clone();
                 sorted.sort_unstable();
                 Some((id.to_string(), sorted[sorted.len() / 2]))

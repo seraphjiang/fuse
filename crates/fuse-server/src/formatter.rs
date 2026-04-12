@@ -17,32 +17,43 @@ pub fn to_csv(columns: &[String], rows: &[Vec<Value>]) -> String {
 
 /// Format query results as a text table.
 pub fn to_table(columns: &[String], rows: &[Vec<Value>]) -> String {
-    let widths: Vec<usize> = columns.iter().enumerate().map(|(i, col)| {
-        let max_data = rows.iter()
-            .filter_map(|r| r.get(i))
-            .map(|v| value_str(v).len())
-            .max()
-            .unwrap_or(0);
-        col.len().max(max_data).max(3)
-    }).collect();
+    let widths: Vec<usize> = columns
+        .iter()
+        .enumerate()
+        .map(|(i, col)| {
+            let max_data = rows
+                .iter()
+                .filter_map(|r| r.get(i))
+                .map(|v| value_str(v).len())
+                .max()
+                .unwrap_or(0);
+            col.len().max(max_data).max(3)
+        })
+        .collect();
 
     let mut out = String::new();
     // Header
     for (i, col) in columns.iter().enumerate() {
-        if i > 0 { out.push_str(" | "); }
+        if i > 0 {
+            out.push_str(" | ");
+        }
         out.push_str(&format!("{:<width$}", col, width = widths[i]));
     }
     out.push('\n');
     // Separator
     for (i, w) in widths.iter().enumerate() {
-        if i > 0 { out.push_str("-+-"); }
+        if i > 0 {
+            out.push_str("-+-");
+        }
         out.push_str(&"-".repeat(*w));
     }
     out.push('\n');
     // Rows
     for row in rows {
         for (i, val) in row.iter().enumerate() {
-            if i > 0 { out.push_str(" | "); }
+            if i > 0 {
+                out.push_str(" | ");
+            }
             out.push_str(&format!("{:<width$}", value_str(val), width = widths[i]));
         }
         out.push('\n');
@@ -53,9 +64,12 @@ pub fn to_table(columns: &[String], rows: &[Vec<Value>]) -> String {
 fn csv_escape(v: &Value) -> String {
     let s = value_str(v);
     // Prefix formula-triggering characters to prevent CSV injection
-    let safe = if s.starts_with('=') || s.starts_with('+')
-        || s.starts_with('-') || s.starts_with('@')
-        || s.starts_with('\t') || s.starts_with('\r')
+    let safe = if s.starts_with('=')
+        || s.starts_with('+')
+        || s.starts_with('-')
+        || s.starts_with('@')
+        || s.starts_with('\t')
+        || s.starts_with('\r')
     {
         format!("'{}", s)
     } else {
@@ -84,7 +98,10 @@ mod tests {
     #[test]
     fn test_to_csv() {
         let cols = vec!["name".into(), "age".into()];
-        let rows = vec![vec![json!("alice"), json!(30)], vec![json!("bob"), json!(25)]];
+        let rows = vec![
+            vec![json!("alice"), json!(30)],
+            vec![json!("bob"), json!(25)],
+        ];
         let csv = to_csv(&cols, &rows);
         assert!(csv.starts_with("name,age\n"));
         assert!(csv.contains("alice,30"));
@@ -115,10 +132,25 @@ mod tests {
 
     #[test]
     fn test_csv_formula_injection() {
-        assert!(csv_escape(&json!("=CMD")).starts_with("'"), "= must be prefixed");
-        assert!(csv_escape(&json!("+1")).starts_with("'"), "+ must be prefixed");
-        assert!(csv_escape(&json!("-1")).starts_with("'"), "- must be prefixed");
-        assert!(csv_escape(&json!("@SUM")).starts_with("'"), "@ must be prefixed");
-        assert!(!csv_escape(&json!("safe")).starts_with("'"), "safe must not be prefixed");
+        assert!(
+            csv_escape(&json!("=CMD")).starts_with("'"),
+            "= must be prefixed"
+        );
+        assert!(
+            csv_escape(&json!("+1")).starts_with("'"),
+            "+ must be prefixed"
+        );
+        assert!(
+            csv_escape(&json!("-1")).starts_with("'"),
+            "- must be prefixed"
+        );
+        assert!(
+            csv_escape(&json!("@SUM")).starts_with("'"),
+            "@ must be prefixed"
+        );
+        assert!(
+            !csv_escape(&json!("safe")).starts_with("'"),
+            "safe must not be prefixed"
+        );
     }
 }

@@ -55,10 +55,13 @@ pub async fn ingest_traces(
     } else {
         match serde_json::from_slice::<Value>(&body) {
             Ok(v) => v,
-            Err(e) => return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": format!("Invalid JSON: {e}")})),
-            ).into_response(),
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": format!("Invalid JSON: {e}")})),
+                )
+                    .into_response()
+            }
         }
     };
 
@@ -84,10 +87,13 @@ pub async fn ingest_metrics(
     } else {
         match serde_json::from_slice::<Value>(&body) {
             Ok(v) => v,
-            Err(e) => return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": format!("Invalid JSON: {e}")})),
-            ).into_response(),
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": format!("Invalid JSON: {e}")})),
+                )
+                    .into_response()
+            }
         }
     };
 
@@ -113,10 +119,13 @@ pub async fn ingest_logs(
     } else {
         match serde_json::from_slice::<Value>(&body) {
             Ok(v) => v,
-            Err(e) => return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": format!("Invalid JSON: {e}")})),
-            ).into_response(),
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": format!("Invalid JSON: {e}")})),
+                )
+                    .into_response()
+            }
         }
     };
 
@@ -126,9 +135,7 @@ pub async fn ingest_logs(
 }
 
 /// GET /v1/health — OTel collector health endpoint.
-pub async fn otel_health(
-    State(state): State<OtelIngestState>,
-) -> impl IntoResponse {
+pub async fn otel_health(State(state): State<OtelIngestState>) -> impl IntoResponse {
     let (spans, metrics, logs) = state.store.counts();
     Json(serde_json::json!({
         "status": "ready",
@@ -149,15 +156,20 @@ fn ingest_traces_from_json(store: &OtelStore, body: &Value) -> u64 {
     };
     for rs in resource_spans {
         let service_name = extract_service_name(rs.get("resource"));
-        let Some(scope_spans) = rs.get("scopeSpans").and_then(|v| v.as_array()) else { continue };
+        let Some(scope_spans) = rs.get("scopeSpans").and_then(|v| v.as_array()) else {
+            continue;
+        };
         for ss in scope_spans {
-            let Some(spans) = ss.get("spans").and_then(|v| v.as_array()) else { continue };
+            let Some(spans) = ss.get("spans").and_then(|v| v.as_array()) else {
+                continue;
+            };
             for span in spans {
                 let trace_id = span.get("traceId").and_then(|v| v.as_str()).unwrap_or("");
                 let span_id = span.get("spanId").and_then(|v| v.as_str()).unwrap_or("");
                 let parent = span.get("parentSpanId").and_then(|v| v.as_str());
                 let name = span.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                let status_code = span.get("status")
+                let status_code = span
+                    .get("status")
                     .and_then(|s| s.get("code"))
                     .and_then(|c| c.as_u64())
                     .unwrap_or(0);
@@ -169,9 +181,22 @@ fn ingest_traces_from_json(store: &OtelStore, body: &Value) -> u64 {
                 };
                 let start = parse_nano(span.get("startTimeUnixNano"));
                 let end = parse_nano(span.get("endTimeUnixNano"));
-                let attrs = span.get("attributes").map(|a| a.to_string()).unwrap_or_default();
+                let attrs = span
+                    .get("attributes")
+                    .map(|a| a.to_string())
+                    .unwrap_or_default();
 
-                store.ingest_span(trace_id, span_id, parent, &service_name, name, status, start, end, &attrs);
+                store.ingest_span(
+                    trace_id,
+                    span_id,
+                    parent,
+                    &service_name,
+                    name,
+                    status,
+                    start,
+                    end,
+                    &attrs,
+                );
                 count += 1;
             }
         }
@@ -186,9 +211,13 @@ fn ingest_metrics_from_json(store: &OtelStore, body: &Value) -> u64 {
     };
     for rm in resource_metrics {
         let service_name = extract_service_name(rm.get("resource"));
-        let Some(scope_metrics) = rm.get("scopeMetrics").and_then(|v| v.as_array()) else { continue };
+        let Some(scope_metrics) = rm.get("scopeMetrics").and_then(|v| v.as_array()) else {
+            continue;
+        };
         for sm in scope_metrics {
-            let Some(metrics) = sm.get("metrics").and_then(|v| v.as_array()) else { continue };
+            let Some(metrics) = sm.get("metrics").and_then(|v| v.as_array()) else {
+                continue;
+            };
             for metric in metrics {
                 let name = metric.get("name").and_then(|v| v.as_str()).unwrap_or("");
                 let desc = metric.get("description").and_then(|v| v.as_str());
@@ -196,9 +225,18 @@ fn ingest_metrics_from_json(store: &OtelStore, body: &Value) -> u64 {
                 let (metric_type, points) = extract_data_points(metric);
                 for (value, ts, labels) in points {
                     store.ingest_metric(
-                        name, desc, unit, metric_type, &value, ts,
+                        name,
+                        desc,
+                        unit,
+                        metric_type,
+                        &value,
+                        ts,
                         labels.as_deref(),
-                        if service_name.is_empty() { None } else { Some(&service_name) },
+                        if service_name.is_empty() {
+                            None
+                        } else {
+                            Some(&service_name)
+                        },
                     );
                     count += 1;
                 }
@@ -215,13 +253,21 @@ fn ingest_logs_from_json(store: &OtelStore, body: &Value) -> u64 {
     };
     for rl in resource_logs {
         let service_name = extract_service_name(rl.get("resource"));
-        let Some(scope_logs) = rl.get("scopeLogs").and_then(|v| v.as_array()) else { continue };
+        let Some(scope_logs) = rl.get("scopeLogs").and_then(|v| v.as_array()) else {
+            continue;
+        };
         for sl in scope_logs {
-            let Some(log_records) = sl.get("logRecords").and_then(|v| v.as_array()) else { continue };
+            let Some(log_records) = sl.get("logRecords").and_then(|v| v.as_array()) else {
+                continue;
+            };
             for rec in log_records {
                 let ts = parse_nano(rec.get("timeUnixNano"));
-                let severity = rec.get("severityText").and_then(|v| v.as_str()).unwrap_or("UNSPECIFIED");
-                let body_val = rec.get("body")
+                let severity = rec
+                    .get("severityText")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("UNSPECIFIED");
+                let body_val = rec
+                    .get("body")
                     .and_then(|b| b.get("stringValue").and_then(|v| v.as_str()))
                     .unwrap_or("");
                 let trace_id = rec.get("traceId").and_then(|v| v.as_str());
@@ -229,9 +275,17 @@ fn ingest_logs_from_json(store: &OtelStore, body: &Value) -> u64 {
                 let attrs = rec.get("attributes").map(|a| a.to_string());
 
                 store.ingest_log(
-                    ts, severity, body_val,
-                    if service_name.is_empty() { None } else { Some(&service_name) },
-                    trace_id, span_id, attrs.as_deref(),
+                    ts,
+                    severity,
+                    body_val,
+                    if service_name.is_empty() {
+                        None
+                    } else {
+                        Some(&service_name)
+                    },
+                    trace_id,
+                    span_id,
+                    attrs.as_deref(),
                 );
                 count += 1;
             }
@@ -256,11 +310,14 @@ fn extract_service_name(resource: Option<&Value>) -> String {
         .and_then(|r| r.get("attributes"))
         .and_then(|attrs| attrs.as_array())
         .and_then(|arr| {
-            arr.iter().find(|a| {
-                a.get("key").and_then(|k| k.as_str()) == Some("service.name")
-            })
+            arr.iter()
+                .find(|a| a.get("key").and_then(|k| k.as_str()) == Some("service.name"))
         })
-        .and_then(|a| a.get("value").and_then(|v| v.get("stringValue")).and_then(|s| s.as_str()))
+        .and_then(|a| {
+            a.get("value")
+                .and_then(|v| v.get("stringValue"))
+                .and_then(|s| s.as_str())
+        })
         .unwrap_or("")
         .to_string()
 }
@@ -280,35 +337,49 @@ fn extract_data_points(metric: &Value) -> (&str, Vec<DataPoint>) {
         return ("unknown", vec![]);
     };
 
-    let Some(points) = metric.get(dp_key).and_then(|d| d.get("dataPoints")).and_then(|v| v.as_array()) else {
+    let Some(points) = metric
+        .get(dp_key)
+        .and_then(|d| d.get("dataPoints"))
+        .and_then(|v| v.as_array())
+    else {
         return (metric_type, vec![]);
     };
 
-    let results = points.iter().map(|dp| {
-        let value = dp.get("asDouble")
-            .and_then(|v| v.as_f64())
-            .map(|f| f.to_string())
-            .or_else(|| {
-                dp.get("asInt")
-                    .and_then(|v| v.as_str().map(String::from).or_else(|| v.as_i64().map(|i| i.to_string())))
-            })
-            .unwrap_or_else(|| "0".into());
+    let results = points
+        .iter()
+        .map(|dp| {
+            let value = dp
+                .get("asDouble")
+                .and_then(|v| v.as_f64())
+                .map(|f| f.to_string())
+                .or_else(|| {
+                    dp.get("asInt").and_then(|v| {
+                        v.as_str()
+                            .map(String::from)
+                            .or_else(|| v.as_i64().map(|i| i.to_string()))
+                    })
+                })
+                .unwrap_or_else(|| "0".into());
 
-        let ts = parse_nano(dp.get("timeUnixNano"));
+            let ts = parse_nano(dp.get("timeUnixNano"));
 
-        let labels = dp.get("attributes").and_then(|attrs| {
-            attrs.as_array().map(|arr| {
-                let map: serde_json::Map<String, Value> = arr.iter().filter_map(|a| {
-                    let key = a.get("key")?.as_str()?;
-                    let val = a.get("value")?.get("stringValue")?.as_str()?;
-                    Some((key.to_string(), Value::String(val.to_string())))
-                }).collect();
-                Value::Object(map).to_string()
-            })
-        });
+            let labels = dp.get("attributes").and_then(|attrs| {
+                attrs.as_array().map(|arr| {
+                    let map: serde_json::Map<String, Value> = arr
+                        .iter()
+                        .filter_map(|a| {
+                            let key = a.get("key")?.as_str()?;
+                            let val = a.get("value")?.get("stringValue")?.as_str()?;
+                            Some((key.to_string(), Value::String(val.to_string())))
+                        })
+                        .collect();
+                    Value::Object(map).to_string()
+                })
+            });
 
-        (value, ts, labels)
-    }).collect();
+            (value, ts, labels)
+        })
+        .collect();
 
     (metric_type, results)
 }
@@ -319,11 +390,14 @@ mod tests {
 
     #[test]
     fn test_extract_service_name() {
-        let resource: Value = serde_json::from_str(r#"{
+        let resource: Value = serde_json::from_str(
+            r#"{
             "attributes": [
                 {"key": "service.name", "value": {"stringValue": "my-service"}}
             ]
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
         assert_eq!(extract_service_name(Some(&resource)), "my-service");
     }
 
@@ -334,14 +408,17 @@ mod tests {
 
     #[test]
     fn test_extract_data_points_gauge() {
-        let metric: Value = serde_json::from_str(r#"{
+        let metric: Value = serde_json::from_str(
+            r#"{
             "name": "cpu.usage",
             "gauge": {
                 "dataPoints": [
                     {"asDouble": 42.5, "timeUnixNano": "1000000000"}
                 ]
             }
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
         let (mt, points) = extract_data_points(&metric);
         assert_eq!(mt, "gauge");
         assert_eq!(points.len(), 1);
@@ -351,14 +428,17 @@ mod tests {
 
     #[test]
     fn test_extract_data_points_sum() {
-        let metric: Value = serde_json::from_str(r#"{
+        let metric: Value = serde_json::from_str(
+            r#"{
             "name": "requests",
             "sum": {
                 "dataPoints": [
                     {"asInt": "100", "timeUnixNano": "2000000000"}
                 ]
             }
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
         let (mt, points) = extract_data_points(&metric);
         assert_eq!(mt, "sum");
         assert_eq!(points[0].0, "100");
@@ -426,7 +506,8 @@ mod tests {
     #[test]
     fn test_ingest_metrics_from_json() {
         let store = OtelStore::new(100, 100, 100);
-        let body: Value = serde_json::from_str(r#"{
+        let body: Value = serde_json::from_str(
+            r#"{
             "resourceMetrics": [{
                 "resource": {"attributes": []},
                 "scopeMetrics": [{
@@ -436,7 +517,9 @@ mod tests {
                     }]
                 }]
             }]
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
         let count = ingest_metrics_from_json(&store, &body);
         assert_eq!(count, 1);
         assert_eq!(store.counts().1, 1);

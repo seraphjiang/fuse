@@ -7,26 +7,38 @@ use fuse_core::sql::{quote_ident_backtick as qi, quote_table_backtick as qt};
 
 pub fn subquery_to_sql(q: &SubQuery) -> String {
     let select = if !q.aggregations.is_empty() {
-        let aggs: Vec<String> = q.aggregations.iter().map(|a| {
-            let field = a.field.as_deref().map(qi).unwrap_or_else(|| "*".to_string());
-            let expr = match a.function {
-                AggFunction::Count => format!("count({field})"),
-                AggFunction::Sum => format!("sum({field})"),
-                AggFunction::Avg => format!("avg({field})"),
-                AggFunction::Min => format!("min({field})"),
-                AggFunction::Max => format!("max({field})"),
-                AggFunction::CountDistinct | AggFunction::ApproxCountDistinct => format!("uniq({field})"),
-                AggFunction::ApproxPercentile(p) => format!("quantile({p})({field})"),
-            };
-            format!("{expr} AS {}", qi(&a.alias))
-        }).collect();
+        let aggs: Vec<String> = q
+            .aggregations
+            .iter()
+            .map(|a| {
+                let field = a
+                    .field
+                    .as_deref()
+                    .map(qi)
+                    .unwrap_or_else(|| "*".to_string());
+                let expr = match a.function {
+                    AggFunction::Count => format!("count({field})"),
+                    AggFunction::Sum => format!("sum({field})"),
+                    AggFunction::Avg => format!("avg({field})"),
+                    AggFunction::Min => format!("min({field})"),
+                    AggFunction::Max => format!("max({field})"),
+                    AggFunction::CountDistinct | AggFunction::ApproxCountDistinct => {
+                        format!("uniq({field})")
+                    }
+                    AggFunction::ApproxPercentile(p) => format!("quantile({p})({field})"),
+                };
+                format!("{expr} AS {}", qi(&a.alias))
+            })
+            .collect();
         let mut parts: Vec<String> = q.group_by.iter().map(|g| qi(g)).collect();
         parts.extend(aggs);
         parts.join(", ")
     } else if !q.projections.is_empty() {
-        q.projections.iter().map(|p| {
-            if p == "*" { "*".to_string() } else { qi(p) }
-        }).collect::<Vec<_>>().join(", ")
+        q.projections
+            .iter()
+            .map(|p| if p == "*" { "*".to_string() } else { qi(p) })
+            .collect::<Vec<_>>()
+            .join(", ")
     } else {
         "*".to_string()
     };
@@ -44,9 +56,17 @@ pub fn subquery_to_sql(q: &SubQuery) -> String {
         sql.push_str(&format!(" HAVING {}", filter_to_sql(h)));
     }
     if !q.sort.is_empty() {
-        let order: Vec<String> = q.sort.iter().map(|s| {
-            if s.descending { format!("{} DESC", qi(&s.field)) } else { qi(&s.field) }
-        }).collect();
+        let order: Vec<String> = q
+            .sort
+            .iter()
+            .map(|s| {
+                if s.descending {
+                    format!("{} DESC", qi(&s.field))
+                } else {
+                    qi(&s.field)
+                }
+            })
+            .collect();
         sql.push_str(&format!(" ORDER BY {}", order.join(", ")));
     }
     if let Some(limit) = q.limit {
@@ -62,9 +82,12 @@ fn filter_to_sql(f: &FilterExpr) -> String {
         FilterExpr::Not(inner) => format!("NOT ({})", filter_to_sql(inner)),
         FilterExpr::Comparison { field, op, value } => {
             let op_str = match op {
-                ComparisonOp::Eq => "=", ComparisonOp::Neq => "!=",
-                ComparisonOp::Lt => "<", ComparisonOp::Lte => "<=",
-                ComparisonOp::Gt => ">", ComparisonOp::Gte => ">=",
+                ComparisonOp::Eq => "=",
+                ComparisonOp::Neq => "!=",
+                ComparisonOp::Lt => "<",
+                ComparisonOp::Lte => "<=",
+                ComparisonOp::Gt => ">",
+                ComparisonOp::Gte => ">=",
                 ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => "LIKE",
             };
             format!("{} {op_str} {}", qi(field), scalar_to_sql(value))
@@ -83,7 +106,13 @@ fn scalar_to_sql(v: &ScalarValue) -> String {
         ScalarValue::Utf8(s) => format!("'{}'", s.replace('\'', "''")),
         ScalarValue::Int64(n) => n.to_string(),
         ScalarValue::Float64(f) => f.to_string(),
-        ScalarValue::Boolean(b) => if *b { "1".to_string() } else { "0".to_string() },
+        ScalarValue::Boolean(b) => {
+            if *b {
+                "1".to_string()
+            } else {
+                "0".to_string()
+            }
+        }
         ScalarValue::Null => "NULL".to_string(),
     }
 }
@@ -94,7 +123,18 @@ mod tests {
     use fuse_core::connector::{AggFunction, AggregationExpr, SortExpr, SubQuery};
 
     fn base() -> SubQuery {
-        SubQuery { table: "events".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None }
+        SubQuery {
+            table: "events".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            having: None,
+            sort: vec![],
+            limit: None,
+            passthrough: None,
+            offset: None,
+        }
     }
 
     #[test]
@@ -105,7 +145,11 @@ mod tests {
     #[test]
     fn test_count_distinct_uses_uniq() {
         let q = SubQuery {
-            aggregations: vec![AggregationExpr { function: AggFunction::CountDistinct, field: Some("user_id".into()), alias: "unique_users".into() }],
+            aggregations: vec![AggregationExpr {
+                function: AggFunction::CountDistinct,
+                field: Some("user_id".into()),
+                alias: "unique_users".into(),
+            }],
             ..base()
         };
         assert!(subquery_to_sql(&q).contains("uniq(`user_id`)"));
@@ -132,7 +176,11 @@ mod tests {
     #[test]
     fn test_boolean_as_int() {
         let q = SubQuery {
-            filter: Some(FilterExpr::Comparison { field: "active".into(), op: ComparisonOp::Eq, value: ScalarValue::Boolean(true) }),
+            filter: Some(FilterExpr::Comparison {
+                field: "active".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Boolean(true),
+            }),
             ..base()
         };
         assert!(subquery_to_sql(&q).contains("`active` = 1"));
@@ -141,7 +189,11 @@ mod tests {
     #[test]
     fn test_uniq_with_group_by() {
         let q = SubQuery {
-            aggregations: vec![AggregationExpr { function: AggFunction::CountDistinct, field: Some("user_id".into()), alias: "uniq_users".into() }],
+            aggregations: vec![AggregationExpr {
+                function: AggFunction::CountDistinct,
+                field: Some("user_id".into()),
+                alias: "uniq_users".into(),
+            }],
             group_by: vec!["region".into()],
             ..base()
         };
@@ -153,9 +205,17 @@ mod tests {
     #[test]
     fn test_having_clause() {
         let q = SubQuery {
-            aggregations: vec![AggregationExpr { function: AggFunction::Count, field: None, alias: "cnt".into() }],
+            aggregations: vec![AggregationExpr {
+                function: AggFunction::Count,
+                field: None,
+                alias: "cnt".into(),
+            }],
             group_by: vec!["host".into()],
-            having: Some(FilterExpr::Comparison { field: "cnt".into(), op: ComparisonOp::Gt, value: ScalarValue::Int64(100) }),
+            having: Some(FilterExpr::Comparison {
+                field: "cnt".into(),
+                op: ComparisonOp::Gt,
+                value: ScalarValue::Int64(100),
+            }),
             ..base()
         };
         let sql = subquery_to_sql(&q);
@@ -165,12 +225,24 @@ mod tests {
     #[test]
     fn test_full_pushdown() {
         let q = SubQuery {
-            aggregations: vec![AggregationExpr { function: AggFunction::Sum, field: Some("amount".into()), alias: "total".into() }],
+            aggregations: vec![AggregationExpr {
+                function: AggFunction::Sum,
+                field: Some("amount".into()),
+                alias: "total".into(),
+            }],
             group_by: vec!["region".into()],
-            filter: Some(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("active".into()) }),
-            sort: vec![SortExpr { field: "total".into(), descending: true }],
+            filter: Some(FilterExpr::Comparison {
+                field: "status".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Utf8("active".into()),
+            }),
+            sort: vec![SortExpr {
+                field: "total".into(),
+                descending: true,
+            }],
             limit: Some(10),
-            having: None, ..base()
+            having: None,
+            ..base()
         };
         let sql = subquery_to_sql(&q);
         assert!(sql.contains("WHERE `status` = 'active'"));

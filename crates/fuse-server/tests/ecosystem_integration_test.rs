@@ -5,12 +5,12 @@
 //! - API versioning
 //! - Schema discovery cache
 
-use std::sync::Arc;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use fuse_core::registry::ConnectorRegistry;
 use fuse_server::api::{AppState, RunningQueries, SchemaCache};
 use fuse_server::history::QueryHistory;
+use std::sync::Arc;
 use tower::ServiceExt;
 
 fn build_app() -> axum::Router {
@@ -36,11 +36,17 @@ fn build_app() -> axum::Router {
         datasource_limiter: Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
         otel_store: None,
         query_recorder: Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
-        adaptive_parallelism: Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()),
+        adaptive_parallelism: Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
         webhook_registry: Arc::new(fuse_server::webhook::WebhookRegistry::new()),
-        compilation_cache: Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)),
+        compilation_cache: Arc::new(fuse_server::query_compilation::CompilationCache::new(
+            300, 5000,
+        )),
         cdc_tracker: Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
-        adaptive_cache: Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)),
+        adaptive_cache: Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
         schema_cache: Arc::new(SchemaCache::new(300)),
         column_rbac: None,
         key_rotation: Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
@@ -52,7 +58,9 @@ fn build_app() -> axum::Router {
 }
 
 async fn json_body(resp: axum::http::Response<Body>) -> serde_json::Value {
-    let bytes = axum::body::to_bytes(resp.into_body(), 10_000_000).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), 10_000_000)
+        .await
+        .unwrap();
     serde_json::from_slice(&bytes).unwrap_or_default()
 }
 
@@ -61,9 +69,15 @@ async fn json_body(resp: axum::http::Response<Body>) -> serde_json::Value {
 #[tokio::test]
 async fn test_webhook_dlq_empty() {
     let app = build_app();
-    let resp = app.oneshot(
-        Request::builder().uri("/api/fuse/webhooks/dlq").body(Body::empty()).unwrap()
-    ).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/webhooks/dlq")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let json = json_body(resp).await;
     assert_eq!(json["count"], 0);
@@ -80,16 +94,22 @@ async fn test_webhook_create_with_retry_config() {
         "callback_url": "http://example.com/hook",
         "retry_config": {"max_retries": 3, "initial_backoff_ms": 100}
     });
-    let resp = app.oneshot(
-        Request::builder()
-            .method("POST")
-            .uri("/api/fuse/webhooks")
-            .header("Content-Type", "application/json")
-            .body(Body::from(serde_json::to_string(&body).unwrap()))
-            .unwrap()
-    ).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/webhooks")
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     // Webhook creation requires Editor role — returns 401 when auth is not configured
-    assert!(matches!(resp.status(), StatusCode::CREATED | StatusCode::UNAUTHORIZED));
+    assert!(matches!(
+        resp.status(),
+        StatusCode::CREATED | StatusCode::UNAUTHORIZED
+    ));
 }
 
 // ── CDC Multi-table ──
@@ -101,14 +121,17 @@ async fn test_cdc_register_view_dependencies() {
         "view_name": "error_summary",
         "sources": [["cluster_a", "logs"], ["dynamodb", "users"]]
     });
-    let resp = app.oneshot(
-        Request::builder()
-            .method("POST")
-            .uri("/api/fuse/cdc/views")
-            .header("Content-Type", "application/json")
-            .body(Body::from(serde_json::to_string(&body).unwrap()))
-            .unwrap()
-    ).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/cdc/views")
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_string(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let json = json_body(resp).await;
     assert_eq!(json["registered"], true);
@@ -121,24 +144,36 @@ async fn test_cdc_batch_events() {
         {"datasource": "cluster_a", "table": "logs", "change_type": "insert", "timestamp": 1000},
         {"datasource": "dynamodb", "table": "users", "change_type": "update", "timestamp": 1001}
     ]);
-    let resp = app.oneshot(
-        Request::builder()
-            .method("POST")
-            .uri("/api/fuse/cdc/events/batch")
-            .header("Content-Type", "application/json")
-            .body(Body::from(serde_json::to_string(&events).unwrap()))
-            .unwrap()
-    ).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/cdc/events/batch")
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_string(&events).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     // CDC batch accepts events or returns 401 if auth enforced on POST
-    assert!(matches!(resp.status(), StatusCode::OK | StatusCode::UNAUTHORIZED));
+    assert!(matches!(
+        resp.status(),
+        StatusCode::OK | StatusCode::UNAUTHORIZED
+    ));
 }
 
 #[tokio::test]
 async fn test_cdc_status() {
     let app = build_app();
-    let resp = app.oneshot(
-        Request::builder().uri("/api/fuse/cdc/status").body(Body::empty()).unwrap()
-    ).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/cdc/status")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let json = json_body(resp).await;
     assert!(json["stats"].is_object());
@@ -149,9 +184,15 @@ async fn test_cdc_status() {
 #[tokio::test]
 async fn test_api_versions_endpoint() {
     let app = build_app();
-    let resp = app.oneshot(
-        Request::builder().uri("/api/versions").body(Body::empty()).unwrap()
-    ).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/versions")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let json = json_body(resp).await;
     assert!(json["current"].is_string());
@@ -161,9 +202,15 @@ async fn test_api_versions_endpoint() {
 #[tokio::test]
 async fn test_versioned_health_endpoint() {
     let app = build_app();
-    let resp = app.oneshot(
-        Request::builder().uri("/api/v1/fuse/health").body(Body::empty()).unwrap()
-    ).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/fuse/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
@@ -172,9 +219,15 @@ async fn test_versioned_health_endpoint() {
 #[tokio::test]
 async fn test_webhook_list_empty() {
     let app = build_app();
-    let resp = app.oneshot(
-        Request::builder().uri("/api/fuse/webhooks").body(Body::empty()).unwrap()
-    ).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/webhooks")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let json = json_body(resp).await;
     assert!(json.as_array().unwrap().is_empty());
@@ -183,31 +236,49 @@ async fn test_webhook_list_empty() {
 #[tokio::test]
 async fn test_webhook_not_found() {
     let app = build_app();
-    let resp = app.oneshot(
-        Request::builder().uri("/api/fuse/webhooks/wh-999").body(Body::empty()).unwrap()
-    ).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/webhooks/wh-999")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
 async fn test_cdc_refresh_no_pending() {
     let app = build_app();
-    let resp = app.oneshot(
-        Request::builder()
-            .method("POST")
-            .uri("/api/fuse/cdc/refresh")
-            .body(Body::empty())
-            .unwrap()
-    ).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/cdc/refresh")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     // Refresh trigger or 401 if auth enforced on POST
-    assert!(matches!(resp.status(), StatusCode::OK | StatusCode::UNAUTHORIZED));
+    assert!(matches!(
+        resp.status(),
+        StatusCode::OK | StatusCode::UNAUTHORIZED
+    ));
 }
 
 #[tokio::test]
 async fn test_cdc_list_dependencies_empty() {
     let app = build_app();
-    let resp = app.oneshot(
-        Request::builder().uri("/api/fuse/cdc/views").body(Body::empty()).unwrap()
-    ).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/cdc/views")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }

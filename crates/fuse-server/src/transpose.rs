@@ -14,13 +14,17 @@ pub fn transpose(columns: &[String], rows: &[Vec<Value>]) -> (Vec<String>, Vec<V
         new_cols.push(format!("row_{}", i + 1));
     }
     // Each original column becomes a row
-    let new_rows: Vec<Vec<Value>> = columns.iter().enumerate().map(|(col_idx, col_name)| {
-        let mut row = vec![Value::String(col_name.clone())];
-        for data_row in rows {
-            row.push(data_row.get(col_idx).cloned().unwrap_or(Value::Null));
-        }
-        row
-    }).collect();
+    let new_rows: Vec<Vec<Value>> = columns
+        .iter()
+        .enumerate()
+        .map(|(col_idx, col_name)| {
+            let mut row = vec![Value::String(col_name.clone())];
+            for data_row in rows {
+                row.push(data_row.get(col_idx).cloned().unwrap_or(Value::Null));
+            }
+            row
+        })
+        .collect();
     (new_cols, new_rows)
 }
 
@@ -32,7 +36,10 @@ mod tests {
     #[test]
     fn test_transpose() {
         let cols = vec!["name".into(), "age".into()];
-        let rows = vec![vec![json!("alice"), json!(30)], vec![json!("bob"), json!(25)]];
+        let rows = vec![
+            vec![json!("alice"), json!(30)],
+            vec![json!("bob"), json!(25)],
+        ];
         let (new_cols, new_rows) = transpose(&cols, &rows);
         assert_eq!(new_cols, vec!["column", "row_1", "row_2"]);
         assert_eq!(new_rows.len(), 2); // 2 original columns

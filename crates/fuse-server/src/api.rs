@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use async_trait::async_trait;
-use axum::extract::{Json, Path, State, Extension};
+use axum::extract::{Extension, Json, Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-use fuse_core::registry::ConnectorRegistry;
-use fuse_core::alerting::{AlertEvaluator, AlertRule};
-use fuse_engine::materialized::MaterializedViewRegistry;
-use crate::shared_state::{SharedSavedQueries, SharedQueryHistory, SharedAuditLog};
-use crate::transaction::TransactionStore;
 use crate::history::QueryHistory;
+use crate::plan_cache::{CachedPlan, PlanCache};
 use crate::saved_queries::SavedQueryRegistry;
-use crate::plan_cache::{PlanCache, CachedPlan};
-use crate::tenant::{TenantRegistry, QueryGovernor};
+use crate::shared_state::{SharedAuditLog, SharedQueryHistory, SharedSavedQueries};
+use crate::tenant::{QueryGovernor, TenantRegistry};
+use crate::transaction::TransactionStore;
+use fuse_core::alerting::{AlertEvaluator, AlertRule};
+use fuse_core::registry::ConnectorRegistry;
+use fuse_engine::materialized::MaterializedViewRegistry;
 
 use crate::health;
 
@@ -35,7 +35,9 @@ impl Default for RunningQueries {
 
 impl RunningQueries {
     pub fn new() -> Self {
-        Self { inner: std::sync::Mutex::new(std::collections::HashMap::new()) }
+        Self {
+            inner: std::sync::Mutex::new(std::collections::HashMap::new()),
+        }
     }
     fn insert(&self, id: String, token: CancellationToken) {
         self.inner.lock().unwrap().insert(id, token);
@@ -66,7 +68,6 @@ impl RunningQueries {
     }
 }
 
-
 /// Cached schema discovery results with TTL.
 pub struct SchemaCache {
     entries: std::sync::RwLock<std::collections::HashMap<String, SchemaCacheEntry>>,
@@ -78,18 +79,27 @@ struct SchemaCacheEntry {
 }
 impl SchemaCache {
     pub fn new(ttl_secs: u64) -> Self {
-        Self { entries: std::sync::RwLock::new(std::collections::HashMap::new()), ttl_secs }
+        Self {
+            entries: std::sync::RwLock::new(std::collections::HashMap::new()),
+            ttl_secs,
+        }
     }
     pub fn get(&self, key: &str) -> Option<serde_json::Value> {
         let entries = self.entries.read().unwrap();
         let entry = entries.get(key)?;
-        if crate::history::now_secs() - entry.cached_at > self.ttl_secs { return None; }
+        if crate::history::now_secs() - entry.cached_at > self.ttl_secs {
+            return None;
+        }
         Some(entry.data.clone())
     }
     pub fn set(&self, key: &str, data: serde_json::Value) {
-        self.entries.write().unwrap().insert(key.to_string(), SchemaCacheEntry {
-            data, cached_at: crate::history::now_secs(),
-        });
+        self.entries.write().unwrap().insert(
+            key.to_string(),
+            SchemaCacheEntry {
+                data,
+                cached_at: crate::history::now_secs(),
+            },
+        );
     }
 }
 
@@ -274,7 +284,10 @@ impl ProfileNode {
         let est_cost = bytes as f64 + ms as f64 * 10.0;
         let accuracy = if rows > 0 {
             let ratio = default_estimate as f64 / rows as f64;
-            Some(format!("{:.1}x (est {} vs actual {})", ratio, default_estimate, rows))
+            Some(format!(
+                "{:.1}x (est {} vs actual {})",
+                ratio, default_estimate, rows
+            ))
         } else {
             None
         };
@@ -298,7 +311,10 @@ impl ProfileNode {
         let est_rows: u64 = children.iter().filter_map(|c| c.estimated_rows).sum();
         let accuracy = if est_rows > 0 && rows > 0 {
             let ratio = est_rows as f64 / rows as f64;
-            Some(format!("{:.1}x (est {} vs actual {})", ratio, est_rows, rows))
+            Some(format!(
+                "{:.1}x (est {} vs actual {})",
+                ratio, est_rows, rows
+            ))
         } else {
             None
         };
@@ -363,7 +379,14 @@ pub struct ErrorResponse {
 /// Map a connector/engine error string to an appropriate HTTP status code.
 fn connector_error_status(msg: &str) -> StatusCode {
     let lower = msg.to_lowercase();
-    if lower.contains("credential") || lower.contains("authentication") || lower.contains("security token") || lower.contains("signing") || lower.contains("connection refused") || lower.contains("connect error") || lower.contains("unreachable") {
+    if lower.contains("credential")
+        || lower.contains("authentication")
+        || lower.contains("security token")
+        || lower.contains("signing")
+        || lower.contains("connection refused")
+        || lower.contains("connect error")
+        || lower.contains("unreachable")
+    {
         StatusCode::BAD_GATEWAY
     } else if lower.contains("not found") || lower.contains("does not exist") {
         StatusCode::NOT_FOUND
@@ -371,7 +394,12 @@ fn connector_error_status(msg: &str) -> StatusCode {
         StatusCode::REQUEST_TIMEOUT
     } else if lower.contains("exceeds") && lower.contains("limit") {
         StatusCode::PAYLOAD_TOO_LARGE
-    } else if lower.contains("permission") || lower.contains("unauthorized") || lower.contains("not authorized") || lower.contains("access denied") || lower.contains("accessdenied") {
+    } else if lower.contains("permission")
+        || lower.contains("unauthorized")
+        || lower.contains("not authorized")
+        || lower.contains("access denied")
+        || lower.contains("accessdenied")
+    {
         StatusCode::FORBIDDEN
     } else {
         StatusCode::INTERNAL_SERVER_ERROR
@@ -382,7 +410,10 @@ fn error_json(status: StatusCode, msg: impl ToString) -> impl IntoResponse {
     let message = msg.to_string();
     // For server errors, log the full detail but return a sanitized message to the client.
     // Timeout/cancellation messages are safe to expose (no internal details).
-    let client_message = if status.is_server_error() && !message.contains("timed out") && !message.contains("cancelled") {
+    let client_message = if status.is_server_error()
+        && !message.contains("timed out")
+        && !message.contains("cancelled")
+    {
         tracing::error!(status = %status, detail = %message, "internal error");
         "internal server error".to_string()
     } else {
@@ -401,12 +432,14 @@ fn error_json(status: StatusCode, msg: impl ToString) -> impl IntoResponse {
 
 /// Extract client IP from request headers (X-Forwarded-For, then X-Real-IP).
 fn extract_client_ip(headers: &axum::http::HeaderMap) -> Option<String> {
-    headers.get("x-forwarded-for")
+    headers
+        .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.split(',').next())
         .map(|s| s.trim().to_string())
         .or_else(|| {
-            headers.get("x-real-ip")
+            headers
+                .get("x-real-ip")
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.trim().to_string())
         })
@@ -426,7 +459,9 @@ pub fn parse_create_view(query: &str) -> Option<(String, String)> {
     let as_pos = after.to_lowercase().find(" as ")?;
     let name = after[..as_pos].trim().to_string();
     let view_query = after[as_pos + 4..].trim().to_string();
-    if name.is_empty() || view_query.is_empty() { return None; }
+    if name.is_empty() || view_query.is_empty() {
+        return None;
+    }
     Some((name, view_query))
 }
 
@@ -440,7 +475,9 @@ pub fn parse_create_materialized_view(query: &str) -> Option<(String, String)> {
     let as_pos = after.to_lowercase().find(" as ")?;
     let name = after[..as_pos].trim().to_string();
     let view_query = after[as_pos + 4..].trim().to_string();
-    if name.is_empty() || view_query.is_empty() { return None; }
+    if name.is_empty() || view_query.is_empty() {
+        return None;
+    }
     Some((name, view_query))
 }
 
@@ -450,8 +487,12 @@ pub fn parse_refresh_materialized_view(query: &str) -> Option<String> {
     if !lower.starts_with("refresh materialized view ") {
         return None;
     }
-    let name = query.trim()["refresh materialized view ".len()..].trim().to_string();
-    if name.is_empty() { return None; }
+    let name = query.trim()["refresh materialized view ".len()..]
+        .trim()
+        .to_string();
+    if name.is_empty() {
+        return None;
+    }
     Some(name)
 }
 
@@ -462,12 +503,18 @@ pub fn parse_begin(query: &str) -> Option<String> {
         return Some(uuid_v4());
     }
     if lower.starts_with("begin transaction ") {
-        let id = query.trim()["begin transaction ".len()..].trim().to_string();
-        if !id.is_empty() { return Some(id); }
+        let id = query.trim()["begin transaction ".len()..]
+            .trim()
+            .to_string();
+        if !id.is_empty() {
+            return Some(id);
+        }
     }
     if lower.starts_with("begin ") && !lower.starts_with("begin transaction") {
         let id = query.trim()["begin ".len()..].trim().to_string();
-        if !id.is_empty() { return Some(id); }
+        if !id.is_empty() {
+            return Some(id);
+        }
     }
     None
 }
@@ -475,10 +522,14 @@ pub fn parse_begin(query: &str) -> Option<String> {
 /// Parse `COMMIT [id]`.
 pub fn parse_commit(query: &str) -> Option<String> {
     let lower = query.trim().to_lowercase();
-    if lower == "commit" { return None; } // needs txn_id from params
+    if lower == "commit" {
+        return None;
+    } // needs txn_id from params
     if lower.starts_with("commit ") {
         let id = query.trim()["commit ".len()..].trim().to_string();
-        if !id.is_empty() { return Some(id); }
+        if !id.is_empty() {
+            return Some(id);
+        }
     }
     None
 }
@@ -486,17 +537,23 @@ pub fn parse_commit(query: &str) -> Option<String> {
 /// Parse `ROLLBACK [id]`.
 pub fn parse_rollback(query: &str) -> Option<String> {
     let lower = query.trim().to_lowercase();
-    if lower == "rollback" { return None; }
+    if lower == "rollback" {
+        return None;
+    }
     if lower.starts_with("rollback ") {
         let id = query.trim()["rollback ".len()..].trim().to_string();
-        if !id.is_empty() { return Some(id); }
+        if !id.is_empty() {
+            return Some(id);
+        }
     }
     None
 }
 
 fn uuid_v4() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let t = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     format!("txn-{:x}-{:x}", t.as_secs(), t.subsec_nanos())
 }
 
@@ -511,7 +568,9 @@ pub fn parse_ctas(query: &str) -> Option<(String, String, String)> {
     let as_pos = after.to_lowercase().find(" as ")?;
     let dest = after[..as_pos].trim();
     let inner_query = after[as_pos + 4..].trim().to_string();
-    if dest.is_empty() || inner_query.is_empty() { return None; }
+    if dest.is_empty() || inner_query.is_empty() {
+        return None;
+    }
     let (ds, tbl) = parse_qualified_name(dest).ok()?;
     Some((ds, tbl, inner_query))
 }
@@ -528,7 +587,9 @@ pub fn parse_insert_into_select(query: &str) -> Option<(String, String, String)>
     let sel_pos = after.to_lowercase().find(" select ")?;
     let dest = after[..sel_pos].trim();
     let select_query = after[sel_pos + 1..].trim().to_string();
-    if dest.is_empty() || select_query.is_empty() { return None; }
+    if dest.is_empty() || select_query.is_empty() {
+        return None;
+    }
     let (ds, tbl) = parse_qualified_name(dest).ok()?;
     Some((ds, tbl, select_query))
 }
@@ -567,7 +628,10 @@ pub fn rewrite_contains(query: &str) -> String {
     result
 }
 
-fn bind_params(query: &str, params: &std::collections::HashMap<String, serde_json::Value>) -> String {
+fn bind_params(
+    query: &str,
+    params: &std::collections::HashMap<String, serde_json::Value>,
+) -> String {
     // Sort by key length descending to avoid $host matching inside $hostname
     let mut sorted: Vec<_> = params.iter().collect();
     sorted.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
@@ -601,7 +665,8 @@ pub async fn query_handler(
     let query_id = format!("q-{:016x}", QUERY_COUNTER.fetch_add(1, Ordering::Relaxed));
 
     // Support timeout via header: X-Fuse-Timeout-Ms
-    let header_timeout = headers.get("x-fuse-timeout-ms")
+    let header_timeout = headers
+        .get("x-fuse-timeout-ms")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.parse::<u64>().ok());
 
@@ -627,24 +692,39 @@ pub async fn query_handler(
             query: template.clone(),
             param_count,
         };
-        state.prepared_statements.lock().unwrap().insert(name.clone(), stmt);
+        state
+            .prepared_statements
+            .lock()
+            .unwrap()
+            .insert(name.clone(), stmt);
         return Json(serde_json::json!({
             "prepared": name,
             "param_count": param_count,
             "template": template,
-        })).into_response();
+        }))
+        .into_response();
     }
 
     // Handle EXECUTE <name> USING <params> — resolve template, bind params, continue
     let query = if let Some((name, params)) = crate::prepared::parse_execute(&query) {
-        let stmt = state.prepared_statements.lock().unwrap().get(&name).cloned();
+        let stmt = state
+            .prepared_statements
+            .lock()
+            .unwrap()
+            .get(&name)
+            .cloned();
         match stmt {
             Some(s) => {
                 if !params.is_empty() && params.len() != s.param_count {
                     return error_json(
                         StatusCode::BAD_REQUEST,
-                        format!("expected {} parameters, got {}", s.param_count, params.len()),
-                    ).into_response();
+                        format!(
+                            "expected {} parameters, got {}",
+                            s.param_count,
+                            params.len()
+                        ),
+                    )
+                    .into_response();
                 }
                 crate::prepared::bind_positional(&s.query, &params)
             }
@@ -652,7 +732,8 @@ pub async fn query_handler(
                 return error_json(
                     StatusCode::NOT_FOUND,
                     format!("prepared statement '{}' not found", name),
-                ).into_response();
+                )
+                .into_response();
             }
         }
     } else {
@@ -674,30 +755,50 @@ pub async fn query_handler(
 
     // Handle BEGIN
     let lower_trimmed = query.trim().to_lowercase();
-    if lower_trimmed == "begin" || lower_trimmed.starts_with("begin ") || lower_trimmed == "begin transaction" {
+    if lower_trimmed == "begin"
+        || lower_trimmed.starts_with("begin ")
+        || lower_trimmed == "begin transaction"
+    {
         if let Some(txn_id) = parse_begin(&query) {
             if state.transactions.begin(&txn_id) {
                 return Json(serde_json::json!({
                     "transaction_id": txn_id,
                     "status": "active",
-                })).into_response();
+                }))
+                .into_response();
             } else {
-                return error_json(StatusCode::CONFLICT, format!("transaction '{}' already exists", txn_id)).into_response();
+                return error_json(
+                    StatusCode::CONFLICT,
+                    format!("transaction '{}' already exists", txn_id),
+                )
+                .into_response();
             }
         }
     }
 
     // Handle COMMIT
     if lower_trimmed == "commit" || lower_trimmed.starts_with("commit ") {
-        let txn_id = parse_commit(&query)
-            .or_else(|| req.params.get("transaction_id").and_then(|v| v.as_str().map(String::from)));
+        let txn_id = parse_commit(&query).or_else(|| {
+            req.params
+                .get("transaction_id")
+                .and_then(|v| v.as_str().map(String::from))
+        });
         let txn_id = match txn_id {
             Some(id) => id,
-            None => return error_json(StatusCode::BAD_REQUEST, "COMMIT requires transaction_id").into_response(),
+            None => {
+                return error_json(StatusCode::BAD_REQUEST, "COMMIT requires transaction_id")
+                    .into_response()
+            }
         };
         let writes = match state.transactions.take(&txn_id) {
             Some(w) => w,
-            None => return error_json(StatusCode::NOT_FOUND, format!("transaction '{}' not found", txn_id)).into_response(),
+            None => {
+                return error_json(
+                    StatusCode::NOT_FOUND,
+                    format!("transaction '{}' not found", txn_id),
+                )
+                .into_response()
+            }
         };
         let mut results = Vec::new();
         let mut errors = Vec::new();
@@ -715,21 +816,33 @@ pub async fn query_handler(
             "transaction_id": txn_id,
             "results": results,
             "errors": errors,
-        })).into_response();
+        }))
+        .into_response();
     }
 
     // Handle ROLLBACK
     if lower_trimmed == "rollback" || lower_trimmed.starts_with("rollback ") {
-        let txn_id = parse_rollback(&query)
-            .or_else(|| req.params.get("transaction_id").and_then(|v| v.as_str().map(String::from)));
+        let txn_id = parse_rollback(&query).or_else(|| {
+            req.params
+                .get("transaction_id")
+                .and_then(|v| v.as_str().map(String::from))
+        });
         let txn_id = match txn_id {
             Some(id) => id,
-            None => return error_json(StatusCode::BAD_REQUEST, "ROLLBACK requires transaction_id").into_response(),
+            None => {
+                return error_json(StatusCode::BAD_REQUEST, "ROLLBACK requires transaction_id")
+                    .into_response()
+            }
         };
         if state.transactions.rollback(&txn_id) {
-            return Json(serde_json::json!({"rolled_back": true, "transaction_id": txn_id})).into_response();
+            return Json(serde_json::json!({"rolled_back": true, "transaction_id": txn_id}))
+                .into_response();
         } else {
-            return error_json(StatusCode::NOT_FOUND, format!("transaction '{}' not found", txn_id)).into_response();
+            return error_json(
+                StatusCode::NOT_FOUND,
+                format!("transaction '{}' not found", txn_id),
+            )
+            .into_response();
         }
     }
 
@@ -738,12 +851,21 @@ pub async fn query_handler(
         // Execute the SELECT query
         let src_refs = match parse_sql_sources(&select_query) {
             Ok(r) if !r.is_empty() => r,
-            _ => return error_json(StatusCode::BAD_REQUEST, "failed to parse source query").into_response(),
+            _ => {
+                return error_json(StatusCode::BAD_REQUEST, "failed to parse source query")
+                    .into_response()
+            }
         };
         let (src_ds, src_table) = &src_refs[0];
         let src_connector = match state.registry.get(src_ds) {
             Some(c) => c,
-            None => return error_json(StatusCode::NOT_FOUND, format!("source datasource '{}' not found", src_ds)).into_response(),
+            None => {
+                return error_json(
+                    StatusCode::NOT_FOUND,
+                    format!("source datasource '{}' not found", src_ds),
+                )
+                .into_response()
+            }
         };
         let sq = match build_sub_query(&select_query, "sql", src_table) {
             Ok(sq) => sq,
@@ -751,21 +873,39 @@ pub async fn query_handler(
         };
         let batches = match src_connector.execute(&sq).await {
             Ok(b) => b,
-            Err(e) => { let msg = e.to_string(); return error_json(connector_error_status(&msg), msg).into_response(); },
+            Err(e) => {
+                let msg = e.to_string();
+                return error_json(connector_error_status(&msg), msg).into_response();
+            }
         };
         // Write to destination connector
         let dest_connector = match state.registry.get(&dest_ds) {
             Some(c) => c,
-            None => return error_json(StatusCode::NOT_FOUND, format!("destination datasource '{}' not found", dest_ds)).into_response(),
+            None => {
+                return error_json(
+                    StatusCode::NOT_FOUND,
+                    format!("destination datasource '{}' not found", dest_ds),
+                )
+                .into_response()
+            }
         };
         let row_count: u64 = batches.iter().map(|b| b.num_rows() as u64).sum();
         match dest_connector.write_batches(&dest_table, batches).await {
-            Ok(written) => return (StatusCode::CREATED, Json(serde_json::json!({
-                "message": format!("table '{}.{}' created", dest_ds, dest_table),
-                "rows_written": written,
-                "rows_selected": row_count,
-            }))).into_response(),
-            Err(e) => { let msg = e.to_string(); return error_json(connector_error_status(&msg), msg).into_response(); },
+            Ok(written) => {
+                return (
+                    StatusCode::CREATED,
+                    Json(serde_json::json!({
+                        "message": format!("table '{}.{}' created", dest_ds, dest_table),
+                        "rows_written": written,
+                        "rows_selected": row_count,
+                    })),
+                )
+                    .into_response()
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                return error_json(connector_error_status(&msg), msg).into_response();
+            }
         }
     }
 
@@ -773,12 +913,21 @@ pub async fn query_handler(
     if let Some((dest_ds, dest_table, select_query)) = parse_insert_into_select(&query) {
         let src_refs = match parse_sql_sources(&select_query) {
             Ok(r) if !r.is_empty() => r,
-            _ => return error_json(StatusCode::BAD_REQUEST, "failed to parse source query").into_response(),
+            _ => {
+                return error_json(StatusCode::BAD_REQUEST, "failed to parse source query")
+                    .into_response()
+            }
         };
         let (src_ds, src_table) = &src_refs[0];
         let src_connector = match state.registry.get(src_ds) {
             Some(c) => c,
-            None => return error_json(StatusCode::NOT_FOUND, format!("source datasource '{}' not found", src_ds)).into_response(),
+            None => {
+                return error_json(
+                    StatusCode::NOT_FOUND,
+                    format!("source datasource '{}' not found", src_ds),
+                )
+                .into_response()
+            }
         };
         let sq = match build_sub_query(&select_query, "sql", src_table) {
             Ok(sq) => sq,
@@ -786,20 +935,35 @@ pub async fn query_handler(
         };
         let batches = match src_connector.execute(&sq).await {
             Ok(b) => b,
-            Err(e) => { let msg = e.to_string(); return error_json(connector_error_status(&msg), msg).into_response(); },
+            Err(e) => {
+                let msg = e.to_string();
+                return error_json(connector_error_status(&msg), msg).into_response();
+            }
         };
         let dest_connector = match state.registry.get(&dest_ds) {
             Some(c) => c,
-            None => return error_json(StatusCode::NOT_FOUND, format!("destination datasource '{}' not found", dest_ds)).into_response(),
+            None => {
+                return error_json(
+                    StatusCode::NOT_FOUND,
+                    format!("destination datasource '{}' not found", dest_ds),
+                )
+                .into_response()
+            }
         };
         let row_count: u64 = batches.iter().map(|b| b.num_rows() as u64).sum();
         match dest_connector.write_batches(&dest_table, batches).await {
-            Ok(written) => return Json(serde_json::json!({
-                "message": format!("inserted into '{}.{}'", dest_ds, dest_table),
-                "rows_written": written,
-                "rows_selected": row_count,
-            })).into_response(),
-            Err(e) => { let msg = e.to_string(); return error_json(connector_error_status(&msg), msg).into_response(); },
+            Ok(written) => {
+                return Json(serde_json::json!({
+                    "message": format!("inserted into '{}.{}'", dest_ds, dest_table),
+                    "rows_written": written,
+                    "rows_selected": row_count,
+                }))
+                .into_response()
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                return error_json(connector_error_status(&msg), msg).into_response();
+            }
         }
     }
 
@@ -818,21 +982,19 @@ pub async fn query_handler(
             Ok(refs) if !refs.is_empty() => {
                 let (ds_id, table) = &refs[0];
                 match state.registry.get(ds_id) {
-                    Some(connector) => {
-                        match build_sub_query(&view_query, "sql", table) {
-                            Ok(sq) => match connector.execute(&sq).await {
-                                Ok(batches) => {
-                                    let row_count: usize = batches.iter().map(|b| b.num_rows()).sum();
-                                    if let Some(v) = state.view_registry.get(&view_name) {
-                                        v.write().unwrap().set_results(batches);
-                                    }
-                                    Ok(row_count)
+                    Some(connector) => match build_sub_query(&view_query, "sql", table) {
+                        Ok(sq) => match connector.execute(&sq).await {
+                            Ok(batches) => {
+                                let row_count: usize = batches.iter().map(|b| b.num_rows()).sum();
+                                if let Some(v) = state.view_registry.get(&view_name) {
+                                    v.write().unwrap().set_results(batches);
                                 }
-                                Err(e) => Err(e.to_string()),
-                            },
-                            Err(e) => Err(e),
-                        }
-                    }
+                                Ok(row_count)
+                            }
+                            Err(e) => Err(e.to_string()),
+                        },
+                        Err(e) => Err(e),
+                    },
                     None => Err(format!("datasource '{}' not found", ds_id)),
                 }
             }
@@ -865,7 +1027,13 @@ pub async fn query_handler(
     if let Some(view_name) = parse_refresh_materialized_view(&query) {
         let view_arc = match state.view_registry.get(&view_name) {
             Some(v) => v,
-            None => return error_json(StatusCode::NOT_FOUND, format!("materialized view '{}' not found", view_name)).into_response(),
+            None => {
+                return error_json(
+                    StatusCode::NOT_FOUND,
+                    format!("materialized view '{}' not found", view_name),
+                )
+                .into_response()
+            }
         };
         let view_query = view_arc.read().unwrap().def.query.clone();
 
@@ -891,7 +1059,8 @@ pub async fn query_handler(
                     "refreshed": true,
                     "view": view_name,
                     "row_count": row_count,
-                })).into_response()
+                }))
+                .into_response()
             }
             Err(e) => {
                 view_arc.write().unwrap().set_error(e.clone());
@@ -909,11 +1078,15 @@ pub async fn query_handler(
             refresh_mode: fuse_engine::materialized::RefreshMode::Full,
         };
         state.view_registry.register(def);
-        return (StatusCode::CREATED, Json(serde_json::json!({
-            "message": format!("view '{}' created", view_name),
-            "name": view_name,
-            "query": view_query,
-        }))).into_response();
+        return (
+            StatusCode::CREATED,
+            Json(serde_json::json!({
+                "message": format!("view '{}' created", view_name),
+                "name": view_name,
+                "query": view_query,
+            })),
+        )
+            .into_response();
     }
 
     // Parse all datasource.table references from the query (with plan cache)
@@ -931,8 +1104,11 @@ pub async fn query_handler(
 
     let refs = match refs {
         Ok(r) if r.is_empty() => {
-            return error_json(StatusCode::BAD_REQUEST, "no datasource.table references found")
-                .into_response()
+            return error_json(
+                StatusCode::BAD_REQUEST,
+                "no datasource.table references found",
+            )
+            .into_response()
         }
         Ok(r) => r,
         Err(e) => return error_json(StatusCode::BAD_REQUEST, e).into_response(),
@@ -956,7 +1132,12 @@ pub async fn query_handler(
     let tenant_id = auth_identity
         .as_ref()
         .map(|ext| ext.0.identity.clone())
-        .or_else(|| req.params.get("_tenant_id").and_then(|v| v.as_str()).map(String::from));
+        .or_else(|| {
+            req.params
+                .get("_tenant_id")
+                .and_then(|v| v.as_str())
+                .map(String::from)
+        });
     if let Some(ref tid) = tenant_id {
         if state.tenant_registry.is_enabled() {
             let ds_ids: Vec<String> = refs.iter().map(|(ds, _)| ds.clone()).collect();
@@ -965,7 +1146,10 @@ pub async fn query_handler(
                 if !allowed.contains(ds_id) {
                     return error_json(
                         StatusCode::FORBIDDEN,
-                        format!("tenant '{}' does not have access to datasource '{}'", tid, ds_id),
+                        format!(
+                            "tenant '{}' does not have access to datasource '{}'",
+                            tid, ds_id
+                        ),
                     )
                     .into_response();
                 }
@@ -984,7 +1168,9 @@ pub async fn query_handler(
         DEFAULT_TIMEOUT_MS
     };
     let effective_timeout_ms = if let Some(ref tid) = tenant_id {
-        state.tenant_registry.get(tid)
+        state
+            .tenant_registry
+            .get(tid)
             .map(|c| QueryGovernor::effective_timeout_ms(c, base_timeout_ms))
             .unwrap_or(base_timeout_ms)
     } else {
@@ -994,7 +1180,9 @@ pub async fn query_handler(
 
     // Register cancellable query
     let cancel_token = CancellationToken::new();
-    state.running_queries.insert(query_id.clone(), cancel_token.clone());
+    state
+        .running_queries
+        .insert(query_id.clone(), cancel_token.clone());
 
     // Resolve IN (SELECT ...) subqueries by executing inner queries first
     let mut resolved_query = query.clone();
@@ -1005,23 +1193,33 @@ pub async fn query_handler(
                 fuse_core::connector::SubQuery {
                     table: isq.table.clone(),
                     projections: vec![isq.inner_column.clone()],
-                    filter: None, aggregations: vec![], group_by: vec![],
-                    sort: vec![], limit: None, having: None, offset: None, passthrough: None,
+                    filter: None,
+                    aggregations: vec![],
+                    group_by: vec![],
+                    sort: vec![],
+                    limit: None,
+                    having: None,
+                    offset: None,
+                    passthrough: None,
                 }
             });
             if let Ok(batches) = connector.execute(&sq).await {
                 // Collect values from first column
-                let values: Vec<String> = batches.iter()
+                let values: Vec<String> = batches
+                    .iter()
                     .flat_map(|b| {
                         let col = b.column(0);
                         (0..b.num_rows()).filter_map(move |i| {
-                            if col.is_null(i) { return None; }
+                            if col.is_null(i) {
+                                return None;
+                            }
                             arrow::util::display::array_value_to_string(col, i).ok()
                         })
                     })
                     .collect();
                 if !values.is_empty() {
-                    let in_list = values.iter()
+                    let in_list = values
+                        .iter()
                         .map(|v| format!("'{}'", v.replace('\'', "''")))
                         .collect::<Vec<_>>()
                         .join(", ");
@@ -1036,7 +1234,8 @@ pub async fn query_handler(
         let new_refs = match format.as_str() {
             "ppl" => parse_ppl_sources(&resolved_query),
             _ => parse_sql_sources(&resolved_query),
-        }.unwrap_or(refs.clone());
+        }
+        .unwrap_or(refs.clone());
         (resolved_query, new_refs)
     } else {
         (query, refs)
@@ -1070,18 +1269,33 @@ pub async fn query_handler(
         Ok(fed) => {
             // Use cached plan or parse fresh
             let (order_by, limit, is_distinct, offset) = if let Some(ref plan) = cached {
-                (plan.order_by.clone(), plan.limit, plan.is_distinct, plan.offset)
+                (
+                    plan.order_by.clone(),
+                    plan.limit,
+                    plan.is_distinct,
+                    plan.offset,
+                )
             } else {
                 let ob = parse_order_by(&query);
                 let lim = parse_limit(&query);
-                let dist = strip_string_literals(&query).to_lowercase().contains("select distinct")
+                let dist = strip_string_literals(&query)
+                    .to_lowercase()
+                    .contains("select distinct")
                     || is_union_distinct(&query);
                 let off = parse_offset(&query).unwrap_or(0);
                 // Cache the plan for next time
-                state.plan_cache.insert(cache_key.clone(), CachedPlan::new(
-                    refs.clone(), is_union_query(&query), refs.len() > 1 && !is_union_query(&query),
-                    dist, lim, off, ob.clone(),
-                ));
+                state.plan_cache.insert(
+                    cache_key.clone(),
+                    CachedPlan::new(
+                        refs.clone(),
+                        is_union_query(&query),
+                        refs.len() > 1 && !is_union_query(&query),
+                        dist,
+                        lim,
+                        off,
+                        ob.clone(),
+                    ),
+                );
                 (ob, lim, dist, off)
             };
 
@@ -1103,10 +1317,12 @@ pub async fn query_handler(
             // Apply global ORDER BY if present
             let batches = if !order_by.is_empty() {
                 if let Ok(schema) = batches.first().map(|b| b.schema()).ok_or(()) {
-                    let indices: Vec<usize> = order_by.iter()
+                    let indices: Vec<usize> = order_by
+                        .iter()
                         .filter_map(|(col, _)| schema.index_of(col).ok())
                         .collect();
-                    let descs: Vec<bool> = order_by.iter()
+                    let descs: Vec<bool> = order_by
+                        .iter()
                         .filter(|(col, _)| schema.index_of(col).is_ok())
                         .map(|(_, d)| *d)
                         .collect();
@@ -1125,7 +1341,10 @@ pub async fn query_handler(
 
             // Apply DISTINCT — dedup on all non-_datasource columns
             let batches = if is_distinct && !batches.is_empty() {
-                let dedup_cols: Vec<String> = batches[0].schema().fields().iter()
+                let dedup_cols: Vec<String> = batches[0]
+                    .schema()
+                    .fields()
+                    .iter()
                     .map(|f| f.name().clone())
                     .filter(|n| n != "_datasource")
                     .collect();
@@ -1144,7 +1363,8 @@ pub async fn query_handler(
             let total_available = batches.iter().map(|b| b.num_rows()).sum::<usize>();
             let batches = if effective_offset > 0 || page_size.is_some() {
                 // Flatten, skip offset, take limit
-                let all_rows: Vec<_> = batches.iter()
+                let all_rows: Vec<_> = batches
+                    .iter()
                     .flat_map(|b| (0..b.num_rows()).map(move |i| (b, i)))
                     .skip(effective_offset)
                     .collect();
@@ -1155,20 +1375,24 @@ pub async fn query_handler(
                 } else {
                     // Rebuild batches from selected rows
                     let schema = batches[0].schema();
-                    let mut result_cols: Vec<Vec<arrow::array::ArrayRef>> = (0..schema.fields().len()).map(|_| Vec::new()).collect();
-            #[allow(clippy::needless_range_loop)]
+                    let mut result_cols: Vec<Vec<arrow::array::ArrayRef>> =
+                        (0..schema.fields().len()).map(|_| Vec::new()).collect();
+                    #[allow(clippy::needless_range_loop)]
                     for (batch, row_idx) in &rows_to_take {
                         for col_idx in 0..schema.fields().len() {
                             result_cols[col_idx].push(batch.column(col_idx).slice(*row_idx, 1));
                         }
                     }
-                    let arrays: Result<Vec<arrow::array::ArrayRef>, _> = result_cols.into_iter()
+                    let arrays: Result<Vec<arrow::array::ArrayRef>, _> = result_cols
+                        .into_iter()
                         .map(|slices| {
-                            let refs: Vec<&dyn arrow::array::Array> = slices.iter().map(|a| a.as_ref()).collect();
+                            let refs: Vec<&dyn arrow::array::Array> =
+                                slices.iter().map(|a| a.as_ref()).collect();
                             arrow::compute::concat(&refs)
                         })
                         .collect();
-                    match arrays.and_then(|a| arrow::record_batch::RecordBatch::try_new(schema, a)) {
+                    match arrays.and_then(|a| arrow::record_batch::RecordBatch::try_new(schema, a))
+                    {
                         Ok(batch) => vec![batch],
                         Err(_) => vec![],
                     }
@@ -1180,28 +1404,41 @@ pub async fn query_handler(
             let batches = if let Some(ref rbac) = state.column_rbac {
                 let user_ctx = fuse_core::security::UserContext {
                     username: tenant_id.clone().unwrap_or_default(),
-                    roles: auth_identity.as_ref()
+                    roles: auth_identity
+                        .as_ref()
                         .map(|ext| vec![format!("{:?}", ext.0.role).to_lowercase()])
                         .unwrap_or_default(),
                 };
                 let ds_id = fed.datasources.first().map(|s| s.as_str()).unwrap_or("");
                 let table = refs.first().map(|(_, t)| t.as_str()).unwrap_or("");
-                rbac.filter_batches(batches, ds_id, table, &user_ctx).unwrap_or_default()
+                rbac.filter_batches(batches, ds_id, table, &user_ctx)
+                    .unwrap_or_default()
             } else {
                 batches
             };
             let (columns, rows) = batches_to_json(&batches);
             let row_count = rows.len();
             let total_rows = row_count as u64;
-            let result_bytes: u64 = batches.iter().map(|b| b.get_array_memory_size() as u64).sum();
+            let result_bytes: u64 = batches
+                .iter()
+                .map(|b| b.get_array_memory_size() as u64)
+                .sum();
             let elapsed_ms = t0.elapsed().as_millis() as u64;
 
             // Compute dollar cost estimate from connector types + data bytes
             let cost_estimate = {
-                let ds_inputs: Vec<(&str, &str, u64, u64)> = fed.datasources.iter()
+                let ds_inputs: Vec<(&str, &str, u64, u64)> = fed
+                    .datasources
+                    .iter()
                     .map(|ds| {
-                        let ct = fed.connector_types.get(ds).map(|s| s.as_str()).unwrap_or("unknown");
-                        let (rows, bytes) = fed.stats.as_ref()
+                        let ct = fed
+                            .connector_types
+                            .get(ds)
+                            .map(|s| s.as_str())
+                            .unwrap_or("unknown");
+                        let (rows, bytes) = fed
+                            .stats
+                            .as_ref()
                             .and_then(|s| s.get(ds))
                             .map(|s| (s.rows, result_bytes))
                             .unwrap_or((total_rows, result_bytes));
@@ -1209,7 +1446,11 @@ pub async fn query_handler(
                     })
                     .collect();
                 let est = crate::cost_estimator::estimate_query_cost(&ds_inputs);
-                if est.total_cost_usd > 0.0 { Some(est) } else { None }
+                if est.total_cost_usd > 0.0 {
+                    Some(est)
+                } else {
+                    None
+                }
             };
 
             // Global result size limit
@@ -1226,7 +1467,9 @@ pub async fn query_handler(
             // Query governor: enforce tenant resource limits
             if let Some(ref tid) = tenant_id {
                 if let Some(config) = state.tenant_registry.get(tid) {
-                    if let Err(e) = QueryGovernor::check_limits(config, total_rows, result_bytes, elapsed_ms) {
+                    if let Err(e) =
+                        QueryGovernor::check_limits(config, total_rows, result_bytes, elapsed_ms)
+                    {
                         return error_json(StatusCode::TOO_MANY_REQUESTS, e).into_response();
                     }
                 }
@@ -1245,18 +1488,21 @@ pub async fn query_handler(
                 state.smart_router.record(ds, elapsed_ms);
                 state.health_history.record(ds, true, elapsed_ms, None);
             }
-            state.audit_log.record(crate::audit::AuditEntry {
-                timestamp: crate::history::now_secs(),
-                identity: tenant_id.clone().unwrap_or_else(|| "anonymous".into()),
-                action: crate::audit::AuditAction::Query,
-                query: Some(req.query.clone()),
-                datasources: fed.datasources.clone(),
-                duration_ms: elapsed_ms,
-                row_count: total_rows,
-                status: crate::audit::AuditStatus::Success,
-                error: None,
-                client_ip: extract_client_ip(&headers),
-            }).await;
+            state
+                .audit_log
+                .record(crate::audit::AuditEntry {
+                    timestamp: crate::history::now_secs(),
+                    identity: tenant_id.clone().unwrap_or_else(|| "anonymous".into()),
+                    action: crate::audit::AuditAction::Query,
+                    query: Some(req.query.clone()),
+                    datasources: fed.datasources.clone(),
+                    duration_ms: elapsed_ms,
+                    row_count: total_rows,
+                    status: crate::audit::AuditStatus::Success,
+                    error: None,
+                    client_ip: extract_client_ip(&headers),
+                })
+                .await;
             crate::metrics::record_query(&req.format, true, elapsed_ms);
             tracing::info!(
                 query_id = %query_id,
@@ -1272,14 +1518,16 @@ pub async fn query_handler(
                     StatusCode::OK,
                     [(axum::http::header::CONTENT_TYPE, "application/x-ndjson")],
                     ndjson,
-                ).into_response()
+                )
+                    .into_response()
             } else if req.result_format == "csv" {
                 let csv = batches_to_csv(&batches);
                 (
                     StatusCode::OK,
                     [(axum::http::header::CONTENT_TYPE, "text/csv")],
                     csv,
-                ).into_response()
+                )
+                    .into_response()
             } else {
                 let ds_list: Vec<String> = fed.datasources.clone();
                 let cost_estimate_ref = cost_estimate.clone();
@@ -1309,7 +1557,9 @@ pub async fn query_handler(
                         None
                     },
                     partial_errors: fed.partial_errors,
-                    next_cursor: if page_size.is_some() && (effective_offset + row_count) < total_available {
+                    next_cursor: if page_size.is_some()
+                        && (effective_offset + row_count) < total_available
+                    {
                         Some(encode_cursor(effective_offset + row_count))
                     } else {
                         None
@@ -1345,18 +1595,21 @@ pub async fn query_handler(
                 error: Some(e.clone()),
             });
             crate::metrics::record_query(&req.format, false, t0.elapsed().as_millis() as u64);
-            state.audit_log.record(crate::audit::AuditEntry {
-                timestamp: crate::history::now_secs(),
-                identity: tenant_id.clone().unwrap_or_else(|| "anonymous".into()),
-                action: crate::audit::AuditAction::Query,
-                query: Some(req.query.clone()),
-                datasources: vec![],
-                duration_ms: t0.elapsed().as_millis() as u64,
-                row_count: 0,
-                status: crate::audit::AuditStatus::Error,
-                error: Some(e.clone()),
-                client_ip: extract_client_ip(&headers),
-            }).await;
+            state
+                .audit_log
+                .record(crate::audit::AuditEntry {
+                    timestamp: crate::history::now_secs(),
+                    identity: tenant_id.clone().unwrap_or_else(|| "anonymous".into()),
+                    action: crate::audit::AuditAction::Query,
+                    query: Some(req.query.clone()),
+                    datasources: vec![],
+                    duration_ms: t0.elapsed().as_millis() as u64,
+                    row_count: 0,
+                    status: crate::audit::AuditStatus::Error,
+                    error: Some(e.clone()),
+                    client_ip: extract_client_ip(&headers),
+                })
+                .await;
             tracing::warn!(
                 query_id = %query_id,
                 format = %format,
@@ -1380,7 +1633,9 @@ async fn execute_single(
     (ds_id, table): &(String, String),
     range: Option<(&str, &str, &str)>, // (start, end, step) for Prometheus range queries
 ) -> Result<FederatedResult, String> {
-    let connector = state.registry.get(ds_id)
+    let connector = state
+        .registry
+        .get(ds_id)
         .ok_or_else(|| format!("datasource '{}' not found", ds_id))?;
     let mut sub_query = build_sub_query(query, format, table)?;
     // Inject range params as passthrough for Prometheus connector
@@ -1400,16 +1655,36 @@ async fn execute_single(
     state.pool_tracker.acquire(ds_id);
     let result = connector.execute(&sub_query).await;
     state.pool_tracker.release(ds_id);
-    let batches = result.map_err(|e| { state.pool_tracker.timeout(ds_id); state.health_history.record(ds_id, false, start.elapsed().as_millis() as u64, Some(e.to_string())); e.to_string() })?;
+    let batches = result.map_err(|e| {
+        state.pool_tracker.timeout(ds_id);
+        state.health_history.record(
+            ds_id,
+            false,
+            start.elapsed().as_millis() as u64,
+            Some(e.to_string()),
+        );
+        e.to_string()
+    })?;
     let elapsed = start.elapsed().as_millis() as u64;
     let row_count: u64 = batches.iter().map(|b| b.num_rows() as u64).sum();
-    let data_bytes: u64 = batches.iter().map(|b| b.get_array_memory_size() as u64).sum();
+    let data_bytes: u64 = batches
+        .iter()
+        .map(|b| b.get_array_memory_size() as u64)
+        .sum();
     Ok(FederatedResult {
         batches,
         stats: None,
         datasources: vec![ds_id.clone()],
-        connector_types: [(ds_id.clone(), connector.connector_type().to_string())].into_iter().collect(),
-        profile_nodes: vec![ProfileNode::scan(ds_id, row_count, elapsed, data_bytes, describe_pushdown(&sub_query))],
+        connector_types: [(ds_id.clone(), connector.connector_type().to_string())]
+            .into_iter()
+            .collect(),
+        profile_nodes: vec![ProfileNode::scan(
+            ds_id,
+            row_count,
+            elapsed,
+            data_bytes,
+            describe_pushdown(&sub_query),
+        )],
         partial_errors: vec![],
     })
 }
@@ -1421,8 +1696,8 @@ async fn execute_union(
     format: &str,
     refs: &[(String, String)],
 ) -> Result<FederatedResult, String> {
-    let base_sq = build_sub_query(query, format, &refs[0].1)
-        .unwrap_or_else(|_| fuse_core::connector::SubQuery {
+    let base_sq = build_sub_query(query, format, &refs[0].1).unwrap_or_else(|_| {
+        fuse_core::connector::SubQuery {
             table: String::new(),
             projections: vec![],
             filter: None,
@@ -1430,8 +1705,11 @@ async fn execute_union(
             group_by: vec![],
             sort: vec![],
             limit: None,
-            having: None, offset: None, passthrough: None,
-        });
+            having: None,
+            offset: None,
+            passthrough: None,
+        }
+    });
 
     let mut per_source: Vec<fuse_core::connector::SubQuery> = refs
         .iter()
@@ -1443,15 +1721,23 @@ async fn execute_union(
             group_by: vec![],
             sort: vec![],
             limit: Some(10_000), // Default limit to avoid scroll for UNION ALL fan-out
-            having: None, offset: None, passthrough: None,
+            having: None,
+            offset: None,
+            passthrough: None,
         })
         .collect();
     fuse_engine::rewrite::push_down_to_sources(&base_sq, &mut per_source);
 
     let mut handles = Vec::new();
     // #1820: Use adaptive parallelism to limit concurrent fan-out per datasource
-    let max_concurrency: usize = refs.iter()
-        .filter_map(|(ds_id, _)| state.registry.get(ds_id).map(|_| state.adaptive_parallelism.concurrency_for(ds_id)))
+    let max_concurrency: usize = refs
+        .iter()
+        .filter_map(|(ds_id, _)| {
+            state
+                .registry
+                .get(ds_id)
+                .map(|_| state.adaptive_parallelism.concurrency_for(ds_id))
+        })
         .max()
         .unwrap_or(4);
     let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrency));
@@ -1474,29 +1760,42 @@ async fn execute_union(
             let _permit = sem.acquire().await.expect("semaphore closed");
             crate::chaos::maybe_delay(&ds).await;
             if let Some(err) = crate::chaos::maybe_fail(&ds) {
-                return (ds, Err(fuse_core::error::ConnectorError::QueryFailed(err)), 0u64);
+                return (
+                    ds,
+                    Err(fuse_core::error::ConnectorError::QueryFailed(err)),
+                    0u64,
+                );
             }
             let start = std::time::Instant::now();
             pt.acquire(&ds);
             let result = tokio::time::timeout(
                 std::time::Duration::from_secs(25), // per-connector timeout (< global 30s)
                 conn.execute(&sub_query),
-            ).await;
+            )
+            .await;
             pt.release(&ds);
             let latency_ms = start.elapsed().as_millis() as u64;
             let result = match result {
                 Ok(r) => r,
                 Err(_) => {
                     pt.timeout(&ds);
-                    Err(fuse_core::error::ConnectorError::QueryFailed(
-                        format!("connector '{}' timed out", ds),
-                    ))
+                    Err(fuse_core::error::ConnectorError::QueryFailed(format!(
+                        "connector '{}' timed out",
+                        ds
+                    )))
                 }
             };
             // #1820: Record success/failure for adaptive concurrency tuning
             match &result {
-                Ok(_) => { ap.record_success(&ds, latency_ms); hh.record(&ds, true, latency_ms, None); sr.record(&ds, latency_ms); },
-                Err(e) => { ap.record_failure(&ds); hh.record(&ds, false, latency_ms, Some(e.to_string())); },
+                Ok(_) => {
+                    ap.record_success(&ds, latency_ms);
+                    hh.record(&ds, true, latency_ms, None);
+                    sr.record(&ds, latency_ms);
+                }
+                Err(e) => {
+                    ap.record_failure(&ds);
+                    hh.record(&ds, false, latency_ms, Some(e.to_string()));
+                }
             }
             (ds, result, latency_ms)
         }));
@@ -1507,37 +1806,70 @@ async fn execute_union(
     let mut datasources = Vec::new();
     let mut scan_nodes = Vec::new();
     let mut partial_errors = Vec::new();
-    let conn_types: std::collections::HashMap<String, String> = refs.iter()
+    let conn_types: std::collections::HashMap<String, String> = refs
+        .iter()
         .filter_map(|(ds_id, _)| {
-            state.registry.get(ds_id).map(|c| (ds_id.clone(), c.connector_type().to_string()))
+            state
+                .registry
+                .get(ds_id)
+                .map(|c| (ds_id.clone(), c.connector_type().to_string()))
         })
         .collect();
 
     for handle in handles {
-        let (ds_id, result, latency_ms) = handle.await.map_err(|e| format!("task join error: {e}"))?;
+        let (ds_id, result, latency_ms) =
+            handle.await.map_err(|e| format!("task join error: {e}"))?;
         datasources.push(ds_id.clone());
 
         match result {
             Ok(batches) => {
                 let row_count: u64 = batches.iter().map(|b| b.num_rows() as u64).sum();
-                let data_bytes: u64 = batches.iter().map(|b| b.get_array_memory_size() as u64).sum();
+                let data_bytes: u64 = batches
+                    .iter()
+                    .map(|b| b.get_array_memory_size() as u64)
+                    .sum();
                 let tagged = add_datasource_column(&batches, &ds_id);
 
-                scan_nodes.push(ProfileNode::scan(&ds_id, row_count, latency_ms, data_bytes, vec![]));
+                scan_nodes.push(ProfileNode::scan(
+                    &ds_id,
+                    row_count,
+                    latency_ms,
+                    data_bytes,
+                    vec![],
+                ));
 
-                ds_stats.insert(ds_id, DatasourceStat { rows: row_count, latency_ms });
+                ds_stats.insert(
+                    ds_id,
+                    DatasourceStat {
+                        rows: row_count,
+                        latency_ms,
+                    },
+                );
                 batch_sets.push(tagged);
             }
             Err(e) => {
-                partial_errors.push(PartialError { datasource: ds_id.clone(), error: e.to_string() });
-                ds_stats.insert(ds_id, DatasourceStat { rows: 0, latency_ms });
+                partial_errors.push(PartialError {
+                    datasource: ds_id.clone(),
+                    error: e.to_string(),
+                });
+                ds_stats.insert(
+                    ds_id,
+                    DatasourceStat {
+                        rows: 0,
+                        latency_ms,
+                    },
+                );
             }
         }
     }
 
     // If ALL sources failed, return error
     if batch_sets.is_empty() && !partial_errors.is_empty() {
-        return Err(partial_errors.iter().map(|e| format!("{}: {}", e.datasource, e.error)).collect::<Vec<_>>().join("; "));
+        return Err(partial_errors
+            .iter()
+            .map(|e| format!("{}: {}", e.datasource, e.error))
+            .collect::<Vec<_>>()
+            .join("; "));
     }
 
     let merged = fuse_engine::union_batches(batch_sets).map_err(|e| e.to_string())?;
@@ -1560,15 +1892,22 @@ async fn execute_join(
     refs: &[(String, String)],
 ) -> Result<FederatedResult, String> {
     if refs.len() != 2 {
-        return Err(format!("JOIN requires exactly 2 datasources, got {}", refs.len()));
+        return Err(format!(
+            "JOIN requires exactly 2 datasources, got {}",
+            refs.len()
+        ));
     }
 
     let (ds_a, table_a) = &refs[0];
     let (ds_b, table_b) = &refs[1];
 
-    let conn_a = state.registry.get(ds_a)
+    let conn_a = state
+        .registry
+        .get(ds_a)
         .ok_or_else(|| format!("datasource '{}' not found", ds_a))?;
-    let conn_b = state.registry.get(ds_b)
+    let conn_b = state
+        .registry
+        .get(ds_b)
         .ok_or_else(|| format!("datasource '{}' not found", ds_b))?;
 
     let sq_a = fuse_core::connector::SubQuery {
@@ -1579,7 +1918,9 @@ async fn execute_join(
         group_by: vec![],
         sort: vec![],
         limit: Some(10_000), // Default limit to avoid scroll for JOIN fan-out
-        having: None, offset: None, passthrough: None,
+        having: None,
+        offset: None,
+        passthrough: None,
     };
     let mut sq_b = sq_a.clone();
     sq_b.table = table_b.clone();
@@ -1607,17 +1948,45 @@ async fn execute_join(
     let latency_a = start_a.elapsed().as_millis() as u64;
     let latency_b = start_b.elapsed().as_millis() as u64;
 
-    let res_a = res_a.map_err(|_| { state.pool_tracker.timeout(ds_a); format!("connector '{}' timed out", ds_a) })?.map_err(|e| e.to_string());
-    let res_b = res_b.map_err(|_| { state.pool_tracker.timeout(ds_b); format!("connector '{}' timed out", ds_b) })?.map_err(|e| e.to_string());
+    let res_a = res_a
+        .map_err(|_| {
+            state.pool_tracker.timeout(ds_a);
+            format!("connector '{}' timed out", ds_a)
+        })?
+        .map_err(|e| e.to_string());
+    let res_b = res_b
+        .map_err(|_| {
+            state.pool_tracker.timeout(ds_b);
+            format!("connector '{}' timed out", ds_b)
+        })?
+        .map_err(|e| e.to_string());
 
     // #1820: Record success/failure for adaptive concurrency tuning
     match &res_a {
-        Ok(_) => { state.adaptive_parallelism.record_success(ds_a, latency_a); state.smart_router.record(ds_a, latency_a); state.health_history.record(ds_a, true, latency_a, None); },
-        Err(e) => { state.adaptive_parallelism.record_failure(ds_a); state.health_history.record(ds_a, false, latency_a, Some(e.to_string())); },
+        Ok(_) => {
+            state.adaptive_parallelism.record_success(ds_a, latency_a);
+            state.smart_router.record(ds_a, latency_a);
+            state.health_history.record(ds_a, true, latency_a, None);
+        }
+        Err(e) => {
+            state.adaptive_parallelism.record_failure(ds_a);
+            state
+                .health_history
+                .record(ds_a, false, latency_a, Some(e.to_string()));
+        }
     }
     match &res_b {
-        Ok(_) => { state.adaptive_parallelism.record_success(ds_b, latency_b); state.smart_router.record(ds_b, latency_b); state.health_history.record(ds_b, true, latency_b, None); },
-        Err(e) => { state.adaptive_parallelism.record_failure(ds_b); state.health_history.record(ds_b, false, latency_b, Some(e.to_string())); },
+        Ok(_) => {
+            state.adaptive_parallelism.record_success(ds_b, latency_b);
+            state.smart_router.record(ds_b, latency_b);
+            state.health_history.record(ds_b, true, latency_b, None);
+        }
+        Err(e) => {
+            state.adaptive_parallelism.record_failure(ds_b);
+            state
+                .health_history
+                .record(ds_b, false, latency_b, Some(e.to_string()));
+        }
     }
 
     let batches_a = res_a?;
@@ -1627,8 +1996,20 @@ async fn execute_join(
     let rows_b: u64 = batches_b.iter().map(|b| b.num_rows() as u64).sum();
 
     let mut ds_stats = std::collections::HashMap::new();
-    ds_stats.insert(ds_a.clone(), DatasourceStat { rows: rows_a, latency_ms: latency_a });
-    ds_stats.insert(ds_b.clone(), DatasourceStat { rows: rows_b, latency_ms: latency_b });
+    ds_stats.insert(
+        ds_a.clone(),
+        DatasourceStat {
+            rows: rows_a,
+            latency_ms: latency_a,
+        },
+    );
+    ds_stats.insert(
+        ds_b.clone(),
+        DatasourceStat {
+            rows: rows_b,
+            latency_ms: latency_b,
+        },
+    );
 
     if batches_a.is_empty() || batches_b.is_empty() {
         return Ok(FederatedResult {
@@ -1638,7 +2019,9 @@ async fn execute_join(
             connector_types: [
                 (ds_a.clone(), conn_a.connector_type().to_string()),
                 (ds_b.clone(), conn_b.connector_type().to_string()),
-            ].into_iter().collect(),
+            ]
+            .into_iter()
+            .collect(),
             profile_nodes: vec![],
             partial_errors: vec![],
         });
@@ -1651,12 +2034,26 @@ async fn execute_join(
         .ok_or_else(|| "no common column found for JOIN key".to_string())?;
 
     // Build-side selection: smaller table as build (right) side for memory efficiency
-    let (left_batches, right_batches, left_key, right_key, left_ds, right_ds, left_rows, right_rows, left_lat, right_lat) =
-        if rows_a >= rows_b {
-            (batches_a, batches_b, key_a, key_b, ds_a, ds_b, rows_a, rows_b, latency_a, latency_b)
-        } else {
-            (batches_b, batches_a, key_b, key_a, ds_b, ds_a, rows_b, rows_a, latency_b, latency_a)
-        };
+    let (
+        left_batches,
+        right_batches,
+        left_key,
+        right_key,
+        left_ds,
+        right_ds,
+        left_rows,
+        right_rows,
+        left_lat,
+        right_lat,
+    ) = if rows_a >= rows_b {
+        (
+            batches_a, batches_b, key_a, key_b, ds_a, ds_b, rows_a, rows_b, latency_a, latency_b,
+        )
+    } else {
+        (
+            batches_b, batches_a, key_b, key_a, ds_b, ds_a, rows_b, rows_a, latency_b, latency_a,
+        )
+    };
 
     let tagged_left = add_datasource_column(&left_batches, left_ds);
     let tagged_right = add_datasource_column(&right_batches, right_ds);
@@ -1681,11 +2078,29 @@ async fn execute_join(
     let join_ms = join_start.elapsed().as_millis() as u64;
 
     let join_rows: u64 = joined.iter().map(|b| b.num_rows() as u64).sum();
-    let bytes_left: u64 = left_batches.iter().map(|b| b.get_array_memory_size() as u64).sum();
-    let bytes_right: u64 = right_batches.iter().map(|b| b.get_array_memory_size() as u64).sum();
+    let bytes_left: u64 = left_batches
+        .iter()
+        .map(|b| b.get_array_memory_size() as u64)
+        .sum();
+    let bytes_right: u64 = right_batches
+        .iter()
+        .map(|b| b.get_array_memory_size() as u64)
+        .sum();
 
-    let scan_left = ProfileNode::scan(left_ds, left_rows, left_lat, bytes_left, vec!["probe side".into()]);
-    let scan_right = ProfileNode::scan(right_ds, right_rows, right_lat, bytes_right, vec!["build side (smaller)".into()]);
+    let scan_left = ProfileNode::scan(
+        left_ds,
+        left_rows,
+        left_lat,
+        bytes_left,
+        vec!["probe side".into()],
+    );
+    let scan_right = ProfileNode::scan(
+        right_ds,
+        right_rows,
+        right_lat,
+        bytes_right,
+        vec!["build side (smaller)".into()],
+    );
 
     Ok(FederatedResult {
         batches: joined,
@@ -1694,8 +2109,15 @@ async fn execute_join(
         connector_types: [
             (ds_a.clone(), conn_a.connector_type().to_string()),
             (ds_b.clone(), conn_b.connector_type().to_string()),
-        ].into_iter().collect(),
-        profile_nodes: vec![ProfileNode::parent("HashJoin", join_rows, join_ms, vec![scan_left, scan_right])],
+        ]
+        .into_iter()
+        .collect(),
+        profile_nodes: vec![ProfileNode::parent(
+            "HashJoin",
+            join_rows,
+            join_ms,
+            vec![scan_left, scan_right],
+        )],
         partial_errors: vec![],
     })
 }
@@ -1721,9 +2143,14 @@ pub fn parse_time_window(query: &str) -> Option<TimeWindow> {
     let between_pos = on_clause.find(" between ")?;
     let before_between = on_clause[..between_pos].trim();
     // Column A is the last token before BETWEEN
-    let col_a = before_between.rsplit(|c: char| c.is_whitespace() || c == '(')
-        .next()?.trim().to_string();
-    if col_a.is_empty() { return None; }
+    let col_a = before_between
+        .rsplit(|c: char| c.is_whitespace() || c == '(')
+        .next()?
+        .trim()
+        .to_string();
+    if col_a.is_empty() {
+        return None;
+    }
 
     let after_between = &on_clause[between_pos + 9..];
 
@@ -1732,24 +2159,34 @@ pub fn parse_time_window(query: &str) -> Option<TimeWindow> {
 
     // Column B is referenced in the BETWEEN bounds
     // Find the first column reference after BETWEEN that isn't col_a
-    let col_b = after_between.split(|c: char| !c.is_alphanumeric() && c != '.' && c != '_')
+    let col_b = after_between
+        .split(|c: char| !c.is_alphanumeric() && c != '.' && c != '_')
         .find(|t| !t.is_empty() && t.contains('.') && *t != col_a)?
         .to_string();
 
-    Some(TimeWindow { column_a: col_a, column_b: col_b, interval_secs })
+    Some(TimeWindow {
+        column_a: col_a,
+        column_b: col_b,
+        interval_secs,
+    })
 }
 
 /// Extract interval in seconds from a string containing INTERVAL or time notation.
 fn extract_interval_secs(s: &str) -> Option<i64> {
     // Match patterns like: INTERVAL '5 minutes', INTERVAL '300 seconds', '5m', '1h'
-    let re_num = s.chars()
+    let re_num = s
+        .chars()
         .skip_while(|c| !c.is_ascii_digit())
         .take_while(|c| c.is_ascii_digit())
         .collect::<String>();
     let num: i64 = re_num.parse().ok()?;
 
     let after_num = &s[s.find(&re_num)? + re_num.len()..].trim_start();
-    let unit = after_num.chars().take_while(|c| c.is_alphabetic()).collect::<String>().to_lowercase();
+    let unit = after_num
+        .chars()
+        .take_while(|c| c.is_alphabetic())
+        .collect::<String>()
+        .to_lowercase();
 
     match unit.as_str() {
         "s" | "sec" | "second" | "seconds" => Some(num),
@@ -1769,42 +2206,46 @@ fn filter_time_window(
     let col_a_name = tw.column_a.rsplit('.').next().unwrap_or(&tw.column_a);
     let col_b_name = tw.column_b.rsplit('.').next().unwrap_or(&tw.column_b);
 
-    batches.iter().filter_map(|batch| {
-        let schema = batch.schema();
-        let idx_a = schema.index_of(col_a_name).ok()?;
-        let idx_b = schema.index_of(col_b_name).ok()?;
+    batches
+        .iter()
+        .filter_map(|batch| {
+            let schema = batch.schema();
+            let idx_a = schema.index_of(col_a_name).ok()?;
+            let idx_b = schema.index_of(col_b_name).ok()?;
 
-        let col_a = batch.column(idx_a);
-        let col_b = batch.column(idx_b);
+            let col_a = batch.column(idx_a);
+            let col_b = batch.column(idx_b);
 
-        // Build boolean mask: |a - b| <= interval_secs
-        let mut keep = Vec::with_capacity(batch.num_rows());
-        for i in 0..batch.num_rows() {
-            if col_a.is_null(i) || col_b.is_null(i) {
-                keep.push(false);
-                continue;
+            // Build boolean mask: |a - b| <= interval_secs
+            let mut keep = Vec::with_capacity(batch.num_rows());
+            for i in 0..batch.num_rows() {
+                if col_a.is_null(i) || col_b.is_null(i) {
+                    keep.push(false);
+                    continue;
+                }
+                let val_a =
+                    arrow::util::display::array_value_to_string(col_a, i).unwrap_or_default();
+                let val_b =
+                    arrow::util::display::array_value_to_string(col_b, i).unwrap_or_default();
+
+                // Try numeric comparison (epoch seconds/millis)
+                let within = if let (Ok(a), Ok(b)) = (val_a.parse::<i64>(), val_b.parse::<i64>()) {
+                    (a - b).abs() <= tw.interval_secs
+                } else if let (Ok(a), Ok(b)) = (val_a.parse::<f64>(), val_b.parse::<f64>()) {
+                    (a - b).abs() <= tw.interval_secs as f64
+                } else {
+                    // String comparison (ISO timestamps) — lexicographic diff not meaningful,
+                    // but include row if we can't parse (don't silently drop)
+                    true
+                };
+                keep.push(within);
             }
-            let val_a = arrow::util::display::array_value_to_string(col_a, i).unwrap_or_default();
-            let val_b = arrow::util::display::array_value_to_string(col_b, i).unwrap_or_default();
 
-            // Try numeric comparison (epoch seconds/millis)
-            let within = if let (Ok(a), Ok(b)) = (val_a.parse::<i64>(), val_b.parse::<i64>()) {
-                (a - b).abs() <= tw.interval_secs
-            } else if let (Ok(a), Ok(b)) = (val_a.parse::<f64>(), val_b.parse::<f64>()) {
-                (a - b).abs() <= tw.interval_secs as f64
-            } else {
-                // String comparison (ISO timestamps) — lexicographic diff not meaningful,
-                // but include row if we can't parse (don't silently drop)
-                true
-            };
-            keep.push(within);
-        }
-
-        let mask = arrow::array::BooleanArray::from(keep);
-        arrow::compute::filter_record_batch(batch, &mask).ok()
-    }).collect()
+            let mask = arrow::array::BooleanArray::from(keep);
+            arrow::compute::filter_record_batch(batch, &mask).ok()
+        })
+        .collect()
 }
-
 
 /// Extract join column name from an explicit ON clause (e.g. "ON a.user_id = b.user_id").
 /// Returns (key_in_schema_a, key_in_schema_b) from an explicit ON clause.
@@ -1820,7 +2261,9 @@ fn parse_on_keys(query: &str) -> Option<(String, String)> {
     let right_token = right_part.split(|c: char| c.is_whitespace()).next()?;
     let left_col = left_part.rsplit('.').next()?.trim();
     let right_col = right_token.rsplit('.').next()?.trim();
-    if left_col.is_empty() || right_col.is_empty() { return None; }
+    if left_col.is_empty() || right_col.is_empty() {
+        return None;
+    }
     Some((left_col.to_string(), right_col.to_string()))
 }
 
@@ -1876,8 +2319,11 @@ pub async fn get_schemas(
     let connector = match state.registry.get(&id) {
         Some(c) => c,
         None => {
-            return error_json(StatusCode::NOT_FOUND, format!("datasource '{}' not found", id))
-                .into_response()
+            return error_json(
+                StatusCode::NOT_FOUND,
+                format!("datasource '{}' not found", id),
+            )
+            .into_response()
         }
     };
 
@@ -1910,8 +2356,11 @@ pub async fn get_fields(
     let connector = match state.registry.get(&id) {
         Some(c) => c,
         None => {
-            return error_json(StatusCode::NOT_FOUND, format!("datasource '{}' not found", id))
-                .into_response()
+            return error_json(
+                StatusCode::NOT_FOUND,
+                format!("datasource '{}' not found", id),
+            )
+            .into_response()
         }
     };
 
@@ -1948,7 +2397,10 @@ pub async fn explain_handler(
     Json(req): Json<QueryRequest>,
 ) -> impl IntoResponse {
     let t0 = std::time::Instant::now();
-    let identity = auth_identity.as_ref().map(|ext| ext.0.identity.clone()).unwrap_or_else(|| "anonymous".into());
+    let identity = auth_identity
+        .as_ref()
+        .map(|ext| ext.0.identity.clone())
+        .unwrap_or_else(|| "anonymous".into());
     let format = req.format.to_lowercase();
     let parse_result = match format.as_str() {
         "ppl" => parse_ppl_sources(&req.query),
@@ -1967,17 +2419,28 @@ pub async fn explain_handler(
                 .collect();
 
             let plan_tree = if refs.len() == 1 {
-                let c = caps.first().cloned().unwrap_or_else(fuse_core::connector::ConnectorCapabilities::full);
+                let c = caps
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(fuse_core::connector::ConnectorCapabilities::full);
                 fuse_engine::plan::plan_single(&refs[0].0, &refs[0].1, &c, &workload)
             } else if is_union_query(&req.query) {
                 fuse_engine::plan::plan_union(&refs, &caps, &workload, limit)
             } else if refs.len() == 2 {
-                let c0 = caps.first().cloned().unwrap_or_else(fuse_core::connector::ConnectorCapabilities::full);
-                let c1 = caps.get(1).cloned().unwrap_or_else(fuse_core::connector::ConnectorCapabilities::full);
+                let c0 = caps
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(fuse_core::connector::ConnectorCapabilities::full);
+                let c1 = caps
+                    .get(1)
+                    .cloned()
+                    .unwrap_or_else(fuse_core::connector::ConnectorCapabilities::full);
                 fuse_engine::plan::plan_join(
                     (&refs[0].0, &refs[0].1),
                     (&refs[1].0, &refs[1].1),
-                    &c0, &c1, "auto",
+                    &c0,
+                    &c1,
+                    "auto",
                 )
             } else {
                 fuse_engine::plan::PlanNode::leaf("Unknown", format!("{} datasources", refs.len()))
@@ -2012,9 +2475,12 @@ pub async fn explain_handler(
 
             // Compute dollar cost estimate from connector types + estimated bytes
             let cost_estimate = {
-                let owned: Vec<(String, String, u64, u64)> = refs.iter()
+                let owned: Vec<(String, String, u64, u64)> = refs
+                    .iter()
                     .map(|(ds, _)| {
-                        let ct = state.registry.get(ds)
+                        let ct = state
+                            .registry
+                            .get(ds)
                             .map(|c| c.connector_type().to_string())
                             .unwrap_or_default();
                         let est_rows = plan_tree.estimated_rows.unwrap_or(10_000);
@@ -2022,25 +2488,33 @@ pub async fn explain_handler(
                         (ds.clone(), ct, est_rows, est_bytes)
                     })
                     .collect();
-                let input_refs: Vec<(&str, &str, u64, u64)> = owned.iter()
+                let input_refs: Vec<(&str, &str, u64, u64)> = owned
+                    .iter()
                     .map(|(ds, ct, r, b)| (ds.as_str(), ct.as_str(), *r, *b))
                     .collect();
                 let est = crate::cost_estimator::estimate_query_cost(&input_refs);
-                if est.total_cost_usd > 0.0 { Some(est) } else { None }
+                if est.total_cost_usd > 0.0 {
+                    Some(est)
+                } else {
+                    None
+                }
             };
 
-            state.audit_log.record(crate::audit::AuditEntry {
-                timestamp: crate::history::now_secs(),
-                identity: identity.clone(),
-                action: crate::audit::AuditAction::Explain,
-                query: Some(req.query.clone()),
-                datasources: refs.iter().map(|(ds, _)| ds.clone()).collect(),
-                duration_ms: t0.elapsed().as_millis() as u64,
-                row_count: 0,
-                status: crate::audit::AuditStatus::Success,
-                error: None,
-                client_ip: extract_client_ip(&headers),
-            }).await;
+            state
+                .audit_log
+                .record(crate::audit::AuditEntry {
+                    timestamp: crate::history::now_secs(),
+                    identity: identity.clone(),
+                    action: crate::audit::AuditAction::Explain,
+                    query: Some(req.query.clone()),
+                    datasources: refs.iter().map(|(ds, _)| ds.clone()).collect(),
+                    duration_ms: t0.elapsed().as_millis() as u64,
+                    row_count: 0,
+                    status: crate::audit::AuditStatus::Success,
+                    error: None,
+                    client_ip: extract_client_ip(&headers),
+                })
+                .await;
             Json(ExplainResponse {
                 plan: plan_text,
                 plan_display: Some(plan_tree_text),
@@ -2052,18 +2526,21 @@ pub async fn explain_handler(
             .into_response()
         }
         Err(e) => {
-            state.audit_log.record(crate::audit::AuditEntry {
-                timestamp: crate::history::now_secs(),
-                identity: identity.clone(),
-                action: crate::audit::AuditAction::Explain,
-                query: Some(req.query.clone()),
-                datasources: vec![],
-                duration_ms: t0.elapsed().as_millis() as u64,
-                row_count: 0,
-                status: crate::audit::AuditStatus::Error,
-                error: Some(e.clone()),
-                client_ip: extract_client_ip(&headers),
-            }).await;
+            state
+                .audit_log
+                .record(crate::audit::AuditEntry {
+                    timestamp: crate::history::now_secs(),
+                    identity: identity.clone(),
+                    action: crate::audit::AuditAction::Explain,
+                    query: Some(req.query.clone()),
+                    datasources: vec![],
+                    duration_ms: t0.elapsed().as_millis() as u64,
+                    row_count: 0,
+                    status: crate::audit::AuditStatus::Error,
+                    error: Some(e.clone()),
+                    client_ip: extract_client_ip(&headers),
+                })
+                .await;
             error_json(StatusCode::BAD_REQUEST, e).into_response()
         }
     }
@@ -2077,7 +2554,10 @@ pub async fn validate_handler(
     Json(req): Json<QueryRequest>,
 ) -> impl IntoResponse {
     let t0 = std::time::Instant::now();
-    let identity = auth_identity.as_ref().map(|ext| ext.0.identity.clone()).unwrap_or_else(|| "anonymous".into());
+    let identity = auth_identity
+        .as_ref()
+        .map(|ext| ext.0.identity.clone())
+        .unwrap_or_else(|| "anonymous".into());
     let format = req.format.to_lowercase();
     let parse_result = match format.as_str() {
         "ppl" => parse_ppl_sources(&req.query),
@@ -2089,10 +2569,12 @@ pub async fn validate_handler(
             for (ds_id, table) in &refs {
                 let connector = match state.registry.get(ds_id) {
                     Some(c) => c,
-                    None => return Json(ValidateResponse {
-                        valid: false,
-                        error: Some(format!("datasource '{}' not found in registry", ds_id)),
-                    }),
+                    None => {
+                        return Json(ValidateResponse {
+                            valid: false,
+                            error: Some(format!("datasource '{}' not found in registry", ds_id)),
+                        })
+                    }
                 };
                 // Check table exists in datasource
                 match connector.discover_schemas().await {
@@ -2100,46 +2582,60 @@ pub async fn validate_handler(
                         if !schemas.iter().any(|s| s.name == *table) {
                             return Json(ValidateResponse {
                                 valid: false,
-                                error: Some(format!("table '{}' not found in datasource '{}'", table, ds_id)),
+                                error: Some(format!(
+                                    "table '{}' not found in datasource '{}'",
+                                    table, ds_id
+                                )),
                             });
                         }
                     }
-                    Err(e) => return Json(ValidateResponse {
-                        valid: false,
-                        error: Some(format!("failed to discover schemas for '{}': {}", ds_id, e)),
-                    }),
+                    Err(e) => {
+                        return Json(ValidateResponse {
+                            valid: false,
+                            error: Some(format!(
+                                "failed to discover schemas for '{}': {}",
+                                ds_id, e
+                            )),
+                        })
+                    }
                 }
             }
-            state.audit_log.record(crate::audit::AuditEntry {
-                timestamp: crate::history::now_secs(),
-                identity: identity.clone(),
-                action: crate::audit::AuditAction::Validate,
-                query: Some(req.query.clone()),
-                datasources: refs.iter().map(|(ds, _)| ds.clone()).collect(),
-                duration_ms: t0.elapsed().as_millis() as u64,
-                row_count: 0,
-                status: crate::audit::AuditStatus::Success,
-                error: None,
-                client_ip: extract_client_ip(&headers),
-            }).await;
+            state
+                .audit_log
+                .record(crate::audit::AuditEntry {
+                    timestamp: crate::history::now_secs(),
+                    identity: identity.clone(),
+                    action: crate::audit::AuditAction::Validate,
+                    query: Some(req.query.clone()),
+                    datasources: refs.iter().map(|(ds, _)| ds.clone()).collect(),
+                    duration_ms: t0.elapsed().as_millis() as u64,
+                    row_count: 0,
+                    status: crate::audit::AuditStatus::Success,
+                    error: None,
+                    client_ip: extract_client_ip(&headers),
+                })
+                .await;
             Json(ValidateResponse {
                 valid: true,
                 error: None,
             })
         }
         Err(e) => {
-            state.audit_log.record(crate::audit::AuditEntry {
-                timestamp: crate::history::now_secs(),
-                identity: identity.clone(),
-                action: crate::audit::AuditAction::Validate,
-                query: Some(req.query.clone()),
-                datasources: vec![],
-                duration_ms: t0.elapsed().as_millis() as u64,
-                row_count: 0,
-                status: crate::audit::AuditStatus::Error,
-                error: Some(e.clone()),
-                client_ip: extract_client_ip(&headers),
-            }).await;
+            state
+                .audit_log
+                .record(crate::audit::AuditEntry {
+                    timestamp: crate::history::now_secs(),
+                    identity: identity.clone(),
+                    action: crate::audit::AuditAction::Validate,
+                    query: Some(req.query.clone()),
+                    datasources: vec![],
+                    duration_ms: t0.elapsed().as_millis() as u64,
+                    row_count: 0,
+                    status: crate::audit::AuditStatus::Error,
+                    error: Some(e.clone()),
+                    client_ip: extract_client_ip(&headers),
+                })
+                .await;
             Json(ValidateResponse {
                 valid: false,
                 error: Some(e),
@@ -2235,7 +2731,10 @@ pub fn parse_sql_sources(query: &str) -> Result<Vec<(String, String)>, String> {
     }
 
     if refs.is_empty() {
-        Err("SQL query must contain a FROM clause with a qualified datasource.table reference".into())
+        Err(
+            "SQL query must contain a FROM clause with a qualified datasource.table reference"
+                .into(),
+        )
     } else {
         Ok(refs)
     }
@@ -2257,8 +2756,7 @@ fn add_datasource_column(
             let mut fields: Vec<Arc<Field>> = batch.schema().fields().iter().cloned().collect();
             fields.push(Arc::new(Field::new("_datasource", DataType::Utf8, false)));
             let schema = Arc::new(arrow::datatypes::Schema::new(fields));
-            let mut columns: Vec<Arc<dyn arrow::array::Array>> =
-                batch.columns().to_vec();
+            let mut columns: Vec<Arc<dyn arrow::array::Array>> = batch.columns().to_vec();
             columns.push(ds_array);
             arrow::record_batch::RecordBatch::try_new(schema, columns).ok()
         })
@@ -2269,7 +2767,6 @@ fn add_datasource_column(
 /// Returns: Vec<(outer_column, inner_datasource, inner_table, inner_column, inner_filter)>
 static QUERY_COUNTER: AtomicU64 = AtomicU64::new(1);
 
-
 #[derive(Debug)]
 struct MemoryConnector {
     name: String,
@@ -2278,31 +2775,62 @@ struct MemoryConnector {
 
 #[async_trait]
 impl fuse_core::connector::FederatedConnector for MemoryConnector {
-    fn id(&self) -> &str { &self.name }
-    fn connector_type(&self) -> &str { "memory" }
+    fn id(&self) -> &str {
+        &self.name
+    }
+    fn connector_type(&self) -> &str {
+        "memory"
+    }
     fn capabilities(&self) -> fuse_core::connector::ConnectorCapabilities {
         fuse_core::connector::ConnectorCapabilities {
-            supports_filtering: false, supports_projection: false,
-            supports_aggregation: false, supports_sorting: false,
-            supports_limit: false, supports_join: false,
-            max_concurrent_queries: 1, supports_streaming: false,
+            supports_filtering: false,
+            supports_projection: false,
+            supports_aggregation: false,
+            supports_sorting: false,
+            supports_limit: false,
+            supports_join: false,
+            max_concurrent_queries: 1,
+            supports_streaming: false,
             latency_class: fuse_core::connector::LatencyClass::Low,
         }
     }
     async fn health_check(&self) -> fuse_core::connector::ConnectorHealth {
-        fuse_core::connector::ConnectorHealth { status: fuse_core::connector::HealthStatus::Healthy, message: None, latency_ms: Some(0) }
+        fuse_core::connector::ConnectorHealth {
+            status: fuse_core::connector::HealthStatus::Healthy,
+            message: None,
+            latency_ms: Some(0),
+        }
     }
-    async fn discover_schemas(&self) -> Result<Vec<fuse_core::connector::SchemaInfo>, fuse_core::error::ConnectorError> { Ok(vec![]) }
-    async fn get_schema(&self, _table: &str) -> Result<arrow::datatypes::Schema, fuse_core::error::ConnectorError> {
-        self.batches.first()
+    async fn discover_schemas(
+        &self,
+    ) -> Result<Vec<fuse_core::connector::SchemaInfo>, fuse_core::error::ConnectorError> {
+        Ok(vec![])
+    }
+    async fn get_schema(
+        &self,
+        _table: &str,
+    ) -> Result<arrow::datatypes::Schema, fuse_core::error::ConnectorError> {
+        self.batches
+            .first()
             .map(|b| b.schema().as_ref().clone())
             .ok_or_else(|| fuse_core::error::ConnectorError::QueryFailed("empty CTE".into()))
     }
-    async fn execute(&self, _query: &fuse_core::connector::SubQuery) -> Result<Vec<arrow::record_batch::RecordBatch>, fuse_core::error::ConnectorError> {
+    async fn execute(
+        &self,
+        _query: &fuse_core::connector::SubQuery,
+    ) -> Result<Vec<arrow::record_batch::RecordBatch>, fuse_core::error::ConnectorError> {
         Ok(self.batches.clone())
     }
-    async fn execute_streaming(&self, _query: &fuse_core::connector::SubQuery, tx: tokio::sync::mpsc::Sender<Result<arrow::record_batch::RecordBatch, fuse_core::error::ConnectorError>>) -> Result<(), fuse_core::error::ConnectorError> {
-        for b in &self.batches { let _ = tx.send(Ok(b.clone())).await; }
+    async fn execute_streaming(
+        &self,
+        _query: &fuse_core::connector::SubQuery,
+        tx: tokio::sync::mpsc::Sender<
+            Result<arrow::record_batch::RecordBatch, fuse_core::error::ConnectorError>,
+        >,
+    ) -> Result<(), fuse_core::error::ConnectorError> {
+        for b in &self.batches {
+            let _ = tx.send(Ok(b.clone())).await;
+        }
         Ok(())
     }
 }
@@ -2326,7 +2854,9 @@ async fn execute_recursive_cte(
     // Execute base case
     let base_refs = parse_sql_sources(base_sql).ok()?;
     let base_result = if base_refs.len() == 1 {
-        execute_single(state, base_sql, format, &base_refs[0], None).await.ok()?
+        execute_single(state, base_sql, format, &base_refs[0], None)
+            .await
+            .ok()?
     } else {
         return None;
     };
@@ -2340,10 +2870,11 @@ async fn execute_recursive_cte(
         }
 
         // Register current working set as the CTE name for self-reference
-        let temp_conn: Arc<dyn fuse_core::connector::FederatedConnector> = Arc::new(MemoryConnector {
-            name: cte_name.to_string(),
-            batches: working_set,
-        });
+        let temp_conn: Arc<dyn fuse_core::connector::FederatedConnector> =
+            Arc::new(MemoryConnector {
+                name: cte_name.to_string(),
+                batches: working_set,
+            });
         let _ = state.registry.register(temp_conn);
 
         // Execute recursive step
@@ -2376,7 +2907,11 @@ async fn resolve_ctes(
     query: &str,
     format: &str,
     refs: &[(String, String)],
-) -> (String, Vec<(String, String)>, Vec<(String, Arc<dyn fuse_core::connector::FederatedConnector>)>) {
+) -> (
+    String,
+    Vec<(String, String)>,
+    Vec<(String, Arc<dyn fuse_core::connector::FederatedConnector>)>,
+) {
     let lower = query.to_lowercase();
     let trimmed = lower.trim_start();
     if !trimmed.starts_with("with ") {
@@ -2398,24 +2933,39 @@ async fn resolve_ctes(
 
     loop {
         // Skip whitespace
-        while pos < query.len() && query.as_bytes()[pos].is_ascii_whitespace() { pos += 1; }
-        if pos >= query.len() { break; }
+        while pos < query.len() && query.as_bytes()[pos].is_ascii_whitespace() {
+            pos += 1;
+        }
+        if pos >= query.len() {
+            break;
+        }
 
         // Parse CTE name
         let name_start = pos;
-        while pos < query.len() && !query.as_bytes()[pos].is_ascii_whitespace() && query.as_bytes()[pos] != b'(' {
+        while pos < query.len()
+            && !query.as_bytes()[pos].is_ascii_whitespace()
+            && query.as_bytes()[pos] != b'('
+        {
             pos += 1;
         }
         let cte_name = query[name_start..pos].trim().to_string();
 
         // Skip whitespace + "AS" + whitespace
-        while pos < query.len() && query.as_bytes()[pos].is_ascii_whitespace() { pos += 1; }
-        if pos + 2 > query.len() || query[pos..pos+2].to_lowercase() != "as" { break; }
+        while pos < query.len() && query.as_bytes()[pos].is_ascii_whitespace() {
+            pos += 1;
+        }
+        if pos + 2 > query.len() || query[pos..pos + 2].to_lowercase() != "as" {
+            break;
+        }
         pos += 2;
-        while pos < query.len() && query.as_bytes()[pos].is_ascii_whitespace() { pos += 1; }
+        while pos < query.len() && query.as_bytes()[pos].is_ascii_whitespace() {
+            pos += 1;
+        }
 
         // Expect '('
-        if pos >= query.len() || query.as_bytes()[pos] != b'(' { break; }
+        if pos >= query.len() || query.as_bytes()[pos] != b'(' {
+            break;
+        }
         pos += 1; // skip '('
 
         // Find matching ')'
@@ -2430,7 +2980,9 @@ async fn resolve_ctes(
         }
 
         // After closing paren: comma → more CTEs, else → main SELECT
-        while pos < query.len() && query.as_bytes()[pos].is_ascii_whitespace() { pos += 1; }
+        while pos < query.len() && query.as_bytes()[pos].is_ascii_whitespace() {
+            pos += 1;
+        }
         if pos < query.len() && query.as_bytes()[pos] == b',' {
             pos += 1;
         } else {
@@ -2449,7 +3001,11 @@ async fn resolve_ctes(
         if is_recursive && inner_sql.to_lowercase().contains(" union all ") {
             // Recursive CTE: split into base + recursive parts at UNION ALL
             if let Some(batches) = execute_recursive_cte(state, name, inner_sql, format).await {
-                let conn: Arc<dyn fuse_core::connector::FederatedConnector> = Arc::new(MemoryConnector { name: name.clone(), batches });
+                let conn: Arc<dyn fuse_core::connector::FederatedConnector> =
+                    Arc::new(MemoryConnector {
+                        name: name.clone(),
+                        batches,
+                    });
                 let _ = state.registry.register(conn.clone());
                 cte_connectors.push((name.clone(), conn));
             }
@@ -2467,7 +3023,11 @@ async fn resolve_ctes(
                 execute_join(state, inner_sql, &inner_refs).await
             };
             if let Ok(fed) = result {
-                let conn: Arc<dyn fuse_core::connector::FederatedConnector> = Arc::new(MemoryConnector { name: name.clone(), batches: fed.batches });
+                let conn: Arc<dyn fuse_core::connector::FederatedConnector> =
+                    Arc::new(MemoryConnector {
+                        name: name.clone(),
+                        batches: fed.batches,
+                    });
                 let _ = state.registry.register(conn.clone());
                 cte_connectors.push((name.clone(), conn));
             }
@@ -2497,8 +3057,12 @@ fn extract_in_subqueries(query: &str) -> Vec<InSubquery> {
         let abs_in = pos + in_pos;
         // Extract the column before IN
         let before = stripped[..abs_in].trim();
-        let col = before.rsplit(|c: char| c.is_whitespace() || c == '(')
-            .next().unwrap_or("").trim().to_string();
+        let col = before
+            .rsplit(|c: char| c.is_whitespace() || c == '(')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
 
         // Find matching closing paren
         let select_start = abs_in + 5; // skip " IN ("
@@ -2549,7 +3113,9 @@ fn find_matching_paren(s: &str) -> Option<usize> {
             '(' => depth += 1,
             ')' => {
                 depth -= 1;
-                if depth == 0 { return Some(i); }
+                if depth == 0 {
+                    return Some(i);
+                }
             }
             _ => {}
         }
@@ -2571,7 +3137,10 @@ fn decode_cursor(cursor: &str) -> Option<usize> {
 /// Format: fuse_u_<ds1>:<offset1>,<ds2>:<offset2>,...|<global_offset>
 #[allow(dead_code)]
 fn encode_union_cursor(per_source: &[(String, usize)], global_offset: usize) -> String {
-    let parts: Vec<String> = per_source.iter().map(|(ds, off)| format!("{}:{}", ds, off)).collect();
+    let parts: Vec<String> = per_source
+        .iter()
+        .map(|(ds, off)| format!("{}:{}", ds, off))
+        .collect();
     format!("fuse_u_{}|{}", parts.join(","), global_offset)
 }
 
@@ -2581,7 +3150,8 @@ fn decode_union_cursor(cursor: &str) -> Option<(Vec<(String, usize)>, usize)> {
     let rest = cursor.strip_prefix("fuse_u_")?;
     let (sources_part, global_part) = rest.rsplit_once('|')?;
     let global: usize = global_part.parse().ok()?;
-    let per_source: Vec<(String, usize)> = sources_part.split(',')
+    let per_source: Vec<(String, usize)> = sources_part
+        .split(',')
         .filter_map(|s| {
             let (ds, off) = s.rsplit_once(':')?;
             Some((ds.to_string(), off.parse().ok()?))
@@ -2659,9 +3229,7 @@ fn parse_limit(query: &str) -> Option<usize> {
     let stripped = strip_string_literals(query).to_lowercase();
     let pos = stripped.rfind("limit ")?;
     let after = stripped[pos + 6..].trim();
-    let num_str = after
-        .split(|c: char| !c.is_ascii_digit())
-        .next()?;
+    let num_str = after.split(|c: char| !c.is_ascii_digit()).next()?;
     num_str.parse().ok()
 }
 
@@ -2670,9 +3238,7 @@ fn parse_offset(query: &str) -> Option<usize> {
     let stripped = strip_string_literals(query).to_lowercase();
     let pos = stripped.rfind("offset ")?;
     let after = stripped[pos + 7..].trim();
-    let num_str = after
-        .split(|c: char| !c.is_ascii_digit())
-        .next()?;
+    let num_str = after.split(|c: char| !c.is_ascii_digit()).next()?;
     num_str.parse().ok()
 }
 
@@ -2687,14 +3253,18 @@ fn parse_group_by(query: &str) -> Vec<String> {
     let after = stripped[pos + 9..].trim();
     // Stop at HAVING, ORDER BY, LIMIT, or end
     let clause = after
-        .split_once("having").map(|(c, _)| c)
+        .split_once("having")
+        .map(|(c, _)| c)
         .unwrap_or(after)
-        .split_once("order").map(|(c, _)| c)
+        .split_once("order")
+        .map(|(c, _)| c)
         .unwrap_or(after)
-        .split_once("limit").map(|(c, _)| c)
+        .split_once("limit")
+        .map(|(c, _)| c)
         .unwrap_or(after)
         .trim();
-    clause.split(',')
+    clause
+        .split(',')
         .map(|c| c.trim().to_string())
         .filter(|c| !c.is_empty())
         .collect()
@@ -2703,7 +3273,7 @@ fn parse_group_by(query: &str) -> Vec<String> {
 /// A parsed HAVING condition: column op value.
 pub struct HavingCondition {
     pub column: String,
-    pub op: String,   // ">", ">=", "<", "<=", "=", "!="
+    pub op: String, // ">", ">=", "<", "<=", "=", "!="
     pub value: f64,
 }
 
@@ -2715,9 +3285,11 @@ pub fn parse_having(query: &str) -> Option<HavingCondition> {
     let after = stripped[pos + 8..].trim();
     // Stop at ORDER BY, LIMIT, or end
     let clause = after
-        .split_once(" order").map(|(c, _)| c)
+        .split_once(" order")
+        .map(|(c, _)| c)
         .unwrap_or(after)
-        .split_once(" limit").map(|(c, _)| c)
+        .split_once(" limit")
+        .map(|(c, _)| c)
         .unwrap_or(after)
         .trim();
 
@@ -2731,7 +3303,11 @@ pub fn parse_having(query: &str) -> Option<HavingCondition> {
             // Extract column name — could be alias like "cnt" or expression like "COUNT(*)"
             let column = col.to_string();
             let value: f64 = val_str.split_whitespace().next()?.parse().ok()?;
-            return Some(HavingCondition { column, op: op.to_string(), value });
+            return Some(HavingCondition {
+                column,
+                op: op.to_string(),
+                value,
+            });
         }
     }
     None
@@ -2742,39 +3318,49 @@ fn apply_having_filter(
     batches: &[arrow::record_batch::RecordBatch],
     having: &HavingCondition,
 ) -> Vec<arrow::record_batch::RecordBatch> {
-    batches.iter().filter_map(|batch| {
-        let schema = batch.schema();
-        // Find column by name (case-insensitive)
-        let col_name_lower = having.column.to_lowercase();
-        let idx = schema.fields().iter().position(|f| f.name().to_lowercase() == col_name_lower)?;
-        let col = batch.column(idx);
+    batches
+        .iter()
+        .filter_map(|batch| {
+            let schema = batch.schema();
+            // Find column by name (case-insensitive)
+            let col_name_lower = having.column.to_lowercase();
+            let idx = schema
+                .fields()
+                .iter()
+                .position(|f| f.name().to_lowercase() == col_name_lower)?;
+            let col = batch.column(idx);
 
-        let mut keep = Vec::with_capacity(batch.num_rows());
-        for i in 0..batch.num_rows() {
-            if col.is_null(i) {
-                keep.push(false);
-                continue;
+            let mut keep = Vec::with_capacity(batch.num_rows());
+            for i in 0..batch.num_rows() {
+                if col.is_null(i) {
+                    keep.push(false);
+                    continue;
+                }
+                let val_str =
+                    arrow::util::display::array_value_to_string(col, i).unwrap_or_default();
+                let val: f64 = match val_str.parse() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        keep.push(false);
+                        continue;
+                    }
+                };
+                let pass = match having.op.as_str() {
+                    ">" => val > having.value,
+                    ">=" => val >= having.value,
+                    "<" => val < having.value,
+                    "<=" => val <= having.value,
+                    "=" => (val - having.value).abs() < f64::EPSILON,
+                    "!=" => (val - having.value).abs() >= f64::EPSILON,
+                    _ => true,
+                };
+                keep.push(pass);
             }
-            let val_str = arrow::util::display::array_value_to_string(col, i).unwrap_or_default();
-            let val: f64 = match val_str.parse() {
-                Ok(v) => v,
-                Err(_) => { keep.push(false); continue; }
-            };
-            let pass = match having.op.as_str() {
-                ">" => val > having.value,
-                ">=" => val >= having.value,
-                "<" => val < having.value,
-                "<=" => val <= having.value,
-                "=" => (val - having.value).abs() < f64::EPSILON,
-                "!=" => (val - having.value).abs() >= f64::EPSILON,
-                _ => true,
-            };
-            keep.push(pass);
-        }
 
-        let mask = arrow::array::BooleanArray::from(keep);
-        arrow::compute::filter_record_batch(batch, &mask).ok()
-    }).collect()
+            let mask = arrow::array::BooleanArray::from(keep);
+            arrow::compute::filter_record_batch(batch, &mask).ok()
+        })
+        .collect()
 }
 
 /// Re-aggregate merged batches by GROUP BY columns.
@@ -2790,7 +3376,8 @@ fn reaggregate_batches(
     let schema = batches[0].schema();
 
     // Find group column indices and numeric (aggregate) column indices
-    let group_indices: Vec<usize> = group_cols.iter()
+    let group_indices: Vec<usize> = group_cols
+        .iter()
         .filter_map(|c| schema.index_of(c).ok())
         .collect();
     let agg_indices: Vec<usize> = (0..schema.fields().len())
@@ -2802,18 +3389,26 @@ fn reaggregate_batches(
     }
 
     // Build groups: key = group column values, value = summed agg values
-    let mut groups: std::collections::HashMap<Vec<String>, Vec<f64>> = std::collections::HashMap::new();
+    let mut groups: std::collections::HashMap<Vec<String>, Vec<f64>> =
+        std::collections::HashMap::new();
 
     for batch in &batches {
         for row in 0..batch.num_rows() {
-            let key: Vec<String> = group_indices.iter()
-                .map(|&i| arrow::util::display::array_value_to_string(batch.column(i), row).unwrap_or_default())
+            let key: Vec<String> = group_indices
+                .iter()
+                .map(|&i| {
+                    arrow::util::display::array_value_to_string(batch.column(i), row)
+                        .unwrap_or_default()
+                })
                 .collect();
-            let entry = groups.entry(key).or_insert_with(|| vec![0.0; agg_indices.len()]);
+            let entry = groups
+                .entry(key)
+                .or_insert_with(|| vec![0.0; agg_indices.len()]);
             for (j, &col_idx) in agg_indices.iter().enumerate() {
                 let col = batch.column(col_idx);
                 if !col.is_null(row) {
-                    let val_str = arrow::util::display::array_value_to_string(col, row).unwrap_or_default();
+                    let val_str =
+                        arrow::util::display::array_value_to_string(col, row).unwrap_or_default();
                     if let Ok(v) = val_str.parse::<f64>() {
                         entry[j] += v;
                     }
@@ -2823,14 +3418,19 @@ fn reaggregate_batches(
     }
 
     // Build output batch
-    use arrow::array::{StringArray, Float64Array};
+    use arrow::array::{Float64Array, StringArray};
     use arrow::datatypes::{DataType, Field};
 
-    let mut fields: Vec<Arc<Field>> = group_indices.iter()
+    let mut fields: Vec<Arc<Field>> = group_indices
+        .iter()
         .map(|&i| Arc::new(Field::new(schema.field(i).name(), DataType::Utf8, true)))
         .collect();
     for &i in &agg_indices {
-        fields.push(Arc::new(Field::new(schema.field(i).name(), DataType::Float64, true)));
+        fields.push(Arc::new(Field::new(
+            schema.field(i).name(),
+            DataType::Float64,
+            true,
+        )));
     }
     let out_schema = Arc::new(arrow::datatypes::Schema::new(fields));
 
@@ -2863,19 +3463,31 @@ fn parse_order_by(query: &str) -> Vec<(String, bool)> {
     let after = stripped[pos + 9..].trim();
     // Stop at LIMIT, OFFSET, or end
     let clause = after
-        .split_once("limit").map(|(c, _)| c)
+        .split_once("limit")
+        .map(|(c, _)| c)
         .unwrap_or(after)
-        .split_once("offset").map(|(c, _)| c)
+        .split_once("offset")
+        .map(|(c, _)| c)
         .unwrap_or(after)
         .trim();
 
-    clause.split(',')
+    clause
+        .split(',')
         .filter_map(|part| {
             let tokens: Vec<&str> = part.split_whitespace().collect();
-            if tokens.is_empty() { return None; }
-            let col = tokens[0].trim_matches(|c: char| !c.is_alphanumeric() && c != '_').to_string();
-            if col.is_empty() { return None; }
-            let desc = tokens.get(1).map(|d| d.to_lowercase() == "desc").unwrap_or(false);
+            if tokens.is_empty() {
+                return None;
+            }
+            let col = tokens[0]
+                .trim_matches(|c: char| !c.is_alphanumeric() && c != '_')
+                .to_string();
+            if col.is_empty() {
+                return None;
+            }
+            let desc = tokens
+                .get(1)
+                .map(|d| d.to_lowercase() == "desc")
+                .unwrap_or(false);
             Some((col, desc))
         })
         .collect()
@@ -2910,11 +3522,19 @@ fn parse_qualified_name(name: &str) -> Result<(String, String), String> {
 
 /// Single-source wrappers used by evaluate_alerts handler.
 fn parse_ppl_source(query: &str) -> Result<(String, String), String> {
-    parse_ppl_sources(query).and_then(|v| v.into_iter().next().ok_or_else(|| "no source found".to_string()))
+    parse_ppl_sources(query).and_then(|v| {
+        v.into_iter()
+            .next()
+            .ok_or_else(|| "no source found".to_string())
+    })
 }
 
 fn parse_sql_source(query: &str) -> Result<(String, String), String> {
-    parse_sql_sources(query).and_then(|v| v.into_iter().next().ok_or_else(|| "no source found".to_string()))
+    parse_sql_sources(query).and_then(|v| {
+        v.into_iter()
+            .next()
+            .ok_or_else(|| "no source found".to_string())
+    })
 }
 
 /// Build a SubQuery from a user query string using the full translation pipeline.
@@ -2928,10 +3548,9 @@ pub fn build_sub_query(
     table: &str,
 ) -> Result<fuse_core::connector::SubQuery, String> {
     let sql = if format == "ppl" {
-        let parsed = fuse_engine::ppl::parse_ppl(query)
-            .map_err(|e| format!("PPL parse error: {e}"))?;
-        fuse_engine::ppl::ppl_to_sql(&parsed)
-            .map_err(|e| format!("PPL translation error: {e}"))?
+        let parsed =
+            fuse_engine::ppl::parse_ppl(query).map_err(|e| format!("PPL parse error: {e}"))?;
+        fuse_engine::ppl::ppl_to_sql(&parsed).map_err(|e| format!("PPL translation error: {e}"))?
     } else {
         query.to_string()
     };
@@ -2951,7 +3570,9 @@ pub fn build_sub_query(
                 group_by: vec![],
                 sort: vec![],
                 limit: None,
-                having: None, offset: None, passthrough: None,
+                having: None,
+                offset: None,
+                passthrough: None,
             })
         }
     }
@@ -2961,18 +3582,32 @@ pub fn build_sub_query(
 /// Estimate total size of record batches in bytes.
 #[allow(dead_code)]
 fn estimate_batches_size(batches: &[arrow::record_batch::RecordBatch]) -> u64 {
-    batches.iter().map(|b| {
-        b.columns().iter().map(|a| a.get_array_memory_size() as u64).sum::<u64>()
-    }).sum()
+    batches
+        .iter()
+        .map(|b| {
+            b.columns()
+                .iter()
+                .map(|a| a.get_array_memory_size() as u64)
+                .sum::<u64>()
+        })
+        .sum()
 }
 
 /// Check if result exceeds max_result_bytes. Returns Err with message if exceeded.
 #[allow(dead_code)]
-fn check_result_size(batches: &[arrow::record_batch::RecordBatch], max_bytes: u64) -> Result<(), String> {
-    if max_bytes == 0 { return Ok(()); }
+fn check_result_size(
+    batches: &[arrow::record_batch::RecordBatch],
+    max_bytes: u64,
+) -> Result<(), String> {
+    if max_bytes == 0 {
+        return Ok(());
+    }
     let size = estimate_batches_size(batches);
     if size > max_bytes {
-        Err(format!("result size {} bytes exceeds max_result_bytes limit of {} bytes", size, max_bytes))
+        Err(format!(
+            "result size {} bytes exceeds max_result_bytes limit of {} bytes",
+            size, max_bytes
+        ))
     } else {
         Ok(())
     }
@@ -3046,7 +3681,8 @@ fn batches_to_ndjson(batches: &[arrow::record_batch::RecordBatch]) -> String {
                     serde_json::Value::Null
                 } else {
                     serde_json::Value::String(
-                        arrow::util::display::array_value_to_string(col, row_idx).unwrap_or_default()
+                        arrow::util::display::array_value_to_string(col, row_idx)
+                            .unwrap_or_default(),
                     )
                 };
                 map.insert(col_name.to_string(), val);
@@ -3063,7 +3699,10 @@ pub async fn history_handler(
     State(state): State<Arc<AppState>>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> impl IntoResponse {
-    let limit: usize = params.get("limit").and_then(|v| v.parse().ok()).unwrap_or(100);
+    let limit: usize = params
+        .get("limit")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(100);
     let since: Option<u64> = params.get("since").and_then(|v| v.parse().ok());
     let status_filter = params.get("status").map(|s| s.as_str());
     let datasource_filter = params.get("datasource").cloned();
@@ -3115,7 +3754,8 @@ pub async fn rotate_key_handler(
         None => error_json(
             StatusCode::NOT_FOUND,
             format!("no API key found for identity '{}'", req.identity),
-        ).into_response(),
+        )
+        .into_response(),
     }
 }
 
@@ -3133,36 +3773,62 @@ pub async fn audit_handler(
     State(state): State<Arc<AppState>>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> impl IntoResponse {
-    let limit = params.get("limit").and_then(|v| v.parse().ok()).unwrap_or(50usize);
+    let limit = params
+        .get("limit")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(50usize);
     let format = params.get("format").map(|s| s.as_str()).unwrap_or("json");
 
     if let Some(identity) = params.get("identity") {
         let entries = state.audit_log.for_identity(identity, limit).await;
         if format == "ndjson" {
-            let body = entries.iter()
+            let body = entries
+                .iter()
                 .filter_map(|e| serde_json::to_string(e).ok())
-                .collect::<Vec<_>>().join("\n");
-            return (StatusCode::OK, [(axum::http::header::CONTENT_TYPE, "application/x-ndjson")], body).into_response();
+                .collect::<Vec<_>>()
+                .join("\n");
+            return (
+                StatusCode::OK,
+                [(axum::http::header::CONTENT_TYPE, "application/x-ndjson")],
+                body,
+            )
+                .into_response();
         }
-        return Json(serde_json::json!({"entries": entries, "count": entries.len()})).into_response();
+        return Json(serde_json::json!({"entries": entries, "count": entries.len()}))
+            .into_response();
     }
 
     if let Some(since) = params.get("since").and_then(|v| v.parse::<u64>().ok()) {
         let body = state.audit_log.export_since(since).await;
         if format == "ndjson" {
-            return (StatusCode::OK, [(axum::http::header::CONTENT_TYPE, "application/x-ndjson")], body).into_response();
+            return (
+                StatusCode::OK,
+                [(axum::http::header::CONTENT_TYPE, "application/x-ndjson")],
+                body,
+            )
+                .into_response();
         }
-        let entries: Vec<serde_json::Value> = body.lines()
-            .filter_map(|l| serde_json::from_str(l).ok()).collect();
-        return Json(serde_json::json!({"entries": entries, "count": entries.len()})).into_response();
+        let entries: Vec<serde_json::Value> = body
+            .lines()
+            .filter_map(|l| serde_json::from_str(l).ok())
+            .collect();
+        return Json(serde_json::json!({"entries": entries, "count": entries.len()}))
+            .into_response();
     }
 
     let entries = state.audit_log.recent(limit).await;
     if format == "ndjson" {
-        let body = entries.iter()
+        let body = entries
+            .iter()
             .filter_map(|e| serde_json::to_string(e).ok())
-            .collect::<Vec<_>>().join("\n");
-        return (StatusCode::OK, [(axum::http::header::CONTENT_TYPE, "application/x-ndjson")], body).into_response();
+            .collect::<Vec<_>>()
+            .join("\n");
+        return (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "application/x-ndjson")],
+            body,
+        )
+            .into_response();
     }
     Json(serde_json::json!({"entries": entries, "count": entries.len()})).into_response()
 }
@@ -3231,9 +3897,7 @@ pub async fn federation_handler(State(state): State<Arc<AppState>>) -> impl Into
 // ── Lineage handler (#1840) ──
 
 /// POST /api/fuse/lineage — extract lineage graph from a query.
-pub async fn lineage_handler(
-    Json(req): Json<crate::lineage::LineageRequest>,
-) -> impl IntoResponse {
+pub async fn lineage_handler(Json(req): Json<crate::lineage::LineageRequest>) -> impl IntoResponse {
     let graph = crate::lineage::extract_lineage(&req.query, &req.format);
     Json(graph)
 }
@@ -3283,7 +3947,11 @@ pub async fn get_saved_query(
 ) -> impl IntoResponse {
     match state.saved_queries.get(&name) {
         Some(sq) => Json(serde_json::json!(sq)).into_response(),
-        None => error_json(StatusCode::NOT_FOUND, format!("saved query '{}' not found", name)).into_response(),
+        None => error_json(
+            StatusCode::NOT_FOUND,
+            format!("saved query '{}' not found", name),
+        )
+        .into_response(),
     }
 }
 
@@ -3295,7 +3963,11 @@ pub async fn delete_saved_query(
     if state.saved_queries.delete(&name) {
         StatusCode::NO_CONTENT.into_response()
     } else {
-        error_json(StatusCode::NOT_FOUND, format!("saved query '{}' not found", name)).into_response()
+        error_json(
+            StatusCode::NOT_FOUND,
+            format!("saved query '{}' not found", name),
+        )
+        .into_response()
     }
 }
 
@@ -3307,16 +3979,22 @@ pub async fn cancel_query(
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     if state.running_queries.cancel(&id) {
-        (StatusCode::OK, Json(serde_json::json!({"cancelled": true, "query_id": id}))).into_response()
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({"cancelled": true, "query_id": id})),
+        )
+            .into_response()
     } else {
-        error_json(StatusCode::NOT_FOUND, format!("query '{}' not found or already completed", id)).into_response()
+        error_json(
+            StatusCode::NOT_FOUND,
+            format!("query '{}' not found or already completed", id),
+        )
+        .into_response()
     }
 }
 
 /// GET /api/fuse/queries/running — list currently running query IDs.
-pub async fn list_running_queries(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+pub async fn list_running_queries(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     Json(serde_json::json!({"running": state.running_queries.list()}))
 }
 
@@ -3363,7 +4041,11 @@ pub async fn evaluate_alerts(State(state): State<Arc<AppState>>) -> impl IntoRes
         let connector = match state.registry.get(&ds_id) {
             Some(c) => c,
             None => {
-                tracing::warn!(rule = rule.name.as_str(), "datasource '{}' not found", ds_id);
+                tracing::warn!(
+                    rule = rule.name.as_str(),
+                    "datasource '{}' not found",
+                    ds_id
+                );
                 continue;
             }
         };
@@ -3403,14 +4085,18 @@ pub async fn create_view(
         name: req.name.clone(),
         query: req.query.clone(),
         refresh_interval: std::time::Duration::from_secs(refresh_secs),
-            refresh_mode: fuse_engine::materialized::RefreshMode::Full,
+        refresh_mode: fuse_engine::materialized::RefreshMode::Full,
     };
     state.view_registry.register(def);
-    (StatusCode::CREATED, Json(serde_json::json!({
-        "name": req.name,
-        "query": req.query,
-        "refresh_interval_secs": refresh_secs,
-    }))).into_response()
+    (
+        StatusCode::CREATED,
+        Json(serde_json::json!({
+            "name": req.name,
+            "query": req.query,
+            "refresh_interval_secs": refresh_secs,
+        })),
+    )
+        .into_response()
 }
 
 #[derive(Deserialize)]
@@ -3468,25 +4154,45 @@ pub async fn multi_query_handler(
     let statements = split_statements(&req.query);
     if statements.len() <= 1 {
         // Single statement — delegate to normal handler
-        return query_handler(State(state), auth_identity, axum::http::HeaderMap::new(), Json(req)).await.into_response();
+        return query_handler(
+            State(state),
+            auth_identity,
+            axum::http::HeaderMap::new(),
+            Json(req),
+        )
+        .await
+        .into_response();
     }
 
     let mut results = Vec::new();
     for stmt in &statements {
         let mut sub_req = req.clone();
         sub_req.query = stmt.clone();
-        let resp = query_handler(State(state.clone()), auth_identity.clone(), axum::http::HeaderMap::new(), Json(sub_req)).await;
+        let resp = query_handler(
+            State(state.clone()),
+            auth_identity.clone(),
+            axum::http::HeaderMap::new(),
+            Json(sub_req),
+        )
+        .await;
         // Extract JSON body from response
         let (parts, body) = resp.into_response().into_parts();
-        let bytes = axum::body::to_bytes(body, 10_000_000).await.unwrap_or_default();
-        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or(serde_json::json!({"error": "parse error"}));
+        let bytes = axum::body::to_bytes(body, 10_000_000)
+            .await
+            .unwrap_or_default();
+        let json: serde_json::Value =
+            serde_json::from_slice(&bytes).unwrap_or(serde_json::json!({"error": "parse error"}));
         results.push(serde_json::json!({
             "status": parts.status.as_u16(),
             "data": json,
         }));
     }
 
-    (StatusCode::OK, Json(serde_json::json!({ "results": results, "count": results.len() }))).into_response()
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "results": results, "count": results.len() })),
+    )
+        .into_response()
 }
 
 // ── Natural Language to SQL ──
@@ -3532,11 +4238,21 @@ pub async fn nl_to_sql_handler(
         let ds_id = conn.id().to_string();
         let tables = conn.table_names().await.unwrap_or_default();
         if !tables.is_empty() {
-            schema_text.push_str(&format!("Datasource '{}': tables: {}\n", ds_id, tables.join(", ")));
+            schema_text.push_str(&format!(
+                "Datasource '{}': tables: {}\n",
+                ds_id,
+                tables.join(", ")
+            ));
         } else {
-            schema_text.push_str(&format!("Datasource '{}': (use {}.table_name)\n", ds_id, ds_id));
+            schema_text.push_str(&format!(
+                "Datasource '{}': (use {}.table_name)\n",
+                ds_id, ds_id
+            ));
         }
-        schemas.push(DatasourceSchema { datasource: ds_id, tables });
+        schemas.push(DatasourceSchema {
+            datasource: ds_id,
+            tables,
+        });
     }
 
     // Build prompt
@@ -3569,7 +4285,9 @@ pub async fn nl_to_sql_handler(
     if req.execute && !generated_sql.is_empty() {
         let sql_trimmed = generated_sql.trim_start().to_uppercase();
         if !sql_trimmed.starts_with("SELECT") && !sql_trimmed.starts_with("EXPLAIN") {
-            response.error = Some("generated SQL rejected: only SELECT/EXPLAIN queries can be auto-executed".into());
+            response.error = Some(
+                "generated SQL rejected: only SELECT/EXPLAIN queries can be auto-executed".into(),
+            );
         } else {
             let query_req = QueryRequest {
                 query: generated_sql,
@@ -3578,10 +4296,19 @@ pub async fn nl_to_sql_handler(
                 timeout_ms: None,
                 result_format: "json".into(),
                 params: std::collections::HashMap::new(),
-                start: None, end: None, step: None,
-                cursor: None, page_size: None,
+                start: None,
+                end: None,
+                step: None,
+                cursor: None,
+                page_size: None,
             };
-            let exec_resp = query_handler(State(state), auth_identity, axum::http::HeaderMap::new(), Json(query_req)).await;
+            let exec_resp = query_handler(
+                State(state),
+                auth_identity,
+                axum::http::HeaderMap::new(),
+                Json(query_req),
+            )
+            .await;
             let (_, body) = exec_resp.into_response().into_parts();
             if let Ok(bytes) = axum::body::to_bytes(body, 10_000_000).await {
                 response.results = serde_json::from_slice(&bytes).ok();
@@ -3597,8 +4324,12 @@ pub fn generate_sql_from_nl(question: &str, schemas: &[DatasourceSchema]) -> Str
     use fuse_core::sql::quote_ident;
 
     let q = question.to_lowercase();
-    let first_ds = schemas.first().map(|s| s.datasource.as_str()).unwrap_or("datasource");
-    let table = schemas.first()
+    let first_ds = schemas
+        .first()
+        .map(|s| s.datasource.as_str())
+        .unwrap_or("datasource");
+    let table = schemas
+        .first()
         .and_then(|s| s.tables.first().map(|t| t.as_str()))
         .unwrap_or("logs");
     let source = format!("{}.{}", quote_ident(first_ds), quote_ident(table));
@@ -3618,7 +4349,9 @@ pub fn generate_sql_from_nl(question: &str, schemas: &[DatasourceSchema]) -> Str
         return format!("SELECT * FROM {source} ORDER BY timestamp DESC LIMIT {n}");
     }
     if q.contains("error") || q.contains("fail") {
-        return format!("SELECT * FROM {source} WHERE status >= 500 ORDER BY timestamp DESC LIMIT 20");
+        return format!(
+            "SELECT * FROM {source} WHERE status >= 500 ORDER BY timestamp DESC LIMIT 20"
+        );
     }
     if q.contains("between") || q.contains("last") {
         return format!("SELECT * FROM {source} ORDER BY timestamp DESC LIMIT 100");
@@ -3628,8 +4361,15 @@ pub fn generate_sql_from_nl(question: &str, schemas: &[DatasourceSchema]) -> Str
 
 /// Strip non-identifier characters from NL-extracted column names.
 fn sanitize_nl_identifier(s: &str) -> String {
-    let clean: String = s.chars().filter(|c| c.is_alphanumeric() || *c == '_').collect();
-    if clean.is_empty() { "_".to_string() } else { clean }
+    let clean: String = s
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '_')
+        .collect();
+    if clean.is_empty() {
+        "_".to_string()
+    } else {
+        clean
+    }
 }
 
 fn extract_keyword_after(text: &str, keyword: &str) -> Option<String> {
@@ -3639,32 +4379,41 @@ fn extract_keyword_after(text: &str, keyword: &str) -> Option<String> {
 }
 
 fn extract_number(text: &str) -> Option<u64> {
-    text.split_whitespace()
-        .find_map(|w| w.parse::<u64>().ok())
+    text.split_whitespace().find_map(|w| w.parse::<u64>().ok())
 }
 
 /// GET /api/fuse/advisor — query optimization suggestions from history
-pub async fn query_advisor_handler(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+pub async fn query_advisor_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let entries = state.history.recent(1000);
     let advice = crate::history::QueryAdvisor::analyze(&entries);
-    (StatusCode::OK, Json(serde_json::json!({
-        "advice": advice,
-        "analyzed_queries": entries.len(),
-    }))).into_response()
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "advice": advice,
+            "analyzed_queries": entries.len(),
+        })),
+    )
+        .into_response()
 }
 
 pub async fn list_views(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     #[derive(Serialize)]
-    struct ViewInfo { name: String, stale: bool }
+    struct ViewInfo {
+        name: String,
+        stale: bool,
+    }
     let names = state.view_registry.list();
-    let infos: Vec<ViewInfo> = names.into_iter().map(|name| {
-        let stale = state.view_registry.get(&name)
-            .map(|v| v.read().unwrap().needs_refresh())
-            .unwrap_or(true);
-        ViewInfo { name, stale }
-    }).collect();
+    let infos: Vec<ViewInfo> = names
+        .into_iter()
+        .map(|name| {
+            let stale = state
+                .view_registry
+                .get(&name)
+                .map(|v| v.read().unwrap().needs_refresh())
+                .unwrap_or(true);
+            ViewInfo { name, stale }
+        })
+        .collect();
     Json(infos)
 }
 
@@ -3676,9 +4425,14 @@ pub async fn get_view(
     match state.view_registry.get_results(&name) {
         None => {
             if state.view_registry.get(&name).is_none() {
-                error_json(StatusCode::NOT_FOUND, format!("view '{}' not found", name)).into_response()
+                error_json(StatusCode::NOT_FOUND, format!("view '{}' not found", name))
+                    .into_response()
             } else {
-                error_json(StatusCode::SERVICE_UNAVAILABLE, format!("view '{}' not yet refreshed", name)).into_response()
+                error_json(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    format!("view '{}' not yet refreshed", name),
+                )
+                .into_response()
             }
         }
         Some(batches) => {
@@ -3686,11 +4440,25 @@ pub async fn get_view(
             Json(QueryResponse {
                 columns,
                 rows: rows.clone(),
-                metadata: QueryMetadata { total_rows: rows.len() as u64, format: "view".into(), trace_id: format!("v-{:x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()), datasources_queried: None, datasource_stats: None, cost_estimate: None },
+                metadata: QueryMetadata {
+                    total_rows: rows.len() as u64,
+                    format: "view".into(),
+                    trace_id: format!(
+                        "v-{:x}",
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_nanos()
+                    ),
+                    datasources_queried: None,
+                    datasource_stats: None,
+                    cost_estimate: None,
+                },
                 execution_profile: None,
                 partial_errors: vec![],
                 next_cursor: None,
-            }).into_response()
+            })
+            .into_response()
         }
     }
 }
@@ -3702,7 +4470,10 @@ pub async fn refresh_view(
 ) -> impl IntoResponse {
     let view_arc = match state.view_registry.get(&name) {
         Some(v) => v,
-        None => return error_json(StatusCode::NOT_FOUND, format!("view '{}' not found", name)).into_response(),
+        None => {
+            return error_json(StatusCode::NOT_FOUND, format!("view '{}' not found", name))
+                .into_response()
+        }
     };
 
     let query = view_arc.read().unwrap().def.query.clone();
@@ -3711,8 +4482,12 @@ pub async fn refresh_view(
     let refs = match parse_sql_sources(&query) {
         Ok(r) if !r.is_empty() => r,
         _ => {
-            view_arc.write().unwrap().set_error("failed to parse view query".into());
-            return error_json(StatusCode::BAD_REQUEST, "failed to parse view query").into_response();
+            view_arc
+                .write()
+                .unwrap()
+                .set_error("failed to parse view query".into());
+            return error_json(StatusCode::BAD_REQUEST, "failed to parse view query")
+                .into_response();
         }
     };
 
@@ -3771,8 +4546,8 @@ pub async fn trace_handler(
     State(state): State<Arc<AppState>>,
     Path(trace_id): Path<String>,
 ) -> impl IntoResponse {
-    use std::time::Instant;
     use fuse_core::connector::*;
+    use std::time::Instant;
 
     let start = Instant::now();
     let connectors = state.registry.connectors();
@@ -3804,7 +4579,8 @@ pub async fn trace_handler(
                 having: None,
                 sort: vec![],
                 limit: Some(1000),
-                offset: None, passthrough: None,
+                offset: None,
+                passthrough: None,
             };
             let batches = connector.execute(&sub).await.unwrap_or_default();
             (ds_id, batches)
@@ -3816,9 +4592,13 @@ pub async fn trace_handler(
 
     for handle in handles {
         if let Ok((ds_id, batches)) = handle.await {
-            if batches.is_empty() { continue; }
+            if batches.is_empty() {
+                continue;
+            }
             let (cols, rows) = batches_to_json(&batches);
-            if rows.is_empty() { continue; }
+            if rows.is_empty() {
+                continue;
+            }
             datasources_matched.push(ds_id.clone());
 
             let ts_idx = cols.iter().position(|c| {
@@ -3834,7 +4614,11 @@ pub async fn trace_handler(
                     }
                 }
                 let timestamp = ts_idx.and_then(|i| row.get(i).cloned());
-                spans.push(TraceSpan { datasource: ds_id.clone(), timestamp, fields });
+                spans.push(TraceSpan {
+                    datasource: ds_id.clone(),
+                    timestamp,
+                    fields,
+                });
             }
         }
     }
@@ -3956,13 +4740,22 @@ mod tests {
         let sq = SubQuery {
             table: "logs".into(),
             projections: vec!["host".into(), "status".into()],
-            filter: Some(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Gte, value: ScalarValue::Int64(500) }),
-            aggregations: vec![AggregationExpr { function: AggFunction::Count, field: None, alias: "cnt".into() }],
+            filter: Some(FilterExpr::Comparison {
+                field: "status".into(),
+                op: ComparisonOp::Gte,
+                value: ScalarValue::Int64(500),
+            }),
+            aggregations: vec![AggregationExpr {
+                function: AggFunction::Count,
+                field: None,
+                alias: "cnt".into(),
+            }],
             group_by: vec!["host".into()],
             having: None,
             sort: vec![],
             limit: Some(10),
-            offset: None, passthrough: None,
+            offset: None,
+            passthrough: None,
         };
         let desc = describe_pushdown(&sq);
         assert!(desc.iter().any(|d| d.contains("projection")));
@@ -3984,7 +4777,8 @@ mod tests {
             having: None,
             sort: vec![],
             limit: None,
-            offset: None, passthrough: None,
+            offset: None,
+            passthrough: None,
         };
         let desc = describe_pushdown(&sq);
         assert!(desc.is_empty());
@@ -4031,7 +4825,8 @@ mod tests {
             having: None,
             sort: vec![],
             limit: None,
-            offset: None, passthrough: None,
+            offset: None,
+            passthrough: None,
         };
         // Simulate what execute_single does
         let (start, end, step) = ("2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z", "1m");
@@ -4078,7 +4873,8 @@ mod tests {
 
     #[test]
     fn test_trace_span_sort_by_timestamp() {
-        let mut spans = [TraceSpan {
+        let mut spans = [
+            TraceSpan {
                 datasource: "b".into(),
                 timestamp: Some(serde_json::json!("2024-01-01T00:00:05Z")),
                 fields: Default::default(),
@@ -4092,7 +4888,8 @@ mod tests {
                 datasource: "c".into(),
                 timestamp: None,
                 fields: Default::default(),
-            }];
+            },
+        ];
         spans.sort_by(|a, b| {
             let ta = a.timestamp.as_ref().and_then(|v| v.as_str()).unwrap_or("");
             let tb = b.timestamp.as_ref().and_then(|v| v.as_str()).unwrap_or("");
@@ -4178,21 +4975,24 @@ mod tests {
     fn test_parse_create_mat_view_basic() {
         let (n, q) = parse_create_materialized_view(
             "CREATE MATERIALIZED VIEW err AS SELECT status FROM cluster_a.logs",
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(n, "err");
         assert_eq!(q, "SELECT status FROM cluster_a.logs");
     }
 
     #[test]
     fn test_parse_create_mat_view_case_insensitive() {
-        assert!(parse_create_materialized_view("create materialized view mv as SELECT 1").is_some());
+        assert!(
+            parse_create_materialized_view("create materialized view mv as SELECT 1").is_some()
+        );
     }
 
     #[test]
     fn test_parse_create_mat_view_whitespace() {
-        let (n, _) = parse_create_materialized_view(
-            "  CREATE MATERIALIZED VIEW   s   AS   SELECT 1  ",
-        ).unwrap();
+        let (n, _) =
+            parse_create_materialized_view("  CREATE MATERIALIZED VIEW   s   AS   SELECT 1  ")
+                .unwrap();
         assert_eq!(n, "s");
     }
 
@@ -4225,17 +5025,26 @@ mod tests {
 
     #[test]
     fn test_parse_refresh_mat_view_basic() {
-        assert_eq!(parse_refresh_materialized_view("REFRESH MATERIALIZED VIEW err").unwrap(), "err");
+        assert_eq!(
+            parse_refresh_materialized_view("REFRESH MATERIALIZED VIEW err").unwrap(),
+            "err"
+        );
     }
 
     #[test]
     fn test_parse_refresh_mat_view_case_insensitive() {
-        assert_eq!(parse_refresh_materialized_view("refresh materialized view mv").unwrap(), "mv");
+        assert_eq!(
+            parse_refresh_materialized_view("refresh materialized view mv").unwrap(),
+            "mv"
+        );
     }
 
     #[test]
     fn test_parse_refresh_mat_view_whitespace() {
-        assert_eq!(parse_refresh_materialized_view("  REFRESH MATERIALIZED VIEW   s  ").unwrap(), "s");
+        assert_eq!(
+            parse_refresh_materialized_view("  REFRESH MATERIALIZED VIEW   s  ").unwrap(),
+            "s"
+        );
     }
 
     #[test]
@@ -4250,7 +5059,9 @@ mod tests {
 
     #[test]
     fn test_parse_refresh_mat_view_none_create() {
-        assert!(parse_refresh_materialized_view("CREATE MATERIALIZED VIEW v AS SELECT 1").is_none());
+        assert!(
+            parse_refresh_materialized_view("CREATE MATERIALIZED VIEW v AS SELECT 1").is_none()
+        );
     }
 
     // ── NDJSON output tests ──
@@ -4264,13 +5075,13 @@ mod tests {
     fn test_batches_to_ndjson_single_row() {
         use arrow::array::StringArray;
         use arrow::datatypes::{DataType, Field, Schema};
-        let schema = std::sync::Arc::new(Schema::new(vec![
-            Field::new("name", DataType::Utf8, false),
-        ]));
+        let schema =
+            std::sync::Arc::new(Schema::new(vec![Field::new("name", DataType::Utf8, false)]));
         let batch = arrow::record_batch::RecordBatch::try_new(
             schema,
             vec![std::sync::Arc::new(StringArray::from(vec!["alice"]))],
-        ).unwrap();
+        )
+        .unwrap();
         let ndjson = batches_to_ndjson(&[batch]);
         let parsed: serde_json::Value = serde_json::from_str(ndjson.trim()).unwrap();
         assert_eq!(parsed["name"], "alice");
@@ -4280,13 +5091,13 @@ mod tests {
     fn test_batches_to_ndjson_multiple_rows() {
         use arrow::array::StringArray;
         use arrow::datatypes::{DataType, Field, Schema};
-        let schema = std::sync::Arc::new(Schema::new(vec![
-            Field::new("id", DataType::Utf8, false),
-        ]));
+        let schema =
+            std::sync::Arc::new(Schema::new(vec![Field::new("id", DataType::Utf8, false)]));
         let batch = arrow::record_batch::RecordBatch::try_new(
             schema,
             vec![std::sync::Arc::new(StringArray::from(vec!["a", "b", "c"]))],
-        ).unwrap();
+        )
+        .unwrap();
         let ndjson = batches_to_ndjson(&[batch]);
         let lines: Vec<&str> = ndjson.trim().split('\n').collect();
         assert_eq!(lines.len(), 3);
@@ -4299,13 +5110,16 @@ mod tests {
     fn test_batches_to_ndjson_null_values() {
         use arrow::array::StringArray;
         use arrow::datatypes::{DataType, Field, Schema};
-        let schema = std::sync::Arc::new(Schema::new(vec![
-            Field::new("val", DataType::Utf8, true),
-        ]));
+        let schema =
+            std::sync::Arc::new(Schema::new(vec![Field::new("val", DataType::Utf8, true)]));
         let batch = arrow::record_batch::RecordBatch::try_new(
             schema,
-            vec![std::sync::Arc::new(StringArray::from(vec![Some("x"), None]))],
-        ).unwrap();
+            vec![std::sync::Arc::new(StringArray::from(vec![
+                Some("x"),
+                None,
+            ]))],
+        )
+        .unwrap();
         let ndjson = batches_to_ndjson(&[batch]);
         let lines: Vec<&str> = ndjson.trim().split('\n').collect();
         assert_eq!(lines.len(), 2);
@@ -4317,7 +5131,8 @@ mod tests {
 
     #[test]
     fn test_parse_ctas_basic() {
-        let (ds, tbl, q) = parse_ctas("CREATE TABLE my_pg.results AS SELECT * FROM cluster_a.logs").unwrap();
+        let (ds, tbl, q) =
+            parse_ctas("CREATE TABLE my_pg.results AS SELECT * FROM cluster_a.logs").unwrap();
         assert_eq!(ds, "my_pg");
         assert_eq!(tbl, "results");
         assert_eq!(q, "SELECT * FROM cluster_a.logs");
@@ -4352,7 +5167,9 @@ mod tests {
 
     #[test]
     fn test_parse_insert_into_select_basic() {
-        let (ds, tbl, q) = parse_insert_into_select("INSERT INTO my_pg.results SELECT * FROM cluster_a.logs").unwrap();
+        let (ds, tbl, q) =
+            parse_insert_into_select("INSERT INTO my_pg.results SELECT * FROM cluster_a.logs")
+                .unwrap();
         assert_eq!(ds, "my_pg");
         assert_eq!(tbl, "results");
         assert_eq!(q, "SELECT * FROM cluster_a.logs");
@@ -4434,9 +5251,11 @@ mod tests {
             schema,
             vec![
                 std::sync::Arc::new(Int64Array::from(vec![1, 2, 3])) as arrow::array::ArrayRef,
-                std::sync::Arc::new(StringArray::from(vec!["a", "b", "c"])) as arrow::array::ArrayRef,
+                std::sync::Arc::new(StringArray::from(vec!["a", "b", "c"]))
+                    as arrow::array::ArrayRef,
             ],
-        ).unwrap();
+        )
+        .unwrap();
         let size = super::estimate_batches_size(&[batch]);
         assert!(size > 0);
     }
@@ -4445,10 +5264,13 @@ mod tests {
     fn test_check_result_size_unlimited() {
         use arrow::array::Int64Array;
         use arrow::datatypes::{DataType, Field, Schema};
-        let schema = std::sync::Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, false)]));
+        let schema =
+            std::sync::Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, false)]));
         let batch = arrow::record_batch::RecordBatch::try_new(
-            schema, vec![std::sync::Arc::new(Int64Array::from(vec![1, 2, 3])) as arrow::array::ArrayRef],
-        ).unwrap();
+            schema,
+            vec![std::sync::Arc::new(Int64Array::from(vec![1, 2, 3])) as arrow::array::ArrayRef],
+        )
+        .unwrap();
         assert!(super::check_result_size(&[batch], 0).is_ok());
     }
 
@@ -4456,10 +5278,13 @@ mod tests {
     fn test_check_result_size_within_limit() {
         use arrow::array::Int64Array;
         use arrow::datatypes::{DataType, Field, Schema};
-        let schema = std::sync::Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, false)]));
+        let schema =
+            std::sync::Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, false)]));
         let batch = arrow::record_batch::RecordBatch::try_new(
-            schema, vec![std::sync::Arc::new(Int64Array::from(vec![1])) as arrow::array::ArrayRef],
-        ).unwrap();
+            schema,
+            vec![std::sync::Arc::new(Int64Array::from(vec![1])) as arrow::array::ArrayRef],
+        )
+        .unwrap();
         assert!(super::check_result_size(&[batch], 1_000_000).is_ok());
     }
 
@@ -4467,10 +5292,13 @@ mod tests {
     fn test_check_result_size_exceeds_limit() {
         use arrow::array::Int64Array;
         use arrow::datatypes::{DataType, Field, Schema};
-        let schema = std::sync::Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, false)]));
+        let schema =
+            std::sync::Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, false)]));
         let batch = arrow::record_batch::RecordBatch::try_new(
-            schema, vec![std::sync::Arc::new(Int64Array::from(vec![1, 2, 3])) as arrow::array::ArrayRef],
-        ).unwrap();
+            schema,
+            vec![std::sync::Arc::new(Int64Array::from(vec![1, 2, 3])) as arrow::array::ArrayRef],
+        )
+        .unwrap();
         // Set limit to 1 byte — any result should exceed
         assert!(super::check_result_size(&[batch], 1).is_err());
     }
@@ -4478,7 +5306,10 @@ mod tests {
     #[test]
     fn test_parse_on_key_explicit() {
         let q = "SELECT l.service, u.name FROM cluster_a.logs l JOIN dynamodb.user_profiles u ON l.user_id = u.user_id";
-        assert_eq!(super::parse_on_keys(q), Some(("user_id".to_string(), "user_id".to_string())));
+        assert_eq!(
+            super::parse_on_keys(q),
+            Some(("user_id".to_string(), "user_id".to_string()))
+        );
     }
 
     #[test]
@@ -4489,43 +5320,82 @@ mod tests {
     #[test]
     fn test_parse_on_keys_different_columns() {
         let q = "SELECT * FROM a.t1 JOIN b.t2 ON a.id = b.other_id";
-        assert_eq!(super::parse_on_keys(q), Some(("id".to_string(), "other_id".to_string())));
+        assert_eq!(
+            super::parse_on_keys(q),
+            Some(("id".to_string(), "other_id".to_string()))
+        );
     }
 
     #[test]
     fn test_connector_error_status_not_found() {
-        assert_eq!(connector_error_status("table 'users' not found in DynamoDB"), StatusCode::NOT_FOUND);
-        assert_eq!(connector_error_status("index does not exist"), StatusCode::NOT_FOUND);
+        assert_eq!(
+            connector_error_status("table 'users' not found in DynamoDB"),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            connector_error_status("index does not exist"),
+            StatusCode::NOT_FOUND
+        );
     }
 
     #[test]
     fn test_connector_error_status_timeout() {
-        assert_eq!(connector_error_status("connector 'ddb' timed out"), StatusCode::REQUEST_TIMEOUT);
+        assert_eq!(
+            connector_error_status("connector 'ddb' timed out"),
+            StatusCode::REQUEST_TIMEOUT
+        );
     }
 
     #[test]
     fn test_connector_error_status_auth() {
-        assert_eq!(connector_error_status("access denied for table"), StatusCode::FORBIDDEN);
-        assert_eq!(connector_error_status("unauthorized"), StatusCode::FORBIDDEN);
-        assert_eq!(connector_error_status("not authorized to perform: dynamodb:DescribeTable"), StatusCode::FORBIDDEN);
-        assert_eq!(connector_error_status("AccessDeniedException"), StatusCode::FORBIDDEN);
+        assert_eq!(
+            connector_error_status("access denied for table"),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            connector_error_status("unauthorized"),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            connector_error_status("not authorized to perform: dynamodb:DescribeTable"),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            connector_error_status("AccessDeniedException"),
+            StatusCode::FORBIDDEN
+        );
     }
 
     #[test]
     fn test_connector_error_status_credential() {
-        assert_eq!(connector_error_status("credential not found"), StatusCode::BAD_GATEWAY);
-        assert_eq!(connector_error_status("security token expired"), StatusCode::BAD_GATEWAY);
+        assert_eq!(
+            connector_error_status("credential not found"),
+            StatusCode::BAD_GATEWAY
+        );
+        assert_eq!(
+            connector_error_status("security token expired"),
+            StatusCode::BAD_GATEWAY
+        );
     }
 
     #[test]
     fn test_connector_error_status_connection() {
-        assert_eq!(connector_error_status("connection refused"), StatusCode::BAD_GATEWAY);
-        assert_eq!(connector_error_status("host unreachable"), StatusCode::BAD_GATEWAY);
+        assert_eq!(
+            connector_error_status("connection refused"),
+            StatusCode::BAD_GATEWAY
+        );
+        assert_eq!(
+            connector_error_status("host unreachable"),
+            StatusCode::BAD_GATEWAY
+        );
     }
 
     #[test]
     fn test_connector_error_status_fallback() {
-        assert_eq!(connector_error_status("something unexpected"), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            connector_error_status("something unexpected"),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
     }
 }
 
@@ -4535,8 +5405,14 @@ pub async fn autotune_handler(
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
-    let threshold: u64 = params.get("threshold_ms").and_then(|v| v.parse().ok()).unwrap_or(1000);
-    let limit: usize = params.get("limit").and_then(|v| v.parse().ok()).unwrap_or(100);
+    let threshold: u64 = params
+        .get("threshold_ms")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1000);
+    let limit: usize = params
+        .get("limit")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(100);
 
     let history = state.history.recent(limit);
     let samples: Vec<crate::query_autotuner::QuerySample> = history
@@ -4597,7 +5473,10 @@ fn try_generate_join(q: &str, schemas: &[DatasourceSchema]) -> Option<String> {
 }
 
 /// Find two (datasource, table) pairs mentioned in the question text.
-fn find_two_tables(q: &str, schemas: &[DatasourceSchema]) -> Option<((String, String), (String, String))> {
+fn find_two_tables(
+    q: &str,
+    schemas: &[DatasourceSchema],
+) -> Option<((String, String), (String, String))> {
     let mut found = Vec::new();
     for schema in schemas {
         for table in &schema.tables {
@@ -4623,8 +5502,16 @@ fn find_two_tables(q: &str, schemas: &[DatasourceSchema]) -> Option<((String, St
     if schemas.len() >= 2 {
         let ds1 = &schemas[0];
         let ds2 = &schemas[1];
-        let t1 = ds1.tables.first().cloned().unwrap_or_else(|| "table1".into());
-        let t2 = ds2.tables.first().cloned().unwrap_or_else(|| "table2".into());
+        let t1 = ds1
+            .tables
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "table1".into());
+        let t2 = ds2
+            .tables
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "table2".into());
         return Some(((ds1.datasource.clone(), t1), (ds2.datasource.clone(), t2)));
     }
     None
@@ -4642,7 +5529,14 @@ fn guess_join_column(q: &str) -> Option<String> {
         }
     }
     // Common join column patterns in the question
-    let common = ["user_id", "trace_id", "order_id", "id", "customer_id", "session_id"];
+    let common = [
+        "user_id",
+        "trace_id",
+        "order_id",
+        "id",
+        "customer_id",
+        "session_id",
+    ];
     for col in common {
         if q.contains(col) {
             return Some(col.to_string());
@@ -4657,8 +5551,14 @@ pub async fn similarity_handler(
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
-    let limit: usize = params.get("limit").and_then(|v| v.parse().ok()).unwrap_or(500);
-    let min_group: usize = params.get("min_group").and_then(|v| v.parse().ok()).unwrap_or(2);
+    let limit: usize = params
+        .get("limit")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(500);
+    let min_group: usize = params
+        .get("min_group")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(2);
 
     let history = state.history.recent(limit);
     let entries: Vec<crate::query_similarity::QueryEntry> = history
@@ -4695,15 +5595,16 @@ pub async fn routing_stats_handler(
     .into_response()
 }
 
-
-
 /// GET /api/fuse/connectors/health-history — connector uptime/latency history.
 pub async fn connector_health_history_handler(
     axum::extract::State(state): axum::extract::State<Arc<AppState>>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
-    let limit: usize = params.get("limit").and_then(|v| v.parse().ok()).unwrap_or(50);
+    let limit: usize = params
+        .get("limit")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(50);
     let summaries = state.health_history.all_summaries(limit);
     axum::Json(serde_json::json!({
         "connectors": summaries,
@@ -4719,16 +5620,32 @@ pub async fn export_csv_handler(
     use axum::response::IntoResponse;
     let format = req.format.to_lowercase();
     let query = rewrite_contains(&req.query);
-    let refs = match if format == "ppl" { parse_ppl_sources(&query) } else { parse_sql_sources(&query) } {
+    let refs = match if format == "ppl" {
+        parse_ppl_sources(&query)
+    } else {
+        parse_sql_sources(&query)
+    } {
         Ok(r) if !r.is_empty() => r,
-        _ => return error_json(StatusCode::BAD_REQUEST, "no datasource.table references found").into_response(),
+        _ => {
+            return error_json(
+                StatusCode::BAD_REQUEST,
+                "no datasource.table references found",
+            )
+            .into_response()
+        }
     };
 
     let mut all_batches = Vec::new();
     for (ds_id, table) in &refs {
         let connector = match state.registry.get(ds_id) {
             Some(c) => c,
-            None => return error_json(StatusCode::NOT_FOUND, format!("datasource '{}' not found", ds_id)).into_response(),
+            None => {
+                return error_json(
+                    StatusCode::NOT_FOUND,
+                    format!("datasource '{}' not found", ds_id),
+                )
+                .into_response()
+            }
         };
         let sq = match build_sub_query(&query, &format, table) {
             Ok(sq) => sq,
@@ -4743,11 +5660,14 @@ pub async fn export_csv_handler(
     let (columns, rows) = batches_to_json(&all_batches);
     let mut csv = columns.join(",") + "\n";
     for row in &rows {
-        let line: Vec<String> = row.iter().map(|v| match v {
-            serde_json::Value::String(s) => format!("\"{}\"", s.replace('"', "\"\"")),
-            serde_json::Value::Null => String::new(),
-            other => other.to_string(),
-        }).collect();
+        let line: Vec<String> = row
+            .iter()
+            .map(|v| match v {
+                serde_json::Value::String(s) => format!("\"{}\"", s.replace('"', "\"\"")),
+                serde_json::Value::Null => String::new(),
+                other => other.to_string(),
+            })
+            .collect();
         csv.push_str(&line.join(","));
         csv.push('\n');
     }
@@ -4756,10 +5676,14 @@ pub async fn export_csv_handler(
         StatusCode::OK,
         [
             (axum::http::header::CONTENT_TYPE, "text/csv"),
-            (axum::http::header::CONTENT_DISPOSITION, "attachment; filename=\"results.csv\""),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                "attachment; filename=\"results.csv\"",
+            ),
         ],
         csv,
-    ).into_response()
+    )
+        .into_response()
 }
 
 /// POST /api/fuse/query/export/json — execute query and return results as JSON download.
@@ -4770,16 +5694,32 @@ pub async fn export_json_handler(
     use axum::response::IntoResponse;
     let format = req.format.to_lowercase();
     let query = rewrite_contains(&req.query);
-    let refs = match if format == "ppl" { parse_ppl_sources(&query) } else { parse_sql_sources(&query) } {
+    let refs = match if format == "ppl" {
+        parse_ppl_sources(&query)
+    } else {
+        parse_sql_sources(&query)
+    } {
         Ok(r) if !r.is_empty() => r,
-        _ => return error_json(StatusCode::BAD_REQUEST, "no datasource.table references found").into_response(),
+        _ => {
+            return error_json(
+                StatusCode::BAD_REQUEST,
+                "no datasource.table references found",
+            )
+            .into_response()
+        }
     };
 
     let mut all_batches = Vec::new();
     for (ds_id, table) in &refs {
         let connector = match state.registry.get(ds_id) {
             Some(c) => c,
-            None => return error_json(StatusCode::NOT_FOUND, format!("datasource '{}' not found", ds_id)).into_response(),
+            None => {
+                return error_json(
+                    StatusCode::NOT_FOUND,
+                    format!("datasource '{}' not found", ds_id),
+                )
+                .into_response()
+            }
         };
         let sq = match build_sub_query(&query, &format, table) {
             Ok(sq) => sq,
@@ -4792,23 +5732,33 @@ pub async fn export_json_handler(
     }
 
     let (columns, rows) = batches_to_json(&all_batches);
-    let records: Vec<serde_json::Value> = rows.iter().map(|row| {
-        let mut map = serde_json::Map::new();
-        for (i, col) in columns.iter().enumerate() {
-            map.insert(col.clone(), row.get(i).cloned().unwrap_or(serde_json::Value::Null));
-        }
-        serde_json::Value::Object(map)
-    }).collect();
+    let records: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|row| {
+            let mut map = serde_json::Map::new();
+            for (i, col) in columns.iter().enumerate() {
+                map.insert(
+                    col.clone(),
+                    row.get(i).cloned().unwrap_or(serde_json::Value::Null),
+                );
+            }
+            serde_json::Value::Object(map)
+        })
+        .collect();
 
     let body = serde_json::to_string_pretty(&records).unwrap_or_default();
     (
         StatusCode::OK,
         [
             (axum::http::header::CONTENT_TYPE, "application/json"),
-            (axum::http::header::CONTENT_DISPOSITION, "attachment; filename=\"results.json\""),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                "attachment; filename=\"results.json\"",
+            ),
         ],
         body,
-    ).into_response()
+    )
+        .into_response()
 }
 
 /// GET /api/fuse/routing — smart routing stats and fastest connector recommendations.
@@ -4822,7 +5772,8 @@ pub async fn routing_handler(
     Json(serde_json::json!({
         "connectors": stats,
         "fastest": fastest,
-    })).into_response()
+    }))
+    .into_response()
 }
 
 /// GET /api/fuse/load-scenarios — list available load test scenario presets.
@@ -4842,8 +5793,14 @@ pub async fn anomaly_handler(
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
-    let limit: usize = params.get("limit").and_then(|v| v.parse().ok()).unwrap_or(500);
-    let tolerance: f64 = params.get("tolerance").and_then(|v| v.parse().ok()).unwrap_or(3.0);
+    let limit: usize = params
+        .get("limit")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(500);
+    let tolerance: f64 = params
+        .get("tolerance")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3.0);
 
     let history = state.history.recent(limit);
     // Group latency by datasource
@@ -4852,12 +5809,13 @@ pub async fn anomaly_handler(
     for entry in &history {
         if let Ok(refs) = parse_sql_sources(&entry.query) {
             for (ds_id, _) in refs {
-                ds_series.entry(ds_id).or_default().push(
-                    crate::anomaly::TimeSeriesPoint {
+                ds_series
+                    .entry(ds_id)
+                    .or_default()
+                    .push(crate::anomaly::TimeSeriesPoint {
                         timestamp: entry.timestamp,
                         value: entry.latency_ms as f64,
-                    },
-                );
+                    });
             }
         }
     }
@@ -4867,7 +5825,12 @@ pub async fn anomaly_handler(
         if let Some(last) = points.last() {
             let current = last.value;
             let historical = &points[..points.len().saturating_sub(1)];
-            for a in crate::anomaly::detect_seasonal(&format!("{}.latency", ds_id), current, historical, tolerance) {
+            for a in crate::anomaly::detect_seasonal(
+                &format!("{}.latency", ds_id),
+                current,
+                historical,
+                tolerance,
+            ) {
                 all_anomalies.push(serde_json::json!({
                     "datasource": ds_id,
                     "kind": a.kind,
@@ -4876,7 +5839,12 @@ pub async fn anomaly_handler(
                     "severity": a.severity,
                 }));
             }
-            for a in crate::anomaly::detect_trend(&format!("{}.latency", ds_id), historical, current, tolerance) {
+            for a in crate::anomaly::detect_trend(
+                &format!("{}.latency", ds_id),
+                historical,
+                current,
+                tolerance,
+            ) {
                 all_anomalies.push(serde_json::json!({
                     "datasource": ds_id,
                     "kind": a.kind,
@@ -4893,7 +5861,8 @@ pub async fn anomaly_handler(
         "analyzed_datasources": ds_series.len(),
         "analyzed_queries": history.len(),
         "tolerance": tolerance,
-    })).into_response()
+    }))
+    .into_response()
 }
 
 /// POST /api/fuse/query/diff — compare results of two queries side by side.
@@ -4905,7 +5874,9 @@ pub struct QueryDiffRequest {
     pub format: String,
 }
 
-fn default_sql() -> String { "sql".to_string() }
+fn default_sql() -> String {
+    "sql".to_string()
+}
 
 pub async fn query_diff_handler(
     State(state): State<Arc<AppState>>,
@@ -4913,22 +5884,34 @@ pub async fn query_diff_handler(
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
 
-    async fn run_query(state: &Arc<AppState>, query: &str, format: &str) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), String> {
+    async fn run_query(
+        state: &Arc<AppState>,
+        query: &str,
+        format: &str,
+    ) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), String> {
         let query = rewrite_contains(query);
-        let refs = match if format == "ppl" { parse_ppl_sources(&query) } else { parse_sql_sources(&query) } {
+        let refs = match if format == "ppl" {
+            parse_ppl_sources(&query)
+        } else {
+            parse_sql_sources(&query)
+        } {
             Ok(r) if !r.is_empty() => r,
             _ => return Err("no datasource.table references found".into()),
         };
         let mut all_batches = Vec::new();
         for (ds_id, table) in &refs {
-            let connector = state.registry.get(ds_id)
+            let connector = state
+                .registry
+                .get(ds_id)
                 .ok_or_else(|| format!("datasource '{}' not found", ds_id))?;
             let sq = build_sub_query(&query, format, table).map_err(|e| e.to_string())?;
             let mut batches = connector.execute(&sq).await.map_err(|e| e.to_string())?;
             // Apply column-level RBAC
             if let Some(ref rbac) = state.column_rbac {
                 let user_ctx = fuse_core::security::UserContext::default();
-                batches = rbac.filter_batches(batches, ds_id, table, &user_ctx).unwrap_or_default();
+                batches = rbac
+                    .filter_batches(batches, ds_id, table, &user_ctx)
+                    .unwrap_or_default();
             }
             all_batches.extend(batches);
         }
@@ -4955,10 +5938,15 @@ pub async fn query_diff_handler(
                     "same_data": same_data,
                     "row_count_diff": rows_b.len() as i64 - rows_a.len() as i64,
                 }
-            })).into_response()
+            }))
+            .into_response()
         }
-        (Err(e), _) => error_json(StatusCode::BAD_REQUEST, format!("query_a failed: {}", e)).into_response(),
-        (_, Err(e)) => error_json(StatusCode::BAD_REQUEST, format!("query_b failed: {}", e)).into_response(),
+        (Err(e), _) => {
+            error_json(StatusCode::BAD_REQUEST, format!("query_a failed: {}", e)).into_response()
+        }
+        (_, Err(e)) => {
+            error_json(StatusCode::BAD_REQUEST, format!("query_b failed: {}", e)).into_response()
+        }
     }
 }
 
@@ -4979,13 +5967,20 @@ pub async fn chaos_enable_handler(
         auth_identity.as_ref().map(|e| &e.0),
         crate::auth::Role::Admin,
         auth_identity.is_some(),
-    ) { return resp.into_response(); }
+    ) {
+        return resp.into_response();
+    }
     if !crate::chaos::is_allowed() {
-        return error_json(StatusCode::FORBIDDEN, "chaos testing disabled — set FUSE_CHAOS_ALLOWED=1").into_response();
+        return error_json(
+            StatusCode::FORBIDDEN,
+            "chaos testing disabled — set FUSE_CHAOS_ALLOWED=1",
+        )
+        .into_response();
     }
     crate::chaos::enable_with_config(&cfg);
     Json(serde_json::json!({
         "status": if cfg.enabled { "enabled" } else { "disabled" },
         "config": crate::chaos::config(),
-    })).into_response()
+    }))
+    .into_response()
 }

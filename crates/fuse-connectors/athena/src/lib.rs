@@ -25,18 +25,43 @@ pub fn subquery_to_sql(sq: &SubQuery) -> String {
     let cols = if sq.projections.is_empty() {
         "*".to_string()
     } else {
-        sq.projections.iter().map(|p| if p == "*" { "*".to_string() } else { quote_ident(p) }).collect::<Vec<_>>().join(", ")
+        sq.projections
+            .iter()
+            .map(|p| {
+                if p == "*" {
+                    "*".to_string()
+                } else {
+                    quote_ident(p)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
     };
     let mut sql = format!("SELECT {} FROM {}", cols, quote_table(&sq.table));
     if let Some(ref f) = sq.filter {
         sql.push_str(&format!(" WHERE {}", filter_to_sql(f)));
     }
     if !sq.group_by.is_empty() {
-        sql.push_str(&format!(" GROUP BY {}", sq.group_by.iter().map(|g| quote_ident(g)).collect::<Vec<_>>().join(", ")));
+        sql.push_str(&format!(
+            " GROUP BY {}",
+            sq.group_by
+                .iter()
+                .map(|g| quote_ident(g))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
     }
     if !sq.sort.is_empty() {
-        let clauses: Vec<String> = sq.sort.iter()
-            .map(|s| format!("{} {}", quote_ident(&s.field), if s.descending { "DESC" } else { "ASC" }))
+        let clauses: Vec<String> = sq
+            .sort
+            .iter()
+            .map(|s| {
+                format!(
+                    "{} {}",
+                    quote_ident(&s.field),
+                    if s.descending { "DESC" } else { "ASC" }
+                )
+            })
             .collect();
         sql.push_str(&format!(" ORDER BY {}", clauses.join(", ")));
     }
@@ -64,8 +89,12 @@ fn filter_to_sql(f: &FilterExpr) -> String {
             };
             format!("{} {} {}", quote_ident(field), op_str, scalar_to_sql(value))
         }
-        FilterExpr::And(left, right) => format!("({} AND {})", filter_to_sql(left), filter_to_sql(right)),
-        FilterExpr::Or(left, right) => format!("({} OR {})", filter_to_sql(left), filter_to_sql(right)),
+        FilterExpr::And(left, right) => {
+            format!("({} AND {})", filter_to_sql(left), filter_to_sql(right))
+        }
+        FilterExpr::Or(left, right) => {
+            format!("({} OR {})", filter_to_sql(left), filter_to_sql(right))
+        }
         FilterExpr::Not(inner) => format!("NOT ({})", filter_to_sql(inner)),
         FilterExpr::In { field, values } => {
             let vals: Vec<String> = values.iter().map(scalar_to_sql).collect();
@@ -97,7 +126,9 @@ pub struct AthenaConnector {
 
 impl AthenaConnector {
     pub async fn from_config(config: &ConnectorConfig) -> Result<Self, ConnectorError> {
-        let region = config.properties.get("region")
+        let region = config
+            .properties
+            .get("region")
             .and_then(|v| v.as_str())
             .unwrap_or("us-east-1");
 
@@ -108,58 +139,76 @@ impl AthenaConnector {
 
         let client = aws_sdk_athena::Client::new(&aws_config);
 
-        let database = config.properties.get("database")
+        let database = config
+            .properties
+            .get("database")
             .and_then(|v| v.as_str())
             .unwrap_or("default")
             .to_string();
 
-        let output_location = config.properties.get("output_location")
+        let output_location = config
+            .properties
+            .get("output_location")
             .and_then(|v| v.as_str())
             .unwrap_or("s3://aws-athena-query-results/")
             .to_string();
 
-        let workgroup = config.properties.get("workgroup")
+        let workgroup = config
+            .properties
+            .get("workgroup")
             .and_then(|v| v.as_str())
             .unwrap_or("primary")
             .to_string();
 
-        Ok(Self { id: config.id.clone(), client, database, output_location, workgroup })
+        Ok(Self {
+            id: config.id.clone(),
+            client,
+            database,
+            output_location,
+            workgroup,
+        })
     }
 
     async fn execute_sql(&self, sql: &str) -> Result<Vec<RecordBatch>, ConnectorError> {
         let t0 = Instant::now();
         debug!(connector = %self.id, sql = sql, "Starting Athena query");
 
-        let start = self.client.start_query_execution()
+        let start = self
+            .client
+            .start_query_execution()
             .query_string(sql)
             .query_execution_context(
                 aws_sdk_athena::types::QueryExecutionContext::builder()
                     .database(&self.database)
-                    .build()
+                    .build(),
             )
             .result_configuration(
                 aws_sdk_athena::types::ResultConfiguration::builder()
                     .output_location(&self.output_location)
-                    .build()
+                    .build(),
             )
             .work_group(&self.workgroup)
             .send()
             .await
             .map_err(|e| ConnectorError::query(e.to_string()))?;
 
-        let exec_id = start.query_execution_id()
+        let exec_id = start
+            .query_execution_id()
             .ok_or_else(|| ConnectorError::query("no execution ID returned"))?
             .to_string();
 
         // Poll for completion
         loop {
-            let status = self.client.get_query_execution()
+            let status = self
+                .client
+                .get_query_execution()
                 .query_execution_id(&exec_id)
                 .send()
                 .await
                 .map_err(|e| ConnectorError::query(e.to_string()))?;
 
-            let state = status.query_execution()
+            let state = status
+                .query_execution()
                 .and_then(|qe| qe.status())
                 .and_then(|s| s.state())
                 .map(|s| s.as_str().to_string())
@@ -168,18 +217,24 @@ impl AthenaConnector {
             match state.as_str() {
                 "SUCCEEDED" => break,
                 "FAILED" | "CANCELLED" => {
-                    let reason = status.query_execution()
+                    let reason = status
+                        .query_execution()
                         .and_then(|qe| qe.status())
                         .and_then(|s| s.state_change_reason())
                         .unwrap_or("unknown error");
-                    return Err(ConnectorError::query(format!("Athena query {}: {}", state, reason)));
+                    return Err(ConnectorError::query(format!(
+                        "Athena query {}: {}",
+                        state, reason
+                    )));
                 }
                 _ => tokio::time::sleep(std::time::Duration::from_millis(500)).await,
             }
         }
 
         // Fetch results
-        let results = self.client.get_query_results()
+        let results = self
+            .client
+            .get_query_results()
             .query_execution_id(&exec_id)
             .send()
             .await
@@ -199,15 +254,14 @@ impl AthenaConnector {
             return Ok(vec![]);
         }
 
-        let fields: Vec<Field> = columns.iter()
+        let fields: Vec<Field> = columns
+            .iter()
             .map(|c| Field::new(c.name(), DataType::Utf8, true))
             .collect();
         let schema = Arc::new(Schema::new(fields));
 
         // Parse rows (skip header row)
-        let rows = result_set
-            .map(|rs| rs.rows())
-            .unwrap_or_default();
+        let rows = result_set.map(|rs| rs.rows()).unwrap_or_default();
 
         let data_rows: Vec<_> = if rows.len() > 1 { &rows[1..] } else { &[] }.to_vec();
 
@@ -216,17 +270,21 @@ impl AthenaConnector {
         }
 
         let num_cols = columns.len();
-        let mut col_builders: Vec<Vec<Option<String>>> = (0..num_cols).map(|_| Vec::new()).collect();
+        let mut col_builders: Vec<Vec<Option<String>>> =
+            (0..num_cols).map(|_| Vec::new()).collect();
 
         for row in &data_rows {
             let data = row.data();
             for (col_idx, builder) in col_builders.iter_mut().enumerate() {
-                let val = data.get(col_idx).and_then(|d| d.var_char_value().map(|s| s.to_string()));
+                let val = data
+                    .get(col_idx)
+                    .and_then(|d| d.var_char_value().map(|s| s.to_string()));
                 builder.push(val);
             }
         }
 
-        let arrays: Vec<ArrayRef> = col_builders.into_iter()
+        let arrays: Vec<ArrayRef> = col_builders
+            .into_iter()
             .map(|vals| {
                 let arr: StringArray = vals.into_iter().collect();
                 Arc::new(arr) as ArrayRef
@@ -243,8 +301,12 @@ impl AthenaConnector {
 
 #[async_trait::async_trait]
 impl fuse_core::connector::FederatedConnector for AthenaConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "athena" }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "athena"
+    }
 
     fn capabilities(&self) -> ConnectorCapabilities {
         ConnectorCapabilities {
@@ -262,20 +324,31 @@ impl fuse_core::connector::FederatedConnector for AthenaConnector {
 
     async fn health_check(&self) -> ConnectorHealth {
         match self.client.list_work_groups().max_results(1).send().await {
-            Ok(_) => ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(1), message: None },
-            Err(e) => ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some(e.to_string()) },
+            Ok(_) => ConnectorHealth {
+                status: HealthStatus::Healthy,
+                latency_ms: Some(1),
+                message: None,
+            },
+            Err(e) => ConnectorHealth {
+                status: HealthStatus::Unhealthy,
+                latency_ms: None,
+                message: Some(e.to_string()),
+            },
         }
     }
 
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
-        let resp = self.client.list_table_metadata()
+        let resp = self
+            .client
+            .list_table_metadata()
             .catalog_name("AwsDataCatalog")
             .database_name(&self.database)
             .send()
             .await
             .map_err(|e| ConnectorError::schema(e.to_string()))?;
 
-        Ok(resp.table_metadata_list()
+        Ok(resp
+            .table_metadata_list()
             .iter()
             .map(|t| SchemaInfo {
                 name: t.name().to_string(),
@@ -286,7 +359,9 @@ impl fuse_core::connector::FederatedConnector for AthenaConnector {
     }
 
     async fn get_schema(&self, table: &str) -> Result<Schema, ConnectorError> {
-        let resp = self.client.get_table_metadata()
+        let resp = self
+            .client
+            .get_table_metadata()
             .catalog_name("AwsDataCatalog")
             .database_name(&self.database)
             .table_name(table)
@@ -294,11 +369,13 @@ impl fuse_core::connector::FederatedConnector for AthenaConnector {
             .await
             .map_err(|e| ConnectorError::schema(e.to_string()))?;
 
-        let columns = resp.table_metadata()
+        let columns = resp
+            .table_metadata()
             .map(|t| t.columns())
             .unwrap_or_default();
 
-        let fields: Vec<Field> = columns.iter()
+        let fields: Vec<Field> = columns
+            .iter()
             .map(|c| {
                 let dt = match c.r#type().unwrap_or("string").to_lowercase().as_str() {
                     "int" | "integer" | "bigint" => DataType::Int64,
@@ -325,7 +402,9 @@ impl fuse_core::connector::FederatedConnector for AthenaConnector {
     ) -> Result<(), ConnectorError> {
         let batches = self.execute(query).await?;
         for b in batches {
-            tx.send(Ok(b)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+            tx.send(Ok(b))
+                .await
+                .map_err(|_| ConnectorError::ChannelClosed)?;
         }
         Ok(())
     }
@@ -336,9 +415,14 @@ pub struct AthenaConnectorFactory;
 
 #[async_trait::async_trait]
 impl ConnectorFactory for AthenaConnectorFactory {
-    fn connector_type(&self) -> &str { "athena" }
+    fn connector_type(&self) -> &str {
+        "athena"
+    }
 
-    async fn create(&self, config: &ConnectorConfig) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
+    async fn create(
+        &self,
+        config: &ConnectorConfig,
+    ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
         Ok(Arc::new(AthenaConnector::from_config(config).await?))
     }
 }
@@ -350,9 +434,16 @@ mod tests {
     #[test]
     fn test_subquery_to_sql_simple() {
         let sq = SubQuery {
-            table: "logs".into(), projections: vec![], filter: None,
-            aggregations: vec![], group_by: vec![], sort: vec![],
-            limit: None, having: None, offset: None, passthrough: None,
+            table: "logs".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            having: None,
+            offset: None,
+            passthrough: None,
         };
         assert_eq!(subquery_to_sql(&sq), "SELECT * FROM \"logs\"");
     }
@@ -360,19 +451,36 @@ mod tests {
     #[test]
     fn test_subquery_to_sql_with_projections() {
         let sq = SubQuery {
-            table: "logs".into(), projections: vec!["id".into(), "name".into()],
-            filter: None, aggregations: vec![], group_by: vec![], sort: vec![],
-            limit: None, having: None, offset: None, passthrough: None,
+            table: "logs".into(),
+            projections: vec!["id".into(), "name".into()],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            having: None,
+            offset: None,
+            passthrough: None,
         };
-        assert_eq!(subquery_to_sql(&sq), "SELECT \"id\", \"name\" FROM \"logs\"");
+        assert_eq!(
+            subquery_to_sql(&sq),
+            "SELECT \"id\", \"name\" FROM \"logs\""
+        );
     }
 
     #[test]
     fn test_subquery_to_sql_with_limit() {
         let sq = SubQuery {
-            table: "t".into(), projections: vec![], filter: None,
-            aggregations: vec![], group_by: vec![], sort: vec![],
-            limit: Some(10), having: None, offset: None, passthrough: None,
+            table: "t".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: Some(10),
+            having: None,
+            offset: None,
+            passthrough: None,
         };
         assert_eq!(subquery_to_sql(&sq), "SELECT * FROM \"t\" LIMIT 10");
     }
@@ -380,16 +488,25 @@ mod tests {
     #[test]
     fn test_subquery_to_sql_with_filter() {
         let sq = SubQuery {
-            table: "t".into(), projections: vec![],
+            table: "t".into(),
+            projections: vec![],
             filter: Some(FilterExpr::Comparison {
                 field: "status".into(),
                 op: ComparisonOp::Gte,
                 value: ScalarValue::Int64(500),
             }),
-            aggregations: vec![], group_by: vec![], sort: vec![],
-            limit: None, having: None, offset: None, passthrough: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            having: None,
+            offset: None,
+            passthrough: None,
         };
-        assert_eq!(subquery_to_sql(&sq), "SELECT * FROM \"t\" WHERE \"status\" >= 500");
+        assert_eq!(
+            subquery_to_sql(&sq),
+            "SELECT * FROM \"t\" WHERE \"status\" >= 500"
+        );
     }
 
     #[test]
@@ -398,11 +515,20 @@ mod tests {
             table: "events".into(),
             projections: vec!["region".into(), "count".into()],
             filter: Some(FilterExpr::Comparison {
-                field: "type".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("error".into()),
+                field: "type".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Utf8("error".into()),
             }),
-            aggregations: vec![], group_by: vec!["region".into()],
-            sort: vec![SortExpr { field: "count".into(), descending: true }],
-            limit: Some(5), having: None, offset: None, passthrough: None,
+            aggregations: vec![],
+            group_by: vec!["region".into()],
+            sort: vec![SortExpr {
+                field: "count".into(),
+                descending: true,
+            }],
+            limit: Some(5),
+            having: None,
+            offset: None,
+            passthrough: None,
         };
         let sql = subquery_to_sql(&sq);
         assert!(sql.contains("SELECT \"region\", \"count\" FROM \"events\""));
@@ -429,9 +555,17 @@ mod tests {
     #[test]
     fn test_filter_and_or() {
         let f = FilterExpr::And(
-            Box::new(FilterExpr::Comparison { field: "a".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(1) }),
+            Box::new(FilterExpr::Comparison {
+                field: "a".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Int64(1),
+            }),
             Box::new(FilterExpr::Or(
-                Box::new(FilterExpr::Comparison { field: "b".into(), op: ComparisonOp::Gt, value: ScalarValue::Int64(2) }),
+                Box::new(FilterExpr::Comparison {
+                    field: "b".into(),
+                    op: ComparisonOp::Gt,
+                    value: ScalarValue::Int64(2),
+                }),
                 Box::new(FilterExpr::IsNull("c".into())),
             )),
         );

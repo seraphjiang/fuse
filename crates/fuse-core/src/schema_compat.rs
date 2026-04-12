@@ -16,9 +16,18 @@ pub fn check_compatibility(left: &[String], right: &[String]) -> SchemaCompat {
     let left_set: std::collections::HashSet<&str> = left.iter().map(|s| s.as_str()).collect();
     let right_set: std::collections::HashSet<&str> = right.iter().map(|s| s.as_str()).collect();
 
-    let common: Vec<String> = left_set.intersection(&right_set).map(|s| s.to_string()).collect();
-    let left_only: Vec<String> = left_set.difference(&right_set).map(|s| s.to_string()).collect();
-    let right_only: Vec<String> = right_set.difference(&left_set).map(|s| s.to_string()).collect();
+    let common: Vec<String> = left_set
+        .intersection(&right_set)
+        .map(|s| s.to_string())
+        .collect();
+    let left_only: Vec<String> = left_set
+        .difference(&right_set)
+        .map(|s| s.to_string())
+        .collect();
+    let right_only: Vec<String> = right_set
+        .difference(&left_set)
+        .map(|s| s.to_string())
+        .collect();
 
     SchemaCompat {
         compatible: left_only.is_empty() && right_only.is_empty(),

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Query statistics collector — per-datasource query patterns.
 
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use serde::Serialize;
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct QueryStats {
@@ -28,18 +28,28 @@ impl Default for StatsCollector {
 
 impl StatsCollector {
     pub fn new() -> Self {
-        Self { stats: Mutex::new(HashMap::new()) }
+        Self {
+            stats: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn record(&self, datasource: &str, success: bool, rows: u64, duration_ms: u64) {
         let mut map = self.stats.lock().unwrap();
         let s = map.entry(datasource.to_string()).or_default();
         s.total += 1;
-        if success { s.success += 1; } else { s.errors += 1; }
+        if success {
+            s.success += 1;
+        } else {
+            s.errors += 1;
+        }
         s.total_rows += rows;
         s.total_duration_ms += duration_ms;
-        if s.total == 1 || duration_ms < s.min_duration_ms { s.min_duration_ms = duration_ms; }
-        if duration_ms > s.max_duration_ms { s.max_duration_ms = duration_ms; }
+        if s.total == 1 || duration_ms < s.min_duration_ms {
+            s.min_duration_ms = duration_ms;
+        }
+        if duration_ms > s.max_duration_ms {
+            s.max_duration_ms = duration_ms;
+        }
     }
 
     pub fn get(&self, datasource: &str) -> Option<QueryStats> {
@@ -52,7 +62,9 @@ impl StatsCollector {
 
     pub fn avg_duration(&self, datasource: &str) -> Option<u64> {
         let map = self.stats.lock().unwrap();
-        map.get(datasource).filter(|s| s.total > 0).map(|s| s.total_duration_ms / s.total)
+        map.get(datasource)
+            .filter(|s| s.total > 0)
+            .map(|s| s.total_duration_ms / s.total)
     }
 }
 

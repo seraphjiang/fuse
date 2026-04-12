@@ -21,11 +21,11 @@ use arrow::record_batch::RecordBatch;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
+use fuse_core::config::ConnectorConfig;
 use fuse_core::connector::{
     ConnectorCapabilities, ConnectorHealth, FederatedConnector, HealthStatus, LatencyClass,
     SchemaInfo, SchemaType, SubQuery,
 };
-use fuse_core::config::ConnectorConfig;
 use fuse_core::error::ConnectorError;
 use fuse_core::registry::ConnectorFactory;
 
@@ -58,11 +58,11 @@ impl FederatedConnector for ExampleConnector {
 
     fn capabilities(&self) -> ConnectorCapabilities {
         ConnectorCapabilities {
-            supports_filtering: false,   // set true when execute() respects SubQuery.filter
-            supports_projection: false,  // set true when execute() respects SubQuery.projections
+            supports_filtering: false, // set true when execute() respects SubQuery.filter
+            supports_projection: false, // set true when execute() respects SubQuery.projections
             supports_aggregation: false,
             supports_sorting: false,
-            supports_limit: true,        // we respect SubQuery.limit below
+            supports_limit: true, // we respect SubQuery.limit below
             supports_join: false,
             max_concurrent_queries: 4,
             supports_streaming: true,
@@ -217,7 +217,9 @@ mod tests {
             group_by: vec![],
             sort: vec![],
             limit: None,
-            having: None, passthrough: None, offset: None,
+            having: None,
+            passthrough: None,
+            offset: None,
         };
         let batches = connector().execute(&sq).await.unwrap();
         assert_eq!(batches.len(), 1);
@@ -234,7 +236,9 @@ mod tests {
             group_by: vec![],
             sort: vec![],
             limit: Some(2),
-            having: None, passthrough: None, offset: None,
+            having: None,
+            passthrough: None,
+            offset: None,
         };
         let batches = connector().execute(&sq).await.unwrap();
         assert_eq!(batches[0].num_rows(), 2);
@@ -251,7 +255,9 @@ mod tests {
             group_by: vec![],
             sort: vec![],
             limit: None,
-            having: None, passthrough: None, offset: None,
+            having: None,
+            passthrough: None,
+            offset: None,
         };
         connector().execute_streaming(&sq, tx).await.unwrap();
         let batch = rx.recv().await.unwrap().unwrap();

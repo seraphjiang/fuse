@@ -34,8 +34,12 @@ pub struct AlertRule {
     pub interval_secs: u64,
 }
 
-fn default_format() -> String { "sql".to_string() }
-fn default_interval() -> u64 { 60 }
+fn default_format() -> String {
+    "sql".to_string()
+}
+fn default_interval() -> u64 {
+    60
+}
 
 /// Condition that triggers the alert.
 #[derive(Debug, Clone, Deserialize)]
@@ -49,7 +53,9 @@ pub struct AlertCondition {
     pub aggregate: String,
 }
 
-fn default_agg() -> String { "count".to_string() }
+fn default_agg() -> String {
+    "count".to_string()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -98,7 +104,11 @@ impl AlertEvaluator {
         let value = aggregate_column(batches, &rule.condition.column, &rule.condition.aggregate);
         let firing = check_condition(value, rule.condition.operator, rule.condition.threshold);
 
-        let state = if firing { AlertState::Firing } else { AlertState::Ok };
+        let state = if firing {
+            AlertState::Firing
+        } else {
+            AlertState::Ok
+        };
         let message = format!(
             "Alert '{}': {} {} {} {} (value={:.2})",
             rule.name,
@@ -165,7 +175,10 @@ impl NotificationDispatcher {
                         "message": result.message,
                     });
                     // Fire-and-forget; errors are logged
-                    if let Ok(client) = reqwest::Client::builder().timeout(std::time::Duration::from_secs(5)).build() {
+                    if let Ok(client) = reqwest::Client::builder()
+                        .timeout(std::time::Duration::from_secs(5))
+                        .build()
+                    {
                         let _ = client.post(url).json(&payload).send().await;
                     }
                 }
@@ -173,7 +186,10 @@ impl NotificationDispatcher {
                     let payload = serde_json::json!({
                         "text": format!(":rotating_light: *{}*\n{}", result.rule_name, result.message)
                     });
-                    if let Ok(client) = reqwest::Client::builder().timeout(std::time::Duration::from_secs(5)).build() {
+                    if let Ok(client) = reqwest::Client::builder()
+                        .timeout(std::time::Duration::from_secs(5))
+                        .build()
+                    {
                         let _ = client.post(webhook_url).json(&payload).send().await;
                     }
                 }
@@ -256,12 +272,16 @@ fn op_str(op: ConditionOp) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use arrow::array::Float64Array;
     use arrow::datatypes::{DataType, Field, Schema};
+    use std::sync::Arc;
 
     fn make_batch(values: Vec<f64>) -> RecordBatch {
-        let schema = Arc::new(Schema::new(vec![Field::new("value", DataType::Float64, false)]));
+        let schema = Arc::new(Schema::new(vec![Field::new(
+            "value",
+            DataType::Float64,
+            false,
+        )]));
         RecordBatch::try_new(schema, vec![Arc::new(Float64Array::from(values))]).unwrap()
     }
 
@@ -319,23 +339,54 @@ mod tests {
     #[test]
     fn test_min_max_conditions() {
         let batch = make_batch(vec![5.0, 10.0, 15.0]);
-        assert_eq!(AlertEvaluator::evaluate(&rule(ConditionOp::Lt, 6.0, "min"), std::slice::from_ref(&batch)).state, AlertState::Firing);
-        assert_eq!(AlertEvaluator::evaluate(&rule(ConditionOp::Gt, 14.0, "max"), std::slice::from_ref(&batch)).state, AlertState::Firing);
+        assert_eq!(
+            AlertEvaluator::evaluate(
+                &rule(ConditionOp::Lt, 6.0, "min"),
+                std::slice::from_ref(&batch)
+            )
+            .state,
+            AlertState::Firing
+        );
+        assert_eq!(
+            AlertEvaluator::evaluate(
+                &rule(ConditionOp::Gt, 14.0, "max"),
+                std::slice::from_ref(&batch)
+            )
+            .state,
+            AlertState::Firing
+        );
     }
 
     #[test]
     fn test_eq_neq_operators() {
         let batch = make_batch(vec![1.0, 2.0, 3.0]);
         // count=3, eq 3 → firing
-        assert_eq!(AlertEvaluator::evaluate(&rule(ConditionOp::Eq, 3.0, "count"), std::slice::from_ref(&batch)).state, AlertState::Firing);
+        assert_eq!(
+            AlertEvaluator::evaluate(
+                &rule(ConditionOp::Eq, 3.0, "count"),
+                std::slice::from_ref(&batch)
+            )
+            .state,
+            AlertState::Firing
+        );
         // count=3, neq 3 → ok
-        assert_eq!(AlertEvaluator::evaluate(&rule(ConditionOp::Neq, 3.0, "count"), std::slice::from_ref(&batch)).state, AlertState::Ok);
+        assert_eq!(
+            AlertEvaluator::evaluate(
+                &rule(ConditionOp::Neq, 3.0, "count"),
+                std::slice::from_ref(&batch)
+            )
+            .state,
+            AlertState::Ok
+        );
     }
 
     #[test]
     fn test_lte_operator() {
         let batch = make_batch(vec![1.0]);
-        assert_eq!(AlertEvaluator::evaluate(&rule(ConditionOp::Lte, 1.0, "count"), &[batch]).state, AlertState::Firing);
+        assert_eq!(
+            AlertEvaluator::evaluate(&rule(ConditionOp::Lte, 1.0, "count"), &[batch]).state,
+            AlertState::Firing
+        );
     }
 
     #[test]
@@ -351,7 +402,10 @@ mod tests {
     fn test_evaluate_all_returns_only_firing() {
         let batch = make_batch(vec![10.0, 20.0, 30.0]);
         let firing_rule = rule(ConditionOp::Gt, 2.0, "count");
-        let ok_rule = AlertRule { name: "ok_rule".into(), ..rule(ConditionOp::Gt, 100.0, "count") };
+        let ok_rule = AlertRule {
+            name: "ok_rule".into(),
+            ..rule(ConditionOp::Gt, 100.0, "count")
+        };
         let mut results = HashMap::new();
         results.insert("test_alert".into(), vec![batch.clone()]);
         results.insert("ok_rule".into(), vec![batch]);

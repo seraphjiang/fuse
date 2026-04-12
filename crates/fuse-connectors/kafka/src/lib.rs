@@ -13,8 +13,8 @@ use arrow::array::{ArrayRef, Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use async_trait::async_trait;
-use rskafka::client::ClientBuilder;
 use rskafka::client::partition::{OffsetAt, UnknownTopicHandling};
+use rskafka::client::ClientBuilder;
 use tokio::sync::mpsc;
 
 use fuse_core::config::ConnectorConfig;
@@ -40,21 +40,32 @@ impl fmt::Debug for KafkaConnector {
 
 impl KafkaConnector {
     pub fn from_config(config: &ConnectorConfig) -> Result<Self, ConnectorError> {
-        let brokers_str = config.properties.get("brokers")
+        let brokers_str = config
+            .properties
+            .get("brokers")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ConnectorError::Connection("kafka: 'brokers' required".into()))?;
-        let brokers: Vec<String> = brokers_str.split(',').map(|s| s.trim().to_string()).collect();
+        let brokers: Vec<String> = brokers_str
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect();
 
         let tls_config = if let Some(tls) = config.tls_config() {
-            tls.validate().map_err(|e| ConnectorError::Connection(e.to_string()))?;
-            let rc = tls.build_rustls_config()
+            tls.validate()
+                .map_err(|e| ConnectorError::Connection(e.to_string()))?;
+            let rc = tls
+                .build_rustls_config()
                 .map_err(|e| ConnectorError::Connection(e.to_string()))?;
             Some(Arc::new(rc))
         } else {
             None
         };
 
-        Ok(Self { id: config.id.clone(), brokers, tls_config })
+        Ok(Self {
+            id: config.id.clone(),
+            brokers,
+            tls_config,
+        })
     }
 
     fn client_builder(&self) -> ClientBuilder {
@@ -82,12 +93,19 @@ impl KafkaConnector {
         filter: &Option<FilterExpr>,
         limit: Option<u64>,
     ) -> Result<Vec<RecordBatch>, ConnectorError> {
-        let client = self.client_builder().build().await
+        let client = self
+            .client_builder()
+            .build()
+            .await
             .map_err(|e| ConnectorError::Connection(format!("kafka: {e}")))?;
 
-        let topics = client.list_topics().await
+        let topics = client
+            .list_topics()
+            .await
             .map_err(|e| ConnectorError::Connection(format!("kafka topics: {e}")))?;
-        let topic_info = topics.iter().find(|t| t.name == topic)
+        let topic_info = topics
+            .iter()
+            .find(|t| t.name == topic)
             .ok_or_else(|| ConnectorError::QueryFailed(format!("topic '{}' not found", topic)))?;
 
         let max_msgs = limit.unwrap_or(1000) as usize;
@@ -98,28 +116,48 @@ impl KafkaConnector {
         let mut payloads: Vec<Option<String>> = Vec::new();
 
         for pid in 0..topic_info.partitions.len() as i32 {
-            if keys.len() >= max_msgs { break; }
+            if keys.len() >= max_msgs {
+                break;
+            }
 
-            let pc = client.partition_client(topic, pid, UnknownTopicHandling::Error).await
+            let pc = client
+                .partition_client(topic, pid, UnknownTopicHandling::Error)
+                .await
                 .map_err(|e| ConnectorError::Connection(format!("kafka partition {pid}: {e}")))?;
 
             let start = pc.get_offset(OffsetAt::Earliest).await.unwrap_or(0);
             let end = pc.get_offset(OffsetAt::Latest).await.unwrap_or(0);
-            if start >= end { continue; }
+            if start >= end {
+                continue;
+            }
 
             let remaining = (max_msgs - keys.len()) as i32;
-            let records = pc.fetch_records(start, 1..1_048_576, remaining).await
+            let records = pc
+                .fetch_records(start, 1..1_048_576, remaining)
+                .await
                 .map_err(|e| ConnectorError::QueryFailed(format!("kafka fetch: {e}")))?;
 
             for rao in &records.0 {
-                if keys.len() >= max_msgs { break; }
+                if keys.len() >= max_msgs {
+                    break;
+                }
 
-                let key = rao.record.key.as_ref().map(|k| String::from_utf8_lossy(k).to_string());
+                let key = rao
+                    .record
+                    .key
+                    .as_ref()
+                    .map(|k| String::from_utf8_lossy(k).to_string());
                 let ts = rao.record.timestamp.timestamp_millis();
-                let payload = rao.record.value.as_ref().map(|v| String::from_utf8_lossy(v).to_string());
+                let payload = rao
+                    .record
+                    .value
+                    .as_ref()
+                    .map(|v| String::from_utf8_lossy(v).to_string());
 
                 if let Some(ref f) = filter {
-                    if !matches_filter(f, key.as_deref(), ts) { continue; }
+                    if !matches_filter(f, key.as_deref(), ts) {
+                        continue;
+                    }
                 }
 
                 keys.push(key);
@@ -130,7 +168,9 @@ impl KafkaConnector {
             }
         }
 
-        if keys.is_empty() { return Ok(vec![]); }
+        if keys.is_empty() {
+            return Ok(vec![]);
+        }
 
         let mut fields = Vec::new();
         let mut columns: Vec<ArrayRef> = Vec::new();
@@ -160,18 +200,24 @@ impl KafkaConnector {
         // Extract JSON fields from payload
         if !all {
             for jf in projections.iter().filter(|p| !p.starts_with('_')) {
-                let vals: Vec<Option<String>> = payloads.iter().map(|p| {
-                    p.as_ref().and_then(|s| {
-                        serde_json::from_str::<serde_json::Value>(s).ok()
-                            .and_then(|v| v.get(jf.as_str()).map(|fv| fv.to_string()))
+                let vals: Vec<Option<String>> = payloads
+                    .iter()
+                    .map(|p| {
+                        p.as_ref().and_then(|s| {
+                            serde_json::from_str::<serde_json::Value>(s)
+                                .ok()
+                                .and_then(|v| v.get(jf.as_str()).map(|fv| fv.to_string()))
+                        })
                     })
-                }).collect();
+                    .collect();
                 fields.push(Field::new(jf.as_str(), DataType::Utf8, true));
                 columns.push(Arc::new(StringArray::from(vals)));
             }
         }
 
-        if fields.is_empty() { return Ok(vec![]); }
+        if fields.is_empty() {
+            return Ok(vec![]);
+        }
 
         let schema = Arc::new(Schema::new(fields));
         let batch = RecordBatch::try_new(schema, columns)
@@ -184,7 +230,9 @@ fn matches_filter(filter: &FilterExpr, key: Option<&str>, timestamp: i64) -> boo
     match filter {
         FilterExpr::Comparison { field, op, value } => match field.as_str() {
             "_key" => {
-                let ScalarValue::Utf8(ref v) = value else { return true };
+                let ScalarValue::Utf8(ref v) = value else {
+                    return true;
+                };
                 let k = key.unwrap_or("");
                 match op {
                     ComparisonOp::Eq => k == v,
@@ -194,7 +242,9 @@ fn matches_filter(filter: &FilterExpr, key: Option<&str>, timestamp: i64) -> boo
                 }
             }
             "_timestamp" => {
-                let ScalarValue::Int64(ref v) = value else { return true };
+                let ScalarValue::Int64(ref v) = value else {
+                    return true;
+                };
                 match op {
                     ComparisonOp::Eq => timestamp == *v,
                     ComparisonOp::Gt => timestamp > *v,
@@ -206,8 +256,12 @@ fn matches_filter(filter: &FilterExpr, key: Option<&str>, timestamp: i64) -> boo
             }
             _ => true,
         },
-        FilterExpr::And(a, b) => matches_filter(a, key, timestamp) && matches_filter(b, key, timestamp),
-        FilterExpr::Or(a, b) => matches_filter(a, key, timestamp) || matches_filter(b, key, timestamp),
+        FilterExpr::And(a, b) => {
+            matches_filter(a, key, timestamp) && matches_filter(b, key, timestamp)
+        }
+        FilterExpr::Or(a, b) => {
+            matches_filter(a, key, timestamp) || matches_filter(b, key, timestamp)
+        }
         FilterExpr::Not(inner) => !matches_filter(inner, key, timestamp),
         _ => true,
     }
@@ -215,8 +269,12 @@ fn matches_filter(filter: &FilterExpr, key: Option<&str>, timestamp: i64) -> boo
 
 #[async_trait]
 impl FederatedConnector for KafkaConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "kafka" }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "kafka"
+    }
 
     fn capabilities(&self) -> ConnectorCapabilities {
         ConnectorCapabilities {
@@ -235,22 +293,44 @@ impl FederatedConnector for KafkaConnector {
     async fn health_check(&self) -> ConnectorHealth {
         match self.client_builder().build().await {
             Ok(c) => match c.list_topics().await {
-                Ok(_) => ConnectorHealth { status: HealthStatus::Healthy, latency_ms: None, message: None },
-                Err(e) => ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some(format!("{e}")) },
+                Ok(_) => ConnectorHealth {
+                    status: HealthStatus::Healthy,
+                    latency_ms: None,
+                    message: None,
+                },
+                Err(e) => ConnectorHealth {
+                    status: HealthStatus::Unhealthy,
+                    latency_ms: None,
+                    message: Some(format!("{e}")),
+                },
             },
-            Err(e) => ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some(format!("{e}")) },
+            Err(e) => ConnectorHealth {
+                status: HealthStatus::Unhealthy,
+                latency_ms: None,
+                message: Some(format!("{e}")),
+            },
         }
     }
 
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
-        let client = self.client_builder().build().await
+        let client = self
+            .client_builder()
+            .build()
+            .await
             .map_err(|e| ConnectorError::Connection(format!("kafka: {e}")))?;
-        let topics = client.list_topics().await
+        let topics = client
+            .list_topics()
+            .await
             .map_err(|e| ConnectorError::Connection(format!("kafka: {e}")))?;
 
-        Ok(topics.iter()
+        Ok(topics
+            .iter()
             .filter(|t| !t.name.starts_with("__"))
-            .map(|t| SchemaInfo { name: t.name.clone(), schema_type: SchemaType::Table, estimated_row_count: None })
+            .map(|t| SchemaInfo {
+                name: t.name.clone(),
+                schema_type: SchemaType::Table,
+                estimated_row_count: None,
+            })
             .collect())
     }
 
@@ -259,7 +339,8 @@ impl FederatedConnector for KafkaConnector {
     }
 
     async fn execute(&self, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
-        self.consume_topic(&query.table, &query.projections, &query.filter, query.limit).await
+        self.consume_topic(&query.table, &query.projections, &query.filter, query.limit)
+            .await
     }
 
     async fn execute_streaming(
@@ -269,7 +350,9 @@ impl FederatedConnector for KafkaConnector {
     ) -> Result<(), ConnectorError> {
         let batches = self.execute(query).await?;
         for batch in batches {
-            if tx.send(Ok(batch)).await.is_err() { break; }
+            if tx.send(Ok(batch)).await.is_err() {
+                break;
+            }
         }
         Ok(())
     }
@@ -280,8 +363,13 @@ pub struct KafkaConnectorFactory;
 
 #[async_trait]
 impl ConnectorFactory for KafkaConnectorFactory {
-    fn connector_type(&self) -> &str { "kafka" }
-    async fn create(&self, config: &ConnectorConfig) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
+    fn connector_type(&self) -> &str {
+        "kafka"
+    }
+    async fn create(
+        &self,
+        config: &ConnectorConfig,
+    ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
         Ok(Arc::new(KafkaConnector::from_config(config)?))
     }
 }
@@ -293,7 +381,11 @@ mod tests {
     fn test_config(brokers: &str) -> ConnectorConfig {
         let mut props = std::collections::HashMap::new();
         props.insert("brokers".into(), toml::Value::String(brokers.into()));
-        ConnectorConfig { id: "test-kafka".into(), connector_type: "kafka".into(), properties: props }
+        ConnectorConfig {
+            id: "test-kafka".into(),
+            connector_type: "kafka".into(),
+            properties: props,
+        }
     }
 
     #[test]
@@ -312,7 +404,9 @@ mod tests {
     #[test]
     fn test_from_config_missing_brokers() {
         let config = ConnectorConfig {
-            id: "k".into(), connector_type: "kafka".into(), properties: std::collections::HashMap::new(),
+            id: "k".into(),
+            connector_type: "kafka".into(),
+            properties: std::collections::HashMap::new(),
         };
         assert!(KafkaConnector::from_config(&config).is_err());
     }
@@ -345,7 +439,9 @@ mod tests {
     #[test]
     fn test_matches_filter_key_eq() {
         let f = FilterExpr::Comparison {
-            field: "_key".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("user-123".into()),
+            field: "_key".into(),
+            op: ComparisonOp::Eq,
+            value: ScalarValue::Utf8("user-123".into()),
         };
         assert!(matches_filter(&f, Some("user-123"), 0));
         assert!(!matches_filter(&f, Some("user-456"), 0));
@@ -354,7 +450,9 @@ mod tests {
     #[test]
     fn test_matches_filter_timestamp_gte() {
         let f = FilterExpr::Comparison {
-            field: "_timestamp".into(), op: ComparisonOp::Gte, value: ScalarValue::Int64(1000),
+            field: "_timestamp".into(),
+            op: ComparisonOp::Gte,
+            value: ScalarValue::Int64(1000),
         };
         assert!(matches_filter(&f, None, 1000));
         assert!(matches_filter(&f, None, 2000));
@@ -365,10 +463,14 @@ mod tests {
     fn test_matches_filter_and() {
         let f = FilterExpr::And(
             Box::new(FilterExpr::Comparison {
-                field: "_key".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("k".into()),
+                field: "_key".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Utf8("k".into()),
             }),
             Box::new(FilterExpr::Comparison {
-                field: "_timestamp".into(), op: ComparisonOp::Gt, value: ScalarValue::Int64(100),
+                field: "_timestamp".into(),
+                op: ComparisonOp::Gt,
+                value: ScalarValue::Int64(100),
             }),
         );
         assert!(matches_filter(&f, Some("k"), 200));
@@ -379,7 +481,9 @@ mod tests {
     #[test]
     fn test_matches_filter_not() {
         let f = FilterExpr::Not(Box::new(FilterExpr::Comparison {
-            field: "_key".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("bad".into()),
+            field: "_key".into(),
+            op: ComparisonOp::Eq,
+            value: ScalarValue::Utf8("bad".into()),
         }));
         assert!(matches_filter(&f, Some("good"), 0));
         assert!(!matches_filter(&f, Some("bad"), 0));

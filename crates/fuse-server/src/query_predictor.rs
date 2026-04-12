@@ -130,7 +130,10 @@ pub fn predict(history: &Arc<QueryHistory>, query: &str) -> Prediction {
 
         scored.push((entry.latency_ms, ds.clone()));
         for d in &ds {
-            ds_latencies.entry(d.clone()).or_default().push(entry.latency_ms);
+            ds_latencies
+                .entry(d.clone())
+                .or_default()
+                .push(entry.latency_ms);
         }
     }
 
@@ -304,9 +307,18 @@ mod tests {
 
     #[test]
     fn test_classify_query() {
-        assert_eq!(classify_query("SELECT * FROM a.t"), QueryShape::SingleSource);
-        assert_eq!(classify_query("SELECT * FROM a.t JOIN b.t ON x"), QueryShape::Join);
-        assert_eq!(classify_query("SELECT * FROM a.t UNION ALL SELECT * FROM b.t"), QueryShape::Union);
+        assert_eq!(
+            classify_query("SELECT * FROM a.t"),
+            QueryShape::SingleSource
+        );
+        assert_eq!(
+            classify_query("SELECT * FROM a.t JOIN b.t ON x"),
+            QueryShape::Join
+        );
+        assert_eq!(
+            classify_query("SELECT * FROM a.t UNION ALL SELECT * FROM b.t"),
+            QueryShape::Union
+        );
     }
 
     #[test]

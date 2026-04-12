@@ -155,8 +155,12 @@ pub async fn ingest_event(
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
     if let Err(resp) = crate::auth::require_role(
-        auth_identity.as_ref().map(|e| &e.0), crate::auth::Role::Editor, auth_identity.is_some(),
-    ) { return resp.into_response(); }
+        auth_identity.as_ref().map(|e| &e.0),
+        crate::auth::Role::Editor,
+        auth_identity.is_some(),
+    ) {
+        return resp.into_response();
+    }
     let affected = state.cdc_tracker.record_change(event);
     axum::Json(serde_json::json!({
         "accepted": true,
@@ -209,10 +213,7 @@ mod tests {
     #[test]
     fn test_register_and_record_change() {
         let tracker = CdcTracker::new(100);
-        tracker.register_view(
-            "error_summary",
-            vec![("cluster_a".into(), "logs".into())],
-        );
+        tracker.register_view("error_summary", vec![("cluster_a".into(), "logs".into())]);
 
         let affected = tracker.record_change(make_event("cluster_a", "logs"));
         assert_eq!(affected, vec!["error_summary"]);
@@ -222,10 +223,7 @@ mod tests {
     #[test]
     fn test_unrelated_change_no_affect() {
         let tracker = CdcTracker::new(100);
-        tracker.register_view(
-            "error_summary",
-            vec![("cluster_a".into(), "logs".into())],
-        );
+        tracker.register_view("error_summary", vec![("cluster_a".into(), "logs".into())]);
 
         let affected = tracker.record_change(make_event("cluster_b", "metrics"));
         assert!(affected.is_empty());
@@ -314,13 +312,15 @@ mod tests {
         assert_eq!(a2, vec!["joined_view"]);
     }
 
-
     #[test]
     fn test_dependencies_for() {
         let tracker = CdcTracker::new(100);
         tracker.register_view(
             "v1",
-            vec![("ds_a".into(), "logs".into()), ("ds_b".into(), "users".into())],
+            vec![
+                ("ds_a".into(), "logs".into()),
+                ("ds_b".into(), "users".into()),
+            ],
         );
         let deps = tracker.dependencies_for("v1").unwrap();
         assert_eq!(deps.len(), 2);
@@ -332,7 +332,10 @@ mod tests {
         let tracker = CdcTracker::new(100);
         tracker.register_view("v1", vec![("ds".into(), "t1".into())]);
         tracker.register_view("v2", vec![("ds".into(), "t2".into())]);
-        tracker.register_view("v3", vec![("ds".into(), "t1".into()), ("ds".into(), "t2".into())]);
+        tracker.register_view(
+            "v3",
+            vec![("ds".into(), "t1".into()), ("ds".into(), "t2".into())],
+        );
 
         // Change t1 affects v1 and v3
         let mut a1 = tracker.record_change(make_event("ds", "t1"));
@@ -387,8 +390,12 @@ pub async fn ingest_events_batch(
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
     if let Err(resp) = crate::auth::require_role(
-        auth_identity.as_ref().map(|e| &e.0), crate::auth::Role::Editor, auth_identity.is_some(),
-    ) { return resp.into_response(); }
+        auth_identity.as_ref().map(|e| &e.0),
+        crate::auth::Role::Editor,
+        auth_identity.is_some(),
+    ) {
+        return resp.into_response();
+    }
     let mut all_affected: HashSet<String> = HashSet::new();
     for event in events {
         let affected = state.cdc_tracker.record_change(event);
@@ -414,7 +421,9 @@ pub async fn register_view(
     axum::Json(req): axum::Json<RegisterViewRequest>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
-    state.cdc_tracker.register_view(&req.view_name, req.sources.clone());
+    state
+        .cdc_tracker
+        .register_view(&req.view_name, req.sources.clone());
     axum::Json(serde_json::json!({
         "registered": true,
         "view": req.view_name,
@@ -430,8 +439,12 @@ pub async fn trigger_refresh(
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
     if let Err(resp) = crate::auth::require_role(
-        auth_identity.as_ref().map(|e| &e.0), crate::auth::Role::Editor, auth_identity.is_some(),
-    ) { return resp.into_response(); }
+        auth_identity.as_ref().map(|e| &e.0),
+        crate::auth::Role::Editor,
+        auth_identity.is_some(),
+    ) {
+        return resp.into_response();
+    }
     let pending = state.cdc_tracker.take_pending();
     let mut refreshed = Vec::new();
     for view_name in &pending {
@@ -457,7 +470,13 @@ pub async fn list_dependencies(
     let result: HashMap<String, Vec<(String, String)>> = deps
         .iter()
         .map(|(name, sources)| {
-            (name.clone(), sources.iter().map(|(d, t)| (d.clone(), t.clone())).collect())
+            (
+                name.clone(),
+                sources
+                    .iter()
+                    .map(|(d, t)| (d.clone(), t.clone()))
+                    .collect(),
+            )
         })
         .collect();
     axum::Json(serde_json::json!(result)).into_response()
@@ -485,9 +504,7 @@ pub fn auto_register_view_dependencies(
         _ => crate::api::parse_sql_sources(query),
     };
     if let Ok(sources) = refs {
-        let deps: Vec<(String, String)> = sources
-            .into_iter()
-            .collect();
+        let deps: Vec<(String, String)> = sources.into_iter().collect();
         if !deps.is_empty() {
             cdc_tracker.register_view(view_name, deps);
         }

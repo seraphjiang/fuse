@@ -27,10 +27,7 @@ pub fn build_promql(query: &SubQuery) -> String {
     // Check for rate/irate passthrough
     if let Some(pt) = &query.passthrough {
         if let Some(func) = pt.get("function").and_then(|v| v.as_str()) {
-            let range = pt
-                .get("range")
-                .and_then(|v| v.as_str())
-                .unwrap_or("5m");
+            let range = pt.get("range").and_then(|v| v.as_str()).unwrap_or("5m");
             return format!("{func}({base}[{range}])");
         }
     }
@@ -82,12 +79,22 @@ fn extract_label_matchers(expr: &FilterExpr) -> Vec<String> {
         }
         FilterExpr::Not(inner) => {
             // NOT(field = value) → field != value
-            if let FilterExpr::Comparison { field, op: ComparisonOp::Eq, value } = inner.as_ref() {
+            if let FilterExpr::Comparison {
+                field,
+                op: ComparisonOp::Eq,
+                value,
+            } = inner.as_ref()
+            {
                 if let Some(val_str) = scalar_to_string(value) {
                     return vec![format!("{field}!=\"{val_str}\"")];
                 }
             }
-            if let FilterExpr::Comparison { field, op: ComparisonOp::Like, value } = inner.as_ref() {
+            if let FilterExpr::Comparison {
+                field,
+                op: ComparisonOp::Like,
+                value,
+            } = inner.as_ref()
+            {
                 if let Some(val_str) = scalar_to_string(value) {
                     return vec![format!("{field}!~\"{val_str}\"")];
                 }
@@ -112,16 +119,23 @@ fn scalar_to_string(value: &ScalarValue) -> Option<String> {
 /// Sanitize a string for PromQL label values (double-quoted).
 fn sanitize_promql_value(s: &str) -> String {
     s.replace('\\', "\\\\")
-     .replace('"', "\\\"")
-     .replace('\n', "\\n")
-     .replace('\r', "\\r")
-     .replace('\0', "")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\0', "")
 }
 
 /// Sanitize a PromQL label name — allow only alphanumeric + underscore.
 fn sanitize_label_name(s: &str) -> String {
-    let clean: String = s.chars().filter(|c| c.is_alphanumeric() || *c == '_').collect();
-    if clean.is_empty() { "_".to_string() } else { clean }
+    let clean: String = s
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '_')
+        .collect();
+    if clean.is_empty() {
+        "_".to_string()
+    } else {
+        clean
+    }
 }
 
 #[cfg(test)]
@@ -138,7 +152,9 @@ mod tests {
             group_by: vec![],
             sort: vec![],
             limit: None,
-            having: None, passthrough: None, offset: None,
+            having: None,
+            passthrough: None,
+            offset: None,
         }
     }
 
@@ -274,7 +290,11 @@ mod tests {
     #[test]
     fn test_scalar_escapes_double_quotes() {
         let val = scalar_to_string(&ScalarValue::Utf8("test\"inject".into()));
-        assert!(val.as_ref().unwrap().contains("\\\""), "should escape double quotes: {:?}", val);
+        assert!(
+            val.as_ref().unwrap().contains("\\\""),
+            "should escape double quotes: {:?}",
+            val
+        );
     }
 
     #[test]
@@ -318,6 +338,10 @@ mod tests {
             value: ScalarValue::Utf8("api".into()),
         };
         let matchers = extract_label_matchers(&f);
-        assert!(!matchers[0].contains('}'), "should sanitize label name: {}", matchers[0]);
+        assert!(
+            !matchers[0].contains('}'),
+            "should sanitize label name: {}",
+            matchers[0]
+        );
     }
 }

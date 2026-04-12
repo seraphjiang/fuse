@@ -55,7 +55,10 @@ pub fn suggest(datasource: &str, table: &str, columns: &[ColumnMeta]) -> Vec<Sug
     if let Some(col) = columns.iter().find(|c| is_string_type(&c.data_type)) {
         suggestions.push(SuggestedQuery {
             label: format!("Distribution by {}", col.name),
-            query: format!("SELECT {}, count(*) AS cnt FROM {} GROUP BY {} ORDER BY cnt DESC LIMIT 20", col.name, fqn, col.name),
+            query: format!(
+                "SELECT {}, count(*) AS cnt FROM {} GROUP BY {} ORDER BY cnt DESC LIMIT 20",
+                col.name, fqn, col.name
+            ),
             category: "aggregate",
         });
     }
@@ -64,7 +67,10 @@ pub fn suggest(datasource: &str, table: &str, columns: &[ColumnMeta]) -> Vec<Sug
     if let Some(col) = columns.iter().find(|c| is_numeric_type(&c.data_type)) {
         suggestions.push(SuggestedQuery {
             label: format!("Stats for {}", col.name),
-            query: format!("SELECT min({0}), max({0}), avg({0}) FROM {1}", col.name, fqn),
+            query: format!(
+                "SELECT min({0}), max({0}), avg({0}) FROM {1}",
+                col.name, fqn
+            ),
             category: "aggregate",
         });
     }
@@ -73,7 +79,10 @@ pub fn suggest(datasource: &str, table: &str, columns: &[ColumnMeta]) -> Vec<Sug
     if let Some(col) = columns.iter().find(|c| c.nullable) {
         suggestions.push(SuggestedQuery {
             label: format!("Null check: {}", col.name),
-            query: format!("SELECT count(*) AS null_count FROM {} WHERE {} IS NULL", fqn, col.name),
+            query: format!(
+                "SELECT count(*) AS null_count FROM {} WHERE {} IS NULL",
+                fqn, col.name
+            ),
             category: "quality",
         });
     }
@@ -91,20 +100,36 @@ pub fn suggest(datasource: &str, table: &str, columns: &[ColumnMeta]) -> Vec<Sug
 }
 
 fn find_timestamp_column(columns: &[ColumnMeta]) -> Option<&str> {
-    let ts_names = ["timestamp", "created_at", "updated_at", "time", "ts", "date", "event_time"];
-    columns.iter()
+    let ts_names = [
+        "timestamp",
+        "created_at",
+        "updated_at",
+        "time",
+        "ts",
+        "date",
+        "event_time",
+    ];
+    columns
+        .iter()
         .find(|c| ts_names.contains(&c.name.to_lowercase().as_str()))
         .map(|c| c.name.as_str())
 }
 
 fn is_string_type(dt: &str) -> bool {
     let lower = dt.to_lowercase();
-    lower.contains("utf8") || lower.contains("string") || lower.contains("text") || lower.contains("varchar")
+    lower.contains("utf8")
+        || lower.contains("string")
+        || lower.contains("text")
+        || lower.contains("varchar")
 }
 
 fn is_numeric_type(dt: &str) -> bool {
     let lower = dt.to_lowercase();
-    lower.contains("int") || lower.contains("float") || lower.contains("double") || lower.contains("decimal") || lower.contains("numeric")
+    lower.contains("int")
+        || lower.contains("float")
+        || lower.contains("double")
+        || lower.contains("decimal")
+        || lower.contains("numeric")
 }
 
 #[cfg(test)]
@@ -113,10 +138,26 @@ mod tests {
 
     fn sample_columns() -> Vec<ColumnMeta> {
         vec![
-            ColumnMeta { name: "timestamp".into(), data_type: "Utf8".into(), nullable: false },
-            ColumnMeta { name: "level".into(), data_type: "Utf8".into(), nullable: false },
-            ColumnMeta { name: "message".into(), data_type: "Utf8".into(), nullable: true },
-            ColumnMeta { name: "status".into(), data_type: "Int64".into(), nullable: false },
+            ColumnMeta {
+                name: "timestamp".into(),
+                data_type: "Utf8".into(),
+                nullable: false,
+            },
+            ColumnMeta {
+                name: "level".into(),
+                data_type: "Utf8".into(),
+                nullable: false,
+            },
+            ColumnMeta {
+                name: "message".into(),
+                data_type: "Utf8".into(),
+                nullable: true,
+            },
+            ColumnMeta {
+                name: "status".into(),
+                data_type: "Int64".into(),
+                nullable: false,
+            },
         ]
     }
 
@@ -135,7 +176,11 @@ mod tests {
 
     #[test]
     fn test_no_timestamp_no_recent() {
-        let cols = vec![ColumnMeta { name: "id".into(), data_type: "Int64".into(), nullable: false }];
+        let cols = vec![ColumnMeta {
+            name: "id".into(),
+            data_type: "Int64".into(),
+            nullable: false,
+        }];
         let s = suggest("ds", "t", &cols);
         assert!(!s.iter().any(|q| q.label.contains("Recent")));
     }
@@ -143,7 +188,9 @@ mod tests {
     #[test]
     fn test_string_column_distribution() {
         let s = suggest("ds", "logs", &sample_columns());
-        assert!(s.iter().any(|q| q.category == "aggregate" && q.query.contains("GROUP BY")));
+        assert!(s
+            .iter()
+            .any(|q| q.category == "aggregate" && q.query.contains("GROUP BY")));
     }
 
     #[test]
@@ -155,7 +202,9 @@ mod tests {
     #[test]
     fn test_null_check() {
         let s = suggest("ds", "logs", &sample_columns());
-        assert!(s.iter().any(|q| q.category == "quality" && q.query.contains("IS NULL")));
+        assert!(s
+            .iter()
+            .any(|q| q.category == "quality" && q.query.contains("IS NULL")));
     }
 
     #[test]
@@ -168,7 +217,11 @@ mod tests {
     fn test_fqn_in_queries() {
         let s = suggest("cluster_a", "application_logs", &sample_columns());
         for q in &s {
-            assert!(q.query.contains("cluster_a.application_logs"), "missing FQN in: {}", q.query);
+            assert!(
+                q.query.contains("cluster_a.application_logs"),
+                "missing FQN in: {}",
+                q.query
+            );
         }
     }
 

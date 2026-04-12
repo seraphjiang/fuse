@@ -20,23 +20,53 @@ pub fn validate(op: &PlanOp) -> Vec<PlanError> {
 fn validate_node(op: &PlanOp, errors: &mut Vec<PlanError>) {
     match op {
         PlanOp::Scan { datasource, table } => {
-            if datasource.is_empty() { errors.push(PlanError { node: "Scan".into(), message: "empty datasource".into() }); }
-            if table.is_empty() { errors.push(PlanError { node: "Scan".into(), message: "empty table".into() }); }
+            if datasource.is_empty() {
+                errors.push(PlanError {
+                    node: "Scan".into(),
+                    message: "empty datasource".into(),
+                });
+            }
+            if table.is_empty() {
+                errors.push(PlanError {
+                    node: "Scan".into(),
+                    message: "empty table".into(),
+                });
+            }
         }
         PlanOp::Filter { input, predicate } => {
-            if predicate.is_empty() { errors.push(PlanError { node: "Filter".into(), message: "empty predicate".into() }); }
+            if predicate.is_empty() {
+                errors.push(PlanError {
+                    node: "Filter".into(),
+                    message: "empty predicate".into(),
+                });
+            }
             validate_node(input, errors);
         }
         PlanOp::Project { input, columns } => {
-            if columns.is_empty() { errors.push(PlanError { node: "Project".into(), message: "empty column list".into() }); }
+            if columns.is_empty() {
+                errors.push(PlanError {
+                    node: "Project".into(),
+                    message: "empty column list".into(),
+                });
+            }
             validate_node(input, errors);
         }
         PlanOp::Sort { input, keys } => {
-            if keys.is_empty() { errors.push(PlanError { node: "Sort".into(), message: "empty sort keys".into() }); }
+            if keys.is_empty() {
+                errors.push(PlanError {
+                    node: "Sort".into(),
+                    message: "empty sort keys".into(),
+                });
+            }
             validate_node(input, errors);
         }
         PlanOp::Limit { input, count } => {
-            if *count == 0 { errors.push(PlanError { node: "Limit".into(), message: "limit is zero".into() }); }
+            if *count == 0 {
+                errors.push(PlanError {
+                    node: "Limit".into(),
+                    message: "limit is zero".into(),
+                });
+            }
             validate_node(input, errors);
         }
     }
@@ -50,7 +80,10 @@ mod tests {
 
     #[test]
     fn test_valid_plan() {
-        let plan = PlanBuilder::scan("ds", "t").filter(&Predicate::eq("x", "1")).limit(10).build();
+        let plan = PlanBuilder::scan("ds", "t")
+            .filter(&Predicate::eq("x", "1"))
+            .limit(10)
+            .build();
         assert!(validate(&plan.root).is_empty());
     }
 
@@ -63,7 +96,9 @@ mod tests {
     #[test]
     fn test_zero_limit() {
         let plan = PlanBuilder::scan("ds", "t").limit(0).build();
-        assert!(validate(&plan.root).iter().any(|e| e.message.contains("zero")));
+        assert!(validate(&plan.root)
+            .iter()
+            .any(|e| e.message.contains("zero")));
     }
 
     #[test]

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //! #841 Kafka connector integration tests.
 
-use std::collections::HashMap;
 use fuse_connector_kafka::KafkaConnector;
 use fuse_core::config::ConnectorConfig;
 use fuse_core::connector::FederatedConnector;
+use std::collections::HashMap;
 
 fn test_config(brokers: &str) -> ConnectorConfig {
     let mut props = HashMap::new();
@@ -45,7 +45,10 @@ fn test_kafka_schema_has_expected_fields() {
     let caps = c.capabilities();
     assert!(caps.supports_filtering);
     assert!(caps.supports_streaming);
-    assert!(!caps.supports_aggregation, "kafka should not support aggregation");
+    assert!(
+        !caps.supports_aggregation,
+        "kafka should not support aggregation"
+    );
 }
 
 #[test]
@@ -59,5 +62,9 @@ async fn test_kafka_health_unreachable() {
     use fuse_core::connector::HealthStatus;
     let c = KafkaConnector::from_config(&test_config("localhost:19092")).unwrap();
     let health = c.health_check().await;
-    assert_eq!(health.status, HealthStatus::Unhealthy, "unreachable broker should be unhealthy");
+    assert_eq!(
+        health.status,
+        HealthStatus::Unhealthy,
+        "unreachable broker should be unhealthy"
+    );
 }

@@ -22,7 +22,10 @@ pub enum WsMessage {
     /// Query accepted, streaming will begin.
     Ack { query_id: String },
     /// A batch of rows.
-    Batch { rows: Vec<Vec<serde_json::Value>>, batch_index: usize },
+    Batch {
+        rows: Vec<Vec<serde_json::Value>>,
+        batch_index: usize,
+    },
     /// Column metadata (sent before first batch).
     Schema { columns: Vec<String> },
     /// Query complete.
@@ -33,7 +36,8 @@ pub enum WsMessage {
 
 impl WsMessage {
     pub fn to_json(&self) -> String {
-        serde_json::to_string(self).unwrap_or_else(|_| r#"{"type":"error","message":"serialization failed"}"#.to_string())
+        serde_json::to_string(self)
+            .unwrap_or_else(|_| r#"{"type":"error","message":"serialization failed"}"#.to_string())
     }
 }
 
@@ -59,7 +63,9 @@ mod tests {
 
     #[test]
     fn test_ws_message_ack() {
-        let msg = WsMessage::Ack { query_id: "q-1".into() };
+        let msg = WsMessage::Ack {
+            query_id: "q-1".into(),
+        };
         let json = msg.to_json();
         assert!(json.contains("\"type\":\"ack\""));
         assert!(json.contains("q-1"));
@@ -67,21 +73,28 @@ mod tests {
 
     #[test]
     fn test_ws_message_schema() {
-        let msg = WsMessage::Schema { columns: vec!["id".into(), "name".into()] };
+        let msg = WsMessage::Schema {
+            columns: vec!["id".into(), "name".into()],
+        };
         let json = msg.to_json();
         assert!(json.contains("\"type\":\"schema\""));
     }
 
     #[test]
     fn test_ws_message_done() {
-        let msg = WsMessage::Done { total_rows: 42, duration_ms: 100 };
+        let msg = WsMessage::Done {
+            total_rows: 42,
+            duration_ms: 100,
+        };
         let json = msg.to_json();
         assert!(json.contains("\"total_rows\":42"));
     }
 
     #[test]
     fn test_ws_message_error() {
-        let msg = WsMessage::Error { message: "timeout".into() };
+        let msg = WsMessage::Error {
+            message: "timeout".into(),
+        };
         let json = msg.to_json();
         assert!(json.contains("\"type\":\"error\""));
     }

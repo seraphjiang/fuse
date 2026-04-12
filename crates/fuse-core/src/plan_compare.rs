@@ -5,19 +5,31 @@ use crate::cost_model::CostEstimate;
 
 /// Compare two plans and return the cheaper one's index (0 or 1).
 pub fn cheaper(a: &CostEstimate, b: &CostEstimate) -> usize {
-    if a.estimated_cost <= b.estimated_cost { 0 } else { 1 }
+    if a.estimated_cost <= b.estimated_cost {
+        0
+    } else {
+        1
+    }
 }
 
 /// Pick the cheapest plan from a list. Returns index.
 pub fn cheapest(plans: &[CostEstimate]) -> Option<usize> {
-    plans.iter().enumerate()
-        .min_by(|(_, a), (_, b)| a.estimated_cost.partial_cmp(&b.estimated_cost).unwrap_or(std::cmp::Ordering::Equal))
+    plans
+        .iter()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| {
+            a.estimated_cost
+                .partial_cmp(&b.estimated_cost)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
         .map(|(i, _)| i)
 }
 
 /// Check if plan B is significantly cheaper than A (by ratio).
 pub fn is_significantly_cheaper(a: &CostEstimate, b: &CostEstimate, threshold: f64) -> bool {
-    if a.estimated_cost == 0.0 { return false; }
+    if a.estimated_cost == 0.0 {
+        return false;
+    }
     b.estimated_cost / a.estimated_cost < threshold
 }
 

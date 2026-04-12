@@ -12,7 +12,6 @@ static TEST_ALLOWED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBo
 static CHAOS_RATE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(10);
 static LATENCY_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-
 /// If non-empty, only these connectors are affected by chaos.
 fn target_connectors() -> &'static Mutex<HashSet<String>> {
     static TARGETS: std::sync::OnceLock<Mutex<HashSet<String>>> = std::sync::OnceLock::new();
@@ -42,8 +41,12 @@ pub fn enable(rate_pct: u32) {
 /// Returns true if chaos testing is allowed (FUSE_CHAOS_ALLOWED=1).
 pub fn is_allowed() -> bool {
     #[cfg(test)]
-    if TEST_ALLOWED.load(Ordering::Relaxed) { return true; }
-    std::env::var("FUSE_CHAOS_ALLOWED").map(|v| v == "1" || v == "true").unwrap_or(false)
+    if TEST_ALLOWED.load(Ordering::Relaxed) {
+        return true;
+    }
+    std::env::var("FUSE_CHAOS_ALLOWED")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
 }
 
 pub fn enable_with_config(cfg: &ChaosConfig) {
@@ -109,10 +112,14 @@ pub fn maybe_fail(connector_id: &str) -> Option<String> {
 
 /// Inject latency if configured. Call before connector execution.
 pub async fn maybe_delay(connector_id: &str) {
-    if !CHAOS_ENABLED.load(Ordering::Relaxed) { return; }
+    if !CHAOS_ENABLED.load(Ordering::Relaxed) {
+        return;
+    }
     {
         let targets = target_connectors().lock().unwrap();
-        if !targets.is_empty() && !targets.contains(connector_id) { return; }
+        if !targets.is_empty() && !targets.contains(connector_id) {
+            return;
+        }
     }
     let ms = LATENCY_MS.load(Ordering::Relaxed);
     if ms > 0 {
@@ -127,7 +134,12 @@ pub fn config() -> ChaosConfig {
         enabled: CHAOS_ENABLED.load(Ordering::Relaxed),
         failure_rate_pct: CHAOS_RATE.load(Ordering::Relaxed),
         latency_ms: LATENCY_MS.load(Ordering::Relaxed),
-        target_connectors: target_connectors().lock().unwrap().iter().cloned().collect(),
+        target_connectors: target_connectors()
+            .lock()
+            .unwrap()
+            .iter()
+            .cloned()
+            .collect(),
     }
 }
 
@@ -186,7 +198,6 @@ mod tests {
         }
         disable();
     }
-
 
     #[test]
     fn test_targeted_connector() {

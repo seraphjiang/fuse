@@ -27,7 +27,11 @@ impl RedisResultCache {
             Ok(url) => match redis::Client::open(url.as_str()) {
                 Ok(client) => {
                     debug!("Result cache: Redis at {}", url);
-                    Self::Redis { client, ttl_secs, prefix: "fuse:cache:".into() }
+                    Self::Redis {
+                        client,
+                        ttl_secs,
+                        prefix: "fuse:cache:".into(),
+                    }
                 }
                 Err(e) => {
                     warn!("Redis connect failed ({}), falling back to in-memory", e);
@@ -60,9 +64,17 @@ impl RedisResultCache {
     /// Insert result with TTL.
     pub async fn insert(&self, key: String, value: serde_json::Value) {
         match self {
-            Self::Redis { client, ttl_secs, prefix } => {
-                let Ok(mut conn) = client.get_multiplexed_async_connection().await else { return };
-                let Ok(json) = serde_json::to_string(&value) else { return };
+            Self::Redis {
+                client,
+                ttl_secs,
+                prefix,
+            } => {
+                let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+                    return;
+                };
+                let Ok(json) = serde_json::to_string(&value) else {
+                    return;
+                };
                 let _: Result<(), _> = redis::cmd("SET")
                     .arg(format!("{prefix}{key}"))
                     .arg(json)
@@ -79,7 +91,9 @@ impl RedisResultCache {
     pub async fn invalidate(&self, key: &str) {
         match self {
             Self::Redis { client, prefix, .. } => {
-                let Ok(mut conn) = client.get_multiplexed_async_connection().await else { return };
+                let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+                    return;
+                };
                 let _: Result<(), _> = redis::cmd("DEL")
                     .arg(format!("{prefix}{key}"))
                     .query_async(&mut conn)
@@ -134,10 +148,12 @@ mod tests {
     async fn test_in_memory_insert_and_get() {
         std::env::remove_var("FUSE_REDIS_URL");
         let cache = RedisResultCache::from_env(60, 100);
-        cache.insert("k1".into(), serde_json::json!({"rows": [1,2,3]})).await;
+        cache
+            .insert("k1".into(), serde_json::json!({"rows": [1,2,3]}))
+            .await;
         let val = cache.get("k1").await;
         assert!(val.is_some());
-        assert_eq!(val.unwrap()["rows"], serde_json::json!([1,2,3]));
+        assert_eq!(val.unwrap()["rows"], serde_json::json!([1, 2, 3]));
     }
 
     #[test]

@@ -35,14 +35,30 @@ pub fn explain_query(sql: &str) -> QueryExplanation {
     }
 
     // Detect operations
-    if upper.contains("JOIN") { operations.push("joins data across sources".into()); }
-    if upper.contains("WHERE") { operations.push("filters results".into()); }
-    if upper.contains("GROUP BY") { operations.push("groups and aggregates".into()); }
-    if upper.contains("ORDER BY") { operations.push("sorts results".into()); }
-    if upper.contains("LIMIT") { operations.push("limits output rows".into()); }
-    if upper.contains("UNION") { operations.push("combines results from multiple sources".into()); }
-    if upper.contains("DISTINCT") { operations.push("removes duplicates".into()); }
-    if upper.contains("HAVING") { operations.push("filters aggregated groups".into()); }
+    if upper.contains("JOIN") {
+        operations.push("joins data across sources".into());
+    }
+    if upper.contains("WHERE") {
+        operations.push("filters results".into());
+    }
+    if upper.contains("GROUP BY") {
+        operations.push("groups and aggregates".into());
+    }
+    if upper.contains("ORDER BY") {
+        operations.push("sorts results".into());
+    }
+    if upper.contains("LIMIT") {
+        operations.push("limits output rows".into());
+    }
+    if upper.contains("UNION") {
+        operations.push("combines results from multiple sources".into());
+    }
+    if upper.contains("DISTINCT") {
+        operations.push("removes duplicates".into());
+    }
+    if upper.contains("HAVING") {
+        operations.push("filters aggregated groups".into());
+    }
     if upper.contains("COUNT(") || upper.contains("SUM(") || upper.contains("AVG(") {
         operations.push("computes aggregations".into());
     }
@@ -54,7 +70,10 @@ pub fn explain_query(sql: &str) -> QueryExplanation {
         format!("'{}'", datasources[0])
     } else {
         let last = datasources.last().unwrap().clone();
-        let rest: Vec<String> = datasources[..datasources.len()-1].iter().map(|d| format!("'{}'", d)).collect();
+        let rest: Vec<String> = datasources[..datasources.len() - 1]
+            .iter()
+            .map(|d| format!("'{}'", d))
+            .collect();
         format!("{} and '{}'", rest.join(", "), last)
     };
 
@@ -66,7 +85,11 @@ pub fn explain_query(sql: &str) -> QueryExplanation {
 
     let summary = format!("This query reads from {} and {}", ds_text, ops_text);
 
-    QueryExplanation { summary, datasources, operations }
+    QueryExplanation {
+        summary,
+        datasources,
+        operations,
+    }
 }
 
 #[cfg(test)]
@@ -85,7 +108,9 @@ mod tests {
         let e = explain_query("SELECT l.id FROM cluster_a.logs l JOIN dynamodb.users u ON l.uid = u.uid WHERE l.status >= 500");
         assert!(e.datasources.contains(&"cluster_a".to_string()));
         assert!(e.datasources.contains(&"dynamodb".to_string()));
-        assert!(e.operations.contains(&"joins data across sources".to_string()));
+        assert!(e
+            .operations
+            .contains(&"joins data across sources".to_string()));
         assert!(e.operations.contains(&"filters results".to_string()));
     }
 
@@ -100,7 +125,9 @@ mod tests {
     #[test]
     fn test_union() {
         let e = explain_query("SELECT * FROM a.logs UNION ALL SELECT * FROM b.logs LIMIT 100");
-        assert!(e.operations.contains(&"combines results from multiple sources".to_string()));
+        assert!(e
+            .operations
+            .contains(&"combines results from multiple sources".to_string()));
     }
 
     #[test]

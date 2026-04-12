@@ -8,10 +8,10 @@ use arrow::array::{Int64Array, RecordBatch, StringArray};
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
-use fuse_engine::join::{hash_join, extract_join_keys, JoinType};
-use fuse_engine::{sort_batches, union_batches, union_schema, align_batch};
+use fuse_engine::cache::{cache_key, QueryCache};
+use fuse_engine::join::{extract_join_keys, hash_join, JoinType};
 use fuse_engine::ppl::{is_ppl, parse_ppl, ppl_to_sql};
-use fuse_engine::cache::{QueryCache, cache_key};
+use fuse_engine::{align_batch, sort_batches, union_batches, union_schema};
 
 // ── Helpers ──
 
@@ -195,19 +195,26 @@ fn bench_cache_ops(c: &mut Criterion) {
     group.bench_function("get_hit", |b| {
         let cache = QueryCache::new();
         cache.put(42, vec![make_batch(100)], Duration::from_secs(60));
-        b.iter(|| { black_box(cache.get(42)); })
+        b.iter(|| {
+            black_box(cache.get(42));
+        })
     });
 
     // Bench get (miss)
     group.bench_function("get_miss", |b| {
         let cache = QueryCache::new();
-        b.iter(|| { black_box(cache.get(999)); })
+        b.iter(|| {
+            black_box(cache.get(999));
+        })
     });
 
     // Bench cache_key hashing
     group.bench_function("cache_key_hash", |b| {
         b.iter(|| {
-            black_box(cache_key("my_connector", "SELECT * FROM logs WHERE status >= 500 ORDER BY ts DESC LIMIT 100"));
+            black_box(cache_key(
+                "my_connector",
+                "SELECT * FROM logs WHERE status >= 500 ORDER BY ts DESC LIMIT 100",
+            ));
         })
     });
 

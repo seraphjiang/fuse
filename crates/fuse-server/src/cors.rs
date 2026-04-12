@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //! #1400 CORS configuration.
 
-use tower_http::cors::{Any, CorsLayer};
 use axum::http::{HeaderValue, Method};
+use tower_http::cors::{Any, CorsLayer};
 
 /// Build a CORS layer from configured origins.
 /// Empty list = no CORS headers (same-origin only).
@@ -19,10 +19,7 @@ pub fn build_cors_layer(origins: &[String]) -> Option<CorsLayer> {
             .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
             .allow_headers(Any)
     } else {
-        let allowed: Vec<HeaderValue> = origins
-            .iter()
-            .filter_map(|o| o.parse().ok())
-            .collect();
+        let allowed: Vec<HeaderValue> = origins.iter().filter_map(|o| o.parse().ok()).collect();
         CorsLayer::new()
             .allow_origin(allowed)
             .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
@@ -48,7 +45,10 @@ mod tests {
 
     #[test]
     fn test_specific_origins_returns_layer() {
-        let origins = vec!["http://localhost:3000".into(), "https://app.example.com".into()];
+        let origins = vec![
+            "http://localhost:3000".into(),
+            "https://app.example.com".into(),
+        ];
         assert!(build_cors_layer(&origins).is_some());
     }
 }

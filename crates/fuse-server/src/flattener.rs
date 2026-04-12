@@ -9,11 +9,17 @@ pub fn flatten_value(prefix: &str, value: &Value, out: &mut BTreeMap<String, Val
     match value {
         Value::Object(map) => {
             for (k, v) in map {
-                let key = if prefix.is_empty() { k.clone() } else { format!("{}.{}", prefix, k) };
+                let key = if prefix.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{}.{}", prefix, k)
+                };
                 flatten_value(&key, v, out);
             }
         }
-        _ => { out.insert(prefix.to_string(), value.clone()); }
+        _ => {
+            out.insert(prefix.to_string(), value.clone());
+        }
     }
 }
 
@@ -25,13 +31,21 @@ pub fn flatten_rows(rows: &[Value]) -> (Vec<String>, Vec<Vec<Value>>) {
     for row in rows {
         let mut flat = BTreeMap::new();
         flatten_value("", row, &mut flat);
-        for k in flat.keys() { all_keys.insert(k.clone(), ()); }
+        for k in flat.keys() {
+            all_keys.insert(k.clone(), ());
+        }
         flat_rows.push(flat);
     }
     let columns: Vec<String> = all_keys.keys().cloned().collect();
-    let result: Vec<Vec<Value>> = flat_rows.iter().map(|flat| {
-        columns.iter().map(|c| flat.get(c).cloned().unwrap_or(Value::Null)).collect()
-    }).collect();
+    let result: Vec<Vec<Value>> = flat_rows
+        .iter()
+        .map(|flat| {
+            columns
+                .iter()
+                .map(|c| flat.get(c).cloned().unwrap_or(Value::Null))
+                .collect()
+        })
+        .collect();
     (columns, result)
 }
 

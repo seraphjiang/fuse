@@ -18,29 +18,44 @@ pub fn validate_connector_config(
     let mut errors = Vec::new();
 
     if id.is_empty() {
-        errors.push(ConfigError { field: "id".into(), message: "connector id cannot be empty".into() });
+        errors.push(ConfigError {
+            field: "id".into(),
+            message: "connector id cannot be empty".into(),
+        });
     }
 
     if connector_type.is_empty() {
-        errors.push(ConfigError { field: "type".into(), message: "connector type cannot be empty".into() });
+        errors.push(ConfigError {
+            field: "type".into(),
+            message: "connector type cannot be empty".into(),
+        });
     }
 
     // Type-specific validation
     match connector_type {
         "opensearch" | "elasticsearch" => {
             if !properties.contains_key("url") {
-                errors.push(ConfigError { field: "url".into(), message: format!("{} requires 'url'", connector_type) });
+                errors.push(ConfigError {
+                    field: "url".into(),
+                    message: format!("{} requires 'url'", connector_type),
+                });
             }
         }
         "postgres" | "mysql" => {
             if !properties.contains_key("url") {
-                errors.push(ConfigError { field: "url".into(), message: "SQL connector requires 'url'".into() });
+                errors.push(ConfigError {
+                    field: "url".into(),
+                    message: "SQL connector requires 'url'".into(),
+                });
             }
         }
         "dynamodb" => {} // uses IAM, no required fields
         "s3" => {
             if !properties.contains_key("bucket") {
-                errors.push(ConfigError { field: "bucket".into(), message: "S3 connector requires 'bucket'".into() });
+                errors.push(ConfigError {
+                    field: "bucket".into(),
+                    message: "S3 connector requires 'bucket'".into(),
+                });
             }
         }
         _ => {} // unknown types pass through

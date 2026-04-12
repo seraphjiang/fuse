@@ -68,35 +68,56 @@ mod tests {
 
     #[tokio::test]
     async fn test_retries_then_succeeds() {
-        let config = RetryConfig { max_retries: 3, initial_backoff: Duration::from_millis(1), max_backoff: Duration::from_millis(10) };
+        let config = RetryConfig {
+            max_retries: 3,
+            initial_backoff: Duration::from_millis(1),
+            max_backoff: Duration::from_millis(10),
+        };
         let count = AtomicU32::new(0);
         let result: Result<&str, String> = with_retry(&config, || {
             let n = count.fetch_add(1, Ordering::SeqCst);
             async move {
-                if n < 2 { Err("transient".into()) } else { Ok("ok") }
+                if n < 2 {
+                    Err("transient".into())
+                } else {
+                    Ok("ok")
+                }
             }
-        }).await;
+        })
+        .await;
         assert_eq!(result.unwrap(), "ok");
         assert_eq!(count.load(Ordering::SeqCst), 3);
     }
 
     #[tokio::test]
     async fn test_exhausts_retries() {
-        let config = RetryConfig { max_retries: 2, initial_backoff: Duration::from_millis(1), max_backoff: Duration::from_millis(5) };
-        let result: Result<(), String> = with_retry(&config, || async { Err("permanent".into()) }).await;
+        let config = RetryConfig {
+            max_retries: 2,
+            initial_backoff: Duration::from_millis(1),
+            max_backoff: Duration::from_millis(5),
+        };
+        let result: Result<(), String> =
+            with_retry(&config, || async { Err("permanent".into()) }).await;
         assert_eq!(result.unwrap_err(), "permanent");
     }
 
     #[tokio::test]
     async fn test_zero_retries() {
-        let config = RetryConfig { max_retries: 0, ..Default::default() };
+        let config = RetryConfig {
+            max_retries: 0,
+            ..Default::default()
+        };
         let result: Result<(), String> = with_retry(&config, || async { Err("fail".into()) }).await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_backoff_capped() {
-        let config = RetryConfig { max_retries: 10, initial_backoff: Duration::from_secs(1), max_backoff: Duration::from_secs(2) };
+        let config = RetryConfig {
+            max_retries: 10,
+            initial_backoff: Duration::from_secs(1),
+            max_backoff: Duration::from_secs(2),
+        };
         // Backoff at attempt 10 would be 1*2^9 = 512s, but capped at 2s
         let backoff = std::cmp::min(
             config.initial_backoff * 2u32.saturating_pow(9),

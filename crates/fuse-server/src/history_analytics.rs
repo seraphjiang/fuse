@@ -20,8 +20,12 @@ pub fn compute_analytics(
 ) -> HistoryAnalytics {
     if entries.is_empty() {
         return HistoryAnalytics {
-            total_queries: 0, success_count: 0, error_count: 0,
-            success_rate: 0.0, avg_duration_ms: 0, p95_duration_ms: 0,
+            total_queries: 0,
+            success_count: 0,
+            error_count: 0,
+            success_rate: 0.0,
+            avg_duration_ms: 0,
+            p95_duration_ms: 0,
             top_datasources: vec![],
         };
     }
@@ -37,7 +41,10 @@ pub fn compute_analytics(
     let mut sorted = durations.clone();
     sorted.sort();
     let p95_idx = (sorted.len() as f64 * 0.95) as usize;
-    let p95 = sorted.get(p95_idx.min(sorted.len() - 1)).copied().unwrap_or(0);
+    let p95 = sorted
+        .get(p95_idx.min(sorted.len() - 1))
+        .copied()
+        .unwrap_or(0);
 
     let mut ds_counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
     for (_, _, ds_list) in entries {
@@ -50,8 +57,12 @@ pub fn compute_analytics(
     top.truncate(10);
 
     HistoryAnalytics {
-        total_queries: total, success_count: success, error_count: error,
-        success_rate: rate, avg_duration_ms: avg, p95_duration_ms: p95,
+        total_queries: total,
+        success_count: success,
+        error_count: error,
+        success_rate: rate,
+        avg_duration_ms: avg,
+        p95_duration_ms: p95,
         top_datasources: top,
     }
 }

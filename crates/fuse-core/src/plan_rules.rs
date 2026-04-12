@@ -20,19 +20,35 @@ pub fn apply_rules(mut plan: LogicalPlan, rules: &[Box<dyn OptRule>]) -> Logical
 /// Rule: remove redundant Limit(MAX) nodes.
 pub struct EliminateMaxLimit;
 impl OptRule for EliminateMaxLimit {
-    fn name(&self) -> &str { "eliminate_max_limit" }
+    fn name(&self) -> &str {
+        "eliminate_max_limit"
+    }
     fn apply(&self, plan: LogicalPlan) -> LogicalPlan {
-        LogicalPlan { root: eliminate_max_limit(plan.root) }
+        LogicalPlan {
+            root: eliminate_max_limit(plan.root),
+        }
     }
 }
 
 fn eliminate_max_limit(op: PlanOp) -> PlanOp {
     match op {
         PlanOp::Limit { input, count } if count == u64::MAX => *input,
-        PlanOp::Limit { input, count } => PlanOp::Limit { input: Box::new(eliminate_max_limit(*input)), count },
-        PlanOp::Filter { input, predicate } => PlanOp::Filter { input: Box::new(eliminate_max_limit(*input)), predicate },
-        PlanOp::Project { input, columns } => PlanOp::Project { input: Box::new(eliminate_max_limit(*input)), columns },
-        PlanOp::Sort { input, keys } => PlanOp::Sort { input: Box::new(eliminate_max_limit(*input)), keys },
+        PlanOp::Limit { input, count } => PlanOp::Limit {
+            input: Box::new(eliminate_max_limit(*input)),
+            count,
+        },
+        PlanOp::Filter { input, predicate } => PlanOp::Filter {
+            input: Box::new(eliminate_max_limit(*input)),
+            predicate,
+        },
+        PlanOp::Project { input, columns } => PlanOp::Project {
+            input: Box::new(eliminate_max_limit(*input)),
+            columns,
+        },
+        PlanOp::Sort { input, keys } => PlanOp::Sort {
+            input: Box::new(eliminate_max_limit(*input)),
+            keys,
+        },
         other => other,
     }
 }

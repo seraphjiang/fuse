@@ -27,12 +27,7 @@ fn array_bytes(arr: &ArrayRef) -> usize {
 fn batches_bytes(batches: &[RecordBatch]) -> usize {
     batches
         .iter()
-        .map(|b| {
-            b.columns()
-                .iter()
-                .map(array_bytes)
-                .sum::<usize>()
-        })
+        .map(|b| b.columns().iter().map(array_bytes).sum::<usize>())
         .sum()
 }
 
@@ -278,17 +273,13 @@ mod tests {
 
     fn test_batch(n: i64) -> Vec<RecordBatch> {
         let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, false)]));
-        vec![
-            RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(vec![n]))]).unwrap(),
-        ]
+        vec![RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(vec![n]))]).unwrap()]
     }
 
     fn big_batch(rows: usize) -> Vec<RecordBatch> {
         let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, false)]));
         let data: Vec<i64> = (0..rows as i64).collect();
-        vec![
-            RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(data))]).unwrap(),
-        ]
+        vec![RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(data))]).unwrap()]
     }
 
     #[test]
@@ -301,15 +292,38 @@ mod tests {
     #[test]
     fn test_default_ttl_all_connectors() {
         let connectors = [
-            "opensearch", "elasticsearch", "postgres", "mysql", "dynamodb",
-            "s3", "s3-o11y", "prometheus", "cloudwatch", "redis", "csv-json",
-            "mongodb", "influxdb", "clickhouse", "kafka", "athena", "timestream",
-            "snowflake", "bigquery", "cassandra", "duckdb", "arrow-flight",
-            "fuse", "delta-lake", "iceberg",
+            "opensearch",
+            "elasticsearch",
+            "postgres",
+            "mysql",
+            "dynamodb",
+            "s3",
+            "s3-o11y",
+            "prometheus",
+            "cloudwatch",
+            "redis",
+            "csv-json",
+            "mongodb",
+            "influxdb",
+            "clickhouse",
+            "kafka",
+            "athena",
+            "timestream",
+            "snowflake",
+            "bigquery",
+            "cassandra",
+            "duckdb",
+            "arrow-flight",
+            "fuse",
+            "delta-lake",
+            "iceberg",
         ];
         for c in connectors {
             let ttl = default_ttl(c);
-            assert!(ttl.as_secs() > 0, "connector {c} should have a positive TTL");
+            assert!(
+                ttl.as_secs() > 0,
+                "connector {c} should have a positive TTL"
+            );
         }
     }
 
@@ -542,7 +556,10 @@ mod tests {
         assert!(after > 0, "should track memory after put");
 
         cache.put(2, test_batch(2), Duration::from_secs(60));
-        assert!(cache.stats().total_bytes > after, "should increase with more entries");
+        assert!(
+            cache.stats().total_bytes > after,
+            "should increase with more entries"
+        );
     }
 
     #[test]
@@ -570,7 +587,10 @@ mod tests {
 
         cache.put(1, big_batch(1000), Duration::from_secs(60));
         let bytes_big = cache.stats().total_bytes;
-        assert!(bytes_big > bytes_small, "overwrite with bigger data should increase bytes");
+        assert!(
+            bytes_big > bytes_small,
+            "overwrite with bigger data should increase bytes"
+        );
     }
 
     #[test]

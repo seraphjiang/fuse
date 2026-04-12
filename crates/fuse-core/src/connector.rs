@@ -283,9 +283,16 @@ mod tests {
     #[test]
     fn test_subquery_default_fields() {
         let sq = SubQuery {
-            table: "logs".into(), projections: vec![], filter: None,
-            aggregations: vec![], group_by: vec![], sort: vec![],
-            limit: None, offset: None, passthrough: None, having: None,
+            table: "logs".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            offset: None,
+            passthrough: None,
+            having: None,
         };
         assert_eq!(sq.table, "logs");
         assert!(sq.filter.is_none());
@@ -295,10 +302,14 @@ mod tests {
     #[test]
     fn test_filter_expr_and_or_not() {
         let eq = FilterExpr::Comparison {
-            field: "status".into(), op: ComparisonOp::Gte, value: ScalarValue::Int64(500),
+            field: "status".into(),
+            op: ComparisonOp::Gte,
+            value: ScalarValue::Int64(500),
         };
         let like = FilterExpr::Comparison {
-            field: "msg".into(), op: ComparisonOp::Like, value: ScalarValue::Utf8("err%".into()),
+            field: "msg".into(),
+            op: ComparisonOp::Like,
+            value: ScalarValue::Utf8("err%".into()),
         };
         let not = FilterExpr::Not(Box::new(FilterExpr::And(Box::new(eq), Box::new(like))));
         assert!(matches!(not, FilterExpr::Not(_)));
@@ -311,15 +322,24 @@ mod tests {
             values: vec![ScalarValue::Utf8("a".into()), ScalarValue::Utf8("b".into())],
         };
         match f {
-            FilterExpr::In { field, values } => { assert_eq!(field, "id"); assert_eq!(values.len(), 2); }
+            FilterExpr::In { field, values } => {
+                assert_eq!(field, "id");
+                assert_eq!(values.len(), 2);
+            }
             _ => panic!("expected In"),
         }
     }
 
     #[test]
     fn test_filter_is_null_is_not_null() {
-        assert!(matches!(FilterExpr::IsNull("c".into()), FilterExpr::IsNull(_)));
-        assert!(matches!(FilterExpr::IsNotNull("c".into()), FilterExpr::IsNotNull(_)));
+        assert!(matches!(
+            FilterExpr::IsNull("c".into()),
+            FilterExpr::IsNull(_)
+        ));
+        assert!(matches!(
+            FilterExpr::IsNotNull("c".into()),
+            FilterExpr::IsNotNull(_)
+        ));
     }
 
     #[test]
@@ -332,7 +352,11 @@ mod tests {
 
     #[test]
     fn test_schema_info_construction() {
-        let si = SchemaInfo { name: "logs".into(), schema_type: SchemaType::Index, estimated_row_count: Some(1000) };
+        let si = SchemaInfo {
+            name: "logs".into(),
+            schema_type: SchemaType::Index,
+            estimated_row_count: Some(1000),
+        };
         assert_eq!(si.name, "logs");
         assert!(matches!(si.schema_type, SchemaType::Index));
     }
@@ -340,8 +364,10 @@ mod tests {
     #[test]
     fn test_result_set() {
         let rs = ResultSet {
-            columns: vec!["a".into()], rows: vec![vec![serde_json::json!(1)]],
-            total_rows: 1, truncated: false,
+            columns: vec!["a".into()],
+            rows: vec![vec![serde_json::json!(1)]],
+            total_rows: 1,
+            truncated: false,
         };
         assert_eq!(rs.columns.len(), 1);
         assert!(!rs.truncated);
@@ -349,15 +375,35 @@ mod tests {
 
     #[test]
     fn test_aggregation_expr_variants() {
-        let a = AggregationExpr { function: AggFunction::Count, field: None, alias: "cnt".into() };
+        let a = AggregationExpr {
+            function: AggFunction::Count,
+            field: None,
+            alias: "cnt".into(),
+        };
         assert!(matches!(a.function, AggFunction::Count));
-        let p = AggregationExpr { function: AggFunction::ApproxPercentile(0.95), field: Some("lat".into()), alias: "p95".into() };
+        let p = AggregationExpr {
+            function: AggFunction::ApproxPercentile(0.95),
+            field: Some("lat".into()),
+            alias: "p95".into(),
+        };
         assert!(matches!(p.function, AggFunction::ApproxPercentile(_)));
     }
 
     #[test]
     fn test_sort_expr() {
-        assert!(SortExpr { field: "ts".into(), descending: true }.descending);
-        assert!(!SortExpr { field: "name".into(), descending: false }.descending);
+        assert!(
+            SortExpr {
+                field: "ts".into(),
+                descending: true
+            }
+            .descending
+        );
+        assert!(
+            !SortExpr {
+                field: "name".into(),
+                descending: false
+            }
+            .descending
+        );
     }
 }

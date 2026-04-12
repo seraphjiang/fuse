@@ -7,7 +7,7 @@
 //! - URL validator (SSRF protection)
 
 use fuse_server::audit::{AuditAction, AuditEntry, AuditLog, AuditStatus};
-use fuse_server::auth::{KeyRotationManager, ApiKeyEntry, Role};
+use fuse_server::auth::{ApiKeyEntry, KeyRotationManager, Role};
 use fuse_server::request_signing::{sign_request, verify_signature, SigningConfig, SigningKey};
 use fuse_server::url_validator::validate_callback_url;
 
@@ -16,9 +16,11 @@ use fuse_server::url_validator::validate_callback_url;
 #[tokio::test]
 async fn test_audit_log_records_all_actions() {
     let log = AuditLog::new(100);
-    let actions = [AuditAction::Query,
+    let actions = [
+        AuditAction::Query,
         AuditAction::Explain,
-        AuditAction::Validate];
+        AuditAction::Validate,
+    ];
     for (i, action) in actions.iter().enumerate() {
         log.record(AuditEntry {
             timestamp: 1000 + i as u64,
@@ -31,7 +33,8 @@ async fn test_audit_log_records_all_actions() {
             status: AuditStatus::Success,
             error: None,
             client_ip: Some("10.0.0.1".into()),
-        }).await;
+        })
+        .await;
     }
     assert_eq!(log.count().await, 3);
     let recent = log.recent(10).await;
@@ -54,7 +57,8 @@ async fn test_audit_log_error_entries_preserved() {
         status: AuditStatus::Error,
         error: Some("parse error".into()),
         client_ip: None,
-    }).await;
+    })
+    .await;
     let entries = log.recent(1).await;
     assert!(matches!(entries[0].status, AuditStatus::Error));
     assert_eq!(entries[0].error.as_deref(), Some("parse error"));
@@ -75,7 +79,8 @@ async fn test_audit_log_identity_filter() {
             status: AuditStatus::Success,
             error: None,
             client_ip: None,
-        }).await;
+        })
+        .await;
     }
     let alice = log.for_identity("alice", 10).await;
     assert_eq!(alice.len(), 3);
@@ -97,7 +102,8 @@ async fn test_audit_ndjson_export() {
         status: AuditStatus::Success,
         error: None,
         client_ip: None,
-    }).await;
+    })
+    .await;
     let ndjson = log.export_ndjson().await;
     let parsed: serde_json::Value = serde_json::from_str(ndjson.lines().next().unwrap()).unwrap();
     assert_eq!(parsed["identity"], "test");
@@ -108,9 +114,11 @@ async fn test_audit_ndjson_export() {
 
 #[test]
 fn test_key_rotation_basic_flow() {
-    let mgr = KeyRotationManager::new(vec![
-        ApiKeyEntry { key: "k-alice".into(), identity: "alice".into(), role: Role::Admin },
-    ]);
+    let mgr = KeyRotationManager::new(vec![ApiKeyEntry {
+        key: "k-alice".into(),
+        identity: "alice".into(),
+        role: Role::Admin,
+    }]);
     // Old key works
     assert!(mgr.validate("k-alice").is_some());
     // Rotate
@@ -125,17 +133,21 @@ fn test_key_rotation_basic_flow() {
 
 #[test]
 fn test_key_rotation_unknown_identity_fails() {
-    let mgr = KeyRotationManager::new(vec![
-        ApiKeyEntry { key: "k-1".into(), identity: "alice".into(), role: Role::Admin },
-    ]);
+    let mgr = KeyRotationManager::new(vec![ApiKeyEntry {
+        key: "k-1".into(),
+        identity: "alice".into(),
+        role: Role::Admin,
+    }]);
     assert!(mgr.rotate("nobody", 300).is_none());
 }
 
 #[test]
 fn test_key_rotation_preserves_role() {
-    let mgr = KeyRotationManager::new(vec![
-        ApiKeyEntry { key: "k-v".into(), identity: "viewer".into(), role: Role::Viewer },
-    ]);
+    let mgr = KeyRotationManager::new(vec![ApiKeyEntry {
+        key: "k-v".into(),
+        identity: "viewer".into(),
+        role: Role::Viewer,
+    }]);
     let result = mgr.rotate("viewer", 300).unwrap();
     let entry = mgr.validate(&result.new_key).unwrap();
     assert_eq!(entry.role, Role::Viewer);
@@ -143,9 +155,11 @@ fn test_key_rotation_preserves_role() {
 
 #[test]
 fn test_key_rotation_multiple_rotations() {
-    let mgr = KeyRotationManager::new(vec![
-        ApiKeyEntry { key: "k-1".into(), identity: "alice".into(), role: Role::Admin },
-    ]);
+    let mgr = KeyRotationManager::new(vec![ApiKeyEntry {
+        key: "k-1".into(),
+        identity: "alice".into(),
+        role: Role::Admin,
+    }]);
     let r1 = mgr.rotate("alice", 3600).unwrap();
     let r2 = mgr.rotate("alice", 3600).unwrap();
     // All three keys work during grace
@@ -163,7 +177,10 @@ fn test_hmac_sign_verify_roundtrip() {
     let body = b"{\"query\": \"SELECT 1\"}";
     let sig = sign_request(secret, None, body);
     let config = SigningConfig::new(
-        vec![SigningKey { key_id: "k1".into(), secret: secret.to_vec() }],
+        vec![SigningKey {
+            key_id: "k1".into(),
+            secret: secret.to_vec(),
+        }],
         300,
     );
     assert!(verify_signature(&config, &sig, None, body).is_ok());
@@ -173,11 +190,16 @@ fn test_hmac_sign_verify_roundtrip() {
 fn test_hmac_with_timestamp_replay_protection() {
     let secret = b"my-secret";
     let now = std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_secs();
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
     let body = b"test body";
     let sig = sign_request(secret, Some(now), body);
     let config = SigningConfig::new(
-        vec![SigningKey { key_id: "k1".into(), secret: secret.to_vec() }],
+        vec![SigningKey {
+            key_id: "k1".into(),
+            secret: secret.to_vec(),
+        }],
         300,
     );
     // Current timestamp passes
@@ -192,7 +214,10 @@ fn test_hmac_tampered_body_rejected() {
     let secret = b"secret";
     let sig = sign_request(secret, None, b"original body");
     let config = SigningConfig::new(
-        vec![SigningKey { key_id: "k1".into(), secret: secret.to_vec() }],
+        vec![SigningKey {
+            key_id: "k1".into(),
+            secret: secret.to_vec(),
+        }],
         300,
     );
     assert!(verify_signature(&config, &sig, None, b"tampered body").is_err());
@@ -202,7 +227,10 @@ fn test_hmac_tampered_body_rejected() {
 fn test_hmac_wrong_key_rejected() {
     let sig = sign_request(b"correct-key", None, b"body");
     let config = SigningConfig::new(
-        vec![SigningKey { key_id: "k1".into(), secret: b"wrong-key".to_vec() }],
+        vec![SigningKey {
+            key_id: "k1".into(),
+            secret: b"wrong-key".to_vec(),
+        }],
         300,
     );
     assert!(verify_signature(&config, &sig, None, b"body").is_err());
@@ -212,10 +240,19 @@ fn test_hmac_wrong_key_rejected() {
 fn test_hmac_multi_key_accepts_any() {
     let body = b"payload";
     let sig = sign_request(b"key-b", None, body);
-    let config = SigningConfig::new(vec![
-        SigningKey { key_id: "a".into(), secret: b"key-a".to_vec() },
-        SigningKey { key_id: "b".into(), secret: b"key-b".to_vec() },
-    ], 300);
+    let config = SigningConfig::new(
+        vec![
+            SigningKey {
+                key_id: "a".into(),
+                secret: b"key-a".to_vec(),
+            },
+            SigningKey {
+                key_id: "b".into(),
+                secret: b"key-b".to_vec(),
+            },
+        ],
+        300,
+    );
     assert!(verify_signature(&config, &sig, None, body).is_ok());
 }
 

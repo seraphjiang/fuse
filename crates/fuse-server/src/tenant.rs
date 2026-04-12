@@ -79,13 +79,20 @@ pub struct TenantRegistry {
 impl TenantRegistry {
     /// No tenants configured = isolation disabled (all access).
     pub fn disabled() -> Self {
-        Self { tenants: Arc::new(HashMap::new()) }
+        Self {
+            tenants: Arc::new(HashMap::new()),
+        }
     }
 
     /// Create with tenant configs.
     pub fn new(configs: Vec<TenantConfig>) -> Self {
-        let tenants = configs.into_iter().map(|c| (c.tenant_id.clone(), c)).collect();
-        Self { tenants: Arc::new(tenants) }
+        let tenants = configs
+            .into_iter()
+            .map(|c| (c.tenant_id.clone(), c))
+            .collect();
+        Self {
+            tenants: Arc::new(tenants),
+        }
     }
 
     pub fn is_enabled(&self) -> bool {
@@ -100,12 +107,13 @@ impl TenantRegistry {
     /// Filter a list of datasource IDs to only those the tenant can access.
     pub fn filter_datasources(&self, tenant_id: &str, datasources: &[String]) -> Vec<String> {
         match self.get(tenant_id) {
-            Some(config) => datasources.iter()
+            Some(config) => datasources
+                .iter()
                 .filter(|ds| config.can_access(ds))
                 .cloned()
                 .collect(),
             None if self.is_enabled() => vec![], // Unknown tenant = no access
-            None => datasources.to_vec(), // Isolation disabled = all access
+            None => datasources.to_vec(),        // Isolation disabled = all access
         }
     }
 }
@@ -121,10 +129,7 @@ pub struct QueryGovernor;
 
 impl QueryGovernor {
     /// Check if a tenant can start a new query (rate limit check).
-    pub fn check_rate_limit(
-        config: &TenantConfig,
-        queries_this_minute: u32,
-    ) -> Result<(), String> {
+    pub fn check_rate_limit(config: &TenantConfig, queries_this_minute: u32) -> Result<(), String> {
         if let Some(max) = config.max_queries_per_minute {
             if queries_this_minute >= max {
                 return Err(format!(
@@ -210,9 +215,10 @@ mod tests {
 
     #[test]
     fn test_restricted_tenant() {
-        let reg = TenantRegistry::new(vec![
-            TenantConfig::with_datasources("team_a", vec!["cluster_a".into(), "s3_logs".into()]),
-        ]);
+        let reg = TenantRegistry::new(vec![TenantConfig::with_datasources(
+            "team_a",
+            vec!["cluster_a".into(), "s3_logs".into()],
+        )]);
         let config = reg.get("team_a").unwrap();
         assert!(config.can_access("cluster_a"));
         assert!(config.can_access("s3_logs"));
@@ -221,9 +227,10 @@ mod tests {
 
     #[test]
     fn test_filter_datasources() {
-        let reg = TenantRegistry::new(vec![
-            TenantConfig::with_datasources("team_a", vec!["ds1".into(), "ds2".into()]),
-        ]);
+        let reg = TenantRegistry::new(vec![TenantConfig::with_datasources(
+            "team_a",
+            vec!["ds1".into(), "ds2".into()],
+        )]);
         let all = vec!["ds1".into(), "ds2".into(), "ds3".into()];
         let filtered = reg.filter_datasources("team_a", &all);
         assert_eq!(filtered, vec!["ds1".to_string(), "ds2".to_string()]);
@@ -293,16 +300,16 @@ mod tests {
 
     #[test]
     fn test_effective_timeout() {
-        let config = TenantConfig::with_datasources("t", vec![])
-            .with_limits(1000, 5_000, 10_000_000);
+        let config =
+            TenantConfig::with_datasources("t", vec![]).with_limits(1000, 5_000, 10_000_000);
         assert_eq!(QueryGovernor::effective_timeout_ms(&config, 30_000), 5_000);
         assert_eq!(QueryGovernor::effective_timeout_ms(&config, 3_000), 3_000);
     }
 
     #[test]
     fn test_apply_row_limit() {
-        let config = TenantConfig::with_datasources("t", vec![])
-            .with_limits(100, 30_000, 10_000_000);
+        let config =
+            TenantConfig::with_datasources("t", vec![]).with_limits(100, 30_000, 10_000_000);
         assert_eq!(QueryGovernor::apply_row_limit(&config, 500), 100);
         assert_eq!(QueryGovernor::apply_row_limit(&config, 50), 50);
     }
@@ -314,9 +321,19 @@ mod tests {
             TenantConfig::with_datasources("team_b", vec!["ds2".into()]),
             TenantConfig::admin("ops"),
         ]);
-        assert_eq!(reg.filter_datasources("team_a", &["ds1".into(), "ds2".into()]), vec!["ds1".to_string()]);
-        assert_eq!(reg.filter_datasources("team_b", &["ds1".into(), "ds2".into()]), vec!["ds2".to_string()]);
-        assert_eq!(reg.filter_datasources("ops", &["ds1".into(), "ds2".into()]).len(), 2);
+        assert_eq!(
+            reg.filter_datasources("team_a", &["ds1".into(), "ds2".into()]),
+            vec!["ds1".to_string()]
+        );
+        assert_eq!(
+            reg.filter_datasources("team_b", &["ds1".into(), "ds2".into()]),
+            vec!["ds2".to_string()]
+        );
+        assert_eq!(
+            reg.filter_datasources("ops", &["ds1".into(), "ds2".into()])
+                .len(),
+            2
+        );
     }
 
     #[test]

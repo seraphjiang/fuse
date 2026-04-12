@@ -12,7 +12,10 @@ pub struct RateMonitor {
 
 impl RateMonitor {
     pub fn new(window_secs: u64) -> Self {
-        Self { timestamps: Mutex::new(VecDeque::new()), window_secs }
+        Self {
+            timestamps: Mutex::new(VecDeque::new()),
+            window_secs,
+        }
     }
 
     pub fn record(&self) {
@@ -28,7 +31,9 @@ impl RateMonitor {
     /// Queries per second over the window.
     pub fn qps(&self) -> f64 {
         let ts = self.timestamps.lock().unwrap();
-        if ts.is_empty() || self.window_secs == 0 { return 0.0; }
+        if ts.is_empty() || self.window_secs == 0 {
+            return 0.0;
+        }
         let cutoff = std::time::Duration::from_secs(self.window_secs);
         let count = ts.iter().filter(|t| t.elapsed() <= cutoff).count();
         count as f64 / self.window_secs as f64

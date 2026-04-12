@@ -81,7 +81,9 @@ impl FederatedConnector for MockConnector {
         tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
     ) -> Result<(), ConnectorError> {
         for batch in self.execute(query).await? {
-            tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+            tx.send(Ok(batch))
+                .await
+                .map_err(|_| ConnectorError::ChannelClosed)?;
         }
         Ok(())
     }
@@ -96,20 +98,37 @@ struct SlowMockConnector {
 
 impl SlowMockConnector {
     fn new(id: &str, delay_ms: u64) -> Self {
-        Self { id: id.to_string(), delay_ms }
+        Self {
+            id: id.to_string(),
+            delay_ms,
+        }
     }
 }
 
 #[async_trait]
 impl FederatedConnector for SlowMockConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "slow-mock" }
-    fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "slow-mock"
+    }
+    fn capabilities(&self) -> ConnectorCapabilities {
+        ConnectorCapabilities::full()
+    }
     async fn health_check(&self) -> ConnectorHealth {
-        ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(1), message: None }
+        ConnectorHealth {
+            status: HealthStatus::Healthy,
+            latency_ms: Some(1),
+            message: None,
+        }
     }
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
-        Ok(vec![SchemaInfo { name: "logs".into(), schema_type: SchemaType::Index, estimated_row_count: Some(100) }])
+        Ok(vec![SchemaInfo {
+            name: "logs".into(),
+            schema_type: SchemaType::Index,
+            estimated_row_count: Some(100),
+        }])
     }
     async fn get_schema(&self, _: &str) -> Result<Schema, ConnectorError> {
         Ok(Schema::new(vec![
@@ -120,15 +139,25 @@ impl FederatedConnector for SlowMockConnector {
     async fn execute(&self, _: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
         tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
         let schema = Arc::new(self.get_schema("").await?);
-        Ok(vec![RecordBatch::try_new(schema, vec![
-            Arc::new(StringArray::from(vec!["h1"])),
-            Arc::new(Int64Array::from(vec![200])),
-        ]).map_err(ConnectorError::query)?])
+        Ok(vec![RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(vec!["h1"])),
+                Arc::new(Int64Array::from(vec![200])),
+            ],
+        )
+        .map_err(ConnectorError::query)?])
     }
     async fn execute_streaming(
-        &self, query: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+        &self,
+        query: &SubQuery,
+        tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
     ) -> Result<(), ConnectorError> {
-        for batch in self.execute(query).await? { tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?; }
+        for batch in self.execute(query).await? {
+            tx.send(Ok(batch))
+                .await
+                .map_err(|_| ConnectorError::ChannelClosed)?;
+        }
         Ok(())
     }
 }
@@ -144,7 +173,40 @@ fn build_test_app() -> axum::Router {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     fuse_server::build_router(state)
 }
@@ -165,7 +227,9 @@ async fn test_health_returns_200() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["status"], "healthy");
     assert!(json["connectors"]["testds"].is_object());
@@ -185,7 +249,9 @@ async fn test_list_datasources() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let arr = json.as_array().unwrap();
     assert_eq!(arr.len(), 1);
@@ -202,16 +268,16 @@ async fn test_query_with_mock_engine() {
                 .method("POST")
                 .uri("/api/fuse/query")
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    r#"{"query": "SELECT * FROM testds.logs"}"#,
-                ))
+                .body(Body::from(r#"{"query": "SELECT * FROM testds.logs"}"#))
                 .unwrap(),
         )
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["columns"], serde_json::json!(["host", "status"]));
     assert_eq!(json["metadata"]["total_rows"], 2);
@@ -226,16 +292,16 @@ async fn test_validate_valid_sql() {
                 .method("POST")
                 .uri("/api/fuse/query/validate")
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    r#"{"query": "SELECT * FROM testds.logs"}"#,
-                ))
+                .body(Body::from(r#"{"query": "SELECT * FROM testds.logs"}"#))
                 .unwrap(),
         )
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["valid"], true);
     assert!(json["error"].is_null());
@@ -257,7 +323,9 @@ async fn test_validate_invalid_sql_no_from() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["valid"], false);
     assert!(json["error"].as_str().unwrap().contains("FROM"));
@@ -272,16 +340,16 @@ async fn test_validate_unknown_datasource() {
                 .method("POST")
                 .uri("/api/fuse/query/validate")
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    r#"{"query": "SELECT * FROM unknown.logs"}"#,
-                ))
+                .body(Body::from(r#"{"query": "SELECT * FROM unknown.logs"}"#))
                 .unwrap(),
         )
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["valid"], false);
     assert!(json["error"].as_str().unwrap().contains("unknown"));
@@ -296,9 +364,7 @@ async fn test_query_unknown_datasource_returns_404() {
                 .method("POST")
                 .uri("/api/fuse/query")
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    r#"{"query": "SELECT * FROM nope.logs"}"#,
-                ))
+                .body(Body::from(r#"{"query": "SELECT * FROM nope.logs"}"#))
                 .unwrap(),
         )
         .await
@@ -337,7 +403,9 @@ async fn test_schemas_endpoint() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let arr = json.as_array().unwrap();
     assert_eq!(arr[0]["name"], "logs");
@@ -364,11 +432,18 @@ async fn test_schemas_unknown_datasource_returns_404() {
 async fn test_list_alerts_empty() {
     let app = build_test_app();
     let resp = app
-        .oneshot(Request::builder().uri("/api/fuse/alerts").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/alerts")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert!(json.as_array().unwrap().is_empty());
 }
@@ -387,7 +462,9 @@ async fn test_evaluate_alerts_no_rules_returns_empty() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert!(json.as_array().unwrap().is_empty());
 }
@@ -401,7 +478,10 @@ struct CapturingConnector {
 
 impl CapturingConnector {
     fn new(id: &str) -> Self {
-        Self { id: id.to_string(), captured: std::sync::Mutex::new(None) }
+        Self {
+            id: id.to_string(),
+            captured: std::sync::Mutex::new(None),
+        }
     }
     fn last_query(&self) -> Option<SubQuery> {
         self.captured.lock().unwrap().clone()
@@ -410,13 +490,25 @@ impl CapturingConnector {
 
 #[async_trait]
 impl FederatedConnector for CapturingConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "capturing" }
-    fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
-    async fn health_check(&self) -> ConnectorHealth {
-        ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(1), message: None }
+    fn id(&self) -> &str {
+        &self.id
     }
-    async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> { Ok(vec![]) }
+    fn connector_type(&self) -> &str {
+        "capturing"
+    }
+    fn capabilities(&self) -> ConnectorCapabilities {
+        ConnectorCapabilities::full()
+    }
+    async fn health_check(&self) -> ConnectorHealth {
+        ConnectorHealth {
+            status: HealthStatus::Healthy,
+            latency_ms: Some(1),
+            message: None,
+        }
+    }
+    async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
+        Ok(vec![])
+    }
     async fn get_schema(&self, _table: &str) -> Result<Schema, ConnectorError> {
         Ok(Schema::new(vec![
             Field::new("service", DataType::Utf8, false),
@@ -432,7 +524,8 @@ impl FederatedConnector for CapturingConnector {
                 Arc::new(StringArray::from(vec!["svc-a"])),
                 Arc::new(Int64Array::from(vec![200_i64])),
             ],
-        ).map_err(ConnectorError::query)?;
+        )
+        .map_err(ConnectorError::query)?;
         Ok(vec![batch])
     }
     async fn execute_streaming(
@@ -441,7 +534,9 @@ impl FederatedConnector for CapturingConnector {
         tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
     ) -> Result<(), ConnectorError> {
         for b in self.execute(query).await? {
-            tx.send(Ok(b)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+            tx.send(Ok(b))
+                .await
+                .map_err(|_| ConnectorError::ChannelClosed)?;
         }
         Ok(())
     }
@@ -451,7 +546,47 @@ fn build_capturing_app() -> (axum::Router, Arc<CapturingConnector>) {
     let connector = Arc::new(CapturingConnector::new("capds"));
     let registry = ConnectorRegistry::new();
     registry.register(connector.clone()).unwrap();
-    let state = Arc::new(AppState { registry: Arc::new(registry), alert_rules: vec![], view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()), history: Arc::new(QueryHistory::new()), running_queries: Arc::new(RunningQueries::new()), saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()), });
+    let state = Arc::new(AppState {
+        registry: Arc::new(registry),
+        alert_rules: vec![],
+        view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
+        history: Arc::new(QueryHistory::new()),
+        running_queries: Arc::new(RunningQueries::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+    });
     (fuse_server::build_router(state), connector)
 }
 
@@ -464,14 +599,20 @@ async fn test_limit_pushdown() {
                 .method("POST")
                 .uri("/api/fuse/query")
                 .header("content-type", "application/json")
-                .body(Body::from(r#"{"query": "SELECT * FROM capds.logs LIMIT 42"}"#))
+                .body(Body::from(
+                    r#"{"query": "SELECT * FROM capds.logs LIMIT 42"}"#,
+                ))
                 .unwrap(),
         )
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let q = connector.last_query().expect("connector was not called");
-    assert_eq!(q.limit, Some(42), "LIMIT 42 must be pushed down to SubQuery");
+    assert_eq!(
+        q.limit,
+        Some(42),
+        "LIMIT 42 must be pushed down to SubQuery"
+    );
 }
 
 #[tokio::test]
@@ -492,7 +633,10 @@ async fn test_where_pushdown() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let q = connector.last_query().expect("connector was not called");
-    assert!(q.filter.is_some(), "WHERE status = 500 must be pushed down to SubQuery.filter");
+    assert!(
+        q.filter.is_some(),
+        "WHERE status = 500 must be pushed down to SubQuery.filter"
+    );
 }
 
 // ── Multi-datasource federation tests ──
@@ -511,12 +655,49 @@ fn build_federation_app() -> axum::Router {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     fuse_server::build_router(state)
 }
 
-async fn post_query(app: axum::Router, query: &str, format: &str) -> (StatusCode, serde_json::Value) {
+async fn post_query(
+    app: axum::Router,
+    query: &str,
+    format: &str,
+) -> (StatusCode, serde_json::Value) {
     let body = serde_json::json!({"query": query, "format": format});
     let resp = app
         .oneshot(
@@ -530,7 +711,9 @@ async fn post_query(app: axum::Router, query: &str, format: &str) -> (StatusCode
         .await
         .unwrap();
     let status = resp.status();
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     (status, json)
 }
@@ -541,7 +724,8 @@ async fn test_single_source_query() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["metadata"]["total_rows"], 2);
     assert_eq!(json["columns"], serde_json::json!(["host", "status"]));
@@ -553,7 +737,8 @@ async fn test_union_all_query() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     // 2 rows from each connector = 4 total
     assert_eq!(json["metadata"]["total_rows"], 4);
@@ -565,7 +750,8 @@ async fn test_union_all_with_limit() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs LIMIT 3",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["metadata"]["total_rows"], 3);
 }
@@ -576,7 +762,8 @@ async fn test_join_query() {
         build_federation_app(),
         "SELECT a.*, b.* FROM cluster_a.logs a JOIN cluster_b.logs b ON a.host = b.host",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     // Both connectors return same data (h1, h2), so inner join matches 2 rows
     assert_eq!(json["metadata"]["total_rows"], 2);
@@ -588,7 +775,8 @@ async fn test_ppl_multi_source() {
         build_federation_app(),
         "source = cluster_a.logs, cluster_b.logs | head 10",
         "ppl",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     // PPL multi-source = UNION ALL → 2+ rows (depends on mock data)
     assert!(json["metadata"]["total_rows"].as_u64().unwrap_or(0) >= 2);
@@ -601,7 +789,8 @@ async fn test_ppl_multi_source_application_logs() {
         build_federation_app(),
         "source = cluster_a.application_logs, cluster_b.application_logs | head 10",
         "ppl",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert!(json["metadata"]["total_rows"].as_u64().unwrap_or(0) >= 2);
 }
@@ -612,7 +801,8 @@ async fn test_unknown_datasource_in_union() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM nonexistent.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert!(json["error"].as_str().unwrap().contains("nonexistent"));
 }
@@ -636,7 +826,9 @@ async fn test_explain_shows_union_strategy() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert!(json["plan"].as_str().unwrap().contains("UnionAll"));
 }
@@ -659,7 +851,9 @@ async fn test_validate_multi_source_all_exist() {
         )
         .await
         .unwrap();
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(json["valid"], true);
 }
@@ -670,10 +864,18 @@ async fn test_validate_multi_source_all_exist() {
 async fn test_list_views_empty() {
     let app = build_test_app();
     let resp = app
-        .oneshot(Request::builder().uri("/api/fuse/views").body(Body::empty()).unwrap())
-        .await.unwrap();
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/views")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert!(json.as_array().unwrap().is_empty());
 }
@@ -682,8 +884,14 @@ async fn test_list_views_empty() {
 async fn test_get_unknown_view_returns_404() {
     let app = build_test_app();
     let resp = app
-        .oneshot(Request::builder().uri("/api/fuse/views/nonexistent").body(Body::empty()).unwrap())
-        .await.unwrap();
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/views/nonexistent")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
@@ -698,7 +906,8 @@ async fn test_refresh_unknown_view_returns_404() {
                 .body(Body::empty())
                 .unwrap(),
         )
-        .await.unwrap();
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
@@ -709,7 +918,9 @@ async fn test_view_lifecycle() {
 
     // Build app with a pre-registered view
     let registry = ConnectorRegistry::new();
-    registry.register(Arc::new(MockConnector::new("testds"))).unwrap();
+    registry
+        .register(Arc::new(MockConnector::new("testds")))
+        .unwrap();
     let view_registry = Arc::new(MaterializedViewRegistry::new());
     view_registry.register(MaterializedViewDef {
         name: "error_summary".into(),
@@ -723,23 +934,66 @@ async fn test_view_lifecycle() {
         view_registry: view_registry.clone(),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let app = fuse_server::build_router(state);
 
     // List shows the view
-    let resp = app.clone()
-        .oneshot(Request::builder().uri("/api/fuse/views").body(Body::empty()).unwrap())
-        .await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/views")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json.as_array().unwrap().len(), 1);
     assert_eq!(json[0]["name"], "error_summary");
     assert_eq!(json[0]["stale"], true); // never refreshed
 
     // Refresh succeeds
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -747,15 +1001,24 @@ async fn test_view_lifecycle() {
                 .body(Body::empty())
                 .unwrap(),
         )
-        .await.unwrap();
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
     // Get returns results
     let resp = app
-        .oneshot(Request::builder().uri("/api/fuse/views/error_summary").body(Body::empty()).unwrap())
-        .await.unwrap();
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/views/error_summary")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["metadata"]["total_rows"], 2);
 }
@@ -778,8 +1041,16 @@ async fn test_stream_endpoint_returns_sse() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     // SSE responses use text/event-stream content type
-    let ct = resp.headers().get("content-type").unwrap().to_str().unwrap();
-    assert!(ct.contains("text/event-stream"), "expected SSE content-type, got: {ct}");
+    let ct = resp
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(
+        ct.contains("text/event-stream"),
+        "expected SSE content-type, got: {ct}"
+    );
 }
 
 #[tokio::test]
@@ -796,10 +1067,18 @@ async fn test_stream_endpoint_contains_done_event() {
         )
         .await
         .unwrap();
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let text = String::from_utf8_lossy(&body);
-    assert!(text.contains("\"done\""), "SSE stream must contain a done event");
-    assert!(text.contains("\"metadata\""), "SSE stream must contain a metadata event");
+    assert!(
+        text.contains("\"done\""),
+        "SSE stream must contain a done event"
+    );
+    assert!(
+        text.contains("\"metadata\""),
+        "SSE stream must contain a metadata event"
+    );
 }
 
 #[tokio::test]
@@ -817,9 +1096,14 @@ async fn test_stream_unknown_datasource_returns_error_event() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK); // SSE always 200, errors in stream
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let text = String::from_utf8_lossy(&body);
-    assert!(text.contains("\"error\""), "SSE stream must contain an error event for unknown datasource");
+    assert!(
+        text.contains("\"error\""),
+        "SSE stream must contain an error event for unknown datasource"
+    );
 }
 
 // ── PPL validate / explain tests ──
@@ -841,7 +1125,9 @@ async fn test_validate_ppl_valid() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["valid"], true);
 }
@@ -860,7 +1146,9 @@ async fn test_validate_ppl_invalid_syntax() {
         )
         .await
         .unwrap();
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["valid"], false);
 }
@@ -882,7 +1170,9 @@ async fn test_explain_ppl_query() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert!(json["plan"].as_str().unwrap().contains("testds"));
 }
@@ -900,7 +1190,9 @@ async fn test_fields_endpoint() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let fields = json.as_array().unwrap();
     assert!(!fields.is_empty());
@@ -915,14 +1207,18 @@ async fn test_union_has_datasource_column() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let columns = json["columns"].as_array().unwrap();
     assert!(columns.iter().any(|c| c == "_datasource"));
     // Check rows have correct datasource values
     let rows = json["rows"].as_array().unwrap();
     let ds_col_idx = columns.iter().position(|c| c == "_datasource").unwrap();
-    let ds_values: Vec<&str> = rows.iter().map(|r| r[ds_col_idx].as_str().unwrap()).collect();
+    let ds_values: Vec<&str> = rows
+        .iter()
+        .map(|r| r[ds_col_idx].as_str().unwrap())
+        .collect();
     assert!(ds_values.contains(&"cluster_a"));
     assert!(ds_values.contains(&"cluster_b"));
 }
@@ -933,7 +1229,8 @@ async fn test_join_has_datasource_column() {
         build_federation_app(),
         "SELECT a.*, b.* FROM cluster_a.logs a JOIN cluster_b.logs b ON a.host = b.host",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let columns = json["columns"].as_array().unwrap();
     // Build side gets _datasource prepended
@@ -946,7 +1243,8 @@ async fn test_single_source_no_datasource_column() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let columns = json["columns"].as_array().unwrap();
     assert!(!columns.iter().any(|c| c == "_datasource"));
@@ -958,7 +1256,8 @@ async fn test_union_metadata_has_datasource_stats() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let meta = &json["metadata"];
     // datasources_queried
@@ -977,7 +1276,8 @@ async fn test_single_source_no_datasource_stats() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let meta = &json["metadata"];
     assert!(meta["datasources_queried"].is_null());
@@ -990,10 +1290,18 @@ async fn test_single_source_no_datasource_stats() {
 async fn test_history_empty_initially() {
     let app = build_test_app();
     let resp = app
-        .oneshot(Request::builder().uri("/api/fuse/history").body(Body::empty()).unwrap())
-        .await.unwrap();
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/history")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert!(json.as_array().unwrap().is_empty());
 }
@@ -1002,7 +1310,9 @@ async fn test_history_empty_initially() {
 async fn test_history_records_query() {
     // Build app with shared state so we can check history after query
     let registry = ConnectorRegistry::new();
-    registry.register(Arc::new(MockConnector::new("testds"))).unwrap();
+    registry
+        .register(Arc::new(MockConnector::new("testds")))
+        .unwrap();
     let history = Arc::new(fuse_server::history::QueryHistory::new());
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
@@ -1010,7 +1320,40 @@ async fn test_history_records_query() {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: history.clone(),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let app = fuse_server::build_router(state);
 
@@ -1022,7 +1365,9 @@ async fn test_history_records_query() {
             .header("content-type", "application/json")
             .body(Body::from(r#"{"query": "SELECT * FROM testds.logs"}"#))
             .unwrap(),
-    ).await.unwrap();
+    )
+    .await
+    .unwrap();
 
     // History should have 1 entry
     let entries = history.list();
@@ -1055,14 +1400,49 @@ async fn test_history_max_50_entries() {
 
 fn build_rate_limited_app(global_rpm: u32, per_ip_rpm: u32) -> axum::Router {
     let registry = ConnectorRegistry::new();
-    registry.register(Arc::new(MockConnector::new("testds"))).unwrap();
+    registry
+        .register(Arc::new(MockConnector::new("testds")))
+        .unwrap();
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
         alert_rules: vec![],
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     fuse_server::build_router_with_limits(
         state,
@@ -1074,23 +1454,42 @@ fn build_rate_limited_app(global_rpm: u32, per_ip_rpm: u32) -> axum::Router {
 async fn test_rate_limit_allows_first_request() {
     let app = build_rate_limited_app(100, 10);
     let resp = app
-        .oneshot(Request::builder().uri("/api/fuse/health").body(Body::empty()).unwrap())
-        .await.unwrap();
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
 #[tokio::test]
 async fn test_global_rate_limit_returns_429() {
     let app = build_rate_limited_app(1, 100); // 1 global req/min
-    // First request OK
-    let r1 = app.clone()
-        .oneshot(Request::builder().uri("/api/fuse/health").body(Body::empty()).unwrap())
-        .await.unwrap();
+                                              // First request OK
+    let r1 = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(r1.status(), StatusCode::OK);
     // Second request → 429
     let r2 = app
-        .oneshot(Request::builder().uri("/api/fuse/health").body(Body::empty()).unwrap())
-        .await.unwrap();
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(r2.status(), StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(r2.headers().get("Retry-After").unwrap(), "60");
 }
@@ -1114,17 +1513,40 @@ async fn test_per_ip_rate_limit_returns_429() {
 #[tokio::test]
 async fn test_rate_limit_response_body() {
     let app = build_rate_limited_app(1, 100);
-    app.clone().oneshot(Request::builder().uri("/api/fuse/health").body(Body::empty()).unwrap()).await.unwrap();
-    let r = app.oneshot(Request::builder().uri("/api/fuse/health").body(Body::empty()).unwrap()).await.unwrap();
+    app.clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let r = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(r.status(), StatusCode::TOO_MANY_REQUESTS);
-    let body = axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(r.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert!(json["error"].as_str().unwrap().contains("rate limit"));
 }
 
 // ── EXPLAIN ANALYZE tests ──
 
-async fn post_query_analyze(app: axum::Router, query: &str, format: &str, analyze: bool) -> (StatusCode, serde_json::Value) {
+async fn post_query_analyze(
+    app: axum::Router,
+    query: &str,
+    format: &str,
+    analyze: bool,
+) -> (StatusCode, serde_json::Value) {
     let body = serde_json::json!({"query": query, "format": format, "analyze": analyze});
     let resp = app
         .oneshot(
@@ -1138,7 +1560,9 @@ async fn post_query_analyze(app: axum::Router, query: &str, format: &str, analyz
         .await
         .unwrap();
     let status = resp.status();
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     (status, json)
 }
@@ -1150,7 +1574,8 @@ async fn test_analyze_false_no_profile() {
         "SELECT * FROM cluster_a.logs",
         "sql",
         false,
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert!(json.get("execution_profile").is_none());
 }
@@ -1162,7 +1587,8 @@ async fn test_analyze_true_has_profile() {
         "SELECT * FROM cluster_a.logs",
         "sql",
         true,
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let profile = &json["execution_profile"];
     assert!(profile["total_ms"].is_number());
@@ -1180,7 +1606,8 @@ async fn test_analyze_union_shows_per_datasource() {
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
         "sql",
         true,
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let profile = &json["execution_profile"];
     let nodes = profile["nodes"].as_array().unwrap();
@@ -1201,7 +1628,8 @@ async fn test_analyze_default_false() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert!(json.get("execution_profile").is_none());
 }
@@ -1226,10 +1654,19 @@ async fn test_analyze_join_profile_has_flame_graph_fields() {
     assert!(root["op"].as_str().is_some());
     assert!(root["actual_ms"].is_number());
     let children = root["children"].as_array().unwrap();
-    assert!(children.len() >= 2, "JOIN profile must have at least 2 child scans");
+    assert!(
+        children.len() >= 2,
+        "JOIN profile must have at least 2 child scans"
+    );
     for child in children {
-        assert!(child["actual_ms"].is_number(), "each child must have actual_ms for flame graph");
-        assert!(child["actual_rows"].is_number(), "each child must have actual_rows");
+        assert!(
+            child["actual_ms"].is_number(),
+            "each child must have actual_ms for flame graph"
+        );
+        assert!(
+            child["actual_rows"].is_number(),
+            "each child must have actual_rows"
+        );
     }
 }
 
@@ -1242,7 +1679,8 @@ async fn test_timeout_default_succeeds() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert!(!json["rows"].as_array().unwrap().is_empty());
 }
@@ -1269,14 +1707,49 @@ async fn test_timeout_explicit_succeeds() {
 async fn test_timeout_zero_ms_times_out() {
     // Use a slow connector (200ms delay) with a 50ms timeout → guaranteed timeout
     let registry = ConnectorRegistry::new();
-    registry.register(Arc::new(SlowMockConnector::new("slow_ds", 2000))).unwrap();
+    registry
+        .register(Arc::new(SlowMockConnector::new("slow_ds", 2000)))
+        .unwrap();
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
         alert_rules: vec![],
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let app = fuse_server::build_router(state);
 
@@ -1293,7 +1766,9 @@ async fn test_timeout_zero_ms_times_out() {
         .await
         .unwrap();
     let status = resp.status();
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(status, StatusCode::GATEWAY_TIMEOUT);
     assert!(json["error"].as_str().unwrap().contains("timed out"));
@@ -1330,7 +1805,9 @@ async fn test_list_running_queries_empty() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert!(json["running"].as_array().unwrap().is_empty());
 }
@@ -1339,14 +1816,49 @@ async fn test_list_running_queries_empty() {
 async fn test_cancel_slow_query() {
     // Start a slow query, cancel it, verify it returns cancelled error
     let registry = ConnectorRegistry::new();
-    registry.register(Arc::new(SlowMockConnector::new("slow_ds", 5000))).unwrap();
+    registry
+        .register(Arc::new(SlowMockConnector::new("slow_ds", 5000)))
+        .unwrap();
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
         alert_rules: vec![],
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let running = state.running_queries.clone();
     let app = fuse_server::build_router(state);
@@ -1392,7 +1904,8 @@ async fn test_result_format_json_default() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert!(json["columns"].is_array());
     assert!(json["rows"].is_array());
@@ -1418,10 +1931,16 @@ async fn test_result_format_csv() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     assert_eq!(
-        resp.headers().get("content-type").unwrap().to_str().unwrap(),
+        resp.headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap(),
         "text/csv"
     );
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let csv = String::from_utf8(bytes.to_vec()).unwrap();
     // CSV should have header row + data rows
     let lines: Vec<&str> = csv.trim().lines().collect();
@@ -1449,7 +1968,9 @@ async fn test_result_format_csv_union() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let csv = String::from_utf8(bytes.to_vec()).unwrap();
     let lines: Vec<&str> = csv.trim().lines().collect();
     // Header + rows from both datasources (2 rows each + _datasource column)
@@ -1477,7 +1998,9 @@ async fn test_stats_endpoint() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     // Stats response nests query stats under "history" key
     assert!(json["history"]["total_queries"].as_u64().unwrap_or(0) >= 1);
@@ -1536,7 +2059,8 @@ async fn test_params_empty_is_noop() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
 }
 
@@ -1573,19 +2097,35 @@ struct FailingMockConnector {
 }
 
 impl FailingMockConnector {
-    fn new(id: &str) -> Self { Self { id: id.to_string() } }
+    fn new(id: &str) -> Self {
+        Self { id: id.to_string() }
+    }
 }
 
 #[async_trait]
 impl FederatedConnector for FailingMockConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "failing-mock" }
-    fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "failing-mock"
+    }
+    fn capabilities(&self) -> ConnectorCapabilities {
+        ConnectorCapabilities::full()
+    }
     async fn health_check(&self) -> ConnectorHealth {
-        ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some("down".into()) }
+        ConnectorHealth {
+            status: HealthStatus::Unhealthy,
+            latency_ms: None,
+            message: Some("down".into()),
+        }
     }
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
-        Ok(vec![SchemaInfo { name: "logs".into(), schema_type: SchemaType::Index, estimated_row_count: Some(0) }])
+        Ok(vec![SchemaInfo {
+            name: "logs".into(),
+            schema_type: SchemaType::Index,
+            estimated_row_count: Some(0),
+        }])
     }
     async fn get_schema(&self, _: &str) -> Result<Schema, ConnectorError> {
         Ok(Schema::new(vec![
@@ -1597,7 +2137,9 @@ impl FederatedConnector for FailingMockConnector {
         Err(ConnectorError::query("connection refused"))
     }
     async fn execute_streaming(
-        &self, _: &SubQuery, _: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+        &self,
+        _: &SubQuery,
+        _: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
     ) -> Result<(), ConnectorError> {
         Err(ConnectorError::query("connection refused"))
     }
@@ -1607,15 +2149,52 @@ impl FederatedConnector for FailingMockConnector {
 async fn test_union_partial_failure_returns_partial_results() {
     // cluster_a works, cluster_b fails → should get results from cluster_a + partial_errors
     let registry = ConnectorRegistry::new();
-    registry.register(Arc::new(MockConnector::new("cluster_a"))).unwrap();
-    registry.register(Arc::new(FailingMockConnector::new("cluster_b"))).unwrap();
+    registry
+        .register(Arc::new(MockConnector::new("cluster_a")))
+        .unwrap();
+    registry
+        .register(Arc::new(FailingMockConnector::new("cluster_b")))
+        .unwrap();
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
         alert_rules: vec![],
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let app = fuse_server::build_router(state);
 
@@ -1623,7 +2202,8 @@ async fn test_union_partial_failure_returns_partial_results() {
         app,
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     // Got partial results from cluster_a
     assert!(!json["rows"].as_array().unwrap().is_empty());
@@ -1631,22 +2211,62 @@ async fn test_union_partial_failure_returns_partial_results() {
     let errors = json["partial_errors"].as_array().unwrap();
     assert_eq!(errors.len(), 1);
     assert_eq!(errors[0]["datasource"], "cluster_b");
-    assert!(errors[0]["error"].as_str().unwrap().contains("connection refused"));
+    assert!(errors[0]["error"]
+        .as_str()
+        .unwrap()
+        .contains("connection refused"));
 }
 
 #[tokio::test]
 async fn test_union_all_fail_returns_error() {
     // Both sources fail with connection refused → should return 502 (Bad Gateway)
     let registry = ConnectorRegistry::new();
-    registry.register(Arc::new(FailingMockConnector::new("cluster_a"))).unwrap();
-    registry.register(Arc::new(FailingMockConnector::new("cluster_b"))).unwrap();
+    registry
+        .register(Arc::new(FailingMockConnector::new("cluster_a")))
+        .unwrap();
+    registry
+        .register(Arc::new(FailingMockConnector::new("cluster_b")))
+        .unwrap();
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
         alert_rules: vec![],
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let app = fuse_server::build_router(state);
 
@@ -1654,7 +2274,8 @@ async fn test_union_all_fail_returns_error() {
         app,
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::BAD_GATEWAY);
 }
 
@@ -1664,7 +2285,8 @@ async fn test_single_source_no_partial_errors() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     // No partial_errors field when empty (skip_serializing_if)
     assert!(json.get("partial_errors").is_none());
@@ -1685,7 +2307,9 @@ async fn post_validate(app: axum::Router, query: &str, format: &str) -> serde_js
         )
         .await
         .unwrap();
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     serde_json::from_slice(&bytes).unwrap()
 }
 
@@ -1695,7 +2319,8 @@ async fn test_validate_valid_table() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(json["valid"], true);
 }
 
@@ -1705,9 +2330,13 @@ async fn test_validate_unknown_datasource_v2() {
         build_federation_app(),
         "SELECT * FROM nonexistent.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(json["valid"], false);
-    assert!(json["error"].as_str().unwrap().contains("not found in registry"));
+    assert!(json["error"]
+        .as_str()
+        .unwrap()
+        .contains("not found in registry"));
 }
 
 #[tokio::test]
@@ -1716,18 +2345,18 @@ async fn test_validate_unknown_table() {
         build_federation_app(),
         "SELECT * FROM cluster_a.nonexistent_table",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(json["valid"], false);
-    assert!(json["error"].as_str().unwrap().contains("not found in datasource"));
+    assert!(json["error"]
+        .as_str()
+        .unwrap()
+        .contains("not found in datasource"));
 }
 
 #[tokio::test]
 async fn test_validate_bad_syntax() {
-    let json = post_validate(
-        build_federation_app(),
-        "NOT A VALID QUERY",
-        "sql",
-    ).await;
+    let json = post_validate(build_federation_app(), "NOT A VALID QUERY", "sql").await;
     assert_eq!(json["valid"], false);
 }
 
@@ -1739,7 +2368,8 @@ async fn test_union_order_by_desc() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs ORDER BY status DESC",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert!(rows.len() >= 4);
@@ -1748,7 +2378,11 @@ async fn test_union_order_by_desc() {
     let status_idx = columns.iter().position(|c| c == "status").unwrap();
     // First rows should have higher status values
     let first: i64 = rows[0][status_idx].as_str().unwrap().parse().unwrap();
-    let last: i64 = rows[rows.len() - 1][status_idx].as_str().unwrap().parse().unwrap();
+    let last: i64 = rows[rows.len() - 1][status_idx]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
     assert!(first >= last);
 }
 
@@ -1758,13 +2392,18 @@ async fn test_union_order_by_asc() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs ORDER BY status ASC",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     let columns = json["columns"].as_array().unwrap();
     let status_idx = columns.iter().position(|c| c == "status").unwrap();
     let first: i64 = rows[0][status_idx].as_str().unwrap().parse().unwrap();
-    let last: i64 = rows[rows.len() - 1][status_idx].as_str().unwrap().parse().unwrap();
+    let last: i64 = rows[rows.len() - 1][status_idx]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
     assert!(first <= last);
 }
 
@@ -1801,7 +2440,8 @@ async fn test_non_distinct_union_keeps_all() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     // Without DISTINCT, all 4 rows kept (2 per source + _datasource column makes them unique)
@@ -1816,7 +2456,8 @@ async fn test_limit_offset() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs LIMIT 2 OFFSET 1",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 2);
@@ -1828,7 +2469,8 @@ async fn test_offset_beyond_results() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs LIMIT 10 OFFSET 1000",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 0);
@@ -1841,44 +2483,83 @@ async fn test_saved_queries_crud() {
     let app = build_federation_app();
 
     // List — empty
-    let resp = app.clone()
-        .oneshot(Request::builder().uri("/api/fuse/saved").body(Body::empty()).unwrap())
-        .await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/saved")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert!(json.as_array().unwrap().is_empty());
 
     // Save
     let body = serde_json::json!({"name": "errors", "query": "SELECT * FROM cluster_a.logs WHERE status >= 400", "format": "sql", "description": "Error logs"});
-    let resp = app.clone()
+    let resp = app
+        .clone()
         .oneshot(
-            Request::builder().method("POST").uri("/api/fuse/saved")
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/saved")
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_vec(&body).unwrap())).unwrap(),
-        ).await.unwrap();
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
 
     // Get
-    let resp = app.clone()
-        .oneshot(Request::builder().uri("/api/fuse/saved/errors").body(Body::empty()).unwrap())
-        .await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/saved/errors")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(json["name"], "errors");
     assert!(json["query"].as_str().unwrap().contains("status >= 400"));
 
     // Delete
-    let resp = app.clone()
-        .oneshot(Request::builder().method("DELETE").uri("/api/fuse/saved/errors").body(Body::empty()).unwrap())
-        .await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/fuse/saved/errors")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
 
     // Get after delete — 404
-    let resp = app.clone()
-        .oneshot(Request::builder().uri("/api/fuse/saved/errors").body(Body::empty()).unwrap())
-        .await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/saved/errors")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
@@ -1891,7 +2572,8 @@ async fn test_from_inside_string_literal_ignored() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs WHERE msg = 'data from server'",
         "sql",
-    ).await;
+    )
+    .await;
     // Should succeed — only cluster_a.logs is a source, not "server"
     assert_eq!(status, StatusCode::OK);
 }
@@ -1904,7 +2586,8 @@ async fn test_from_as_substring_ignored() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs WHERE host = 'transform'",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
 }
 
@@ -1915,7 +2598,8 @@ async fn test_subquery_from_parsed() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs WHERE status IN (SELECT status FROM cluster_b.logs)",
         "sql",
-    ).await;
+    )
+    .await;
     // Both sources should be found — this is a multi-source query
     assert_eq!(status, StatusCode::OK);
 }
@@ -1951,7 +2635,8 @@ async fn test_limit_in_string_not_matched() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs WHERE msg = 'rate limit exceeded'",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     // Should return all rows, not limited
     let rows = json["rows"].as_array().unwrap();
@@ -1965,7 +2650,8 @@ async fn test_union_all_in_string_not_matched() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs WHERE msg = 'union all workers'",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     // Single source — no _datasource column
     let columns = json["columns"].as_array().unwrap();
@@ -1979,7 +2665,8 @@ async fn test_order_by_in_string_not_matched() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs WHERE msg = 'order by priority'",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["rows"].as_array().unwrap().len(), 2);
 }
@@ -1992,7 +2679,8 @@ async fn test_subquery_in_from() {
         build_test_app(),
         "SELECT * FROM (SELECT host, status FROM testds.logs WHERE status > 100) AS sub",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert!(!rows.is_empty());
@@ -2004,7 +2692,8 @@ async fn test_subquery_with_outer_filter() {
         build_test_app(),
         "SELECT * FROM (SELECT * FROM testds.logs) AS sub WHERE host = 'h1'",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
 }
 
@@ -2017,7 +2706,8 @@ async fn test_analyze_profile_has_cost_and_detail() {
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
         "sql",
         true,
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let profile = &json["execution_profile"];
     assert!(profile["total_ms"].as_u64().is_some());
@@ -2042,7 +2732,8 @@ async fn test_analyze_single_source_pushdown() {
         "SELECT host FROM testds.logs WHERE status > 200",
         "sql",
         true,
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let profile = &json["execution_profile"];
     let nodes = profile["nodes"].as_array().unwrap();
@@ -2056,12 +2747,8 @@ async fn test_analyze_single_source_pushdown() {
 
 #[tokio::test]
 async fn test_analyze_scan_node_has_datasource() {
-    let (status, json) = post_query_analyze(
-        build_test_app(),
-        "SELECT * FROM testds.logs",
-        "sql",
-        true,
-    ).await;
+    let (status, json) =
+        post_query_analyze(build_test_app(), "SELECT * FROM testds.logs", "sql", true).await;
     assert_eq!(status, StatusCode::OK);
     let nodes = json["execution_profile"]["nodes"].as_array().unwrap();
     assert_eq!(nodes[0]["datasource"], "testds");
@@ -2074,11 +2761,20 @@ async fn test_analyze_pushdown_describes_projection() {
         "SELECT host, status FROM testds.logs",
         "sql",
         true,
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
-    let pushdown = json["execution_profile"]["nodes"][0]["pushdown"].as_array().unwrap();
-    let has_projection = pushdown.iter().any(|p| p.as_str().unwrap().contains("projection"));
-    assert!(has_projection, "pushdown should describe projection: {:?}", pushdown);
+    let pushdown = json["execution_profile"]["nodes"][0]["pushdown"]
+        .as_array()
+        .unwrap();
+    let has_projection = pushdown
+        .iter()
+        .any(|p| p.as_str().unwrap().contains("projection"));
+    assert!(
+        has_projection,
+        "pushdown should describe projection: {:?}",
+        pushdown
+    );
 }
 
 #[tokio::test]
@@ -2088,10 +2784,15 @@ async fn test_analyze_pushdown_describes_limit() {
         "SELECT * FROM testds.logs LIMIT 5",
         "sql",
         true,
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
-    let pushdown = json["execution_profile"]["nodes"][0]["pushdown"].as_array().unwrap();
-    let has_limit = pushdown.iter().any(|p| p.as_str().unwrap().contains("limit"));
+    let pushdown = json["execution_profile"]["nodes"][0]["pushdown"]
+        .as_array()
+        .unwrap();
+    let has_limit = pushdown
+        .iter()
+        .any(|p| p.as_str().unwrap().contains("limit"));
     assert!(has_limit, "pushdown should describe limit: {:?}", pushdown);
 }
 
@@ -2102,13 +2803,22 @@ async fn test_analyze_union_parent_cost_gte_children() {
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
         "sql",
         true,
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let union_node = &json["execution_profile"]["nodes"][0];
     let parent_cost = union_node["estimated_cost"].as_f64().unwrap();
     let children = union_node["children"].as_array().unwrap();
-    let child_sum: f64 = children.iter().map(|c| c["actual_ms"].as_f64().unwrap_or(0.0)).sum();
-    assert!(parent_cost >= child_sum, "parent cost {} should >= child sum {}", parent_cost, child_sum);
+    let child_sum: f64 = children
+        .iter()
+        .map(|c| c["actual_ms"].as_f64().unwrap_or(0.0))
+        .sum();
+    assert!(
+        parent_cost >= child_sum,
+        "parent cost {} should >= child sum {}",
+        parent_cost,
+        child_sum
+    );
 }
 
 // ── #940 EXPLAIN ANALYZE accuracy tests ──
@@ -2120,14 +2830,23 @@ async fn test_analyze_estimate_accuracy_field_present() {
         "SELECT * FROM cluster_a.logs",
         "sql",
         true,
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let node = &json["execution_profile"]["nodes"][0];
     let acc = node["estimate_accuracy"].as_str();
     assert!(acc.is_some(), "scan node must have estimate_accuracy");
     // Format: "N.Nx (est X vs actual Y)"
-    assert!(acc.unwrap().contains("est"), "accuracy should contain 'est': {}", acc.unwrap());
-    assert!(acc.unwrap().contains("actual"), "accuracy should contain 'actual': {}", acc.unwrap());
+    assert!(
+        acc.unwrap().contains("est"),
+        "accuracy should contain 'est': {}",
+        acc.unwrap()
+    );
+    assert!(
+        acc.unwrap().contains("actual"),
+        "accuracy should contain 'actual': {}",
+        acc.unwrap()
+    );
 }
 
 #[tokio::test]
@@ -2137,12 +2856,18 @@ async fn test_analyze_actual_rows_matches_result() {
         "SELECT * FROM cluster_a.logs",
         "sql",
         true,
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let result_rows = json["rows"].as_array().unwrap().len() as u64;
-    let profile_rows = json["execution_profile"]["nodes"][0]["actual_rows"].as_u64().unwrap();
-    assert_eq!(result_rows, profile_rows,
-        "profile actual_rows ({}) must match result row count ({})", profile_rows, result_rows);
+    let profile_rows = json["execution_profile"]["nodes"][0]["actual_rows"]
+        .as_u64()
+        .unwrap();
+    assert_eq!(
+        result_rows, profile_rows,
+        "profile actual_rows ({}) must match result row count ({})",
+        profile_rows, result_rows
+    );
 }
 
 #[tokio::test]
@@ -2152,15 +2877,20 @@ async fn test_analyze_total_ms_gte_node_ms() {
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
         "sql",
         true,
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let profile = &json["execution_profile"];
     let total_ms = profile["total_ms"].as_u64().unwrap();
     let nodes = profile["nodes"].as_array().unwrap();
     for node in nodes {
         let node_ms = node["actual_ms"].as_u64().unwrap_or(0);
-        assert!(total_ms >= node_ms,
-            "total_ms ({}) must >= any node actual_ms ({})", total_ms, node_ms);
+        assert!(
+            total_ms >= node_ms,
+            "total_ms ({}) must >= any node actual_ms ({})",
+            total_ms,
+            node_ms
+        );
     }
 }
 
@@ -2171,12 +2901,19 @@ async fn test_analyze_scan_has_data_bytes() {
         "SELECT * FROM cluster_a.logs",
         "sql",
         true,
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let node = &json["execution_profile"]["nodes"][0];
     assert_eq!(node["op"], "RemoteScan");
-    assert!(node["data_bytes"].as_u64().is_some(), "scan node must report data_bytes");
-    assert!(node["data_bytes"].as_u64().unwrap() > 0, "data_bytes must be > 0 for non-empty scan");
+    assert!(
+        node["data_bytes"].as_u64().is_some(),
+        "scan node must report data_bytes"
+    );
+    assert!(
+        node["data_bytes"].as_u64().unwrap() > 0,
+        "data_bytes must be > 0 for non-empty scan"
+    );
 }
 
 #[tokio::test]
@@ -2193,16 +2930,23 @@ async fn test_analyze_join_parent_rows_bounded() {
     let root = &nodes[0];
     let parent_rows = root["actual_rows"].as_u64().unwrap();
     let children = root["children"].as_array().unwrap();
-    let _max_child_rows: u64 = children.iter()
+    let _max_child_rows: u64 = children
+        .iter()
         .map(|c| c["actual_rows"].as_u64().unwrap_or(0))
-        .max().unwrap_or(0);
+        .max()
+        .unwrap_or(0);
     // Inner join result cannot exceed the cartesian product, but should be <= max child
     // for equi-join on a shared column with reasonable selectivity
-    let product: u64 = children.iter()
+    let product: u64 = children
+        .iter()
         .map(|c| c["actual_rows"].as_u64().unwrap_or(1))
         .product();
-    assert!(parent_rows <= product,
-        "join result rows ({}) must <= cartesian product ({})", parent_rows, product);
+    assert!(
+        parent_rows <= product,
+        "join result rows ({}) must <= cartesian product ({})",
+        parent_rows,
+        product
+    );
 }
 
 #[tokio::test]
@@ -2212,21 +2956,30 @@ async fn test_analyze_estimated_rows_present_on_all_nodes() {
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
         "sql",
         true,
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let nodes = json["execution_profile"]["nodes"].as_array().unwrap();
     fn check_estimated(node: &serde_json::Value) {
         if node["op"].as_str() == Some("RemoteScan") {
-            assert!(node["estimated_rows"].as_u64().is_some(),
-                "RemoteScan must have estimated_rows");
-            assert!(node["estimated_cost"].as_f64().is_some(),
-                "RemoteScan must have estimated_cost");
+            assert!(
+                node["estimated_rows"].as_u64().is_some(),
+                "RemoteScan must have estimated_rows"
+            );
+            assert!(
+                node["estimated_cost"].as_f64().is_some(),
+                "RemoteScan must have estimated_cost"
+            );
         }
         if let Some(children) = node["children"].as_array() {
-            for child in children { check_estimated(child); }
+            for child in children {
+                check_estimated(child);
+            }
         }
     }
-    for node in nodes { check_estimated(node); }
+    for node in nodes {
+        check_estimated(node);
+    }
 }
 
 // ── Plan cache tests ──
@@ -2294,7 +3047,8 @@ async fn test_single_column_order_by_still_works() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs ORDER BY host ASC",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows[0][0], "h1");
@@ -2303,8 +3057,8 @@ async fn test_single_column_order_by_still_works() {
 // ── Demo #311: 3-source UNION ALL ──
 
 fn build_three_source_app() -> axum::Router {
-    use fuse_server::api::{AppState, RunningQueries};
     use fuse_core::registry::ConnectorRegistry;
+    use fuse_server::api::{AppState, RunningQueries};
     use std::sync::Arc;
 
     let registry = ConnectorRegistry::new();
@@ -2322,7 +3076,39 @@ fn build_three_source_app() -> axum::Router {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
-        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     fuse_server::build_router(state)
 }
@@ -2366,7 +3152,8 @@ async fn test_union_deduplicates() {
         build_federation_app(),
         "SELECT host, status FROM cluster_a.logs UNION SELECT host, status FROM cluster_b.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     // Both sources return same data — plain UNION should dedup to 2
@@ -2379,7 +3166,8 @@ async fn test_union_all_keeps_duplicates() {
         build_federation_app(),
         "SELECT host, status FROM cluster_a.logs UNION ALL SELECT host, status FROM cluster_b.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     // UNION ALL keeps all rows — 4 (2 per source + _datasource makes unique)
@@ -2397,12 +3185,19 @@ async fn test_cursor_pagination_first_page() {
     });
     let resp = build_federation_app()
         .oneshot(
-            Request::builder().method("POST").uri("/api/fuse/query")
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query")
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_vec(&body).unwrap())).unwrap(),
-        ).await.unwrap();
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 2);
@@ -2420,12 +3215,19 @@ async fn test_cursor_pagination_second_page() {
     });
     let resp = build_federation_app()
         .oneshot(
-            Request::builder().method("POST").uri("/api/fuse/query")
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query")
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_vec(&body).unwrap())).unwrap(),
-        ).await.unwrap();
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 2);
@@ -2440,7 +3242,8 @@ async fn test_no_cursor_no_page_size() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert!(json.get("next_cursor").is_none() || json["next_cursor"].is_null());
 }
@@ -2473,7 +3276,9 @@ async fn post_query_paginated(
         .await
         .unwrap();
     let status = resp.status();
-    let bytes = axum::body::to_bytes(resp.into_body(), 1 << 20).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), 1 << 20)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or_default();
     (status, json)
 }
@@ -2481,28 +3286,47 @@ async fn post_query_paginated(
 #[tokio::test]
 async fn test_cursor_first_page_returns_next_cursor() {
     let (status, json) = post_query_paginated(
-        build_test_app(), "SELECT * FROM testds.logs", "sql", None, Some(1),
-    ).await;
+        build_test_app(),
+        "SELECT * FROM testds.logs",
+        "sql",
+        None,
+        Some(1),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 1);
     // Should have next_cursor since there are more rows
-    assert!(json["next_cursor"].is_string(), "expected next_cursor, got: {:?}", json["next_cursor"]);
+    assert!(
+        json["next_cursor"].is_string(),
+        "expected next_cursor, got: {:?}",
+        json["next_cursor"]
+    );
 }
 
 #[tokio::test]
 async fn test_cursor_second_page_different_rows() {
     // Page 1
     let (_, json1) = post_query_paginated(
-        build_test_app(), "SELECT * FROM testds.logs", "sql", None, Some(1),
-    ).await;
+        build_test_app(),
+        "SELECT * FROM testds.logs",
+        "sql",
+        None,
+        Some(1),
+    )
+    .await;
     let cursor = json1["next_cursor"].as_str().unwrap();
     let row1 = json1["rows"][0].clone();
 
     // Page 2
     let (status, json2) = post_query_paginated(
-        build_test_app(), "SELECT * FROM testds.logs", "sql", Some(cursor), Some(1),
-    ).await;
+        build_test_app(),
+        "SELECT * FROM testds.logs",
+        "sql",
+        Some(cursor),
+        Some(1),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let row2 = json2["rows"][0].clone();
     assert_ne!(row1, row2, "page 2 should return different row than page 1");
@@ -2512,8 +3336,13 @@ async fn test_cursor_second_page_different_rows() {
 async fn test_cursor_no_page_size_no_cursor() {
     // Without page_size, no cursor pagination
     let (status, json) = post_query_paginated(
-        build_test_app(), "SELECT * FROM testds.logs", "sql", None, None,
-    ).await;
+        build_test_app(),
+        "SELECT * FROM testds.logs",
+        "sql",
+        None,
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     // All rows returned, no next_cursor
     assert!(json["next_cursor"].is_null() || json.get("next_cursor").is_none());
@@ -2522,8 +3351,13 @@ async fn test_cursor_no_page_size_no_cursor() {
 #[tokio::test]
 async fn test_cursor_invalid_token_handled() {
     let (status, _) = post_query_paginated(
-        build_test_app(), "SELECT * FROM testds.logs", "sql", Some("invalid_cursor"), Some(1),
-    ).await;
+        build_test_app(),
+        "SELECT * FROM testds.logs",
+        "sql",
+        Some("invalid_cursor"),
+        Some(1),
+    )
+    .await;
     // Should either ignore invalid cursor (200) or reject (400)
     assert!(status == StatusCode::OK || status == StatusCode::BAD_REQUEST);
 }
@@ -2532,10 +3366,19 @@ async fn test_cursor_invalid_token_handled() {
 async fn test_cursor_encode_decode_roundtrip() {
     // Verify cursor format: fuse_c_<offset>
     let (_, json) = post_query_paginated(
-        build_test_app(), "SELECT * FROM testds.logs", "sql", None, Some(1),
-    ).await;
+        build_test_app(),
+        "SELECT * FROM testds.logs",
+        "sql",
+        None,
+        Some(1),
+    )
+    .await;
     if let Some(cursor) = json["next_cursor"].as_str() {
-        assert!(cursor.starts_with("fuse_c_"), "cursor should start with fuse_c_, got: {}", cursor);
+        assert!(
+            cursor.starts_with("fuse_c_"),
+            "cursor should start with fuse_c_, got: {}",
+            cursor
+        );
     }
 }
 
@@ -2548,15 +3391,22 @@ async fn test_union_dedup_fewer_than_union_all() {
         build_federation_app(),
         "SELECT host, status FROM cluster_a.logs UNION ALL SELECT host, status FROM cluster_b.logs",
         "sql",
-    ).await;
+    )
+    .await;
     let (_, json_dedup) = post_query(
         build_federation_app(),
         "SELECT host, status FROM cluster_a.logs UNION SELECT host, status FROM cluster_b.logs",
         "sql",
-    ).await;
+    )
+    .await;
     let all_rows = json_all["rows"].as_array().unwrap().len();
     let dedup_rows = json_dedup["rows"].as_array().unwrap().len();
-    assert!(dedup_rows <= all_rows, "UNION ({}) should be <= UNION ALL ({})", dedup_rows, all_rows);
+    assert!(
+        dedup_rows <= all_rows,
+        "UNION ({}) should be <= UNION ALL ({})",
+        dedup_rows,
+        all_rows
+    );
 }
 
 #[tokio::test]
@@ -2565,7 +3415,8 @@ async fn test_union_dedup_no_duplicate_rows() {
         build_federation_app(),
         "SELECT host, status FROM cluster_a.logs UNION SELECT host, status FROM cluster_b.logs",
         "sql",
-    ).await;
+    )
+    .await;
     let rows = json["rows"].as_array().unwrap();
     // Check no two rows are identical
     for i in 0..rows.len() {
@@ -2585,12 +3436,25 @@ async fn test_three_source_provenance_correct() {
     let columns = json["columns"].as_array().unwrap();
     let ds_idx = columns.iter().position(|c| c == "_datasource").unwrap();
     let rows = json["rows"].as_array().unwrap();
-    let sources: std::collections::HashSet<&str> = rows.iter()
+    let sources: std::collections::HashSet<&str> = rows
+        .iter()
         .filter_map(|r| r.as_array().and_then(|a| a[ds_idx].as_str()))
         .collect();
-    assert!(sources.contains("opensearch_logs"), "missing opensearch_logs in {:?}", sources);
-    assert!(sources.contains("s3_logs"), "missing s3_logs in {:?}", sources);
-    assert!(sources.contains("cloudwatch_logs"), "missing cloudwatch_logs in {:?}", sources);
+    assert!(
+        sources.contains("opensearch_logs"),
+        "missing opensearch_logs in {:?}",
+        sources
+    );
+    assert!(
+        sources.contains("s3_logs"),
+        "missing s3_logs in {:?}",
+        sources
+    );
+    assert!(
+        sources.contains("cloudwatch_logs"),
+        "missing cloudwatch_logs in {:?}",
+        sources
+    );
 }
 
 #[tokio::test]
@@ -2605,7 +3469,13 @@ async fn test_three_source_each_contributes_rows() {
     let rows = json["rows"].as_array().unwrap();
     // Each source should contribute at least 1 row
     for src in &["opensearch_logs", "s3_logs", "cloudwatch_logs"] {
-        let count = rows.iter().filter(|r| r.as_array().is_some_and(|a| a[ds_idx].as_str() == Some(src))).count();
+        let count = rows
+            .iter()
+            .filter(|r| {
+                r.as_array()
+                    .is_some_and(|a| a[ds_idx].as_str() == Some(src))
+            })
+            .count();
         assert!(count > 0, "{} contributed 0 rows", src);
     }
 }
@@ -2618,12 +3488,14 @@ async fn test_is_union_distinct_detection() {
         build_federation_app(),
         "SELECT host FROM cluster_a.logs UNION ALL SELECT host FROM cluster_b.logs",
         "sql",
-    ).await;
+    )
+    .await;
     let (s2, j2) = post_query(
         build_federation_app(),
         "SELECT host FROM cluster_a.logs UNION SELECT host FROM cluster_b.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(s1, StatusCode::OK);
     assert_eq!(s2, StatusCode::OK);
     // Both should succeed — the key is UNION has fewer or equal rows
@@ -2641,7 +3513,8 @@ async fn test_analyze_has_cost_estimates() {
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
         "sql",
         true,
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let nodes = json["execution_profile"]["nodes"].as_array().unwrap();
     let union_node = &nodes[0];
@@ -2659,15 +3532,25 @@ async fn test_analyze_has_cost_estimates() {
 async fn test_explain_has_cost_estimates() {
     let resp = build_test_app()
         .oneshot(
-            Request::builder().method("POST").uri("/api/fuse/query/explain")
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query/explain")
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_vec(&serde_json::json!({
-                    "query": "SELECT * FROM testds.logs",
-                    "format": "sql"
-                })).unwrap())).unwrap(),
-        ).await.unwrap();
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "query": "SELECT * FROM testds.logs",
+                        "format": "sql"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let tree = &json["plan_tree"];
     assert!(tree["estimated_rows"].as_u64().is_some());
@@ -2681,21 +3564,36 @@ async fn test_explain_plan_tree_has_dag_fields() {
     // Single-source: tree must have op, and optionally detail/estimated_rows/estimated_cost
     let resp = build_test_app()
         .oneshot(
-            Request::builder().method("POST").uri("/api/fuse/query/explain")
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query/explain")
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_vec(&serde_json::json!({
-                    "query": "SELECT * FROM testds.logs",
-                    "format": "sql"
-                })).unwrap())).unwrap(),
-        ).await.unwrap();
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "query": "SELECT * FROM testds.logs",
+                        "format": "sql"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let tree = &json["plan_tree"];
-    assert!(tree["op"].as_str().is_some(), "plan_tree must have op field");
+    assert!(
+        tree["op"].as_str().is_some(),
+        "plan_tree must have op field"
+    );
     // Root should have children for non-trivial plans
-    assert!(tree.get("children").is_none() || tree["children"].is_array(),
-        "children must be absent or an array");
+    assert!(
+        tree.get("children").is_none() || tree["children"].is_array(),
+        "children must be absent or an array"
+    );
 }
 
 #[tokio::test]
@@ -2707,17 +3605,29 @@ async fn test_explain_join_plan_tree_has_children() {
     });
     let resp = build_federation_app()
         .oneshot(
-            Request::builder().method("POST").uri("/api/fuse/query/explain")
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query/explain")
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_vec(&body).unwrap())).unwrap(),
-        ).await.unwrap();
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let tree = &json["plan_tree"];
     assert!(tree["op"].as_str().is_some());
-    let children = tree["children"].as_array().expect("join plan must have children");
-    assert!(children.len() >= 2, "join plan must have at least 2 children");
+    let children = tree["children"]
+        .as_array()
+        .expect("join plan must have children");
+    assert!(
+        children.len() >= 2,
+        "join plan must have at least 2 children"
+    );
     // Each child must also have op
     for child in children {
         assert!(child["op"].as_str().is_some(), "child node must have op");
@@ -2739,10 +3649,13 @@ async fn test_join_profile_shows_build_side() {
     let children = join_node["children"].as_array().unwrap();
     assert_eq!(children.len(), 2);
     // One child should be "build side", other "probe side"
-    let pushdowns: Vec<String> = children.iter()
+    let pushdowns: Vec<String> = children
+        .iter()
         .flat_map(|c| {
             let arr = c["pushdown"].as_array().cloned().unwrap_or_default();
-            arr.into_iter().map(|p| p.as_str().unwrap_or("").to_string()).collect::<Vec<_>>()
+            arr.into_iter()
+                .map(|p| p.as_str().unwrap_or("").to_string())
+                .collect::<Vec<_>>()
         })
         .collect();
     assert!(pushdowns.iter().any(|p| p.contains("build side")));
@@ -2758,48 +3671,49 @@ async fn test_cost_estimate_parent_rows_sum_children() {
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
         "sql",
         true,
-    ).await;
+    )
+    .await;
     let union = &json["execution_profile"]["nodes"][0];
     let parent_est = union["estimated_rows"].as_u64().unwrap();
     let children = union["children"].as_array().unwrap();
-    let child_sum: u64 = children.iter().filter_map(|c| c["estimated_rows"].as_u64()).sum();
-    assert_eq!(parent_est, child_sum, "parent estimated_rows should equal sum of children");
+    let child_sum: u64 = children
+        .iter()
+        .filter_map(|c| c["estimated_rows"].as_u64())
+        .sum();
+    assert_eq!(
+        parent_est, child_sum,
+        "parent estimated_rows should equal sum of children"
+    );
 }
 
 #[tokio::test]
 async fn test_cost_estimate_scan_has_bytes() {
-    let (_, json) = post_query_analyze(
-        build_test_app(),
-        "SELECT * FROM testds.logs",
-        "sql",
-        true,
-    ).await;
+    let (_, json) =
+        post_query_analyze(build_test_app(), "SELECT * FROM testds.logs", "sql", true).await;
     let node = &json["execution_profile"]["nodes"][0];
-    assert!(node["data_bytes"].as_u64().is_some(), "scan node should have data_bytes");
-    assert!(node["estimated_cost"].as_f64().unwrap() >= 0.0, "cost should be non-negative");
+    assert!(
+        node["data_bytes"].as_u64().is_some(),
+        "scan node should have data_bytes"
+    );
+    assert!(
+        node["estimated_cost"].as_f64().unwrap() >= 0.0,
+        "cost should be non-negative"
+    );
 }
 
 #[tokio::test]
 async fn test_cost_estimate_not_in_non_analyze() {
     // analyze=false should not include execution_profile at all
-    let (_, json) = post_query_analyze(
-        build_test_app(),
-        "SELECT * FROM testds.logs",
-        "sql",
-        false,
-    ).await;
+    let (_, json) =
+        post_query_analyze(build_test_app(), "SELECT * FROM testds.logs", "sql", false).await;
     assert!(json.get("execution_profile").is_none() || json["execution_profile"].is_null());
 }
 
 #[tokio::test]
 async fn test_cost_estimate_single_source_no_parent() {
     // Single source → scan node directly, no parent wrapper
-    let (_, json) = post_query_analyze(
-        build_test_app(),
-        "SELECT * FROM testds.logs",
-        "sql",
-        true,
-    ).await;
+    let (_, json) =
+        post_query_analyze(build_test_app(), "SELECT * FROM testds.logs", "sql", true).await;
     let nodes = json["execution_profile"]["nodes"].as_array().unwrap();
     assert_eq!(nodes[0]["op"], "RemoteScan");
     assert!(nodes[0]["children"].as_array().is_none_or(|c| c.is_empty()));
@@ -2809,18 +3723,35 @@ async fn test_cost_estimate_single_source_no_parent() {
 
 /// Mock connector with configurable row count for asymmetric join testing.
 #[derive(Debug)]
-struct SizedMockConnector { id: String, rows: usize }
+struct SizedMockConnector {
+    id: String,
+    rows: usize,
+}
 
 #[async_trait]
 impl FederatedConnector for SizedMockConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "mock" }
-    fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "mock"
+    }
+    fn capabilities(&self) -> ConnectorCapabilities {
+        ConnectorCapabilities::full()
+    }
     async fn health_check(&self) -> ConnectorHealth {
-        ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(1), message: None }
+        ConnectorHealth {
+            status: HealthStatus::Healthy,
+            latency_ms: Some(1),
+            message: None,
+        }
     }
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
-        Ok(vec![SchemaInfo { name: "logs".into(), schema_type: SchemaType::Index, estimated_row_count: Some(self.rows as u64) }])
+        Ok(vec![SchemaInfo {
+            name: "logs".into(),
+            schema_type: SchemaType::Index,
+            estimated_row_count: Some(self.rows as u64),
+        }])
     }
     async fn get_schema(&self, _: &str) -> Result<Schema, ConnectorError> {
         Ok(Schema::new(vec![
@@ -2834,26 +3765,52 @@ impl FederatedConnector for SizedMockConnector {
             Field::new("status", DataType::Int64, false),
         ]));
         let hosts: Vec<String> = (0..self.rows).map(|i| format!("h{}", i % 3)).collect();
-        let statuses: Vec<i64> = (0..self.rows).map(|i| if i % 2 == 0 { 200 } else { 500 }).collect();
-        let batch = RecordBatch::try_new(schema, vec![
-            Arc::new(StringArray::from(hosts.iter().map(|s| s.as_str()).collect::<Vec<_>>())),
-            Arc::new(Int64Array::from(statuses)),
-        ]).map_err(ConnectorError::query)?;
+        let statuses: Vec<i64> = (0..self.rows)
+            .map(|i| if i % 2 == 0 { 200 } else { 500 })
+            .collect();
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(
+                    hosts.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                )),
+                Arc::new(Int64Array::from(statuses)),
+            ],
+        )
+        .map_err(ConnectorError::query)?;
         Ok(vec![batch])
     }
-    async fn execute_streaming(&self, q: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>) -> Result<(), ConnectorError> {
-        for b in self.execute(q).await? { tx.send(Ok(b)).await.map_err(|_| ConnectorError::ChannelClosed)?; }
+    async fn execute_streaming(
+        &self,
+        q: &SubQuery,
+        tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+    ) -> Result<(), ConnectorError> {
+        for b in self.execute(q).await? {
+            tx.send(Ok(b))
+                .await
+                .map_err(|_| ConnectorError::ChannelClosed)?;
+        }
         Ok(())
     }
 }
 
 fn build_asymmetric_app() -> axum::Router {
-    use fuse_server::api::{AppState, RunningQueries};
     use fuse_core::registry::ConnectorRegistry;
+    use fuse_server::api::{AppState, RunningQueries};
     let registry = ConnectorRegistry::new();
     // big_ds: 10 rows, small_ds: 2 rows
-    registry.register(Arc::new(SizedMockConnector { id: "big_ds".into(), rows: 10 })).unwrap();
-    registry.register(Arc::new(SizedMockConnector { id: "small_ds".into(), rows: 2 })).unwrap();
+    registry
+        .register(Arc::new(SizedMockConnector {
+            id: "big_ds".into(),
+            rows: 10,
+        }))
+        .unwrap();
+    registry
+        .register(Arc::new(SizedMockConnector {
+            id: "small_ds".into(),
+            rows: 2,
+        }))
+        .unwrap();
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
         alert_rules: vec![],
@@ -2861,7 +3818,39 @@ fn build_asymmetric_app() -> axum::Router {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
-        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     fuse_server::build_router(state)
 }
@@ -2873,22 +3862,40 @@ async fn test_join_smaller_table_is_build_side() {
         "SELECT * FROM big_ds.logs JOIN small_ds.logs ON big_ds.logs.host = small_ds.logs.host",
         "sql",
         true,
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let join_node = &json["execution_profile"]["nodes"][0];
     assert_eq!(join_node["op"], "HashJoin");
     let children = join_node["children"].as_array().unwrap();
     // Find which child is build side
-    let build_child = children.iter().find(|c| {
-        c["pushdown"].as_array().is_some_and(|p| p.iter().any(|v| v.as_str().unwrap_or("").contains("build side")))
-    }).expect("no build side found");
-    let probe_child = children.iter().find(|c| {
-        c["pushdown"].as_array().is_some_and(|p| p.iter().any(|v| v.as_str().unwrap_or("").contains("probe side")))
-    }).expect("no probe side found");
+    let build_child = children
+        .iter()
+        .find(|c| {
+            c["pushdown"].as_array().is_some_and(|p| {
+                p.iter()
+                    .any(|v| v.as_str().unwrap_or("").contains("build side"))
+            })
+        })
+        .expect("no build side found");
+    let probe_child = children
+        .iter()
+        .find(|c| {
+            c["pushdown"].as_array().is_some_and(|p| {
+                p.iter()
+                    .any(|v| v.as_str().unwrap_or("").contains("probe side"))
+            })
+        })
+        .expect("no probe side found");
     // Build side should have fewer rows than probe side
     let build_rows = build_child["actual_rows"].as_u64().unwrap();
     let probe_rows = probe_child["actual_rows"].as_u64().unwrap();
-    assert!(build_rows <= probe_rows, "build side ({}) should be <= probe side ({})", build_rows, probe_rows);
+    assert!(
+        build_rows <= probe_rows,
+        "build side ({}) should be <= probe side ({})",
+        build_rows,
+        probe_rows
+    );
 }
 
 #[tokio::test]
@@ -2898,13 +3905,25 @@ async fn test_join_build_side_is_small_ds() {
         "SELECT * FROM big_ds.logs JOIN small_ds.logs ON big_ds.logs.host = small_ds.logs.host",
         "sql",
         true,
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
-    let children = json["execution_profile"]["nodes"][0]["children"].as_array().unwrap();
-    let build_child = children.iter().find(|c| {
-        c["pushdown"].as_array().is_some_and(|p| p.iter().any(|v| v.as_str().unwrap_or("").contains("build side")))
-    }).unwrap();
-    assert_eq!(build_child["datasource"], "small_ds", "smaller table should be build side");
+    let children = json["execution_profile"]["nodes"][0]["children"]
+        .as_array()
+        .unwrap();
+    let build_child = children
+        .iter()
+        .find(|c| {
+            c["pushdown"].as_array().is_some_and(|p| {
+                p.iter()
+                    .any(|v| v.as_str().unwrap_or("").contains("build side"))
+            })
+        })
+        .unwrap();
+    assert_eq!(
+        build_child["datasource"], "small_ds",
+        "smaller table should be build side"
+    );
 }
 
 #[tokio::test]
@@ -2914,10 +3933,14 @@ async fn test_join_produces_rows() {
         "SELECT * FROM big_ds.logs JOIN small_ds.logs ON big_ds.logs.host = small_ds.logs.host",
         "sql",
         true,
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let join_node = &json["execution_profile"]["nodes"][0];
-    assert!(join_node["actual_rows"].as_u64().unwrap() > 0, "join should produce rows");
+    assert!(
+        join_node["actual_rows"].as_u64().unwrap() > 0,
+        "join should produce rows"
+    );
 }
 
 // ── Correlated subquery tests ──
@@ -2930,7 +3953,8 @@ async fn test_in_subquery_resolves() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs WHERE host IN (SELECT host FROM cluster_b.logs)",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     // Both sources have same hosts (h1, h2), so all cluster_a rows should match
@@ -2944,7 +3968,8 @@ async fn test_query_without_in_subquery_unchanged() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs WHERE host IN ('h1', 'h2')",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
 }
 
@@ -2957,18 +3982,23 @@ async fn test_in_subquery_filters_outer_rows() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs WHERE host IN (SELECT host FROM cluster_b.logs)",
         "sql",
-    ).await;
+    )
+    .await;
     let (s2, j2) = post_query(
         build_federation_app(),
         "SELECT * FROM cluster_a.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(s1, StatusCode::OK);
     assert_eq!(s2, StatusCode::OK);
     // With matching hosts, IN subquery should return same rows as unfiltered
     let in_rows = j1["rows"].as_array().unwrap().len();
     let all_rows = j2["rows"].as_array().unwrap().len();
-    assert_eq!(in_rows, all_rows, "all hosts match, so IN should return all rows");
+    assert_eq!(
+        in_rows, all_rows,
+        "all hosts match, so IN should return all rows"
+    );
 }
 
 #[tokio::test]
@@ -2979,7 +4009,8 @@ async fn test_in_subquery_non_overlapping_types() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs WHERE status IN (SELECT host FROM cluster_b.logs)",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
 }
 
@@ -2990,7 +4021,8 @@ async fn test_in_subquery_sql_injection_escaped() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs WHERE host IN (SELECT host FROM cluster_b.logs)",
         "sql",
-    ).await;
+    )
+    .await;
     // Should not crash regardless of data content
     assert!(status == StatusCode::OK || status == StatusCode::BAD_REQUEST);
 }
@@ -3002,7 +4034,8 @@ async fn test_in_subquery_with_literal_still_works() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs WHERE host IN ('h1')",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert!(!rows.is_empty());
@@ -3051,7 +4084,8 @@ async fn test_reaggregate_merges_not_duplicates() {
         build_federation_app(),
         "SELECT host, status FROM cluster_a.logs UNION ALL SELECT host, status FROM cluster_b.logs",
         "sql",
-    ).await;
+    )
+    .await;
     let (s_grp, j_grp) = post_query(
         build_federation_app(),
         "SELECT host, status FROM cluster_a.logs UNION ALL SELECT host, status FROM cluster_b.logs GROUP BY host",
@@ -3061,7 +4095,12 @@ async fn test_reaggregate_merges_not_duplicates() {
     assert_eq!(s_grp, StatusCode::OK);
     let all_rows = j_all["rows"].as_array().unwrap().len();
     let grp_rows = j_grp["rows"].as_array().unwrap().len();
-    assert!(grp_rows <= all_rows, "GROUP BY ({}) should produce <= UNION ALL rows ({})", grp_rows, all_rows);
+    assert!(
+        grp_rows <= all_rows,
+        "GROUP BY ({}) should produce <= UNION ALL rows ({})",
+        grp_rows,
+        all_rows
+    );
     assert_eq!(grp_rows, 2, "should have 2 groups (h1, h2)");
 }
 
@@ -3078,7 +4117,8 @@ async fn test_reaggregate_sums_numeric_columns() {
     let status_idx = columns.iter().position(|c| c == "status").unwrap();
     // status column should be summed across sources
     for row in rows {
-        let val = row[status_idx].as_f64()
+        let val = row[status_idx]
+            .as_f64()
             .or_else(|| row[status_idx].as_str().and_then(|s| s.parse::<f64>().ok()))
             .unwrap_or(0.0);
         assert!(val > 0.0, "summed status should be > 0");
@@ -3094,25 +4134,45 @@ async fn test_reaggregate_three_sources_merges() {
     ).await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
-    assert_eq!(rows.len(), 2, "3-source GROUP BY should produce 2 groups (h1, h2)");
+    assert_eq!(
+        rows.len(),
+        2,
+        "3-source GROUP BY should produce 2 groups (h1, h2)"
+    );
 }
 
 // ── #350 Cross-datasource integration tests (tester) ──
 
 /// Mock "users" connector — simulates DynamoDB user profiles.
 #[derive(Debug)]
-struct UsersMockConnector { id: String }
+struct UsersMockConnector {
+    id: String,
+}
 
 #[async_trait]
 impl FederatedConnector for UsersMockConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "dynamodb" }
-    fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "dynamodb"
+    }
+    fn capabilities(&self) -> ConnectorCapabilities {
+        ConnectorCapabilities::full()
+    }
     async fn health_check(&self) -> ConnectorHealth {
-        ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(5), message: None }
+        ConnectorHealth {
+            status: HealthStatus::Healthy,
+            latency_ms: Some(5),
+            message: None,
+        }
     }
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
-        Ok(vec![SchemaInfo { name: "users".into(), schema_type: SchemaType::Table, estimated_row_count: Some(3) }])
+        Ok(vec![SchemaInfo {
+            name: "users".into(),
+            schema_type: SchemaType::Table,
+            estimated_row_count: Some(3),
+        }])
     }
     async fn get_schema(&self, _: &str) -> Result<Schema, ConnectorError> {
         Ok(Schema::new(vec![
@@ -3127,25 +4187,45 @@ impl FederatedConnector for UsersMockConnector {
             Field::new("name", DataType::Utf8, false),
             Field::new("host", DataType::Utf8, false),
         ]));
-        Ok(vec![RecordBatch::try_new(schema, vec![
-            Arc::new(StringArray::from(vec!["u1", "u2", "u3"])),
-            Arc::new(StringArray::from(vec!["Alice", "Bob", "Charlie"])),
-            Arc::new(StringArray::from(vec!["h1", "h2", "h1"])),
-        ]).map_err(ConnectorError::query)?])
+        Ok(vec![RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(vec!["u1", "u2", "u3"])),
+                Arc::new(StringArray::from(vec!["Alice", "Bob", "Charlie"])),
+                Arc::new(StringArray::from(vec!["h1", "h2", "h1"])),
+            ],
+        )
+        .map_err(ConnectorError::query)?])
     }
-    async fn execute_streaming(&self, q: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>) -> Result<(), ConnectorError> {
-        for b in self.execute(q).await? { tx.send(Ok(b)).await.map_err(|_| ConnectorError::ChannelClosed)?; }
+    async fn execute_streaming(
+        &self,
+        q: &SubQuery,
+        tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+    ) -> Result<(), ConnectorError> {
+        for b in self.execute(q).await? {
+            tx.send(Ok(b))
+                .await
+                .map_err(|_| ConnectorError::ChannelClosed)?;
+        }
         Ok(())
     }
 }
 
 fn build_cross_ds_app() -> axum::Router {
-    use fuse_server::api::{AppState, RunningQueries};
     use fuse_core::registry::ConnectorRegistry;
+    use fuse_server::api::{AppState, RunningQueries};
     let registry = ConnectorRegistry::new();
-    registry.register(Arc::new(MockConnector::new("logs_os"))).unwrap();
-    registry.register(Arc::new(UsersMockConnector { id: "users_ddb".into() })).unwrap();
-    registry.register(Arc::new(MockConnector::new("logs_s3"))).unwrap();
+    registry
+        .register(Arc::new(MockConnector::new("logs_os")))
+        .unwrap();
+    registry
+        .register(Arc::new(UsersMockConnector {
+            id: "users_ddb".into(),
+        }))
+        .unwrap();
+    registry
+        .register(Arc::new(MockConnector::new("logs_s3")))
+        .unwrap();
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
         alert_rules: vec![],
@@ -3153,7 +4233,39 @@ fn build_cross_ds_app() -> axum::Router {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
-        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     fuse_server::build_router(state)
 }
@@ -3168,11 +4280,18 @@ async fn test_cross_ds_join_logs_users() {
     ).await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
-    assert!(!rows.is_empty(), "cross-datasource JOIN should produce rows");
+    assert!(
+        !rows.is_empty(),
+        "cross-datasource JOIN should produce rows"
+    );
     // Result should have columns from both sources
     let columns = json["columns"].as_array().unwrap();
     let col_names: Vec<&str> = columns.iter().filter_map(|c| c.as_str()).collect();
-    assert!(col_names.iter().any(|c| *c == "name" || *c == "user_id"), "should have user columns: {:?}", col_names);
+    assert!(
+        col_names.iter().any(|c| *c == "name" || *c == "user_id"),
+        "should have user columns: {:?}",
+        col_names
+    );
 }
 
 #[tokio::test]
@@ -3182,12 +4301,16 @@ async fn test_cross_ds_union_all_logs() {
         build_cross_ds_app(),
         "SELECT * FROM logs_os.logs UNION ALL SELECT * FROM logs_s3.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 4, "2 rows per source × 2 sources = 4");
     let columns = json["columns"].as_array().unwrap();
-    assert!(columns.iter().any(|c| c == "_datasource"), "should have provenance column");
+    assert!(
+        columns.iter().any(|c| c == "_datasource"),
+        "should have provenance column"
+    );
 }
 
 #[tokio::test]
@@ -3197,7 +4320,8 @@ async fn test_cross_ds_union_different_types() {
         build_cross_ds_app(),
         "SELECT host FROM logs_os.logs UNION ALL SELECT host FROM users_ddb.users",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 5, "2 log rows + 3 user rows = 5");
@@ -3210,10 +4334,14 @@ async fn test_cross_ds_correlated_subquery() {
         build_cross_ds_app(),
         "SELECT * FROM logs_os.logs WHERE host IN (SELECT host FROM users_ddb.users)",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
-    assert!(!rows.is_empty(), "correlated subquery across datasources should return rows");
+    assert!(
+        !rows.is_empty(),
+        "correlated subquery across datasources should return rows"
+    );
 }
 
 #[tokio::test]
@@ -3228,10 +4356,14 @@ async fn test_cross_ds_three_source_union() {
     assert_eq!(rows.len(), 7, "2 + 3 + 2 = 7 rows");
     let columns = json["columns"].as_array().unwrap();
     let ds_idx = columns.iter().position(|c| c == "_datasource").unwrap();
-    let sources: std::collections::HashSet<&str> = rows.iter()
-        .filter_map(|r| r[ds_idx].as_str())
-        .collect();
-    assert_eq!(sources.len(), 3, "should have 3 distinct datasources: {:?}", sources);
+    let sources: std::collections::HashSet<&str> =
+        rows.iter().filter_map(|r| r[ds_idx].as_str()).collect();
+    assert_eq!(
+        sources.len(),
+        3,
+        "should have 3 distinct datasources: {:?}",
+        sources
+    );
 }
 
 #[tokio::test]
@@ -3256,7 +4388,8 @@ async fn test_union_all_without_limit_applies_default() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     // MockConnector returns 2 rows per source — should get all 4
@@ -3270,7 +4403,8 @@ async fn test_union_all_explicit_limit_overrides() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs LIMIT 2",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 2);
@@ -3299,10 +4433,14 @@ async fn test_union_all_no_limit_applies_default() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
-    assert!(!rows.is_empty(), "UNION ALL without LIMIT should return rows");
+    assert!(
+        !rows.is_empty(),
+        "UNION ALL without LIMIT should return rows"
+    );
 }
 
 #[tokio::test]
@@ -3312,15 +4450,20 @@ async fn test_union_all_concurrent_fanout_no_error() {
         build_federation_app(),
         "SELECT host, status FROM cluster_a.logs UNION ALL SELECT host, status FROM cluster_b.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let columns = json["columns"].as_array().unwrap();
     let ds_idx = columns.iter().position(|c| c == "_datasource").unwrap();
     let rows = json["rows"].as_array().unwrap();
-    let sources: std::collections::HashSet<&str> = rows.iter()
-        .filter_map(|r| r[ds_idx].as_str())
-        .collect();
-    assert_eq!(sources.len(), 2, "both sources should contribute: {:?}", sources);
+    let sources: std::collections::HashSet<&str> =
+        rows.iter().filter_map(|r| r[ds_idx].as_str()).collect();
+    assert_eq!(
+        sources.len(),
+        2,
+        "both sources should contribute: {:?}",
+        sources
+    );
 }
 
 #[tokio::test]
@@ -3339,11 +4482,7 @@ async fn test_join_no_limit_still_works() {
 #[tokio::test]
 async fn test_single_source_no_limit_works() {
     // Single source without LIMIT should still work (scroll OK for single)
-    let (status, json) = post_query(
-        build_test_app(),
-        "SELECT * FROM testds.logs",
-        "sql",
-    ).await;
+    let (status, json) = post_query(build_test_app(), "SELECT * FROM testds.logs", "sql").await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert!(!rows.is_empty());
@@ -3355,38 +4494,48 @@ async fn test_union_all_with_explicit_limit() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs LIMIT 3",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
-    assert!(rows.len() <= 3, "explicit LIMIT 3 should be respected, got {}", rows.len());
+    assert!(
+        rows.len() <= 3,
+        "explicit LIMIT 3 should be respected, got {}",
+        rows.len()
+    );
 }
 
 // ── Hardening: Error message quality (tester) ──
 
 #[tokio::test]
 async fn test_error_wrong_datasource_is_helpful() {
-    let (status, json) = post_query(
-        build_test_app(),
-        "SELECT * FROM nonexistent_ds.logs",
-        "sql",
-    ).await;
+    let (status, json) =
+        post_query(build_test_app(), "SELECT * FROM nonexistent_ds.logs", "sql").await;
     assert_ne!(status, StatusCode::OK);
     let err = json["error"].as_str().unwrap_or("");
-    assert!(err.contains("nonexistent_ds"), "error should mention the bad datasource: {}", err);
-    assert!(!err.contains("panic") && !err.contains("stack trace"), "should not expose internals: {}", err);
+    assert!(
+        err.contains("nonexistent_ds"),
+        "error should mention the bad datasource: {}",
+        err
+    );
+    assert!(
+        !err.contains("panic") && !err.contains("stack trace"),
+        "should not expose internals: {}",
+        err
+    );
 }
 
 #[tokio::test]
 async fn test_error_bad_syntax_is_helpful() {
-    let (status, json) = post_query(
-        build_test_app(),
-        "SELEC * FORM logs",
-        "sql",
-    ).await;
+    let (status, json) = post_query(build_test_app(), "SELEC * FORM logs", "sql").await;
     assert_ne!(status, StatusCode::OK);
     let err = json["error"].as_str().unwrap_or("");
     assert!(!err.is_empty(), "should return an error message");
-    assert!(!err.contains("panic"), "should not expose internals: {}", err);
+    assert!(
+        !err.contains("panic"),
+        "should not expose internals: {}",
+        err
+    );
 }
 
 #[tokio::test]
@@ -3401,18 +4550,34 @@ async fn test_error_empty_query() {
 
 /// Zero-row connector for edge case testing.
 #[derive(Debug)]
-struct EmptyMockConnector { id: String }
+struct EmptyMockConnector {
+    id: String,
+}
 
 #[async_trait]
 impl FederatedConnector for EmptyMockConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "empty-mock" }
-    fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "empty-mock"
+    }
+    fn capabilities(&self) -> ConnectorCapabilities {
+        ConnectorCapabilities::full()
+    }
     async fn health_check(&self) -> ConnectorHealth {
-        ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(1), message: None }
+        ConnectorHealth {
+            status: HealthStatus::Healthy,
+            latency_ms: Some(1),
+            message: None,
+        }
     }
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
-        Ok(vec![SchemaInfo { name: "logs".into(), schema_type: SchemaType::Table, estimated_row_count: Some(0) }])
+        Ok(vec![SchemaInfo {
+            name: "logs".into(),
+            schema_type: SchemaType::Table,
+            estimated_row_count: Some(0),
+        }])
     }
     async fn get_schema(&self, _: &str) -> Result<Schema, ConnectorError> {
         Ok(Schema::new(vec![
@@ -3425,23 +4590,41 @@ impl FederatedConnector for EmptyMockConnector {
             Field::new("host", DataType::Utf8, true),
             Field::new("status", DataType::Int64, true),
         ]));
-        Ok(vec![RecordBatch::try_new(schema, vec![
-            Arc::new(StringArray::from(Vec::<Option<&str>>::new())),
-            Arc::new(Int64Array::from(Vec::<Option<i64>>::new())),
-        ]).map_err(ConnectorError::query)?])
+        Ok(vec![RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(Vec::<Option<&str>>::new())),
+                Arc::new(Int64Array::from(Vec::<Option<i64>>::new())),
+            ],
+        )
+        .map_err(ConnectorError::query)?])
     }
-    async fn execute_streaming(&self, q: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>) -> Result<(), ConnectorError> {
-        for b in self.execute(q).await? { tx.send(Ok(b)).await.map_err(|_| ConnectorError::ChannelClosed)?; }
+    async fn execute_streaming(
+        &self,
+        q: &SubQuery,
+        tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+    ) -> Result<(), ConnectorError> {
+        for b in self.execute(q).await? {
+            tx.send(Ok(b))
+                .await
+                .map_err(|_| ConnectorError::ChannelClosed)?;
+        }
         Ok(())
     }
 }
 
 fn build_empty_source_app() -> axum::Router {
-    use fuse_server::api::{AppState, RunningQueries};
     use fuse_core::registry::ConnectorRegistry;
+    use fuse_server::api::{AppState, RunningQueries};
     let registry = ConnectorRegistry::new();
-    registry.register(Arc::new(MockConnector::new("has_data"))).unwrap();
-    registry.register(Arc::new(EmptyMockConnector { id: "no_data".into() })).unwrap();
+    registry
+        .register(Arc::new(MockConnector::new("has_data")))
+        .unwrap();
+    registry
+        .register(Arc::new(EmptyMockConnector {
+            id: "no_data".into(),
+        }))
+        .unwrap();
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
         alert_rules: vec![],
@@ -3449,7 +4632,39 @@ fn build_empty_source_app() -> axum::Router {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
-        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     fuse_server::build_router(state)
 }
@@ -3460,7 +4675,8 @@ async fn test_edge_empty_result_set() {
         build_empty_source_app(),
         "SELECT * FROM no_data.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 0, "zero-row source should return empty rows");
@@ -3472,7 +4688,8 @@ async fn test_edge_union_all_with_empty_source() {
         build_empty_source_app(),
         "SELECT host, status FROM has_data.logs UNION ALL SELECT host, status FROM no_data.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 2, "should get rows from has_data only");
@@ -3484,7 +4701,8 @@ async fn test_edge_join_with_empty_source() {
         build_empty_source_app(),
         "SELECT * FROM has_data.logs JOIN no_data.logs ON has_data.logs.host = no_data.logs.host",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 0, "JOIN with empty side should produce 0 rows");
@@ -3492,11 +4710,8 @@ async fn test_edge_join_with_empty_source() {
 
 #[tokio::test]
 async fn test_edge_limit_zero() {
-    let (status, json) = post_query(
-        build_test_app(),
-        "SELECT * FROM testds.logs LIMIT 0",
-        "sql",
-    ).await;
+    let (status, json) =
+        post_query(build_test_app(), "SELECT * FROM testds.logs LIMIT 0", "sql").await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 0, "LIMIT 0 should return 0 rows");
@@ -3506,10 +4721,12 @@ async fn test_edge_limit_zero() {
 
 #[tokio::test]
 async fn test_connector_error_single_source_returns_error() {
-    use fuse_server::api::{AppState, RunningQueries};
     use fuse_core::registry::ConnectorRegistry;
+    use fuse_server::api::{AppState, RunningQueries};
     let registry = ConnectorRegistry::new();
-    registry.register(Arc::new(FailingMockConnector::new("broken"))).unwrap();
+    registry
+        .register(Arc::new(FailingMockConnector::new("broken")))
+        .unwrap();
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
         alert_rules: vec![],
@@ -3517,13 +4734,46 @@ async fn test_connector_error_single_source_returns_error() {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
-        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let (status, json) = post_query(
         fuse_server::build_router(state),
         "SELECT * FROM broken.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_ne!(status, StatusCode::OK);
     let err = json["error"].as_str().unwrap_or("");
     assert!(!err.is_empty(), "should have error message: {}", err);
@@ -3532,11 +4782,15 @@ async fn test_connector_error_single_source_returns_error() {
 #[tokio::test]
 async fn test_connector_error_union_partial_graceful() {
     // One healthy + one failing → should still return data or a clear error
-    use fuse_server::api::{AppState, RunningQueries};
     use fuse_core::registry::ConnectorRegistry;
+    use fuse_server::api::{AppState, RunningQueries};
     let registry = ConnectorRegistry::new();
-    registry.register(Arc::new(MockConnector::new("good"))).unwrap();
-    registry.register(Arc::new(FailingMockConnector::new("bad"))).unwrap();
+    registry
+        .register(Arc::new(MockConnector::new("good")))
+        .unwrap();
+    registry
+        .register(Arc::new(FailingMockConnector::new("bad")))
+        .unwrap();
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
         alert_rules: vec![],
@@ -3544,17 +4798,60 @@ async fn test_connector_error_union_partial_graceful() {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
-        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let (_status, json) = post_query(
         fuse_server::build_router(state),
         "SELECT host, status FROM good.logs UNION ALL SELECT host, status FROM bad.logs",
         "sql",
-    ).await;
+    )
+    .await;
     // Either partial results (200) or clear error — not a panic/crash
-    let has_rows = json["rows"].as_array().map(|r| !r.is_empty()).unwrap_or(false);
-    let has_error = json["error"].as_str().map(|e| !e.is_empty()).unwrap_or(false);
-    assert!(has_rows || has_error, "should return partial results or clear error, got: {:?}", json);
+    let has_rows = json["rows"]
+        .as_array()
+        .map(|r| !r.is_empty())
+        .unwrap_or(false);
+    let has_error = json["error"]
+        .as_str()
+        .map(|e| !e.is_empty())
+        .unwrap_or(false);
+    assert!(
+        has_rows || has_error,
+        "should return partial results or clear error, got: {:?}",
+        json
+    );
     if has_error {
         let err = json["error"].as_str().unwrap();
         assert!(!err.contains("panic"), "should not expose panic: {}", err);
@@ -3570,7 +4867,8 @@ async fn test_cte_basic() {
         build_federation_app(),
         "WITH errors AS (SELECT * FROM cluster_a.logs) SELECT * FROM errors.data",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert!(!rows.is_empty());
@@ -3594,7 +4892,8 @@ async fn test_non_cte_query_unchanged() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert!(!rows.is_empty());
@@ -3616,7 +4915,8 @@ fn test_parse_time_window_minutes() {
 #[test]
 fn test_parse_time_window_none_without_between() {
     use fuse_server::api::parse_time_window;
-    let tw = parse_time_window("SELECT * FROM a.logs JOIN b.metrics ON a.logs.host = b.metrics.host");
+    let tw =
+        parse_time_window("SELECT * FROM a.logs JOIN b.metrics ON a.logs.host = b.metrics.host");
     assert!(tw.is_none());
 }
 
@@ -3644,7 +4944,10 @@ async fn test_cte_cross_datasource() {
     ).await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
-    assert!(!rows.is_empty(), "cross-datasource CTE JOIN should produce rows");
+    assert!(
+        !rows.is_empty(),
+        "cross-datasource CTE JOIN should produce rows"
+    );
 }
 
 #[tokio::test]
@@ -3657,7 +4960,11 @@ async fn test_cte_multiple() {
     ).await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
-    assert!(rows.len() >= 4, "two CTEs UNION ALL should produce >= 4 rows, got {}", rows.len());
+    assert!(
+        rows.len() >= 4,
+        "two CTEs UNION ALL should produce >= 4 rows, got {}",
+        rows.len()
+    );
 }
 
 #[tokio::test]
@@ -3670,7 +4977,10 @@ async fn test_cte_with_union_all_inner() {
     ).await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
-    assert!(rows.len() >= 4, "CTE with UNION ALL body should produce >= 4 rows");
+    assert!(
+        rows.len() >= 4,
+        "CTE with UNION ALL body should produce >= 4 rows"
+    );
 }
 
 #[tokio::test]
@@ -3679,11 +4989,16 @@ async fn test_cte_preserves_columns() {
         build_federation_app(),
         "WITH src AS (SELECT host, status FROM cluster_a.logs) SELECT * FROM src.data",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let columns = json["columns"].as_array().unwrap();
     let col_names: Vec<&str> = columns.iter().filter_map(|c| c.as_str()).collect();
-    assert!(col_names.contains(&"host"), "CTE should preserve host column: {:?}", col_names);
+    assert!(
+        col_names.contains(&"host"),
+        "CTE should preserve host column: {:?}",
+        col_names
+    );
 }
 
 // ── #403 Nested field access verification tests (tester) ──
@@ -3694,11 +5009,7 @@ async fn test_cte_preserves_columns() {
 #[tokio::test]
 async fn test_dot_notation_query_accepted() {
     // Dot notation in SELECT should not cause parse error
-    let (status, _json) = post_query(
-        build_test_app(),
-        "SELECT host FROM testds.logs",
-        "sql",
-    ).await;
+    let (status, _json) = post_query(build_test_app(), "SELECT host FROM testds.logs", "sql").await;
     assert_eq!(status, StatusCode::OK);
 }
 
@@ -3706,7 +5017,9 @@ async fn test_dot_notation_query_accepted() {
 
 #[test]
 fn test_parse_having_gt() {
-    let h = fuse_server::api::parse_having("SELECT host, COUNT(*) AS cnt FROM a.logs GROUP BY host HAVING cnt > 5");
+    let h = fuse_server::api::parse_having(
+        "SELECT host, COUNT(*) AS cnt FROM a.logs GROUP BY host HAVING cnt > 5",
+    );
     assert!(h.is_some());
     let h = h.unwrap();
     assert_eq!(h.column, "cnt");
@@ -3772,7 +5085,8 @@ fn test_parse_time_window_no_between() {
     use fuse_server::api::parse_time_window;
     assert!(parse_time_window(
         "SELECT * FROM a.logs JOIN b.metrics ON a.logs.host = b.metrics.host"
-    ).is_none());
+    )
+    .is_none());
 }
 
 // ── #421 Trace reconstruction verification (tester) ──
@@ -3786,9 +5100,14 @@ async fn test_trace_endpoint_returns_timeline() {
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), 1_000_000)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert!(json["datasources_searched"].as_array().unwrap().len() >= 2, "should fan out to all datasources");
+    assert!(
+        json["datasources_searched"].as_array().unwrap().len() >= 2,
+        "should fan out to all datasources"
+    );
     assert!(json["total_spans"].is_number());
     assert!(json["search_ms"].is_number());
 }
@@ -3802,7 +5121,9 @@ async fn test_trace_endpoint_nonexistent_trace() {
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), 1_000_000)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     // Mock doesn't filter, so spans may be returned — just verify structure
     assert!(json["total_spans"].is_number());
@@ -3837,7 +5158,11 @@ async fn test_having_filters_after_reaggregation() {
     ).await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
-    assert!(rows.len() <= 2, "HAVING should filter some groups, got {}", rows.len());
+    assert!(
+        rows.len() <= 2,
+        "HAVING should filter some groups, got {}",
+        rows.len()
+    );
 }
 
 #[tokio::test]
@@ -3858,7 +5183,7 @@ async fn test_having_filters_all_groups() {
 #[test]
 fn test_rewrite_contains_basic() {
     let result = fuse_server::api::rewrite_contains(
-        "SELECT * FROM os.logs WHERE message CONTAINS 'OutOfMemory'"
+        "SELECT * FROM os.logs WHERE message CONTAINS 'OutOfMemory'",
     );
     assert!(result.contains("LIKE '%OutOfMemory%'"));
     assert!(!result.contains("CONTAINS"));
@@ -3877,7 +5202,8 @@ async fn test_contains_query_executes() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs WHERE host CONTAINS 'h1'",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
 }
 
@@ -3902,7 +5228,7 @@ async fn test_distinct_across_sources_deduplicates() {
 #[test]
 fn test_rewrite_contains_multi_word() {
     let result = fuse_server::api::rewrite_contains(
-        "SELECT * FROM os.logs WHERE message CONTAINS 'out of memory'"
+        "SELECT * FROM os.logs WHERE message CONTAINS 'out of memory'",
     );
     assert!(result.contains("LIKE '%out of memory%'"));
 }
@@ -3910,7 +5236,7 @@ fn test_rewrite_contains_multi_word() {
 #[test]
 fn test_rewrite_contains_special_chars() {
     let result = fuse_server::api::rewrite_contains(
-        "SELECT * FROM os.logs WHERE message CONTAINS 'error: [timeout]'"
+        "SELECT * FROM os.logs WHERE message CONTAINS 'error: [timeout]'",
     );
     assert!(result.contains("LIKE '%error: [timeout]%'"));
 }
@@ -3918,7 +5244,7 @@ fn test_rewrite_contains_special_chars() {
 #[test]
 fn test_rewrite_contains_multiple_in_query() {
     let result = fuse_server::api::rewrite_contains(
-        "SELECT * FROM os.logs WHERE message CONTAINS 'error' AND host CONTAINS 'prod'"
+        "SELECT * FROM os.logs WHERE message CONTAINS 'error' AND host CONTAINS 'prod'",
     );
     // First CONTAINS is always rewritten
     assert!(result.contains("LIKE '%error%'"));
@@ -3926,9 +5252,8 @@ fn test_rewrite_contains_multiple_in_query() {
 
 #[test]
 fn test_rewrite_contains_case_insensitive_keyword() {
-    let result = fuse_server::api::rewrite_contains(
-        "SELECT * FROM os.logs WHERE message contains 'OOM'"
-    );
+    let result =
+        fuse_server::api::rewrite_contains("SELECT * FROM os.logs WHERE message contains 'OOM'");
     assert!(result.contains("LIKE '%OOM%'"));
 }
 
@@ -3939,7 +5264,8 @@ async fn test_contains_returns_filtered_rows() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs WHERE host CONTAINS 'h1'",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert!(!rows.is_empty());
@@ -4013,7 +5339,8 @@ async fn test_partial_failure_returns_results() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs UNION ALL SELECT * FROM cluster_b.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert!(!rows.is_empty());
@@ -4023,10 +5350,12 @@ async fn test_partial_failure_returns_results() {
 
 #[test]
 fn test_auth_state_validates_known_key() {
-    use fuse_server::auth::{AuthState, ApiKeyEntry, Role};
-    let auth = AuthState::new(vec![
-        ApiKeyEntry { key: "key-abc".into(), identity: "alice".into(), role: Role::Admin },
-    ]);
+    use fuse_server::auth::{ApiKeyEntry, AuthState, Role};
+    let auth = AuthState::new(vec![ApiKeyEntry {
+        key: "key-abc".into(),
+        identity: "alice".into(),
+        role: Role::Admin,
+    }]);
     assert!(auth.is_enabled());
     assert!(auth.validate("key-abc").is_some());
     assert_eq!(auth.validate("key-abc").unwrap().identity, "alice");
@@ -4034,10 +5363,12 @@ fn test_auth_state_validates_known_key() {
 
 #[test]
 fn test_auth_state_rejects_unknown_key() {
-    use fuse_server::auth::{AuthState, ApiKeyEntry, Role};
-    let auth = AuthState::new(vec![
-        ApiKeyEntry { key: "key-abc".into(), identity: "alice".into(), role: Role::Admin },
-    ]);
+    use fuse_server::auth::{ApiKeyEntry, AuthState, Role};
+    let auth = AuthState::new(vec![ApiKeyEntry {
+        key: "key-abc".into(),
+        identity: "alice".into(),
+        role: Role::Admin,
+    }]);
     assert!(auth.validate("wrong-key").is_none());
     assert!(auth.validate("").is_none());
 }
@@ -4053,7 +5384,10 @@ fn test_auth_disabled_by_default() {
 async fn test_auth_public_path_no_key_needed() {
     // Health endpoint works without any auth (default disabled)
     let app = build_test_app();
-    let req = Request::builder().uri("/api/fuse/health").body(Body::empty()).unwrap();
+    let req = Request::builder()
+        .uri("/api/fuse/health")
+        .body(Body::empty())
+        .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
@@ -4064,8 +5398,12 @@ async fn test_auth_public_path_no_key_needed() {
 async fn test_partial_failure_returns_good_source_data() {
     // cluster_a works, cluster_b fails → should get partial results
     let registry = ConnectorRegistry::new();
-    registry.register(Arc::new(MockConnector::new("good"))).unwrap();
-    registry.register(Arc::new(FailingMockConnector::new("bad"))).unwrap();
+    registry
+        .register(Arc::new(MockConnector::new("good")))
+        .unwrap();
+    registry
+        .register(Arc::new(FailingMockConnector::new("bad")))
+        .unwrap();
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
         alert_rules: vec![],
@@ -4073,26 +5411,76 @@ async fn test_partial_failure_returns_good_source_data() {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
-        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let (status, json) = post_query(
         fuse_server::build_router(state),
         "SELECT host, status FROM good.logs UNION ALL SELECT host, status FROM bad.logs",
         "sql",
-    ).await;
+    )
+    .await;
     // Should return partial results from good source
-    let has_rows = json["rows"].as_array().map(|r| !r.is_empty()).unwrap_or(false);
-    let has_partial = json["partial_errors"].as_array().map(|e| !e.is_empty()).unwrap_or(false)
-        || json["error"].as_str().map(|e| e.contains("bad")).unwrap_or(false);
-    assert!(has_rows || has_partial,
-        "should have partial results or error info: status={}, json={:?}", status, json);
+    let has_rows = json["rows"]
+        .as_array()
+        .map(|r| !r.is_empty())
+        .unwrap_or(false);
+    let has_partial = json["partial_errors"]
+        .as_array()
+        .map(|e| !e.is_empty())
+        .unwrap_or(false)
+        || json["error"]
+            .as_str()
+            .map(|e| e.contains("bad"))
+            .unwrap_or(false);
+    assert!(
+        has_rows || has_partial,
+        "should have partial results or error info: status={}, json={:?}",
+        status,
+        json
+    );
 }
 
 #[tokio::test]
 async fn test_all_sources_fail_returns_error() {
     let registry = ConnectorRegistry::new();
-    registry.register(Arc::new(FailingMockConnector::new("bad1"))).unwrap();
-    registry.register(Arc::new(FailingMockConnector::new("bad2"))).unwrap();
+    registry
+        .register(Arc::new(FailingMockConnector::new("bad1")))
+        .unwrap();
+    registry
+        .register(Arc::new(FailingMockConnector::new("bad2")))
+        .unwrap();
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
         alert_rules: vec![],
@@ -4100,13 +5488,46 @@ async fn test_all_sources_fail_returns_error() {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
-        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let (status, json) = post_query(
         fuse_server::build_router(state),
         "SELECT host, status FROM bad1.logs UNION ALL SELECT host, status FROM bad2.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_ne!(status, StatusCode::OK, "all-fail should not return 200");
     assert!(json["error"].is_string(), "should have error message");
 }
@@ -4134,7 +5555,8 @@ async fn test_create_view_via_sql() {
         app,
         "CREATE VIEW test_view AS SELECT * FROM cluster_a.logs WHERE status = '200'",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(json["name"], "test_view");
 }
@@ -4144,29 +5566,48 @@ async fn test_create_view_via_sql() {
 #[tokio::test]
 async fn test_playground_page_serves_html() {
     let app = build_test_app();
-    let req = Request::builder().uri("/playground").body(Body::empty()).unwrap();
+    let req = Request::builder()
+        .uri("/playground")
+        .body(Body::empty())
+        .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), 1_000_000)
+        .await
+        .unwrap();
     let html = String::from_utf8_lossy(&body);
-    assert!(html.contains("echarts"), "playground should include ECharts");
+    assert!(
+        html.contains("echarts"),
+        "playground should include ECharts"
+    );
 }
 
 #[tokio::test]
 async fn test_dashboard_page_serves_html() {
     let app = build_test_app();
-    let req = Request::builder().uri("/dashboard").body(Body::empty()).unwrap();
+    let req = Request::builder()
+        .uri("/dashboard")
+        .body(Body::empty())
+        .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), 1_000_000)
+        .await
+        .unwrap();
     let html = String::from_utf8_lossy(&body);
-    assert!(html.contains("dashboard") || html.contains("Dashboard"), "should serve dashboard page");
+    assert!(
+        html.contains("dashboard") || html.contains("Dashboard"),
+        "should serve dashboard page"
+    );
 }
 
 #[tokio::test]
 async fn test_explore_page_serves_html() {
     let app = build_test_app();
-    let req = Request::builder().uri("/explore").body(Body::empty()).unwrap();
+    let req = Request::builder()
+        .uri("/explore")
+        .body(Body::empty())
+        .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
@@ -4174,22 +5615,27 @@ async fn test_explore_page_serves_html() {
 #[tokio::test]
 async fn test_query_response_has_chart_compatible_format() {
     // Chart rendering needs columns + rows arrays
-    let (status, json) = post_query(
-        build_test_app(),
-        "SELECT * FROM testds.logs",
-        "sql",
-    ).await;
+    let (status, json) = post_query(build_test_app(), "SELECT * FROM testds.logs", "sql").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(json["columns"].is_array(), "response must have columns array for chart rendering");
-    assert!(json["rows"].is_array(), "response must have rows array for chart rendering");
+    assert!(
+        json["columns"].is_array(),
+        "response must have columns array for chart rendering"
+    );
+    assert!(
+        json["rows"].is_array(),
+        "response must have rows array for chart rendering"
+    );
     let cols = json["columns"].as_array().unwrap();
     let rows = json["rows"].as_array().unwrap();
     assert!(!cols.is_empty());
     assert!(!rows.is_empty());
     // Each row should have same length as columns
     for row in rows {
-        assert_eq!(row.as_array().unwrap().len(), cols.len(),
-            "row length should match column count");
+        assert_eq!(
+            row.as_array().unwrap().len(),
+            cols.len(),
+            "row length should match column count"
+        );
     }
 }
 
@@ -4204,16 +5650,24 @@ async fn test_viz_saved_queries_save_and_list() {
         "format": "sql"
     });
     let req = Request::builder()
-        .method("POST").uri("/api/fuse/saved")
+        .method("POST")
+        .uri("/api/fuse/saved")
         .header("content-type", "application/json")
-        .body(Body::from(serde_json::to_string(&save_body).unwrap())).unwrap();
+        .body(Body::from(serde_json::to_string(&save_body).unwrap()))
+        .unwrap();
     let resp = app.oneshot(req).await.unwrap();
-    assert!(resp.status() == StatusCode::OK || resp.status() == StatusCode::CREATED,
-        "save should succeed: {}", resp.status());
+    assert!(
+        resp.status() == StatusCode::OK || resp.status() == StatusCode::CREATED,
+        "save should succeed: {}",
+        resp.status()
+    );
 
     // List saved queries
     let app = build_test_app();
-    let req = Request::builder().uri("/api/fuse/saved").body(Body::empty()).unwrap();
+    let req = Request::builder()
+        .uri("/api/fuse/saved")
+        .body(Body::empty())
+        .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
@@ -4255,7 +5709,11 @@ async fn test_recursive_cte_terminates() {
     let rows = json["rows"].as_array().unwrap();
     // With 100 max iterations × 2 rows per iteration + 2 base = max 202
     // Safety limit should prevent infinite growth
-    assert!(rows.len() <= 250, "recursive CTE should terminate, got {} rows", rows.len());
+    assert!(
+        rows.len() <= 250,
+        "recursive CTE should terminate, got {} rows",
+        rows.len()
+    );
 }
 
 #[tokio::test]
@@ -4265,7 +5723,8 @@ async fn test_non_recursive_with_still_works() {
         build_federation_app(),
         "WITH src AS (SELECT * FROM cluster_a.logs) SELECT * FROM src.data",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let rows = json["rows"].as_array().unwrap();
     assert!(!rows.is_empty());
@@ -4303,7 +5762,10 @@ fn test_result_cache_hit_and_miss() {
     assert!(cache.get(&key).is_none(), "should miss before insert");
     cache.insert(key.clone(), serde_json::json!({"rows": [], "columns": []}));
     assert!(cache.get(&key).is_some(), "should hit after insert");
-    assert!(cache.get("sql:SELECT * FROM other").is_none(), "different query should miss");
+    assert!(
+        cache.get("sql:SELECT * FROM other").is_none(),
+        "different query should miss"
+    );
 }
 
 #[test]
@@ -4312,7 +5774,10 @@ fn test_result_cache_key_format() {
     let cache = ResultCache::new(300, 100);
     cache.insert("sql:SELECT 1".into(), serde_json::json!({"rows": []}));
     assert!(cache.get("sql:SELECT 1").is_some());
-    assert!(cache.get("ppl:SELECT 1").is_none(), "different format = different key");
+    assert!(
+        cache.get("ppl:SELECT 1").is_none(),
+        "different format = different key"
+    );
 }
 
 #[test]
@@ -4322,7 +5787,10 @@ fn test_plan_cache_ttl_expiry() {
     cache.insert("key".into(), serde_json::json!({}));
     // TTL=0 → should expire immediately (or within ms)
     std::thread::sleep(std::time::Duration::from_millis(10));
-    assert!(cache.get("key").is_none(), "expired entry should not be returned");
+    assert!(
+        cache.get("key").is_none(),
+        "expired entry should not be returned"
+    );
 }
 
 // ── #412 Approximate aggregations verification (tester) ──
@@ -4389,7 +5857,8 @@ async fn test_query_without_tenant_works() {
         build_federation_app(),
         "SELECT * FROM cluster_a.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
 }
 
@@ -4421,12 +5890,16 @@ async fn test_tenant_isolation_blocks_unauthorized() {
 // ── #710-712 Enterprise wiring verification (tester) ──
 
 fn build_enterprise_app() -> axum::Router {
-    use fuse_server::tenant::{TenantConfig, TenantRegistry};
     use fuse_server::audit::AuditLog;
+    use fuse_server::tenant::{TenantConfig, TenantRegistry};
 
     let registry = ConnectorRegistry::new();
-    registry.register(Arc::new(MockConnector::new("allowed_ds"))).unwrap();
-    registry.register(Arc::new(MockConnector::new("forbidden_ds"))).unwrap();
+    registry
+        .register(Arc::new(MockConnector::new("allowed_ds")))
+        .unwrap();
+    registry
+        .register(Arc::new(MockConnector::new("forbidden_ds")))
+        .unwrap();
 
     let tenant_registry = TenantRegistry::new(vec![
         TenantConfig::with_datasources("team-a", vec!["allowed_ds".into()]),
@@ -4453,25 +5926,60 @@ fn build_enterprise_app() -> axum::Router {
         audit_log: Arc::new(AuditLog::new(100)),
         tenant_registry: Arc::new(tenant_registry),
         adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
-        prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     fuse_server::build_router(state)
 }
 
-fn post_query_with_tenant(app: axum::Router, query: &str, tenant_id: &str) -> impl std::future::Future<Output = (StatusCode, serde_json::Value)> {
+fn post_query_with_tenant(
+    app: axum::Router,
+    query: &str,
+    tenant_id: &str,
+) -> impl std::future::Future<Output = (StatusCode, serde_json::Value)> {
     let body = serde_json::json!({
         "query": query,
         "format": "sql",
         "params": { "_tenant_id": tenant_id }
     });
     let req = Request::builder()
-        .method("POST").uri("/api/fuse/query")
+        .method("POST")
+        .uri("/api/fuse/query")
         .header("content-type", "application/json")
-        .body(Body::from(serde_json::to_string(&body).unwrap())).unwrap();
+        .body(Body::from(serde_json::to_string(&body).unwrap()))
+        .unwrap();
     async move {
         let resp = app.oneshot(req).await.unwrap();
         let status = resp.status();
-        let bytes = axum::body::to_bytes(resp.into_body(), 10_000_000).await.unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), 10_000_000)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or_default();
         (status, json)
     }
@@ -4483,9 +5991,18 @@ async fn test_enterprise_tenant_forbidden_datasource() {
         build_enterprise_app(),
         "SELECT * FROM forbidden_ds.logs",
         "team-a",
-    ).await;
-    assert_eq!(status, StatusCode::FORBIDDEN, "should deny access: {:?}", json);
-    assert!(json["error"].as_str().unwrap_or("").contains("does not have access"));
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "should deny access: {:?}",
+        json
+    );
+    assert!(json["error"]
+        .as_str()
+        .unwrap_or("")
+        .contains("does not have access"));
 }
 
 #[tokio::test]
@@ -4494,7 +6011,8 @@ async fn test_enterprise_tenant_allowed_datasource() {
         build_enterprise_app(),
         "SELECT * FROM allowed_ds.logs",
         "team-a",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "should allow access to allowed_ds");
 }
 
@@ -4505,8 +6023,14 @@ async fn test_enterprise_governor_limits_trigger_429() {
         build_enterprise_app(),
         "SELECT * FROM allowed_ds.logs",
         "limited",
-    ).await;
-    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "governor should reject: {:?}", json);
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::TOO_MANY_REQUESTS,
+        "governor should reject: {:?}",
+        json
+    );
     assert!(json["error"].as_str().unwrap_or("").contains("max_rows"));
 }
 
@@ -4517,7 +6041,8 @@ async fn test_enterprise_no_tenant_passes_through() {
         build_enterprise_app(),
         "SELECT * FROM allowed_ds.logs",
         "sql",
-    ).await;
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
 }
 
@@ -4532,19 +6057,29 @@ async fn test_explain_analyze_single_source() {
     });
     let resp = build_test_app()
         .oneshot(
-            Request::builder().method("POST").uri("/api/fuse/query/explain")
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query/explain")
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_vec(&body).unwrap())).unwrap(),
-        ).await.unwrap();
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     // Plan tree still present
     assert!(json["plan_tree"].is_object());
     assert!(!json["plan"].as_str().unwrap().is_empty());
     // Execution profile present with analyze=true
     let profile = &json["execution_profile"];
-    assert!(profile.is_object(), "execution_profile missing with analyze=true");
+    assert!(
+        profile.is_object(),
+        "execution_profile missing with analyze=true"
+    );
     assert!(profile["total_ms"].as_u64().is_some());
     let nodes = profile["nodes"].as_array().unwrap();
     assert!(!nodes.is_empty());
@@ -4561,15 +6096,25 @@ async fn test_explain_analyze_union() {
     });
     let resp = build_federation_app()
         .oneshot(
-            Request::builder().method("POST").uri("/api/fuse/query/explain")
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query/explain")
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_vec(&body).unwrap())).unwrap(),
-        ).await.unwrap();
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let profile = &json["execution_profile"];
-    assert!(profile.is_object(), "execution_profile missing for UNION EXPLAIN ANALYZE");
+    assert!(
+        profile.is_object(),
+        "execution_profile missing for UNION EXPLAIN ANALYZE"
+    );
     let nodes = profile["nodes"].as_array().unwrap();
     // Union should have parent node with children
     assert!(!nodes.is_empty());
@@ -4584,12 +6129,19 @@ async fn test_explain_without_analyze_has_no_profile() {
     });
     let resp = build_test_app()
         .oneshot(
-            Request::builder().method("POST").uri("/api/fuse/query/explain")
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query/explain")
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_vec(&body).unwrap())).unwrap(),
-        ).await.unwrap();
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     // No execution_profile when analyze is not set
     assert!(json.get("execution_profile").is_none() || json["execution_profile"].is_null());
@@ -4606,12 +6158,19 @@ async fn test_explain_analyze_has_data_bytes() {
     });
     let resp = build_test_app()
         .oneshot(
-            Request::builder().method("POST").uri("/api/fuse/query/explain")
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query/explain")
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_vec(&body).unwrap())).unwrap(),
-        ).await.unwrap();
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let nodes = json["execution_profile"]["nodes"].as_array().unwrap();
     // Scan nodes should report data_bytes
@@ -4628,15 +6187,25 @@ async fn test_explain_analyze_join() {
     });
     let resp = build_federation_app()
         .oneshot(
-            Request::builder().method("POST").uri("/api/fuse/query/explain")
+            Request::builder()
+                .method("POST")
+                .uri("/api/fuse/query/explain")
                 .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_vec(&body).unwrap())).unwrap(),
-        ).await.unwrap();
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let profile = &json["execution_profile"];
-    assert!(profile.is_object(), "execution_profile missing for JOIN EXPLAIN ANALYZE");
+    assert!(
+        profile.is_object(),
+        "execution_profile missing for JOIN EXPLAIN ANALYZE"
+    );
     assert!(profile["total_ms"].as_u64().is_some());
 }
 
@@ -4646,7 +6215,12 @@ async fn test_explain_analyze_join() {
 async fn test_prepare_and_execute() {
     let app = build_test_app();
     // PREPARE
-    let (status, json) = post_query(app, "PREPARE get_logs AS SELECT * FROM testds.logs WHERE host = $1", "sql").await;
+    let (status, json) = post_query(
+        app,
+        "PREPARE get_logs AS SELECT * FROM testds.logs WHERE host = $1",
+        "sql",
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["prepared"], "get_logs");
     assert_eq!(json["param_count"], 1);
@@ -4654,7 +6228,12 @@ async fn test_prepare_and_execute() {
     // EXECUTE
     let app2 = build_test_app();
     // First prepare again (new app instance)
-    post_query(app2.clone(), "PREPARE get_logs AS SELECT * FROM testds.logs WHERE host = $1", "sql").await;
+    post_query(
+        app2.clone(),
+        "PREPARE get_logs AS SELECT * FROM testds.logs WHERE host = $1",
+        "sql",
+    )
+    .await;
     let (status, json) = post_query(app2, "EXECUTE get_logs USING 'web-01'", "sql").await;
     assert_eq!(status, StatusCode::OK);
     assert!(json["columns"].as_array().is_some());
@@ -4670,7 +6249,12 @@ async fn test_execute_unknown_statement() {
 #[tokio::test]
 async fn test_prepare_multiple_params() {
     let app = build_test_app();
-    let (status, json) = post_query(app, "PREPARE multi AS SELECT * FROM testds.logs WHERE host = $1 AND status = $2", "sql").await;
+    let (status, json) = post_query(
+        app,
+        "PREPARE multi AS SELECT * FROM testds.logs WHERE host = $1 AND status = $2",
+        "sql",
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["param_count"], 2);
 }
@@ -4678,7 +6262,12 @@ async fn test_prepare_multiple_params() {
 #[tokio::test]
 async fn test_execute_wrong_param_count() {
     let app = build_test_app();
-    post_query(app.clone(), "PREPARE p1 AS SELECT * FROM testds.logs WHERE host = $1 AND status = $2", "sql").await;
+    post_query(
+        app.clone(),
+        "PREPARE p1 AS SELECT * FROM testds.logs WHERE host = $1 AND status = $2",
+        "sql",
+    )
+    .await;
     let (status, json) = post_query(app, "EXECUTE p1 USING 'a'", "sql").await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(json["error"].as_str().unwrap().contains("expected 2"));
@@ -4687,7 +6276,12 @@ async fn test_execute_wrong_param_count() {
 #[tokio::test]
 async fn test_execute_no_params_zero_placeholders() {
     let app = build_test_app();
-    post_query(app.clone(), "PREPARE simple AS SELECT * FROM testds.logs", "sql").await;
+    post_query(
+        app.clone(),
+        "PREPARE simple AS SELECT * FROM testds.logs",
+        "sql",
+    )
+    .await;
     let (status, json) = post_query(app, "EXECUTE simple", "sql").await;
     assert_eq!(status, StatusCode::OK);
     assert!(json["columns"].as_array().is_some());
@@ -4698,7 +6292,12 @@ async fn test_execute_no_params_zero_placeholders() {
 #[tokio::test]
 async fn test_prepared_injection_single_quote_escaped() {
     let app = build_test_app();
-    post_query(app.clone(), "PREPARE q AS SELECT * FROM testds.logs WHERE host = $1", "sql").await;
+    post_query(
+        app.clone(),
+        "PREPARE q AS SELECT * FROM testds.logs WHERE host = $1",
+        "sql",
+    )
+    .await;
     let (status, _json) = post_query(app, "EXECUTE q USING ''; DROP TABLE logs; --'", "sql").await;
     // Must not crash or execute injection — escaped quotes make it a literal string
     assert!(status == StatusCode::OK || status == StatusCode::INTERNAL_SERVER_ERROR);
@@ -4707,8 +6306,18 @@ async fn test_prepared_injection_single_quote_escaped() {
 #[tokio::test]
 async fn test_prepared_injection_union_select() {
     let app = build_test_app();
-    post_query(app.clone(), "PREPARE q AS SELECT * FROM testds.logs WHERE host = $1", "sql").await;
-    let (status, _json) = post_query(app, "EXECUTE q USING '' UNION SELECT * FROM testds.logs --'", "sql").await;
+    post_query(
+        app.clone(),
+        "PREPARE q AS SELECT * FROM testds.logs WHERE host = $1",
+        "sql",
+    )
+    .await;
+    let (status, _json) = post_query(
+        app,
+        "EXECUTE q USING '' UNION SELECT * FROM testds.logs --'",
+        "sql",
+    )
+    .await;
     // The UNION attempt is inside a quoted string, not executed as SQL
     assert!(status == StatusCode::OK || status == StatusCode::INTERNAL_SERVER_ERROR);
 }
@@ -4716,7 +6325,12 @@ async fn test_prepared_injection_union_select() {
 #[tokio::test]
 async fn test_prepared_injection_numeric_param_safe() {
     let app = build_test_app();
-    post_query(app.clone(), "PREPARE q AS SELECT * FROM testds.logs WHERE status = $1", "sql").await;
+    post_query(
+        app.clone(),
+        "PREPARE q AS SELECT * FROM testds.logs WHERE status = $1",
+        "sql",
+    )
+    .await;
     // Numeric params bind as numbers, not strings — no injection vector
     let (status, _json) = post_query(app, "EXECUTE q USING 500", "sql").await;
     assert_eq!(status, StatusCode::OK);
@@ -4725,7 +6339,12 @@ async fn test_prepared_injection_numeric_param_safe() {
 #[tokio::test]
 async fn test_prepared_injection_null_param_safe() {
     let app = build_test_app();
-    post_query(app.clone(), "PREPARE q AS SELECT * FROM testds.logs WHERE host = $1", "sql").await;
+    post_query(
+        app.clone(),
+        "PREPARE q AS SELECT * FROM testds.logs WHERE host = $1",
+        "sql",
+    )
+    .await;
     let (status, _json) = post_query(app, "EXECUTE q USING null", "sql").await;
     // NULL binds as literal NULL keyword, not a string
     assert!(status == StatusCode::OK || status == StatusCode::INTERNAL_SERVER_ERROR);
@@ -4734,8 +6353,14 @@ async fn test_prepared_injection_null_param_safe() {
 #[tokio::test]
 async fn test_prepared_injection_nested_quotes() {
     let app = build_test_app();
-    post_query(app.clone(), "PREPARE q AS SELECT * FROM testds.logs WHERE host = $1", "sql").await;
-    let (status, _json) = post_query(app, "EXECUTE q USING 'O''Brien; DROP TABLE logs'", "sql").await;
+    post_query(
+        app.clone(),
+        "PREPARE q AS SELECT * FROM testds.logs WHERE host = $1",
+        "sql",
+    )
+    .await;
+    let (status, _json) =
+        post_query(app, "EXECUTE q USING 'O''Brien; DROP TABLE logs'", "sql").await;
     // Double-escaped quotes must remain safe
     assert!(status == StatusCode::OK || status == StatusCode::INTERNAL_SERVER_ERROR);
 }
@@ -4748,8 +6373,15 @@ async fn test_bind_positional_escapes_injection_payload() {
         &[serde_json::json!("'; DROP TABLE t; --")],
     );
     // Input ' becomes '' inside the string literal: '(open) ''(escaped ') ; DROP...(rest) '(close)
-    assert!(result.contains("''"), "single quotes must be escaped: {}", result);
-    assert_eq!(result, "SELECT * FROM t WHERE name = '''; DROP TABLE t; --'");
+    assert!(
+        result.contains("''"),
+        "single quotes must be escaped: {}",
+        result
+    );
+    assert_eq!(
+        result,
+        "SELECT * FROM t WHERE name = '''; DROP TABLE t; --'"
+    );
 }
 
 #[tokio::test]
@@ -4759,7 +6391,10 @@ async fn test_bind_positional_multi_param_injection() {
         "SELECT * FROM t WHERE a = $1 AND b = $2",
         &[serde_json::json!("safe"), serde_json::json!("' OR 1=1 --")],
     );
-    assert_eq!(result, "SELECT * FROM t WHERE a = 'safe' AND b = ''' OR 1=1 --'");
+    assert_eq!(
+        result,
+        "SELECT * FROM t WHERE a = 'safe' AND b = ''' OR 1=1 --'"
+    );
 }
 
 // ── Pool Stats Integration Tests ──
@@ -4768,11 +6403,18 @@ async fn test_bind_positional_multi_param_injection() {
 async fn test_pool_stats_endpoint_returns_200() {
     let app = build_test_app();
     let resp = app
-        .oneshot(Request::builder().uri("/api/fuse/pool-stats").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/pool-stats")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert!(json["pool_stats"].is_array());
 }
@@ -4781,19 +6423,31 @@ async fn test_pool_stats_endpoint_returns_200() {
 async fn test_stats_endpoint_includes_pool_stats() {
     let app = build_test_app();
     let resp = app
-        .oneshot(Request::builder().uri("/api/fuse/stats").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/stats")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert!(json.get("pool_stats").is_some(), "stats response must include pool_stats");
+    assert!(
+        json.get("pool_stats").is_some(),
+        "stats response must include pool_stats"
+    );
 }
 
 #[tokio::test]
 async fn test_pool_stats_with_registered_connector() {
     let registry = ConnectorRegistry::new();
-    registry.register(Arc::new(MockConnector::new("myds"))).unwrap();
+    registry
+        .register(Arc::new(MockConnector::new("myds")))
+        .unwrap();
     let pool_tracker = std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new());
     pool_tracker.register("myds", 16);
     let state = Arc::new(AppState {
@@ -4802,15 +6456,55 @@ async fn test_pool_stats_with_registered_connector() {
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: pool_tracker.clone(),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: pool_tracker.clone(),
     });
     let app = fuse_server::build_router(state);
     let resp = app
-        .oneshot(Request::builder().uri("/api/fuse/pool-stats").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/api/fuse/pool-stats")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let stats = json["pool_stats"].as_array().unwrap();
     assert_eq!(stats.len(), 1);
@@ -4858,5 +6552,7 @@ fn test_pool_tracker_snapshot_all_connectors() {
     assert_eq!(snap.len(), 3);
     assert!(snap.iter().any(|s| s.connector_id == "pg" && s.active == 1));
     assert!(snap.iter().any(|s| s.connector_id == "es" && s.active == 1));
-    assert!(snap.iter().any(|s| s.connector_id == "ddb" && s.active == 0));
+    assert!(snap
+        .iter()
+        .any(|s| s.connector_id == "ddb" && s.active == 0));
 }

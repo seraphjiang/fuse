@@ -27,11 +27,7 @@ pub struct CachingConnectorWrapper {
 }
 
 impl CachingConnectorWrapper {
-    pub fn new(
-        inner: Arc<dyn FederatedConnector>,
-        cache: Arc<QueryCache>,
-        ttl: Duration,
-    ) -> Self {
+    pub fn new(inner: Arc<dyn FederatedConnector>, cache: Arc<QueryCache>, ttl: Duration) -> Self {
         Self { inner, cache, ttl }
     }
 
@@ -126,26 +122,42 @@ mod tests {
 
     impl MockInner {
         fn new() -> Self {
-            Self { call_count: AtomicU32::new(0) }
+            Self {
+                call_count: AtomicU32::new(0),
+            }
         }
         fn calls(&self) -> u32 {
             self.call_count.load(Ordering::SeqCst)
         }
         fn batch() -> Vec<RecordBatch> {
             let schema = Arc::new(Schema::new(vec![Field::new("v", DataType::Int64, false)]));
-            vec![RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(vec![1, 2]))]).unwrap()]
+            vec![
+                RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(vec![1, 2]))]).unwrap(),
+            ]
         }
     }
 
     #[async_trait]
     impl FederatedConnector for MockInner {
-        fn id(&self) -> &str { "mock" }
-        fn connector_type(&self) -> &str { "test" }
-        fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
-        async fn health_check(&self) -> ConnectorHealth {
-            ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(1), message: None }
+        fn id(&self) -> &str {
+            "mock"
         }
-        async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> { Ok(vec![]) }
+        fn connector_type(&self) -> &str {
+            "test"
+        }
+        fn capabilities(&self) -> ConnectorCapabilities {
+            ConnectorCapabilities::full()
+        }
+        async fn health_check(&self) -> ConnectorHealth {
+            ConnectorHealth {
+                status: HealthStatus::Healthy,
+                latency_ms: Some(1),
+                message: None,
+            }
+        }
+        async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
+            Ok(vec![])
+        }
         async fn get_schema(&self, _: &str) -> Result<Schema, ConnectorError> {
             Ok(Schema::new(vec![Field::new("v", DataType::Int64, false)]))
         }
@@ -154,18 +166,31 @@ mod tests {
             Ok(Self::batch())
         }
         async fn execute_streaming(
-            &self, _: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+            &self,
+            _: &SubQuery,
+            tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
         ) -> Result<(), ConnectorError> {
-            for b in Self::batch() { tx.send(Ok(b)).await.map_err(|_| ConnectorError::ChannelClosed)?; }
+            for b in Self::batch() {
+                tx.send(Ok(b))
+                    .await
+                    .map_err(|_| ConnectorError::ChannelClosed)?;
+            }
             Ok(())
         }
     }
 
     fn query() -> SubQuery {
         SubQuery {
-            table: "t".into(), projections: vec![], filter: None,
-            aggregations: vec![], group_by: vec![], sort: vec![],
-            limit: None, having: None, offset: None, passthrough: None,
+            table: "t".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            having: None,
+            offset: None,
+            passthrough: None,
         }
     }
 
@@ -213,7 +238,9 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(10);
         w.execute_streaming(&query(), tx).await.unwrap();
         let mut rows = 0;
-        while let Some(Ok(b)) = rx.recv().await { rows += b.num_rows(); }
+        while let Some(Ok(b)) = rx.recv().await {
+            rows += b.num_rows();
+        }
         assert_eq!(rows, 2);
         assert_eq!(cache.stats().entries, 0);
     }

@@ -119,12 +119,9 @@ impl QueryRoot {
         datasource_id: String,
     ) -> async_graphql::Result<Vec<TableSchema>> {
         let state = ctx.data::<Arc<AppState>>()?;
-        let connector = state
-            .registry
-            .get(&datasource_id)
-            .ok_or_else(|| {
-                async_graphql::Error::new(format!("datasource '{}' not found", datasource_id))
-            })?;
+        let connector = state.registry.get(&datasource_id).ok_or_else(|| {
+            async_graphql::Error::new(format!("datasource '{}' not found", datasource_id))
+        })?;
         let tables = connector
             .discover_schemas()
             .await
@@ -143,12 +140,9 @@ impl QueryRoot {
         table: String,
     ) -> async_graphql::Result<Vec<Field>> {
         let state = ctx.data::<Arc<AppState>>()?;
-        let connector = state
-            .registry
-            .get(&datasource_id)
-            .ok_or_else(|| {
-                async_graphql::Error::new(format!("datasource '{}' not found", datasource_id))
-            })?;
+        let connector = state.registry.get(&datasource_id).ok_or_else(|| {
+            async_graphql::Error::new(format!("datasource '{}' not found", datasource_id))
+        })?;
         let schema = connector
             .get_schema(&table)
             .await
@@ -278,7 +272,8 @@ impl MutationRoot {
             };
             let ds_id = refs.first().map(|(d, _)| d.as_str()).unwrap_or("");
             let table = refs.first().map(|(_, t)| t.as_str()).unwrap_or("");
-            rbac.filter_batches(all_batches, ds_id, table, &user_ctx).unwrap_or_default()
+            rbac.filter_batches(all_batches, ds_id, table, &user_ctx)
+                .unwrap_or_default()
         } else {
             all_batches
         };
@@ -340,14 +335,14 @@ impl MutationRoot {
         input: CreateViewInput,
     ) -> async_graphql::Result<ViewInfo> {
         let state = ctx.data::<Arc<AppState>>()?;
-        state.view_registry.register(
-            fuse_engine::materialized::MaterializedViewDef {
+        state
+            .view_registry
+            .register(fuse_engine::materialized::MaterializedViewDef {
                 name: input.name.clone(),
                 query: input.query.clone(),
                 refresh_interval: std::time::Duration::from_secs(300),
                 refresh_mode: fuse_engine::materialized::RefreshMode::Full,
-            },
-        );
+            });
         Ok(ViewInfo {
             name: input.name,
             query: input.query,
@@ -356,16 +351,11 @@ impl MutationRoot {
     }
 
     /// Delete a materialized view.
-    async fn delete_view(
-        &self,
-        ctx: &Context<'_>,
-        name: String,
-    ) -> async_graphql::Result<bool> {
+    async fn delete_view(&self, ctx: &Context<'_>, name: String) -> async_graphql::Result<bool> {
         let state = ctx.data::<Arc<AppState>>()?;
         Ok(state.view_registry.remove(&name))
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // Subscription root — real-time query result streaming
@@ -402,7 +392,9 @@ impl SubscriptionRoot {
         .map_err(async_graphql::Error::new)?;
 
         if refs.is_empty() {
-            return Err(async_graphql::Error::new("no datasource.table references found"));
+            return Err(async_graphql::Error::new(
+                "no datasource.table references found",
+            ));
         }
 
         let mut tasks: Vec<(
@@ -479,7 +471,6 @@ pub async fn graphiql_handler() -> impl IntoResponse {
     )
 }
 
-
 /// WebSocket handler for GraphQL subscriptions.
 pub async fn graphql_ws_handler(
     axum::extract::State(_state): axum::extract::State<Arc<AppState>>,
@@ -497,8 +488,8 @@ pub async fn graphql_ws_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_graphql::Value;
     use crate::api::AppState;
+    use async_graphql::Value;
     use fuse_core::registry::ConnectorRegistry;
 
     fn test_state() -> Arc<AppState> {
@@ -515,9 +506,15 @@ mod tests {
             audit_log: Arc::new(crate::audit::AuditLog::new(10000)),
             prepared_statements: crate::prepared::new_store(),
             adaptive_timeout: Arc::new(crate::adaptive_timeout::AdaptiveTimeout::new()),
-            shared_saved_queries: crate::shared_state::SharedSavedQueries::InMemory(Arc::new(crate::saved_queries::SavedQueryRegistry::new())),
-            shared_history: crate::shared_state::SharedQueryHistory::InMemory(Arc::new(crate::history::QueryHistory::new())),
-            shared_audit_log: crate::shared_state::SharedAuditLog::InMemory(Arc::new(crate::audit::AuditLog::new(1000))),
+            shared_saved_queries: crate::shared_state::SharedSavedQueries::InMemory(Arc::new(
+                crate::saved_queries::SavedQueryRegistry::new(),
+            )),
+            shared_history: crate::shared_state::SharedQueryHistory::InMemory(Arc::new(
+                crate::history::QueryHistory::new(),
+            )),
+            shared_audit_log: crate::shared_state::SharedAuditLog::InMemory(Arc::new(
+                crate::audit::AuditLog::new(1000),
+            )),
             transactions: Arc::new(crate::transaction::TransactionStore::new()),
             max_result_bytes: 0,
             datasource_limiter: Arc::new(crate::rate_limit::DatasourceLimiter::new()),
@@ -525,8 +522,12 @@ mod tests {
             webhook_registry: Arc::new(crate::webhook::WebhookRegistry::new()),
             adaptive_parallelism: Arc::new(crate::adaptive_parallelism::AdaptiveParallelism::new()),
             query_recorder: Arc::new(crate::query_replay::QueryRecorder::new(1000)),
-            compilation_cache: Arc::new(crate::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: Arc::new(crate::cdc::CdcTracker::new(1000)),
-            adaptive_cache: Arc::new(crate::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), schema_cache: Arc::new(crate::api::SchemaCache::new(300)), column_rbac: None, key_rotation: std::sync::Arc::new(crate::auth::KeyRotationManager::new(vec![])),
+            compilation_cache: Arc::new(crate::query_compilation::CompilationCache::new(300, 5000)),
+            cdc_tracker: Arc::new(crate::cdc::CdcTracker::new(1000)),
+            adaptive_cache: Arc::new(crate::adaptive_cache::AdaptiveCache::new(60, 3, 10000)),
+            schema_cache: Arc::new(crate::api::SchemaCache::new(300)),
+            column_rbac: None,
+            key_rotation: std::sync::Arc::new(crate::auth::KeyRotationManager::new(vec![])),
             smart_router: Arc::new(crate::smart_routing::SmartRouter::new()),
             health_history: Arc::new(crate::connector_health_history::HealthHistory::new()),
             pool_tracker: Arc::new(crate::pool_stats::PoolStatsTracker::new()),
@@ -538,7 +539,10 @@ mod tests {
         let schema = build_schema(test_state());
         let res = schema.execute("{ health }").await;
         assert!(res.errors.is_empty());
-        assert_eq!(res.data, Value::from_json(serde_json::json!({"health": "ok"})).unwrap());
+        assert_eq!(
+            res.data,
+            Value::from_json(serde_json::json!({"health": "ok"})).unwrap()
+        );
     }
 
     #[tokio::test]
@@ -546,7 +550,10 @@ mod tests {
         let schema = build_schema(test_state());
         let res = schema.execute("{ datasources { id connectorType } }").await;
         assert!(res.errors.is_empty());
-        assert_eq!(res.data, Value::from_json(serde_json::json!({"datasources": []})).unwrap());
+        assert_eq!(
+            res.data,
+            Value::from_json(serde_json::json!({"datasources": []})).unwrap()
+        );
     }
 
     #[tokio::test]
@@ -558,12 +565,16 @@ mod tests {
             .await;
         assert!(res.errors.is_empty());
 
-        let res = schema.execute("{ savedQueries { name query format } }").await;
+        let res = schema
+            .execute("{ savedQueries { name query format } }")
+            .await;
         assert!(res.errors.is_empty());
         let data = res.data.into_json().unwrap();
         assert_eq!(data["savedQueries"][0]["name"], "q1");
 
-        let res = schema.execute(r#"mutation { deleteSavedQuery(name: "q1") }"#).await;
+        let res = schema
+            .execute(r#"mutation { deleteSavedQuery(name: "q1") }"#)
+            .await;
         assert!(res.errors.is_empty());
     }
 
@@ -579,9 +590,14 @@ mod tests {
     #[tokio::test]
     async fn test_graphql_history_empty() {
         let schema = build_schema(test_state());
-        let res = schema.execute("{ history { query format latencyMs } }").await;
+        let res = schema
+            .execute("{ history { query format latencyMs } }")
+            .await;
         assert!(res.errors.is_empty());
-        assert_eq!(res.data, Value::from_json(serde_json::json!({"history": []})).unwrap());
+        assert_eq!(
+            res.data,
+            Value::from_json(serde_json::json!({"history": []})).unwrap()
+        );
     }
 
     #[tokio::test]
@@ -589,7 +605,10 @@ mod tests {
         let schema = build_schema(test_state());
         let res = schema.execute("{ views { name query stale } }").await;
         assert!(res.errors.is_empty());
-        assert_eq!(res.data, Value::from_json(serde_json::json!({"views": []})).unwrap());
+        assert_eq!(
+            res.data,
+            Value::from_json(serde_json::json!({"views": []})).unwrap()
+        );
     }
 
     #[tokio::test]
@@ -609,7 +628,9 @@ mod tests {
         let data = res.data.into_json().unwrap();
         assert_eq!(data["views"][0]["name"], "v1");
 
-        let res = schema.execute(r#"mutation { deleteView(name: "v1") }"#).await;
+        let res = schema
+            .execute(r#"mutation { deleteView(name: "v1") }"#)
+            .await;
         assert!(res.errors.is_empty());
     }
 
@@ -678,9 +699,15 @@ mod subscription_tests {
             audit_log: Arc::new(crate::audit::AuditLog::new(10000)),
             prepared_statements: crate::prepared::new_store(),
             adaptive_timeout: Arc::new(crate::adaptive_timeout::AdaptiveTimeout::new()),
-            shared_saved_queries: crate::shared_state::SharedSavedQueries::InMemory(Arc::new(crate::saved_queries::SavedQueryRegistry::new())),
-            shared_history: crate::shared_state::SharedQueryHistory::InMemory(Arc::new(crate::history::QueryHistory::new())),
-            shared_audit_log: crate::shared_state::SharedAuditLog::InMemory(Arc::new(crate::audit::AuditLog::new(1000))),
+            shared_saved_queries: crate::shared_state::SharedSavedQueries::InMemory(Arc::new(
+                crate::saved_queries::SavedQueryRegistry::new(),
+            )),
+            shared_history: crate::shared_state::SharedQueryHistory::InMemory(Arc::new(
+                crate::history::QueryHistory::new(),
+            )),
+            shared_audit_log: crate::shared_state::SharedAuditLog::InMemory(Arc::new(
+                crate::audit::AuditLog::new(1000),
+            )),
             transactions: Arc::new(crate::transaction::TransactionStore::new()),
             max_result_bytes: 0,
             datasource_limiter: Arc::new(crate::rate_limit::DatasourceLimiter::new()),
@@ -725,6 +752,9 @@ mod subscription_tests {
             .await;
         assert!(res.errors.is_empty());
         let data = res.data.into_json().unwrap();
-        assert_eq!(data["__schema"]["subscriptionType"]["name"], "SubscriptionRoot");
+        assert_eq!(
+            data["__schema"]["subscriptionType"]["name"],
+            "SubscriptionRoot"
+        );
     }
 }

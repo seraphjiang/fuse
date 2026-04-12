@@ -14,7 +14,11 @@ pub fn sort_by_column(rows: &mut [Vec<Value>], col_idx: usize, descending: bool)
             (false, true) => std::cmp::Ordering::Less,
             (false, false) => {
                 let cmp = compare_values(va, vb);
-                if descending { cmp.reverse() } else { cmp }
+                if descending {
+                    cmp.reverse()
+                } else {
+                    cmp
+                }
             }
         }
     });
@@ -29,10 +33,11 @@ fn compare_values(a: Option<&Value>, b: Option<&Value>) -> std::cmp::Ordering {
         (None, None) | (Some(Value::Null), Some(Value::Null)) => std::cmp::Ordering::Equal,
         (None | Some(Value::Null), _) => std::cmp::Ordering::Greater, // nulls last
         (_, None | Some(Value::Null)) => std::cmp::Ordering::Less,
-        (Some(Value::Number(a)), Some(Value::Number(b))) => {
-            a.as_f64().unwrap_or(0.0).partial_cmp(&b.as_f64().unwrap_or(0.0))
-                .unwrap_or(std::cmp::Ordering::Equal)
-        }
+        (Some(Value::Number(a)), Some(Value::Number(b))) => a
+            .as_f64()
+            .unwrap_or(0.0)
+            .partial_cmp(&b.as_f64().unwrap_or(0.0))
+            .unwrap_or(std::cmp::Ordering::Equal),
         (Some(a), Some(b)) => a.to_string().cmp(&b.to_string()),
     }
 }

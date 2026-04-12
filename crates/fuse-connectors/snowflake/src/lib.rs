@@ -54,8 +54,18 @@ impl SnowflakeConnector {
         sf_schema: String,
         warehouse: String,
     ) -> Self {
-        let api_url = format!("https://{}.snowflakecomputing.com/api/v2/statements", account);
-        Self { id, client, api_url, database, sf_schema, warehouse }
+        let api_url = format!(
+            "https://{}.snowflakecomputing.com/api/v2/statements",
+            account
+        );
+        Self {
+            id,
+            client,
+            api_url,
+            database,
+            sf_schema,
+            warehouse,
+        }
     }
 
     async fn submit_sql(&self, sql: &str) -> Result<serde_json::Value, ConnectorError> {
@@ -69,7 +79,8 @@ impl SnowflakeConnector {
             "timeout": 60,
         });
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(&self.api_url)
             .header("Content-Type", "application/json")
             .header("Accept", "application/json")
@@ -81,10 +92,15 @@ impl SnowflakeConnector {
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(ConnectorError::query(format!("Snowflake API returned {}: {}", status, text)));
+            return Err(ConnectorError::query(format!(
+                "Snowflake API returned {}: {}",
+                status, text
+            )));
         }
 
-        let json: serde_json::Value = resp.json().await
+        let json: serde_json::Value = resp
+            .json()
+            .await
             .map_err(|e| ConnectorError::query(e.to_string()))?;
 
         // Handle async execution — poll for results
@@ -101,18 +117,26 @@ impl SnowflakeConnector {
         let status_url = format!("{}/{}", self.api_url, handle);
         for _ in 0..120 {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            let resp = self.client.get(&status_url)
+            let resp = self
+                .client
+                .get(&status_url)
                 .header("Accept", "application/json")
-                .send().await
+                .send()
+                .await
                 .map_err(|e| ConnectorError::Connection(e.to_string()))?;
-            let json: serde_json::Value = resp.json().await
+            let json: serde_json::Value = resp
+                .json()
+                .await
                 .map_err(|e| ConnectorError::query(e.to_string()))?;
 
             match json["statementStatus"]["status"].as_str() {
                 Some("SUCCEEDED") | Some("succeeded") => return Ok(json),
                 Some("FAILED") | Some("failed") => {
                     let msg = json["message"].as_str().unwrap_or("unknown error");
-                    return Err(ConnectorError::query(format!("Snowflake query failed: {}", msg)));
+                    return Err(ConnectorError::query(format!(
+                        "Snowflake query failed: {}",
+                        msg
+                    )));
                 }
                 _ => continue,
             }
@@ -143,7 +167,10 @@ fn json_to_batches(
     columns: &[String],
     rows: &[Vec<serde_json::Value>],
 ) -> Result<Vec<RecordBatch>, ConnectorError> {
-    let fields: Vec<Field> = columns.iter().map(|c| Field::new(c, DataType::Utf8, true)).collect();
+    let fields: Vec<Field> = columns
+        .iter()
+        .map(|c| Field::new(c, DataType::Utf8, true))
+        .collect();
     let schema = Arc::new(Schema::new(fields));
 
     if rows.is_empty() {
@@ -152,13 +179,16 @@ fn json_to_batches(
 
     let arrays: Vec<Arc<dyn arrow::array::Array>> = (0..columns.len())
         .map(|col_idx| {
-            let values: Vec<Option<String>> = rows.iter().map(|row| {
-                row.get(col_idx).and_then(|v| match v {
-                    serde_json::Value::Null => None,
-                    serde_json::Value::String(s) => Some(s.clone()),
-                    other => Some(other.to_string()),
+            let values: Vec<Option<String>> = rows
+                .iter()
+                .map(|row| {
+                    row.get(col_idx).and_then(|v| match v {
+                        serde_json::Value::Null => None,
+                        serde_json::Value::String(s) => Some(s.clone()),
+                        other => Some(other.to_string()),
+                    })
                 })
-            }).collect();
+                .collect();
             Arc::new(StringArray::from(values)) as Arc<dyn arrow::array::Array>
         })
         .collect();
@@ -168,20 +198,61 @@ fn json_to_batches(
 }
 
 fn build_snowflake_sql(query: &SubQuery) -> String {
-    let cols = if query.projections.is_empty() { "*".into() } else {
-        query.projections.iter().map(|p| if p == "*" { "*".to_string() } else { quote_ident(p) }).collect::<Vec<_>>().join(", ")
+    let cols = if query.projections.is_empty() {
+        "*".into()
+    } else {
+        query
+            .projections
+            .iter()
+            .map(|p| {
+                if p == "*" {
+                    "*".to_string()
+                } else {
+                    quote_ident(p)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
     };
     let mut sql = format!("SELECT {} FROM {}", cols, quote_table(&query.table));
 
-    if let Some(ref f) = query.filter { sql.push_str(&format!(" WHERE {}", filter_to_sql(f))); }
-    if !query.group_by.is_empty() { sql.push_str(&format!(" GROUP BY {}", query.group_by.iter().map(|g| quote_ident(g)).collect::<Vec<_>>().join(", "))); }
-    if let Some(ref h) = query.having { sql.push_str(&format!(" HAVING {}", filter_to_sql(h))); }
+    if let Some(ref f) = query.filter {
+        sql.push_str(&format!(" WHERE {}", filter_to_sql(f)));
+    }
+    if !query.group_by.is_empty() {
+        sql.push_str(&format!(
+            " GROUP BY {}",
+            query
+                .group_by
+                .iter()
+                .map(|g| quote_ident(g))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    if let Some(ref h) = query.having {
+        sql.push_str(&format!(" HAVING {}", filter_to_sql(h)));
+    }
     if !query.sort.is_empty() {
-        let s: Vec<String> = query.sort.iter().map(|s| if s.descending { format!("{} DESC", quote_ident(&s.field)) } else { quote_ident(&s.field) }).collect();
+        let s: Vec<String> = query
+            .sort
+            .iter()
+            .map(|s| {
+                if s.descending {
+                    format!("{} DESC", quote_ident(&s.field))
+                } else {
+                    quote_ident(&s.field)
+                }
+            })
+            .collect();
         sql.push_str(&format!(" ORDER BY {}", s.join(", ")));
     }
-    if let Some(l) = query.limit { sql.push_str(&format!(" LIMIT {}", l)); }
-    if let Some(o) = query.offset { sql.push_str(&format!(" OFFSET {}", o)); }
+    if let Some(l) = query.limit {
+        sql.push_str(&format!(" LIMIT {}", l));
+    }
+    if let Some(o) = query.offset {
+        sql.push_str(&format!(" OFFSET {}", o));
+    }
     sql
 }
 
@@ -192,9 +263,12 @@ fn filter_to_sql(f: &FilterExpr) -> String {
         FilterExpr::Not(inner) => format!("NOT ({})", filter_to_sql(inner)),
         FilterExpr::Comparison { field, op, value } => {
             let op_str = match op {
-                ComparisonOp::Eq => "=", ComparisonOp::Neq => "!=",
-                ComparisonOp::Lt => "<", ComparisonOp::Lte => "<=",
-                ComparisonOp::Gt => ">", ComparisonOp::Gte => ">=",
+                ComparisonOp::Eq => "=",
+                ComparisonOp::Neq => "!=",
+                ComparisonOp::Lt => "<",
+                ComparisonOp::Lte => "<=",
+                ComparisonOp::Gt => ">",
+                ComparisonOp::Gte => ">=",
                 ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => "LIKE",
             };
             format!("{} {} {}", quote_ident(field), op_str, scalar_to_sql(value))
@@ -220,35 +294,65 @@ fn scalar_to_sql(v: &ScalarValue) -> String {
 
 #[async_trait]
 impl FederatedConnector for SnowflakeConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "snowflake" }
-    fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "snowflake"
+    }
+    fn capabilities(&self) -> ConnectorCapabilities {
+        ConnectorCapabilities::full()
+    }
 
     async fn health_check(&self) -> ConnectorHealth {
         match self.submit_sql("SELECT 1").await {
-            Ok(_) => ConnectorHealth { status: HealthStatus::Healthy, latency_ms: None, message: None },
-            Err(e) => ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some(e.to_string()) },
+            Ok(_) => ConnectorHealth {
+                status: HealthStatus::Healthy,
+                latency_ms: None,
+                message: None,
+            },
+            Err(e) => ConnectorHealth {
+                status: HealthStatus::Unhealthy,
+                latency_ms: None,
+                message: Some(e.to_string()),
+            },
         }
     }
 
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
         let json = self.submit_sql("SHOW TABLES").await?;
-        let empty = vec![]; let rows = json["data"].as_array().unwrap_or(&empty);
-        Ok(rows.iter().filter_map(|r| {
-            r.as_array().and_then(|a| a.get(1)).and_then(|v| v.as_str()).map(|name| SchemaInfo {
-                name: name.to_string(), schema_type: SchemaType::Table, estimated_row_count: None,
+        let empty = vec![];
+        let rows = json["data"].as_array().unwrap_or(&empty);
+        Ok(rows
+            .iter()
+            .filter_map(|r| {
+                r.as_array()
+                    .and_then(|a| a.get(1))
+                    .and_then(|v| v.as_str())
+                    .map(|name| SchemaInfo {
+                        name: name.to_string(),
+                        schema_type: SchemaType::Table,
+                        estimated_row_count: None,
+                    })
             })
-        }).collect())
+            .collect())
     }
 
     async fn get_schema(&self, table: &str) -> Result<Schema, ConnectorError> {
-        let json = self.submit_sql(&format!("DESCRIBE TABLE {}", quote_ident(table))).await?;
-        let empty = vec![]; let rows = json["data"].as_array().unwrap_or(&empty);
-        let fields: Vec<Field> = rows.iter().filter_map(|r| {
-            r.as_array().and_then(|a| a.first()).and_then(|v| v.as_str()).map(|name| {
-                Field::new(name, DataType::Utf8, true)
+        let json = self
+            .submit_sql(&format!("DESCRIBE TABLE {}", quote_ident(table)))
+            .await?;
+        let empty = vec![];
+        let rows = json["data"].as_array().unwrap_or(&empty);
+        let fields: Vec<Field> = rows
+            .iter()
+            .filter_map(|r| {
+                r.as_array()
+                    .and_then(|a| a.first())
+                    .and_then(|v| v.as_str())
+                    .map(|name| Field::new(name, DataType::Utf8, true))
             })
-        }).collect();
+            .collect();
         Ok(Schema::new(fields))
     }
 
@@ -259,10 +363,14 @@ impl FederatedConnector for SnowflakeConnector {
     }
 
     async fn execute_streaming(
-        &self, query: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+        &self,
+        query: &SubQuery,
+        tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
     ) -> Result<(), ConnectorError> {
         for batch in self.execute(query).await? {
-            tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+            tx.send(Ok(batch))
+                .await
+                .map_err(|_| ConnectorError::ChannelClosed)?;
         }
         Ok(())
     }
@@ -272,38 +380,77 @@ pub struct SnowflakeConnectorFactory;
 
 #[async_trait]
 impl ConnectorFactory for SnowflakeConnectorFactory {
-    fn connector_type(&self) -> &str { "snowflake" }
+    fn connector_type(&self) -> &str {
+        "snowflake"
+    }
 
-    async fn create(&self, config: &ConnectorConfig) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
-        let account = config.properties.get("account").and_then(|v| v.as_str())
+    async fn create(
+        &self,
+        config: &ConnectorConfig,
+    ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
+        let account = config
+            .properties
+            .get("account")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| ConnectorError::Connection("'account' is required".into()))?;
-        let database = config.properties.get("database").and_then(|v| v.as_str())
-            .ok_or_else(|| ConnectorError::Connection("'database' is required".into()))?.to_string();
-        let sf_schema = config.properties.get("schema").and_then(|v| v.as_str()).unwrap_or("PUBLIC").to_string();
-        let warehouse = config.properties.get("warehouse").and_then(|v| v.as_str()).unwrap_or("COMPUTE_WH").to_string();
+        let database = config
+            .properties
+            .get("database")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ConnectorError::Connection("'database' is required".into()))?
+            .to_string();
+        let sf_schema = config
+            .properties
+            .get("schema")
+            .and_then(|v| v.as_str())
+            .unwrap_or("PUBLIC")
+            .to_string();
+        let warehouse = config
+            .properties
+            .get("warehouse")
+            .and_then(|v| v.as_str())
+            .unwrap_or("COMPUTE_WH")
+            .to_string();
 
         let mut headers = reqwest::header::HeaderMap::new();
         if let Some(token) = config.properties.get("token").and_then(|v| v.as_str()) {
-            headers.insert(reqwest::header::AUTHORIZATION, format!("Bearer {}", token).parse()
-                .map_err(|e: reqwest::header::InvalidHeaderValue| ConnectorError::Connection(e.to_string()))?);
+            headers.insert(
+                reqwest::header::AUTHORIZATION,
+                format!("Bearer {}", token).parse().map_err(
+                    |e: reqwest::header::InvalidHeaderValue| {
+                        ConnectorError::Connection(e.to_string())
+                    },
+                )?,
+            );
         }
 
         let mut client_builder = reqwest::Client::builder()
             .default_headers(headers)
             .pool_max_idle_per_host(config.max_connections(8) as usize)
-            .timeout(std::time::Duration::from_secs(config.connection_timeout_secs(120)));
+            .timeout(std::time::Duration::from_secs(
+                config.connection_timeout_secs(120),
+            ));
 
         if let Some(tls) = config.tls_config() {
-            tls.validate().map_err(|e| ConnectorError::Connection(e.to_string()))?;
+            tls.validate()
+                .map_err(|e| ConnectorError::Connection(e.to_string()))?;
             client_builder = tls
                 .apply_to_reqwest(client_builder)
                 .map_err(|e| ConnectorError::Connection(e.to_string()))?;
         }
 
         let client = client_builder
-            .build().map_err(|e| ConnectorError::Connection(e.to_string()))?;
+            .build()
+            .map_err(|e| ConnectorError::Connection(e.to_string()))?;
 
-        Ok(Arc::new(SnowflakeConnector::new(config.id.clone(), client, account, database, sf_schema, warehouse)))
+        Ok(Arc::new(SnowflakeConnector::new(
+            config.id.clone(),
+            client,
+            account,
+            database,
+            sf_schema,
+            warehouse,
+        )))
     }
 }
 
@@ -312,22 +459,42 @@ mod tests {
     use super::*;
 
     fn sq(table: &str) -> SubQuery {
-        SubQuery { table: table.into(), projections: vec![], filter: None, aggregations: vec![],
-            group_by: vec![], sort: vec![], limit: None, having: None, passthrough: None, offset: None }
+        SubQuery {
+            table: table.into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            having: None,
+            passthrough: None,
+            offset: None,
+        }
     }
 
     #[test]
     fn test_build_sql_simple() {
-        assert_eq!(build_snowflake_sql(&sq("events")), "SELECT * FROM \"events\"");
+        assert_eq!(
+            build_snowflake_sql(&sq("events")),
+            "SELECT * FROM \"events\""
+        );
     }
 
     #[test]
     fn test_build_sql_full() {
         let mut q = sq("logs");
         q.projections = vec!["host".into(), "count(*)".into()];
-        q.filter = Some(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Gte, value: ScalarValue::Int64(500) });
+        q.filter = Some(FilterExpr::Comparison {
+            field: "status".into(),
+            op: ComparisonOp::Gte,
+            value: ScalarValue::Int64(500),
+        });
         q.group_by = vec!["host".into()];
-        q.sort = vec![SortExpr { field: "host".into(), descending: false }];
+        q.sort = vec![SortExpr {
+            field: "host".into(),
+            descending: false,
+        }];
         q.limit = Some(50);
         assert_eq!(
             build_snowflake_sql(&q),
@@ -381,7 +548,14 @@ mod tests {
 
     #[test]
     fn test_capabilities_full() {
-        let c = SnowflakeConnector::new("t".into(), reqwest::Client::new(), "acct", "db".into(), "PUBLIC".into(), "WH".into());
+        let c = SnowflakeConnector::new(
+            "t".into(),
+            reqwest::Client::new(),
+            "acct",
+            "db".into(),
+            "PUBLIC".into(),
+            "WH".into(),
+        );
         let caps = c.capabilities();
         assert!(caps.supports_filtering);
         assert!(!caps.supports_join); // join handled by Fuse engine, not connector
@@ -389,7 +563,17 @@ mod tests {
 
     #[test]
     fn test_api_url() {
-        let c = SnowflakeConnector::new("t".into(), reqwest::Client::new(), "myorg-myacct", "db".into(), "s".into(), "w".into());
-        assert_eq!(c.api_url, "https://myorg-myacct.snowflakecomputing.com/api/v2/statements");
+        let c = SnowflakeConnector::new(
+            "t".into(),
+            reqwest::Client::new(),
+            "myorg-myacct",
+            "db".into(),
+            "s".into(),
+            "w".into(),
+        );
+        assert_eq!(
+            c.api_url,
+            "https://myorg-myacct.snowflakecomputing.com/api/v2/statements"
+        );
     }
 }

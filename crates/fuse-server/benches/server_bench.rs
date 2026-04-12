@@ -4,17 +4,25 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use fuse_server::plan_cache::{CachedPlan, PlanCache};
+use fuse_server::anomaly;
 use fuse_server::auto_suggest::{self, ColumnMeta};
 use fuse_server::autocomplete;
-use fuse_server::anomaly;
+use fuse_server::plan_cache::{CachedPlan, PlanCache};
 use fuse_server::query_advisor;
 
 fn bench_plan_cache_insert_and_get(c: &mut Criterion) {
     let cache = PlanCache::new(300, 10000);
     // Pre-fill
     for i in 0..1000 {
-        let plan = CachedPlan::new(vec![("ds".into(), "t".into())], false, false, false, None, 0, vec![]);
+        let plan = CachedPlan::new(
+            vec![("ds".into(), "t".into())],
+            false,
+            false,
+            false,
+            None,
+            0,
+            vec![],
+        );
         cache.insert(format!("SELECT * FROM t WHERE id = {}", i), plan);
     }
 
@@ -29,11 +37,31 @@ fn bench_plan_cache_insert_and_get(c: &mut Criterion) {
 
 fn bench_auto_suggest(c: &mut Criterion) {
     let columns = vec![
-        ColumnMeta { name: "timestamp".into(), data_type: "Utf8".into(), nullable: false },
-        ColumnMeta { name: "level".into(), data_type: "Utf8".into(), nullable: false },
-        ColumnMeta { name: "message".into(), data_type: "Utf8".into(), nullable: true },
-        ColumnMeta { name: "status".into(), data_type: "Int64".into(), nullable: false },
-        ColumnMeta { name: "latency_ms".into(), data_type: "Float64".into(), nullable: false },
+        ColumnMeta {
+            name: "timestamp".into(),
+            data_type: "Utf8".into(),
+            nullable: false,
+        },
+        ColumnMeta {
+            name: "level".into(),
+            data_type: "Utf8".into(),
+            nullable: false,
+        },
+        ColumnMeta {
+            name: "message".into(),
+            data_type: "Utf8".into(),
+            nullable: true,
+        },
+        ColumnMeta {
+            name: "status".into(),
+            data_type: "Int64".into(),
+            nullable: false,
+        },
+        ColumnMeta {
+            name: "latency_ms".into(),
+            data_type: "Float64".into(),
+            nullable: false,
+        },
     ];
 
     c.bench_function("auto_suggest_5_columns", |b| {
@@ -42,13 +70,18 @@ fn bench_auto_suggest(c: &mut Criterion) {
 }
 
 fn bench_autocomplete(c: &mut Criterion) {
-    let schemas: Vec<autocomplete::SchemaInfo> = (0..20).map(|i| {
-        autocomplete::SchemaInfo {
+    let schemas: Vec<autocomplete::SchemaInfo> = (0..20)
+        .map(|i| autocomplete::SchemaInfo {
             datasource: format!("ds_{}", i),
             table: format!("table_{}", i),
-            columns: vec!["id".into(), "name".into(), "timestamp".into(), "value".into()],
-        }
-    }).collect();
+            columns: vec![
+                "id".into(),
+                "name".into(),
+                "timestamp".into(),
+                "value".into(),
+            ],
+        })
+        .collect();
 
     c.bench_function("autocomplete_20_schemas", |b| {
         b.iter(|| black_box(autocomplete::complete("SELECT ti", &schemas)))
@@ -63,7 +96,11 @@ fn bench_anomaly_detection(c: &mut Criterion) {
         null_rate: 0.01,
         distinct_count: 50,
     };
-    let snapshot = anomaly::CurrentSnapshot { mean: 150.0, null_rate: 0.3, distinct_count: 120 };
+    let snapshot = anomaly::CurrentSnapshot {
+        mean: 150.0,
+        null_rate: 0.3,
+        distinct_count: 120,
+    };
 
     c.bench_function("anomaly_detect", |b| {
         b.iter(|| black_box(anomaly::detect(&snapshot, &baseline)))

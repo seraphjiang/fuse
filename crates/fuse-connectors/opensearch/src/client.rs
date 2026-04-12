@@ -33,7 +33,9 @@ impl OpenSearchClient {
             .properties
             .get("url")
             .and_then(|v: &toml::Value| v.as_str())
-            .ok_or_else(|| ConnectorError::Connection("missing 'url' in connector config".into()))?;
+            .ok_or_else(|| {
+                ConnectorError::Connection("missing 'url' in connector config".into())
+            })?;
 
         let request_timeout = config
             .properties
@@ -53,8 +55,7 @@ impl OpenSearchClient {
         let parsed_url =
             Url::parse(url).map_err(|e| ConnectorError::Connection(format!("invalid url: {e}")))?;
         let pool = SingleNodeConnectionPool::new(parsed_url);
-        let mut builder = TransportBuilder::new(pool)
-            .timeout(request_timeout);
+        let mut builder = TransportBuilder::new(pool).timeout(request_timeout);
 
         // TLS configuration
         if let Some(tls) = config.tls_config() {
@@ -75,7 +76,11 @@ impl OpenSearchClient {
         }
 
         // Auth
-        if let Some(auth_table) = config.properties.get("auth").and_then(|v: &toml::Value| v.as_table()) {
+        if let Some(auth_table) = config
+            .properties
+            .get("auth")
+            .and_then(|v: &toml::Value| v.as_table())
+        {
             let auth_type = auth_table
                 .get("type")
                 .and_then(|v: &toml::Value| v.as_str())
@@ -88,10 +93,7 @@ impl OpenSearchClient {
                         .and_then(|v: &toml::Value| v.as_str())
                         .unwrap_or_default();
                     let password = resolve_secret(auth_table, "password", "password_env");
-                    builder = builder.auth(Credentials::Basic(
-                        username.to_string(),
-                        password,
-                    ));
+                    builder = builder.auth(Credentials::Basic(username.to_string(), password));
                 }
                 "sigv4" => {
                     let region = auth_table
@@ -102,13 +104,17 @@ impl OpenSearchClient {
                         .get("service")
                         .and_then(|v: &toml::Value| v.as_str())
                         .unwrap_or("aoss");
-                    let sdk_config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
-                    let creds = Credentials::try_from(&sdk_config)
-                        .map_err(|e| ConnectorError::Connection(format!("SigV4 credentials: {e}")))?;
-                    builder = builder
-                        .auth(creds)
-                        .service_name(service);
-                    tracing::info!(region, service, "SigV4 auth configured for OpenSearch connector");
+                    let sdk_config =
+                        aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+                    let creds = Credentials::try_from(&sdk_config).map_err(|e| {
+                        ConnectorError::Connection(format!("SigV4 credentials: {e}"))
+                    })?;
+                    builder = builder.auth(creds).service_name(service);
+                    tracing::info!(
+                        region,
+                        service,
+                        "SigV4 auth configured for OpenSearch connector"
+                    );
                 }
                 "bearer" => {
                     let token = resolve_secret(auth_table, "token", "token_env");

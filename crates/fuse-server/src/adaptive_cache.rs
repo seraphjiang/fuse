@@ -62,7 +62,8 @@ impl AdaptiveCache {
 
     /// Set per-datasource TTL.
     pub fn set_datasource_ttl(&mut self, datasource: &str, ttl_secs: u64) {
-        self.datasource_ttls.insert(datasource.to_string(), Duration::from_secs(ttl_secs));
+        self.datasource_ttls
+            .insert(datasource.to_string(), Duration::from_secs(ttl_secs));
     }
 
     /// Record a query access. Returns true if the query should be cached (hot).
@@ -77,7 +78,8 @@ impl AdaptiveCache {
 
         // Evict coldest if at capacity
         if freq.len() >= self.max_tracked {
-            if let Some(coldest) = freq.iter()
+            if let Some(coldest) = freq
+                .iter()
                 .min_by_key(|(_, v)| v.count)
                 .map(|(k, _)| k.clone())
             {
@@ -85,11 +87,14 @@ impl AdaptiveCache {
             }
         }
 
-        freq.insert(fingerprint.to_string(), QueryFreq {
-            count: 1,
-            last_seen: Instant::now(),
-            datasources: datasources.to_vec(),
-        });
+        freq.insert(
+            fingerprint.to_string(),
+            QueryFreq {
+                count: 1,
+                last_seen: Instant::now(),
+                datasources: datasources.to_vec(),
+            },
+        );
 
         1 >= self.promotion_threshold
     }
@@ -100,8 +105,14 @@ impl AdaptiveCache {
         if datasources.is_empty() {
             return self.default_ttl;
         }
-        datasources.iter()
-            .map(|ds| self.datasource_ttls.get(ds).copied().unwrap_or(self.default_ttl))
+        datasources
+            .iter()
+            .map(|ds| {
+                self.datasource_ttls
+                    .get(ds)
+                    .copied()
+                    .unwrap_or(self.default_ttl)
+            })
             .min()
             .unwrap_or(self.default_ttl)
     }
@@ -109,7 +120,9 @@ impl AdaptiveCache {
     /// Check if a query fingerprint is hot (above promotion threshold).
     pub fn is_hot(&self, fingerprint: &str) -> bool {
         let freq = self.frequency.lock().unwrap();
-        freq.get(fingerprint).map(|f| f.count >= self.promotion_threshold).unwrap_or(false)
+        freq.get(fingerprint)
+            .map(|f| f.count >= self.promotion_threshold)
+            .unwrap_or(false)
     }
 
     /// Get access count for a fingerprint.
@@ -121,12 +134,17 @@ impl AdaptiveCache {
     /// Get stats for observability.
     pub fn stats(&self) -> AdaptiveCacheStats {
         let freq = self.frequency.lock().unwrap();
-        let hot = freq.values().filter(|f| f.count >= self.promotion_threshold).count();
+        let hot = freq
+            .values()
+            .filter(|f| f.count >= self.promotion_threshold)
+            .count();
         AdaptiveCacheStats {
             tracked_queries: freq.len(),
             hot_queries: hot,
             promotion_threshold: self.promotion_threshold,
-            datasource_ttls: self.datasource_ttls.iter()
+            datasource_ttls: self
+                .datasource_ttls
+                .iter()
                 .map(|(k, v)| (k.clone(), v.as_secs()))
                 .collect(),
         }
@@ -190,8 +208,14 @@ mod tests {
         let mut ac = AdaptiveCache::new(60, 3, 100);
         ac.set_datasource_ttl("fast_ds", 10);
         ac.set_datasource_ttl("slow_ds", 300);
-        assert_eq!(ac.effective_ttl(&["fast_ds".into()]), Duration::from_secs(10));
-        assert_eq!(ac.effective_ttl(&["slow_ds".into()]), Duration::from_secs(300));
+        assert_eq!(
+            ac.effective_ttl(&["fast_ds".into()]),
+            Duration::from_secs(10)
+        );
+        assert_eq!(
+            ac.effective_ttl(&["slow_ds".into()]),
+            Duration::from_secs(300)
+        );
     }
 
     #[test]
@@ -200,7 +224,10 @@ mod tests {
         ac.set_datasource_ttl("fast", 10);
         ac.set_datasource_ttl("slow", 300);
         // Cross-source query uses the minimum TTL
-        assert_eq!(ac.effective_ttl(&["fast".into(), "slow".into()]), Duration::from_secs(10));
+        assert_eq!(
+            ac.effective_ttl(&["fast".into(), "slow".into()]),
+            Duration::from_secs(10)
+        );
     }
 
     #[test]

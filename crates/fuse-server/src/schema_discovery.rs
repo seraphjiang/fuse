@@ -114,9 +114,9 @@ pub async fn discover_relationships(registry: &Arc<ConnectorRegistry>) -> Vec<Re
             let camel = format!("{}Id", tbl);
             if col.name == snake || col.name == camel {
                 // Check if the target table has an "id" column
-                let has_id = all_columns.iter().any(|c| {
-                    c.datasource == *ds && c.table == *tbl && c.name == "id"
-                });
+                let has_id = all_columns
+                    .iter()
+                    .any(|c| c.datasource == *ds && c.table == *tbl && c.name == "id");
                 if has_id {
                     // Avoid duplicates
                     let exists = relationships.iter().any(|r| {
@@ -149,13 +149,19 @@ pub async fn discover_relationships(registry: &Arc<ConnectorRegistry>) -> Vec<Re
     }
 
     // Sort by confidence descending
-    relationships.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+    relationships.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     relationships
 }
 
 /// Check if two data types are compatible for a join relationship.
 fn types_compatible(a: &str, b: &str) -> bool {
-    if a == b { return true; }
+    if a == b {
+        return true;
+    }
     let ca = type_category(a);
     let cb = type_category(b);
     ca == cb
@@ -163,9 +169,15 @@ fn types_compatible(a: &str, b: &str) -> bool {
 
 fn type_category(t: &str) -> u8 {
     let l = t.to_lowercase();
-    if l.contains("int") || l.contains("long") || l.contains("bigint") { return 1; }
-    if l.contains("float") || l.contains("double") || l.contains("decimal") { return 2; }
-    if l.contains("bool") { return 3; }
+    if l.contains("int") || l.contains("long") || l.contains("bigint") {
+        return 1;
+    }
+    if l.contains("float") || l.contains("double") || l.contains("decimal") {
+        return 2;
+    }
+    if l.contains("bool") {
+        return 3;
+    }
     0 // string-like
 }
 

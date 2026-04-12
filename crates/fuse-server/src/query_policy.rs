@@ -21,13 +21,22 @@ impl Default for QueryPolicy {
 
 impl QueryPolicy {
     pub fn new() -> Self {
-        Self { deny_patterns: Vec::new() }
+        Self {
+            deny_patterns: Vec::new(),
+        }
     }
 
     /// Add default deny patterns (DDL, dangerous operations).
     pub fn with_defaults() -> Self {
         let mut p = Self::new();
-        for pattern in &["DROP ", "TRUNCATE ", "ALTER ", "CREATE INDEX", "GRANT ", "REVOKE "] {
+        for pattern in &[
+            "DROP ",
+            "TRUNCATE ",
+            "ALTER ",
+            "CREATE INDEX",
+            "GRANT ",
+            "REVOKE ",
+        ] {
             p.deny_patterns.push(pattern.to_string());
         }
         p
@@ -41,7 +50,10 @@ impl QueryPolicy {
         let upper = query.trim().to_uppercase();
         for pattern in &self.deny_patterns {
             if upper.contains(pattern) {
-                return PolicyResult::Denied(format!("query matches deny pattern: {}", pattern.trim()));
+                return PolicyResult::Denied(format!(
+                    "query matches deny pattern: {}",
+                    pattern.trim()
+                ));
             }
         }
         PolicyResult::Allowed
@@ -61,13 +73,19 @@ mod tests {
     #[test]
     fn test_drop_denied() {
         let p = QueryPolicy::with_defaults();
-        assert!(matches!(p.check("DROP TABLE users"), PolicyResult::Denied(_)));
+        assert!(matches!(
+            p.check("DROP TABLE users"),
+            PolicyResult::Denied(_)
+        ));
     }
 
     #[test]
     fn test_case_insensitive() {
         let p = QueryPolicy::with_defaults();
-        assert!(matches!(p.check("drop table users"), PolicyResult::Denied(_)));
+        assert!(matches!(
+            p.check("drop table users"),
+            PolicyResult::Denied(_)
+        ));
     }
 
     #[test]

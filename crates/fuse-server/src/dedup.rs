@@ -31,7 +31,9 @@ impl Default for QueryDedup {
 
 impl QueryDedup {
     pub fn new() -> Self {
-        Self { inflight: Mutex::new(HashMap::new()) }
+        Self {
+            inflight: Mutex::new(HashMap::new()),
+        }
     }
 
     /// Check if a query is already in-flight. Returns Execute or Wait.

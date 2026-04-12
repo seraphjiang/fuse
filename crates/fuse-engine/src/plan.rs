@@ -71,7 +71,13 @@ impl PlanNode {
     /// Render as a tree with box-drawing characters.
     pub fn to_tree(&self) -> String {
         fn render(node: &PlanNode, prefix: &str, is_last: bool, out: &mut String) {
-            let connector = if prefix.is_empty() { "" } else if is_last { "└── " } else { "├── " };
+            let connector = if prefix.is_empty() {
+                ""
+            } else if is_last {
+                "└── "
+            } else {
+                "├── "
+            };
             out.push_str(prefix);
             out.push_str(connector);
             out.push_str(&node.op);
@@ -249,10 +255,7 @@ mod tests {
 
     #[test]
     fn test_plan_union_with_limit() {
-        let refs = vec![
-            ("a".into(), "t".into()),
-            ("b".into(), "t".into()),
-        ];
+        let refs = vec![("a".into(), "t".into()), ("b".into(), "t".into())];
         let caps = vec![ConnectorCapabilities::full(), ConnectorCapabilities::full()];
         let node = plan_union(&refs, &caps, &QueryWorkload::default(), Some(5));
         assert_eq!(node.op, "GlobalLimit");

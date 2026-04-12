@@ -50,13 +50,15 @@ impl BaselineTracker {
     /// Update baseline with new observation using exponential moving average.
     pub fn update(&self, key: &str, snapshot: &CurrentSnapshot) {
         let mut baselines = self.baselines.lock().unwrap();
-        let entry = baselines.entry(key.to_string()).or_insert_with(|| ColumnBaseline {
-            column: key.to_string(),
-            mean: snapshot.mean,
-            stddev: 0.0,
-            null_rate: snapshot.null_rate,
-            distinct_count: snapshot.distinct_count,
-        });
+        let entry = baselines
+            .entry(key.to_string())
+            .or_insert_with(|| ColumnBaseline {
+                column: key.to_string(),
+                mean: snapshot.mean,
+                stddev: 0.0,
+                null_rate: snapshot.null_rate,
+                distinct_count: snapshot.distinct_count,
+            });
 
         // EMA update
         entry.mean = self.alpha * snapshot.mean + (1.0 - self.alpha) * entry.mean;
@@ -100,7 +102,9 @@ pub fn evaluate_anomaly_rules(
 ) -> Vec<AnomalyAlert> {
     let mut alerts = Vec::new();
     for rule in rules {
-        if !rule.enabled { continue; }
+        if !rule.enabled {
+            continue;
+        }
         if let Some(snap) = snapshots.get(&rule.column) {
             let anomalies = tracker.check(&rule.column, snap);
             for a in anomalies {
@@ -134,7 +138,11 @@ mod tests {
     #[test]
     fn test_baseline_tracker_first_observation() {
         let tracker = BaselineTracker::new(0.3);
-        let snap = CurrentSnapshot { mean: 100.0, null_rate: 0.01, distinct_count: 50 };
+        let snap = CurrentSnapshot {
+            mean: 100.0,
+            null_rate: 0.01,
+            distinct_count: 50,
+        };
         tracker.update("latency", &snap);
         let b = tracker.get("latency").unwrap();
         assert!((b.mean - 100.0).abs() < 0.01);
@@ -143,8 +151,22 @@ mod tests {
     #[test]
     fn test_baseline_tracker_ema_update() {
         let tracker = BaselineTracker::new(0.5);
-        tracker.update("x", &CurrentSnapshot { mean: 100.0, null_rate: 0.0, distinct_count: 10 });
-        tracker.update("x", &CurrentSnapshot { mean: 200.0, null_rate: 0.0, distinct_count: 10 });
+        tracker.update(
+            "x",
+            &CurrentSnapshot {
+                mean: 100.0,
+                null_rate: 0.0,
+                distinct_count: 10,
+            },
+        );
+        tracker.update(
+            "x",
+            &CurrentSnapshot {
+                mean: 200.0,
+                null_rate: 0.0,
+                distinct_count: 10,
+            },
+        );
         let b = tracker.get("x").unwrap();
         // EMA: 0.5 * 200 + 0.5 * 100 = 150
         assert!((b.mean - 150.0).abs() < 1.0);
@@ -153,7 +175,11 @@ mod tests {
     #[test]
     fn test_check_no_baseline_returns_empty() {
         let tracker = BaselineTracker::new(0.3);
-        let snap = CurrentSnapshot { mean: 999.0, null_rate: 0.0, distinct_count: 1 };
+        let snap = CurrentSnapshot {
+            mean: 999.0,
+            null_rate: 0.0,
+            distinct_count: 1,
+        };
         assert!(tracker.check("unknown", &snap).is_empty());
     }
 
@@ -162,15 +188,33 @@ mod tests {
         let tracker = BaselineTracker::new(0.1);
         // Build stable baseline
         for _ in 0..50 {
-            tracker.update("lat", &CurrentSnapshot { mean: 100.0, null_rate: 0.01, distinct_count: 50 });
+            tracker.update(
+                "lat",
+                &CurrentSnapshot {
+                    mean: 100.0,
+                    null_rate: 0.01,
+                    distinct_count: 50,
+                },
+            );
         }
         // Baseline stddev should be ~0 after stable input, so inject some variance
         for i in 0..50 {
             let mean = 100.0 + (i as f64 % 5.0); // slight variance
-            tracker.update("lat", &CurrentSnapshot { mean, null_rate: 0.01, distinct_count: 50 });
+            tracker.update(
+                "lat",
+                &CurrentSnapshot {
+                    mean,
+                    null_rate: 0.01,
+                    distinct_count: 50,
+                },
+            );
         }
         // Now check with a massive spike — use null rate anomaly which is simpler
-        let spike = CurrentSnapshot { mean: 100.0, null_rate: 0.80, distinct_count: 50 };
+        let spike = CurrentSnapshot {
+            mean: 100.0,
+            null_rate: 0.80,
+            distinct_count: 50,
+        };
         let anomalies = tracker.check("lat", &spike);
         assert!(!anomalies.is_empty(), "should detect null rate anomaly");
     }
@@ -179,17 +223,32 @@ mod tests {
     fn test_evaluate_rules_fires_alert() {
         let tracker = BaselineTracker::new(0.1);
         for _ in 0..50 {
-            tracker.update("latency", &CurrentSnapshot { mean: 100.0, null_rate: 0.01, distinct_count: 50 });
+            tracker.update(
+                "latency",
+                &CurrentSnapshot {
+                    mean: 100.0,
+                    null_rate: 0.01,
+                    distinct_count: 50,
+                },
+            );
         }
         let rules = vec![AnomalyAlertRule {
-            id: "r1".into(), name: "Null rate spike".into(),
+            id: "r1".into(),
+            name: "Null rate spike".into(),
             query: "SELECT avg(latency) FROM logs".into(),
             column: "latency".into(),
             min_severity: AnomalySeverity::Medium,
             enabled: true,
         }];
         let mut snaps = HashMap::new();
-        snaps.insert("latency".into(), CurrentSnapshot { mean: 100.0, null_rate: 0.80, distinct_count: 50 });
+        snaps.insert(
+            "latency".into(),
+            CurrentSnapshot {
+                mean: 100.0,
+                null_rate: 0.80,
+                distinct_count: 50,
+            },
+        );
         let alerts = evaluate_anomaly_rules(&rules, &tracker, &snaps);
         assert!(!alerts.is_empty());
         assert_eq!(alerts[0].rule_id, "r1");
@@ -199,8 +258,12 @@ mod tests {
     fn test_evaluate_rules_disabled_skipped() {
         let tracker = BaselineTracker::new(0.1);
         let rules = vec![AnomalyAlertRule {
-            id: "r1".into(), name: "test".into(), query: "".into(),
-            column: "x".into(), min_severity: AnomalySeverity::Low, enabled: false,
+            id: "r1".into(),
+            name: "test".into(),
+            query: "".into(),
+            column: "x".into(),
+            min_severity: AnomalySeverity::Low,
+            enabled: false,
         }];
         let alerts = evaluate_anomaly_rules(&rules, &tracker, &HashMap::new());
         assert!(alerts.is_empty());
@@ -209,7 +272,10 @@ mod tests {
     #[test]
     fn test_severity_filter() {
         assert!(severity_gte(AnomalySeverity::High, AnomalySeverity::Medium));
-        assert!(severity_gte(AnomalySeverity::Medium, AnomalySeverity::Medium));
+        assert!(severity_gte(
+            AnomalySeverity::Medium,
+            AnomalySeverity::Medium
+        ));
         assert!(!severity_gte(AnomalySeverity::Low, AnomalySeverity::Medium));
     }
 }

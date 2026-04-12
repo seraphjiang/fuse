@@ -41,7 +41,12 @@ mod tests {
     #[test]
     fn test_small_result_buffered() {
         assert_eq!(
-            recommend_delivery(Some(100), Some(1024), DEFAULT_ROW_THRESHOLD, DEFAULT_BYTE_THRESHOLD),
+            recommend_delivery(
+                Some(100),
+                Some(1024),
+                DEFAULT_ROW_THRESHOLD,
+                DEFAULT_BYTE_THRESHOLD
+            ),
             DeliveryMode::Buffered
         );
     }
@@ -49,7 +54,12 @@ mod tests {
     #[test]
     fn test_large_rows_streaming() {
         assert_eq!(
-            recommend_delivery(Some(50_000), None, DEFAULT_ROW_THRESHOLD, DEFAULT_BYTE_THRESHOLD),
+            recommend_delivery(
+                Some(50_000),
+                None,
+                DEFAULT_ROW_THRESHOLD,
+                DEFAULT_BYTE_THRESHOLD
+            ),
             DeliveryMode::Streaming
         );
     }
@@ -57,7 +67,12 @@ mod tests {
     #[test]
     fn test_large_bytes_streaming() {
         assert_eq!(
-            recommend_delivery(None, Some(100 * 1024 * 1024), DEFAULT_ROW_THRESHOLD, DEFAULT_BYTE_THRESHOLD),
+            recommend_delivery(
+                None,
+                Some(100 * 1024 * 1024),
+                DEFAULT_ROW_THRESHOLD,
+                DEFAULT_BYTE_THRESHOLD
+            ),
             DeliveryMode::Streaming
         );
     }

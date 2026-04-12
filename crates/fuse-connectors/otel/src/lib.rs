@@ -50,7 +50,10 @@ pub struct OtelConnector {
 
 impl OtelConnector {
     pub fn new(id: impl Into<String>, store: Arc<OtelStore>) -> Self {
-        Self { id: id.into(), store }
+        Self {
+            id: id.into(),
+            store,
+        }
     }
 
     /// Access the backing store (for ingestion routes).
@@ -85,13 +88,19 @@ fn collect_filter(expr: &FilterExpr, out: &mut OtelFilter) {
             };
             match (field.as_str(), op) {
                 ("service_name", ComparisonOp::Eq) => {
-                    if let Some(v) = s { out.service_name = Some(v); }
+                    if let Some(v) = s {
+                        out.service_name = Some(v);
+                    }
                 }
                 ("start_time_ns" | "timestamp_ns", ComparisonOp::Gte | ComparisonOp::Gt) => {
-                    if let Some(v) = i { out.min_time_ns = Some(v); }
+                    if let Some(v) = i {
+                        out.min_time_ns = Some(v);
+                    }
                 }
                 ("end_time_ns" | "timestamp_ns", ComparisonOp::Lte | ComparisonOp::Lt) => {
-                    if let Some(v) = i { out.max_time_ns = Some(v); }
+                    if let Some(v) = i {
+                        out.max_time_ns = Some(v);
+                    }
                 }
                 _ => {}
             }
@@ -162,7 +171,10 @@ impl FederatedConnector for OtelConnector {
             "spans" => Ok(store::spans_schema()),
             "metrics" => Ok(store::metrics_schema()),
             "logs" => Ok(store::logs_schema()),
-            _ => Err(ConnectorError::QueryFailed(format!("table not found: {}", table))),
+            _ => Err(ConnectorError::QueryFailed(format!(
+                "table not found: {}",
+                table
+            ))),
         }
     }
 
@@ -172,7 +184,12 @@ impl FederatedConnector for OtelConnector {
             "spans" => self.store.query_spans_filtered(query.limit, &filter),
             "metrics" => self.store.query_metrics_filtered(query.limit, &filter),
             "logs" => self.store.query_logs_filtered(query.limit, &filter),
-            _ => return Err(ConnectorError::QueryFailed(format!("table not found: {}", query.table))),
+            _ => {
+                return Err(ConnectorError::QueryFailed(format!(
+                    "table not found: {}",
+                    query.table
+                )))
+            }
         };
         match batch {
             Some(b) => Ok(vec![b]),
@@ -207,12 +224,21 @@ impl ConnectorFactory for OtelConnectorFactory {
         &self,
         config: &ConnectorConfig,
     ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
-        let max_spans = config.properties.get("max_spans")
-            .and_then(|v| v.as_integer()).unwrap_or(100_000) as usize;
-        let max_metrics = config.properties.get("max_metrics")
-            .and_then(|v| v.as_integer()).unwrap_or(100_000) as usize;
-        let max_logs = config.properties.get("max_logs")
-            .and_then(|v| v.as_integer()).unwrap_or(100_000) as usize;
+        let max_spans = config
+            .properties
+            .get("max_spans")
+            .and_then(|v| v.as_integer())
+            .unwrap_or(100_000) as usize;
+        let max_metrics = config
+            .properties
+            .get("max_metrics")
+            .and_then(|v| v.as_integer())
+            .unwrap_or(100_000) as usize;
+        let max_logs = config
+            .properties
+            .get("max_logs")
+            .and_then(|v| v.as_integer())
+            .unwrap_or(100_000) as usize;
 
         let store = Arc::new(OtelStore::new(max_spans, max_metrics, max_logs));
         Ok(Arc::new(OtelConnector::new(&config.id, store)))
@@ -263,9 +289,16 @@ mod tests {
     #[tokio::test]
     async fn test_execute_empty() {
         let sq = SubQuery {
-            table: "spans".into(), projections: vec![], filter: None,
-            aggregations: vec![], group_by: vec![], sort: vec![],
-            limit: None, having: None, passthrough: None, offset: None,
+            table: "spans".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            having: None,
+            passthrough: None,
+            offset: None,
         };
         let batches = connector().execute(&sq).await.unwrap();
         assert!(batches.is_empty());
@@ -275,11 +308,28 @@ mod tests {
     async fn test_execute_after_ingest() {
         let store = Arc::new(OtelStore::new(1000, 1000, 1000));
         let c = OtelConnector::new("test", store.clone());
-        store.ingest_span("abc123", "span1", Some("root"), "my-service", "GET /api", "OK", 1_000_000_000, 1_001_000_000, "{}");
+        store.ingest_span(
+            "abc123",
+            "span1",
+            Some("root"),
+            "my-service",
+            "GET /api",
+            "OK",
+            1_000_000_000,
+            1_001_000_000,
+            "{}",
+        );
         let sq = SubQuery {
-            table: "spans".into(), projections: vec![], filter: None,
-            aggregations: vec![], group_by: vec![], sort: vec![],
-            limit: None, having: None, passthrough: None, offset: None,
+            table: "spans".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            having: None,
+            passthrough: None,
+            offset: None,
         };
         let batches = c.execute(&sq).await.unwrap();
         assert_eq!(batches.len(), 1);
@@ -291,12 +341,29 @@ mod tests {
         let store = Arc::new(OtelStore::new(1000, 1000, 1000));
         let c = OtelConnector::new("test", store.clone());
         for i in 0..10 {
-            store.ingest_span(&format!("trace{i}"), &format!("span{i}"), None, "svc", "op", "OK", i, i + 1, "{}");
+            store.ingest_span(
+                &format!("trace{i}"),
+                &format!("span{i}"),
+                None,
+                "svc",
+                "op",
+                "OK",
+                i,
+                i + 1,
+                "{}",
+            );
         }
         let sq = SubQuery {
-            table: "spans".into(), projections: vec![], filter: None,
-            aggregations: vec![], group_by: vec![], sort: vec![],
-            limit: Some(3), having: None, passthrough: None, offset: None,
+            table: "spans".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: Some(3),
+            having: None,
+            passthrough: None,
+            offset: None,
         };
         let batches = c.execute(&sq).await.unwrap();
         assert_eq!(batches[0].num_rows(), 3);
@@ -305,9 +372,16 @@ mod tests {
     #[tokio::test]
     async fn test_execute_unknown_table() {
         let sq = SubQuery {
-            table: "unknown".into(), projections: vec![], filter: None,
-            aggregations: vec![], group_by: vec![], sort: vec![],
-            limit: None, having: None, passthrough: None, offset: None,
+            table: "unknown".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            having: None,
+            passthrough: None,
+            offset: None,
         };
         assert!(connector().execute(&sq).await.is_err());
     }
@@ -332,14 +406,20 @@ mod tests {
         store.ingest_span("t1", "s1", None, "svc-a", "op", "OK", 100, 200, "");
         store.ingest_span("t2", "s2", None, "svc-b", "op", "OK", 100, 200, "");
         let sq = SubQuery {
-            table: "spans".into(), projections: vec![],
+            table: "spans".into(),
+            projections: vec![],
             filter: Some(FilterExpr::Comparison {
                 field: "service_name".into(),
                 op: ComparisonOp::Eq,
                 value: ScalarValue::Utf8("svc-a".into()),
             }),
-            aggregations: vec![], group_by: vec![], sort: vec![],
-            limit: None, having: None, passthrough: None, offset: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            having: None,
+            passthrough: None,
+            offset: None,
         };
         let batches = c.execute(&sq).await.unwrap();
         assert_eq!(batches[0].num_rows(), 1);
@@ -352,14 +432,20 @@ mod tests {
         store.ingest_log(100, "INFO", "early", None, None, None, None);
         store.ingest_log(500, "WARN", "late", None, None, None, None);
         let sq = SubQuery {
-            table: "logs".into(), projections: vec![],
+            table: "logs".into(),
+            projections: vec![],
             filter: Some(FilterExpr::Comparison {
                 field: "timestamp_ns".into(),
                 op: ComparisonOp::Gte,
                 value: ScalarValue::Int64(300),
             }),
-            aggregations: vec![], group_by: vec![], sort: vec![],
-            limit: None, having: None, passthrough: None, offset: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            having: None,
+            passthrough: None,
+            offset: None,
         };
         let batches = c.execute(&sq).await.unwrap();
         assert_eq!(batches[0].num_rows(), 1);

@@ -5,23 +5,43 @@ use serde_json::Value;
 use std::collections::HashSet;
 
 /// Anti-join: rows in left where key doesn't exist in right.
-pub fn anti_join(left: &[Vec<Value>], left_key: usize, right: &[Vec<Value>], right_key: usize) -> Vec<Vec<Value>> {
-    let right_keys: HashSet<String> = right.iter()
+pub fn anti_join(
+    left: &[Vec<Value>],
+    left_key: usize,
+    right: &[Vec<Value>],
+    right_key: usize,
+) -> Vec<Vec<Value>> {
+    let right_keys: HashSet<String> = right
+        .iter()
         .filter_map(|r| r.get(right_key).map(|v| v.to_string()))
         .collect();
     left.iter()
-        .filter(|row| row.get(left_key).map(|v| !right_keys.contains(&v.to_string())).unwrap_or(true))
+        .filter(|row| {
+            row.get(left_key)
+                .map(|v| !right_keys.contains(&v.to_string()))
+                .unwrap_or(true)
+        })
         .cloned()
         .collect()
 }
 
 /// Semi-join: rows in left where key exists in right (no right columns added).
-pub fn semi_join(left: &[Vec<Value>], left_key: usize, right: &[Vec<Value>], right_key: usize) -> Vec<Vec<Value>> {
-    let right_keys: HashSet<String> = right.iter()
+pub fn semi_join(
+    left: &[Vec<Value>],
+    left_key: usize,
+    right: &[Vec<Value>],
+    right_key: usize,
+) -> Vec<Vec<Value>> {
+    let right_keys: HashSet<String> = right
+        .iter()
         .filter_map(|r| r.get(right_key).map(|v| v.to_string()))
         .collect();
     left.iter()
-        .filter(|row| row.get(left_key).map(|v| right_keys.contains(&v.to_string())).unwrap_or(false))
+        .filter(|row| {
+            row.get(left_key)
+                .map(|v| right_keys.contains(&v.to_string()))
+                .unwrap_or(false)
+        })
         .cloned()
         .collect()
 }

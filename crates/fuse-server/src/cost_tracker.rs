@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Query cost tracking for billing and chargeback.
 
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use serde::Serialize;
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct CostEntry {
@@ -26,12 +26,16 @@ impl Default for CostTracker {
 
 impl CostTracker {
     pub fn new() -> Self {
-        Self { costs: Mutex::new(HashMap::new()) }
+        Self {
+            costs: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn record(&self, tenant: &str, datasource: &str, rows: u64, bytes: u64, duration_ms: u64) {
         let mut map = self.costs.lock().unwrap();
-        let entry = map.entry((tenant.to_string(), datasource.to_string())).or_default();
+        let entry = map
+            .entry((tenant.to_string(), datasource.to_string()))
+            .or_default();
         entry.query_count += 1;
         entry.total_rows += rows;
         entry.total_bytes += bytes;
@@ -39,7 +43,9 @@ impl CostTracker {
     }
 
     pub fn for_tenant(&self, tenant: &str) -> HashMap<String, CostEntry> {
-        self.costs.lock().unwrap()
+        self.costs
+            .lock()
+            .unwrap()
             .iter()
             .filter(|((t, _), _)| t == tenant)
             .map(|((_, ds), e)| (ds.clone(), e.clone()))

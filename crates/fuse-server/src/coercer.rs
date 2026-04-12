@@ -16,8 +16,14 @@ pub fn to_string(v: &Value) -> Value {
 pub fn to_number(v: &Value) -> Value {
     match v {
         Value::Number(_) => v.clone(),
-        Value::String(s) => s.parse::<f64>().ok()
-            .map(|n| serde_json::Number::from_f64(n).map(Value::Number).unwrap_or(Value::Null))
+        Value::String(s) => s
+            .parse::<f64>()
+            .ok()
+            .map(|n| {
+                serde_json::Number::from_f64(n)
+                    .map(Value::Number)
+                    .unwrap_or(Value::Null)
+            })
             .unwrap_or(Value::Null),
         Value::Bool(b) => Value::Number(if *b { 1 } else { 0 }.into()),
         _ => Value::Null,
@@ -33,7 +39,9 @@ pub fn coerce_column(rows: &mut [Vec<Value>], col_idx: usize, target: &str) {
                 "number" => to_number(&val),
                 _ => val,
             };
-            if col_idx < row.len() { row[col_idx] = coerced; }
+            if col_idx < row.len() {
+                row[col_idx] = coerced;
+            }
         }
     }
 }

@@ -4,9 +4,9 @@
 //! [`SubQuery`] that can be sent to a [`FederatedConnector`].
 
 use datafusion::sql::sqlparser::ast::{
-    self, Expr as SqlExpr, FunctionArg, FunctionArgExpr, FunctionArguments, GroupByExpr,
-    Ident, LimitClause, ObjectName, OrderBy, OrderByKind, SelectItem, SetExpr,
-    Statement, TableFactor, Value,
+    self, Expr as SqlExpr, FunctionArg, FunctionArgExpr, FunctionArguments, GroupByExpr, Ident,
+    LimitClause, ObjectName, OrderBy, OrderByKind, SelectItem, SetExpr, Statement, TableFactor,
+    Value,
 };
 use datafusion::sql::sqlparser::dialect::GenericDialect;
 use datafusion::sql::sqlparser::parser::Parser;
@@ -38,7 +38,11 @@ pub fn sql_to_subquery(sql: &str) -> Result<SubQuery, ConnectorError> {
             // For UNION ALL, extract the first SELECT branch
             match *left {
                 SetExpr::Select(s) => *s,
-                _ => return Err(ConnectorError::QueryFailed("expected SELECT in UNION".into())),
+                _ => {
+                    return Err(ConnectorError::QueryFailed(
+                        "expected SELECT in UNION".into(),
+                    ))
+                }
             }
         }
         _ => return Err(ConnectorError::QueryFailed("expected simple SELECT".into())),
@@ -65,14 +69,8 @@ pub fn sql_to_subquery(sql: &str) -> Result<SubQuery, ConnectorError> {
         .as_ref()
         .map(extract_order_by)
         .unwrap_or_default();
-    let limit = query
-        .limit_clause
-        .as_ref()
-        .and_then(extract_limit);
-    let offset = query
-        .limit_clause
-        .as_ref()
-        .and_then(extract_offset);
+    let limit = query.limit_clause.as_ref().and_then(extract_limit);
+    let offset = query.limit_clause.as_ref().and_then(extract_offset);
 
     Ok(SubQuery {
         table,
@@ -114,11 +112,17 @@ fn extract_table_name(from: &[ast::TableWithJoins]) -> Result<String, ConnectorE
             // Extract table name from inner subquery
             let inner = match *subquery.body.clone() {
                 SetExpr::Select(s) => *s,
-                _ => return Err(ConnectorError::QueryFailed("unsupported subquery body".into())),
+                _ => {
+                    return Err(ConnectorError::QueryFailed(
+                        "unsupported subquery body".into(),
+                    ))
+                }
             };
             extract_table_name(&inner.from)
         }
-        _ => Err(ConnectorError::QueryFailed("unsupported FROM clause".into())),
+        _ => Err(ConnectorError::QueryFailed(
+            "unsupported FROM clause".into(),
+        )),
     }
 }
 
@@ -453,9 +457,7 @@ fn extract_order_by(order_by: &OrderBy) -> Vec<SortExpr> {
 
 fn extract_limit(clause: &LimitClause) -> Option<u64> {
     match clause {
-        LimitClause::LimitOffset { limit, .. } => {
-            limit.as_ref().and_then(expr_to_u64)
-        }
+        LimitClause::LimitOffset { limit, .. } => limit.as_ref().and_then(expr_to_u64),
         LimitClause::OffsetCommaLimit { limit, .. } => expr_to_u64(limit),
     }
 }
@@ -527,7 +529,8 @@ mod tests {
 
     #[test]
     fn test_and_filter() {
-        let sq = sql_to_subquery("SELECT * FROM logs WHERE status >= 500 AND service = 'x'").unwrap();
+        let sq =
+            sql_to_subquery("SELECT * FROM logs WHERE status >= 500 AND service = 'x'").unwrap();
         assert!(matches!(sq.filter.unwrap(), FilterExpr::And(_, _)));
     }
 
@@ -578,7 +581,10 @@ mod tests {
     #[test]
     fn test_count_distinct_agg() {
         let sq = sql_to_subquery("SELECT COUNT(DISTINCT service) AS unique_svc FROM logs").unwrap();
-        assert!(matches!(sq.aggregations[0].function, AggFunction::CountDistinct));
+        assert!(matches!(
+            sq.aggregations[0].function,
+            AggFunction::CountDistinct
+        ));
         assert_eq!(sq.aggregations[0].field.as_deref(), Some("service"));
         assert_eq!(sq.aggregations[0].alias, "unique_svc");
     }
@@ -586,7 +592,10 @@ mod tests {
     #[test]
     fn test_count_distinct_without_alias() {
         let sq = sql_to_subquery("SELECT COUNT(DISTINCT user_id) FROM logs").unwrap();
-        assert!(matches!(sq.aggregations[0].function, AggFunction::CountDistinct));
+        assert!(matches!(
+            sq.aggregations[0].function,
+            AggFunction::CountDistinct
+        ));
         assert_eq!(sq.aggregations[0].field.as_deref(), Some("user_id"));
     }
 
@@ -596,9 +605,13 @@ mod tests {
     fn test_count_distinct_with_group_by() {
         let sq = sql_to_subquery(
             "SELECT service, COUNT(DISTINCT trace_id) AS uniq FROM logs GROUP BY service",
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(sq.group_by, vec!["service"]);
-        assert!(matches!(sq.aggregations[0].function, AggFunction::CountDistinct));
+        assert!(matches!(
+            sq.aggregations[0].function,
+            AggFunction::CountDistinct
+        ));
         assert_eq!(sq.aggregations[0].field.as_deref(), Some("trace_id"));
     }
 
@@ -606,18 +619,25 @@ mod tests {
     fn test_count_distinct_and_count_together() {
         let sq = sql_to_subquery(
             "SELECT COUNT(*) AS total, COUNT(DISTINCT host) AS unique_hosts FROM logs",
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(sq.aggregations.len(), 2);
         assert!(matches!(sq.aggregations[0].function, AggFunction::Count));
-        assert!(matches!(sq.aggregations[1].function, AggFunction::CountDistinct));
+        assert!(matches!(
+            sq.aggregations[1].function,
+            AggFunction::CountDistinct
+        ));
     }
 
     #[test]
     fn test_count_distinct_with_where_and_limit() {
-        let sq = sql_to_subquery(
-            "SELECT COUNT(DISTINCT service) FROM logs WHERE status >= 500 LIMIT 1",
-        ).unwrap();
-        assert!(matches!(sq.aggregations[0].function, AggFunction::CountDistinct));
+        let sq =
+            sql_to_subquery("SELECT COUNT(DISTINCT service) FROM logs WHERE status >= 500 LIMIT 1")
+                .unwrap();
+        assert!(matches!(
+            sq.aggregations[0].function,
+            AggFunction::CountDistinct
+        ));
         assert!(sq.filter.is_some());
         assert_eq!(sq.limit, Some(1));
     }
@@ -646,7 +666,9 @@ mod tests {
 
     #[test]
     fn test_between() {
-        let sq = sql_to_subquery("SELECT * FROM logs WHERE ts BETWEEN '2024-01-01' AND '2024-12-31'").unwrap();
+        let sq =
+            sql_to_subquery("SELECT * FROM logs WHERE ts BETWEEN '2024-01-01' AND '2024-12-31'")
+                .unwrap();
         let f = sq.filter.unwrap();
         // BETWEEN translates to AND(>=, <=)
         if let FilterExpr::And(left, right) = f {
@@ -669,7 +691,8 @@ mod tests {
 
     #[test]
     fn test_not_between() {
-        let sq = sql_to_subquery("SELECT * FROM logs WHERE status NOT BETWEEN 400 AND 499").unwrap();
+        let sq =
+            sql_to_subquery("SELECT * FROM logs WHERE status NOT BETWEEN 400 AND 499").unwrap();
         let f = sq.filter.unwrap();
         assert!(matches!(f, FilterExpr::Not(_)));
     }
@@ -679,7 +702,8 @@ mod tests {
         // CASE WHEN is untranslatable, but status = 200 should survive
         let sq = sql_to_subquery(
             "SELECT * FROM logs WHERE status = 200 AND CASE WHEN status > 0 THEN 1 ELSE 0 END = 1",
-        ).unwrap();
+        )
+        .unwrap();
         let f = sq.filter.unwrap();
         if let FilterExpr::Comparison { field, op, .. } = f {
             assert_eq!(field, "status");
@@ -694,15 +718,16 @@ mod tests {
         // OR with untranslatable side must drop entire filter (can't safely keep one side)
         let sq = sql_to_subquery(
             "SELECT * FROM logs WHERE status = 200 OR CASE WHEN status > 0 THEN 1 ELSE 0 END = 1",
-        ).unwrap();
+        )
+        .unwrap();
         assert!(sq.filter.is_none());
     }
 
     #[test]
     fn test_having_clause() {
-        let sq = sql_to_subquery(
-            "SELECT host, COUNT(*) FROM logs GROUP BY host HAVING COUNT(*) > 10",
-        ).unwrap();
+        let sq =
+            sql_to_subquery("SELECT host, COUNT(*) FROM logs GROUP BY host HAVING COUNT(*) > 10")
+                .unwrap();
         assert!(sq.having.is_some());
         assert_eq!(sq.group_by, vec!["host"]);
     }
@@ -711,7 +736,8 @@ mod tests {
     fn test_having_with_comparison() {
         let sq = sql_to_subquery(
             "SELECT status, COUNT(*) AS cnt FROM logs GROUP BY status HAVING COUNT(*) >= 5",
-        ).unwrap();
+        )
+        .unwrap();
         let h = sq.having.unwrap();
         // The HAVING filter should be a comparison
         assert!(matches!(h, FilterExpr::Comparison { .. }));
@@ -747,9 +773,7 @@ mod tests {
     #[test]
     fn test_having_without_group_by_still_parses() {
         // SQL allows HAVING without GROUP BY (implicit single group)
-        let sq = sql_to_subquery(
-            "SELECT COUNT(*) FROM logs HAVING COUNT(*) > 0",
-        ).unwrap();
+        let sq = sql_to_subquery("SELECT COUNT(*) FROM logs HAVING COUNT(*) > 0").unwrap();
         assert!(sq.having.is_some());
         assert!(sq.group_by.is_empty());
     }
@@ -759,7 +783,8 @@ mod tests {
         // WHERE and HAVING should be independent
         let sq = sql_to_subquery(
             "SELECT host, COUNT(*) FROM logs WHERE status >= 400 GROUP BY host HAVING COUNT(*) > 3",
-        ).unwrap();
+        )
+        .unwrap();
         assert!(sq.filter.is_some(), "WHERE should be in filter");
         assert!(sq.having.is_some(), "HAVING should be separate");
         // Verify they're different expressions
@@ -782,9 +807,7 @@ mod tests {
 
     #[test]
     fn test_subquery_extracts_table() {
-        let sq = sql_to_subquery(
-            "SELECT * FROM (SELECT host, status FROM logs) AS sub",
-        ).unwrap();
+        let sq = sql_to_subquery("SELECT * FROM (SELECT host, status FROM logs) AS sub").unwrap();
         assert_eq!(sq.table, "logs");
     }
 
@@ -792,7 +815,8 @@ mod tests {
     fn test_subquery_merges_inner_filter() {
         let sq = sql_to_subquery(
             "SELECT * FROM (SELECT * FROM logs WHERE status > 400) AS sub WHERE host = 'h1'",
-        ).unwrap();
+        )
+        .unwrap();
         // Both inner (status > 400) and outer (host = 'h1') should be merged with AND
         let f = sq.filter.unwrap();
         assert!(matches!(f, FilterExpr::And(_, _)));
@@ -800,27 +824,23 @@ mod tests {
 
     #[test]
     fn test_subquery_inner_filter_only() {
-        let sq = sql_to_subquery(
-            "SELECT * FROM (SELECT * FROM logs WHERE status = 200) AS sub",
-        ).unwrap();
+        let sq = sql_to_subquery("SELECT * FROM (SELECT * FROM logs WHERE status = 200) AS sub")
+            .unwrap();
         let f = sq.filter.unwrap();
         assert!(matches!(f, FilterExpr::Comparison { .. }));
     }
 
     #[test]
     fn test_subquery_outer_filter_only() {
-        let sq = sql_to_subquery(
-            "SELECT * FROM (SELECT * FROM logs) AS sub WHERE host = 'h1'",
-        ).unwrap();
+        let sq =
+            sql_to_subquery("SELECT * FROM (SELECT * FROM logs) AS sub WHERE host = 'h1'").unwrap();
         let f = sq.filter.unwrap();
         assert!(matches!(f, FilterExpr::Comparison { .. }));
     }
 
     #[test]
     fn test_in_list_filter() {
-        let sq = sql_to_subquery(
-            "SELECT * FROM logs WHERE status IN (200, 201, 204)",
-        ).unwrap();
+        let sq = sql_to_subquery("SELECT * FROM logs WHERE status IN (200, 201, 204)").unwrap();
         let f = sq.filter.unwrap();
         if let FilterExpr::In { field, values } = f {
             assert_eq!(field, "status");
@@ -832,9 +852,7 @@ mod tests {
 
     #[test]
     fn test_not_in_list_filter() {
-        let sq = sql_to_subquery(
-            "SELECT * FROM logs WHERE host NOT IN ('h1', 'h2')",
-        ).unwrap();
+        let sq = sql_to_subquery("SELECT * FROM logs WHERE host NOT IN ('h1', 'h2')").unwrap();
         let f = sq.filter.unwrap();
         // NOT IN wraps In in Not
         assert!(matches!(f, FilterExpr::Not(_)));
@@ -845,9 +863,7 @@ mod tests {
 
     #[test]
     fn test_in_list_with_strings() {
-        let sq = sql_to_subquery(
-            "SELECT * FROM logs WHERE host IN ('web-01', 'web-02')",
-        ).unwrap();
+        let sq = sql_to_subquery("SELECT * FROM logs WHERE host IN ('web-01', 'web-02')").unwrap();
         let f = sq.filter.unwrap();
         if let FilterExpr::In { field, values } = f {
             assert_eq!(field, "host");
@@ -863,7 +879,8 @@ mod tests {
     fn test_subquery_nested_two_levels() {
         let sq = sql_to_subquery(
             "SELECT * FROM (SELECT * FROM (SELECT * FROM logs) AS inner_q) AS outer_q",
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(sq.table, "logs");
     }
 
@@ -871,7 +888,8 @@ mod tests {
     fn test_subquery_preserves_outer_limit() {
         let sq = sql_to_subquery(
             "SELECT * FROM (SELECT * FROM logs WHERE status >= 500) AS sub LIMIT 10",
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(sq.limit, Some(10));
         assert!(sq.filter.is_some());
     }
@@ -889,7 +907,8 @@ mod tests {
     fn test_subquery_with_projections() {
         let sq = sql_to_subquery(
             "SELECT host, status FROM (SELECT * FROM logs WHERE status = 200) AS sub",
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(sq.table, "logs");
         assert!(sq.projections.contains(&"host".to_string()));
         assert!(sq.projections.contains(&"status".to_string()));
@@ -897,18 +916,14 @@ mod tests {
 
     #[test]
     fn test_subquery_no_filter_either_side() {
-        let sq = sql_to_subquery(
-            "SELECT * FROM (SELECT * FROM logs) AS sub",
-        ).unwrap();
+        let sq = sql_to_subquery("SELECT * FROM (SELECT * FROM logs) AS sub").unwrap();
         assert_eq!(sq.table, "logs");
         assert!(sq.filter.is_none());
     }
 
     #[test]
     fn test_like_filter() {
-        let sq = sql_to_subquery(
-            "SELECT * FROM logs WHERE host LIKE 'web-%'",
-        ).unwrap();
+        let sq = sql_to_subquery("SELECT * FROM logs WHERE host LIKE 'web-%'").unwrap();
         let f = sq.filter.unwrap();
         if let FilterExpr::Comparison { field, op, .. } = f {
             assert_eq!(field, "host");
@@ -920,9 +935,7 @@ mod tests {
 
     #[test]
     fn test_ilike_filter() {
-        let sq = sql_to_subquery(
-            "SELECT * FROM logs WHERE host ILIKE '%WEB%'",
-        ).unwrap();
+        let sq = sql_to_subquery("SELECT * FROM logs WHERE host ILIKE '%WEB%'").unwrap();
         let f = sq.filter.unwrap();
         if let FilterExpr::Comparison { field, op, .. } = f {
             assert_eq!(field, "host");
@@ -934,9 +947,7 @@ mod tests {
 
     #[test]
     fn test_not_like_filter() {
-        let sq = sql_to_subquery(
-            "SELECT * FROM logs WHERE host NOT LIKE 'test-%'",
-        ).unwrap();
+        let sq = sql_to_subquery("SELECT * FROM logs WHERE host NOT LIKE 'test-%'").unwrap();
         let f = sq.filter.unwrap();
         assert!(matches!(f, FilterExpr::Not(_)));
     }
@@ -956,7 +967,8 @@ mod tests {
 
     #[test]
     fn test_computed_column_coalesce() {
-        let sq = sql_to_subquery("SELECT COALESCE(email, 'unknown') AS contact FROM users").unwrap();
+        let sq =
+            sql_to_subquery("SELECT COALESCE(email, 'unknown') AS contact FROM users").unwrap();
         assert!(sq.projections.iter().any(|p| p.contains("COALESCE")));
     }
 
@@ -971,16 +983,17 @@ mod tests {
     fn test_case_when_in_select() {
         let sq = sql_to_subquery(
             "SELECT CASE WHEN status >= 400 THEN 'error' ELSE 'ok' END AS category FROM logs",
-        ).unwrap();
+        )
+        .unwrap();
         assert!(sq.projections.iter().any(|p| p.contains("CASE")));
     }
 
     #[test]
     fn test_case_when_in_where() {
         // CASE WHEN in WHERE is untranslatable — filter should be None (safely dropped)
-        let sq = sql_to_subquery(
-            "SELECT * FROM logs WHERE CASE WHEN status > 0 THEN 1 ELSE 0 END = 1",
-        ).unwrap();
+        let sq =
+            sql_to_subquery("SELECT * FROM logs WHERE CASE WHEN status > 0 THEN 1 ELSE 0 END = 1")
+                .unwrap();
         assert!(sq.filter.is_none());
     }
 
@@ -995,17 +1008,14 @@ mod tests {
 
     #[test]
     fn test_date_trunc_in_select() {
-        let sq = sql_to_subquery(
-            "SELECT DATE_TRUNC('hour', timestamp) AS hour FROM logs",
-        ).unwrap();
+        let sq = sql_to_subquery("SELECT DATE_TRUNC('hour', timestamp) AS hour FROM logs").unwrap();
         assert!(sq.projections.iter().any(|p| p.contains("DATE_TRUNC")));
     }
 
     #[test]
     fn test_now_function() {
-        let sq = sql_to_subquery(
-            "SELECT * FROM logs WHERE timestamp > NOW() - INTERVAL '1' HOUR",
-        ).unwrap();
+        let sq = sql_to_subquery("SELECT * FROM logs WHERE timestamp > NOW() - INTERVAL '1' HOUR")
+            .unwrap();
         // NOW() in WHERE — the comparison may or may not translate,
         // but the query should parse without error
         assert_eq!(sq.table, "logs");
@@ -1024,15 +1034,16 @@ mod tests {
     #[test]
     fn test_computed_column_nested_arithmetic() {
         // (price * quantity) - discount
-        let sq = sql_to_subquery("SELECT (price * quantity) - discount AS net FROM orders").unwrap();
+        let sq =
+            sql_to_subquery("SELECT (price * quantity) - discount AS net FROM orders").unwrap();
         assert!(sq.projections.iter().any(|p| p.contains("AS net")));
     }
 
     #[test]
     fn test_case_when_no_else() {
-        let sq = sql_to_subquery(
-            "SELECT CASE WHEN status >= 500 THEN 'error' END AS err FROM logs",
-        ).unwrap();
+        let sq =
+            sql_to_subquery("SELECT CASE WHEN status >= 500 THEN 'error' END AS err FROM logs")
+                .unwrap();
         assert!(sq.projections.iter().any(|p| p.contains("CASE")));
     }
 
@@ -1048,15 +1059,15 @@ mod tests {
     fn test_date_diff_function() {
         let sq = sql_to_subquery(
             "SELECT DATE_DIFF('day', created_at, updated_at) AS age_days FROM logs",
-        ).unwrap();
+        )
+        .unwrap();
         assert!(sq.projections.iter().any(|p| p.contains("DATE_DIFF")));
     }
 
     #[test]
     fn test_string_functions_lower_trim() {
-        let sq = sql_to_subquery(
-            "SELECT LOWER(host) AS h, TRIM(message) AS msg FROM logs",
-        ).unwrap();
+        let sq =
+            sql_to_subquery("SELECT LOWER(host) AS h, TRIM(message) AS msg FROM logs").unwrap();
         assert_eq!(sq.projections.len(), 2);
     }
 
@@ -1064,15 +1075,16 @@ mod tests {
     fn test_math_functions_ceil_floor_abs() {
         let sq = sql_to_subquery(
             "SELECT CEIL(latency) AS c, FLOOR(latency) AS f, ABS(delta) AS a FROM logs",
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(sq.projections.len(), 3);
     }
 
     #[test]
     fn test_multi_column_order_by_parsed() {
-        let sq = sql_to_subquery(
-            "SELECT * FROM logs ORDER BY status DESC, host ASC, timestamp DESC",
-        ).unwrap();
+        let sq =
+            sql_to_subquery("SELECT * FROM logs ORDER BY status DESC, host ASC, timestamp DESC")
+                .unwrap();
         assert_eq!(sq.sort.len(), 3);
         assert!(sq.sort[0].descending);
         assert!(!sq.sort[1].descending);
@@ -1084,7 +1096,8 @@ mod tests {
         // Mix of plain + computed — plain columns should still be extractable
         let sq = sql_to_subquery(
             "SELECT host, status, UPPER(service) AS svc, price * 1.1 AS taxed FROM logs",
-        ).unwrap();
+        )
+        .unwrap();
         assert!(sq.projections.contains(&"host".to_string()));
         assert!(sq.projections.contains(&"status".to_string()));
         assert_eq!(sq.projections.len(), 4);
@@ -1095,7 +1108,8 @@ mod tests {
         // CASE WHEN in WHERE with AND — the translatable side should survive
         let sq = sql_to_subquery(
             "SELECT * FROM logs WHERE status = 200 AND CASE WHEN host = 'a' THEN 1 ELSE 0 END = 1",
-        ).unwrap();
+        )
+        .unwrap();
         // status = 200 should survive, CASE WHEN dropped
         if let Some(f) = &sq.filter {
             assert!(matches!(f, FilterExpr::Comparison { field, .. } if field == "status"));
@@ -1112,9 +1126,9 @@ mod tests {
 
     #[test]
     fn test_window_function_rank() {
-        let sq = sql_to_subquery(
-            "SELECT host, RANK() OVER (ORDER BY status DESC) AS rnk FROM logs",
-        ).unwrap();
+        let sq =
+            sql_to_subquery("SELECT host, RANK() OVER (ORDER BY status DESC) AS rnk FROM logs")
+                .unwrap();
         assert!(sq.projections.iter().any(|p| p.contains("RANK")));
     }
 
@@ -1131,7 +1145,8 @@ mod tests {
     fn test_window_function_with_plain_columns() {
         let sq = sql_to_subquery(
             "SELECT host, status, SUM(bytes) OVER (PARTITION BY host) AS total_bytes FROM logs",
-        ).unwrap();
+        )
+        .unwrap();
         assert!(sq.projections.iter().any(|p| p == "host"));
         assert!(sq.projections.iter().any(|p| p.contains("SUM")));
     }
@@ -1140,17 +1155,23 @@ mod tests {
     fn test_percentile_cont() {
         let sq = sql_to_subquery(
             "SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency) AS p95 FROM logs",
-        ).unwrap();
-        assert!(sq.projections.iter().any(|p| p.contains("PERCENTILE_CONT") || p.contains("p95")));
+        )
+        .unwrap();
+        assert!(sq
+            .projections
+            .iter()
+            .any(|p| p.contains("PERCENTILE_CONT") || p.contains("p95")));
     }
 
     #[test]
     fn test_percentile_approx() {
-        let sq = sql_to_subquery(
-            "SELECT PERCENTILE_APPROX(latency, 0.99) AS p99 FROM logs",
-        ).unwrap();
+        let sq =
+            sql_to_subquery("SELECT PERCENTILE_APPROX(latency, 0.99) AS p99 FROM logs").unwrap();
         // Should be captured as projection (not a known agg function)
-        assert!(sq.projections.iter().any(|p| p.contains("PERCENTILE_APPROX") || p.contains("p99")));
+        assert!(sq
+            .projections
+            .iter()
+            .any(|p| p.contains("PERCENTILE_APPROX") || p.contains("p99")));
     }
 
     #[test]

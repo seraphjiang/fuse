@@ -19,8 +19,14 @@ pub fn apply_rules(query: &str, rules: &[RewriteRule]) -> String {
 /// Default rewrite rules.
 pub fn default_rules() -> Vec<RewriteRule> {
     vec![
-        RewriteRule { name: "normalize_whitespace", apply: normalize_whitespace },
-        RewriteRule { name: "add_default_limit", apply: add_default_limit },
+        RewriteRule {
+            name: "normalize_whitespace",
+            apply: normalize_whitespace,
+        },
+        RewriteRule {
+            name: "add_default_limit",
+            apply: add_default_limit,
+        },
     ]
 }
 
@@ -43,22 +49,34 @@ mod tests {
 
     #[test]
     fn test_normalize_whitespace() {
-        assert_eq!(normalize_whitespace("SELECT  *   FROM  t"), "SELECT * FROM t");
+        assert_eq!(
+            normalize_whitespace("SELECT  *   FROM  t"),
+            "SELECT * FROM t"
+        );
     }
 
     #[test]
     fn test_add_default_limit() {
-        assert_eq!(add_default_limit("SELECT * FROM t"), "SELECT * FROM t LIMIT 10000");
+        assert_eq!(
+            add_default_limit("SELECT * FROM t"),
+            "SELECT * FROM t LIMIT 10000"
+        );
     }
 
     #[test]
     fn test_no_limit_on_count() {
-        assert_eq!(add_default_limit("SELECT COUNT(*) FROM t"), "SELECT COUNT(*) FROM t");
+        assert_eq!(
+            add_default_limit("SELECT COUNT(*) FROM t"),
+            "SELECT COUNT(*) FROM t"
+        );
     }
 
     #[test]
     fn test_existing_limit_preserved() {
-        assert_eq!(add_default_limit("SELECT * FROM t LIMIT 5"), "SELECT * FROM t LIMIT 5");
+        assert_eq!(
+            add_default_limit("SELECT * FROM t LIMIT 5"),
+            "SELECT * FROM t LIMIT 5"
+        );
     }
 
     #[test]

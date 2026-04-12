@@ -8,7 +8,9 @@ use arrow::array::{Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use arrow::record_batch::RecordBatch;
 
-use fuse_engine::{align_batch, dedup_batches, merge_batches, sort_batches, union_batches, union_schema};
+use fuse_engine::{
+    align_batch, dedup_batches, merge_batches, sort_batches, union_batches, union_schema,
+};
 
 fn schema_2col(name1: &str, name2: &str) -> SchemaRef {
     Arc::new(Schema::new(vec![
@@ -32,12 +34,12 @@ fn batch_str_int(schema: &SchemaRef, names: &[&str], vals: &[i64]) -> RecordBatc
 
 #[test]
 fn test_schema_alignment_disjoint_columns() {
-    let s1 = Arc::new(Schema::new(vec![
-        Field::new("host", DataType::Utf8, false),
-    ]));
-    let s2 = Arc::new(Schema::new(vec![
-        Field::new("region", DataType::Utf8, false),
-    ]));
+    let s1 = Arc::new(Schema::new(vec![Field::new("host", DataType::Utf8, false)]));
+    let s2 = Arc::new(Schema::new(vec![Field::new(
+        "region",
+        DataType::Utf8,
+        false,
+    )]));
     let target = union_schema(&[s1.clone(), s2.clone()]);
     assert_eq!(target.fields().len(), 2);
     assert_eq!(target.field(0).name(), "host");

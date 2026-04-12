@@ -47,18 +47,26 @@ impl MetadataCache {
 
     pub fn set_tables(&self, datasource: &str, tables: Vec<String>) {
         let mut entries = self.entries.lock().unwrap();
-        let entry = entries.entry(datasource.to_string()).or_insert_with(|| CachedSchema {
-            tables: vec![], fields: HashMap::new(), created: Instant::now(),
-        });
+        let entry = entries
+            .entry(datasource.to_string())
+            .or_insert_with(|| CachedSchema {
+                tables: vec![],
+                fields: HashMap::new(),
+                created: Instant::now(),
+            });
         entry.tables = tables;
         entry.created = Instant::now();
     }
 
     pub fn set_fields(&self, datasource: &str, table: &str, fields: Vec<(String, String)>) {
         let mut entries = self.entries.lock().unwrap();
-        let entry = entries.entry(datasource.to_string()).or_insert_with(|| CachedSchema {
-            tables: vec![], fields: HashMap::new(), created: Instant::now(),
-        });
+        let entry = entries
+            .entry(datasource.to_string())
+            .or_insert_with(|| CachedSchema {
+                tables: vec![],
+                fields: HashMap::new(),
+                created: Instant::now(),
+            });
         entry.fields.insert(table.to_string(), fields);
     }
 
@@ -82,7 +90,11 @@ mod tests {
     #[test]
     fn test_cache_fields() {
         let c = MetadataCache::new(60);
-        c.set_fields("pg", "users", vec![("id".into(), "int".into()), ("name".into(), "text".into())]);
+        c.set_fields(
+            "pg",
+            "users",
+            vec![("id".into(), "int".into()), ("name".into(), "text".into())],
+        );
         let fields = c.get_fields("pg", "users").unwrap();
         assert_eq!(fields.len(), 2);
     }

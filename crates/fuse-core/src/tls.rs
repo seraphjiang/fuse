@@ -67,14 +67,10 @@ impl TlsConfig {
                 check_file_exists(key, "client_key")?;
             }
             (Some(_), None) => {
-                return Err(FuseError::config(
-                    "tls.client_cert requires tls.client_key",
-                ));
+                return Err(FuseError::config("tls.client_cert requires tls.client_key"));
             }
             (None, Some(_)) => {
-                return Err(FuseError::config(
-                    "tls.client_key requires tls.client_cert",
-                ));
+                return Err(FuseError::config("tls.client_key requires tls.client_cert"));
             }
             (None, None) => {}
         }
@@ -123,9 +119,8 @@ impl TlsConfig {
         mut builder: reqwest::ClientBuilder,
     ) -> Result<reqwest::ClientBuilder, FuseError> {
         if let Some(ca_bytes) = self.read_ca_cert()? {
-            let cert = reqwest::Certificate::from_pem(&ca_bytes).map_err(|e| {
-                FuseError::config(format!("invalid ca_cert PEM: {e}"))
-            })?;
+            let cert = reqwest::Certificate::from_pem(&ca_bytes)
+                .map_err(|e| FuseError::config(format!("invalid ca_cert PEM: {e}")))?;
             builder = builder.add_root_certificate(cert);
         }
         if let Some((cert_bytes, key_bytes)) = self.read_identity()? {
@@ -133,9 +128,8 @@ impl TlsConfig {
             let mut combined = cert_bytes;
             combined.push(b'\n');
             combined.extend_from_slice(&key_bytes);
-            let identity = reqwest::Identity::from_pem(&combined).map_err(|e| {
-                FuseError::config(format!("invalid client identity PEM: {e}"))
-            })?;
+            let identity = reqwest::Identity::from_pem(&combined)
+                .map_err(|e| FuseError::config(format!("invalid client identity PEM: {e}")))?;
             builder = builder.identity(identity);
         }
         Ok(builder)
@@ -155,16 +149,15 @@ impl TlsConfig {
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| FuseError::config(format!("invalid ca_cert PEM: {e}")))?;
             for cert in certs {
-                root_store.add(cert).map_err(|e| {
-                    FuseError::config(format!("failed to add CA cert: {e}"))
-                })?;
+                root_store
+                    .add(cert)
+                    .map_err(|e| FuseError::config(format!("failed to add CA cert: {e}")))?;
             }
         } else {
             root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
         }
 
-        let builder = rustls::ClientConfig::builder()
-            .with_root_certificates(root_store);
+        let builder = rustls::ClientConfig::builder().with_root_certificates(root_store);
 
         let config = if let Some((cert_bytes, key_bytes)) = self.read_identity()? {
             let certs = rustls_pemfile::certs(&mut BufReader::new(cert_bytes.as_slice()))
@@ -173,7 +166,8 @@ impl TlsConfig {
             let key = rustls_pemfile::private_key(&mut BufReader::new(key_bytes.as_slice()))
                 .map_err(|e| FuseError::config(format!("invalid client_key PEM: {e}")))?
                 .ok_or_else(|| FuseError::config("no private key found in client_key PEM"))?;
-            builder.with_client_auth_cert(certs, key)
+            builder
+                .with_client_auth_cert(certs, key)
                 .map_err(|e| FuseError::config(format!("invalid client identity: {e}")))?
         } else {
             builder.with_no_client_auth()
@@ -223,7 +217,10 @@ client_key = "/tmp/client-key.pem"
         let tls = TlsConfig::from_properties(&props).unwrap();
         assert_eq!(tls.ca_cert.unwrap(), PathBuf::from("/tmp/ca.pem"));
         assert_eq!(tls.client_cert.unwrap(), PathBuf::from("/tmp/client.pem"));
-        assert_eq!(tls.client_key.unwrap(), PathBuf::from("/tmp/client-key.pem"));
+        assert_eq!(
+            tls.client_key.unwrap(),
+            PathBuf::from("/tmp/client-key.pem")
+        );
     }
 
     #[test]

@@ -109,7 +109,10 @@ impl OpenSearchConnector {
 
     /// search_after pagination — stateless deep pagination using sort values as cursor.
     /// Requires at least one sort field. Falls back to scroll if no sort is present.
-    async fn execute_search_after(&self, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
+    async fn execute_search_after(
+        &self,
+        query: &SubQuery,
+    ) -> Result<Vec<RecordBatch>, ConnectorError> {
         let page_size: u64 = 1000;
         let limit = query.limit;
         let mut collected: usize = 0;
@@ -129,21 +132,30 @@ impl OpenSearchConnector {
                 dsl["sort"] = serde_json::json!([{"_id": {"order": "asc"}}]);
             }
 
-            let resp = self.client.client()
+            let resp = self
+                .client
+                .client()
                 .search(opensearch::SearchParts::Index(&[&query.table]))
                 .body(dsl)
-                .send().await
+                .send()
+                .await
                 .map_err(ConnectorError::query)?;
 
-            let body = resp.json::<serde_json::Value>().await
+            let body = resp
+                .json::<serde_json::Value>()
+                .await
                 .map_err(ConnectorError::query)?;
 
             let batch = parse_hits_to_batch(&body, query)?;
-            if batch.num_rows() == 0 { break; }
+            if batch.num_rows() == 0 {
+                break;
+            }
 
             collected += batch.num_rows();
             batches.push(batch);
-            if limit.is_some_and(|l| collected >= l as usize) { break; }
+            if limit.is_some_and(|l| collected >= l as usize) {
+                break;
+            }
 
             // Extract sort values from last hit for next page cursor
             let hits = body.pointer("/hits/hits").and_then(|v| v.as_array());
@@ -152,7 +164,9 @@ impl OpenSearchConnector {
                 .and_then(|last| last.get("sort"))
                 .cloned();
 
-            if search_after.is_none() { break; } // no sort values → done
+            if search_after.is_none() {
+                break;
+            } // no sort values → done
         }
 
         Ok(batches)
@@ -196,17 +210,17 @@ impl FederatedConnector for OpenSearchConnector {
             .await;
 
         match resp {
-            Ok(r) if r.status_code().is_success() => {
-                ConnectorHealth {
-                    status: HealthStatus::Healthy,
-                    latency_ms: Some(start.elapsed().as_millis() as u64),
-                    message: None,
-                }
-            }
+            Ok(r) if r.status_code().is_success() => ConnectorHealth {
+                status: HealthStatus::Healthy,
+                latency_ms: Some(start.elapsed().as_millis() as u64),
+                message: None,
+            },
             _ => {
                 // Fallback: try a simple GET / — any response means reachable
                 // AOSS may return 403 but that still means the endpoint is up
-                match self.client.client()
+                match self
+                    .client
+                    .client()
                     .send::<(), ()>(
                         opensearch::http::Method::Get,
                         "/",
@@ -571,8 +585,7 @@ fn parse_agg_response(
             DataType::Utf8,
             true,
         )];
-        let mut arrays: Vec<Arc<dyn arrow::array::Array>> =
-            vec![Arc::new(StringArray::from(keys))];
+        let mut arrays: Vec<Arc<dyn arrow::array::Array>> = vec![Arc::new(StringArray::from(keys))];
 
         // Metric columns
         for agg in &query.aggregations {
@@ -648,7 +661,8 @@ mod tests {
             having: None,
             sort: vec![],
             limit,
-            passthrough: None, offset: None,
+            passthrough: None,
+            offset: None,
         }
     }
 
@@ -711,8 +725,14 @@ mod tests {
         let q = SubQuery {
             table: "logs".into(),
             projections: vec!["metadata.region".into(), "status".into()],
-            filter: None, aggregations: vec![], group_by: vec![], having: None,
-            sort: vec![], limit: None, passthrough: None, offset: None,
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            having: None,
+            sort: vec![],
+            limit: None,
+            passthrough: None,
+            offset: None,
         };
         let batch = parse_hits_to_batch(&body, &q).unwrap();
         assert_eq!(batch.num_rows(), 2);
@@ -730,7 +750,10 @@ mod tests {
     #[test]
     fn test_search_after_uses_search_after_when_sorted() {
         let mut q = sq(Some(SCROLL_THRESHOLD + 1));
-        q.sort = vec![fuse_core::connector::SortExpr { field: "timestamp".into(), descending: true }];
+        q.sort = vec![fuse_core::connector::SortExpr {
+            field: "timestamp".into(),
+            descending: true,
+        }];
         assert!(!q.sort.is_empty()); // has sort → search_after path
     }
 }

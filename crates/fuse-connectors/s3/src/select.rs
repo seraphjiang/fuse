@@ -31,7 +31,7 @@ pub fn filter_to_s3_select_where(filter: &FilterExpr) -> Option<String> {
                 ComparisonOp::Gt => ">",
                 ComparisonOp::Gte => ">=",
                 ComparisonOp::Like => "LIKE",
-                ComparisonOp::ILike | ComparisonOp::Contains => "LIKE",  // S3 Select is case-insensitive by default
+                ComparisonOp::ILike | ComparisonOp::Contains => "LIKE", // S3 Select is case-insensitive by default
             };
             let val = scalar_to_sql(value);
             Some(format!("s.\"{field}\" {op_str} {val}"))
@@ -66,9 +66,7 @@ pub fn build_s3_select_query(
         .map(|w| format!(" WHERE {w}"))
         .unwrap_or_default();
 
-    let limit_clause = limit
-        .map(|n| format!(" LIMIT {n}"))
-        .unwrap_or_default();
+    let limit_clause = limit.map(|n| format!(" LIMIT {n}")).unwrap_or_default();
 
     format!("SELECT {select_cols} FROM s3object s{where_clause}{limit_clause}")
 }
@@ -150,10 +148,7 @@ mod tests {
     fn test_filter_in_list() {
         let f = FilterExpr::In {
             field: "id".into(),
-            values: vec![
-                ScalarValue::Utf8("a".into()),
-                ScalarValue::Utf8("b".into()),
-            ],
+            values: vec![ScalarValue::Utf8("a".into()), ScalarValue::Utf8("b".into())],
         };
         assert_eq!(
             filter_to_s3_select_where(&f).unwrap(),

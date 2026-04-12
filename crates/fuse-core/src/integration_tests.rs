@@ -3,18 +3,18 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::connector::ConnectorCapabilities;
+    use crate::cost_model;
+    use crate::expr::{self, CompareOp};
     use crate::plan_builder::PlanBuilder;
-    use crate::plan_visitor;
     use crate::plan_printer;
     use crate::plan_rules::{self, EliminateMaxLimit, OptRule};
+    use crate::plan_visitor;
     use crate::predicate::Predicate;
-    use crate::cost_model;
     use crate::pushdown;
-    use crate::connector::ConnectorCapabilities;
+    use crate::scalar_expr::ScalarExpr;
     use crate::schema_compat;
     use crate::type_map;
-    use crate::expr::{self, CompareOp};
-    use crate::scalar_expr::ScalarExpr;
     use serde_json::json;
 
     #[test]
@@ -100,8 +100,7 @@ mod tests {
 
     #[test]
     fn test_plan_serde_roundtrip() {
-        let node = crate::plan_serde::PlanNode::leaf("Scan", "pg.users")
-            .with_cost(1000, 10.5);
+        let node = crate::plan_serde::PlanNode::leaf("Scan", "pg.users").with_cost(1000, 10.5);
         let json = node.to_json();
         let restored = crate::plan_serde::PlanNode::from_json(&json).unwrap();
         assert_eq!(node, restored);
@@ -124,7 +123,9 @@ mod tests {
     #[test]
     fn test_config_validator() {
         let errs = crate::config_validator::validate_connector_config(
-            "my_os", "opensearch", &std::collections::HashMap::new()
+            "my_os",
+            "opensearch",
+            &std::collections::HashMap::new(),
         );
         assert!(!errs.is_empty()); // missing url
     }
@@ -181,9 +182,9 @@ mod tests {
 #[cfg(test)]
 mod extra_tests {
     use crate::plan_builder::PlanBuilder;
-    use crate::predicate::Predicate;
-    use crate::plan_visitor;
     use crate::plan_printer;
+    use crate::plan_visitor;
+    use crate::predicate::Predicate;
 
     #[test]
     fn test_deep_plan_tree() {
@@ -223,22 +224,21 @@ mod extra_tests {
     }
 }
 
-
 #[cfg(test)]
 mod edge_case_tests {
+    use crate::cost_model;
+    use crate::expr::{self, CompareOp};
     use crate::plan_builder::PlanBuilder;
-    use crate::plan_visitor;
-    use crate::plan_printer;
-    use crate::plan_rules::{self, EliminateMaxLimit, OptRule};
     use crate::plan_compare;
     use crate::plan_merge::MergedPlan;
+    use crate::plan_printer;
+    use crate::plan_rules::{self, EliminateMaxLimit, OptRule};
     use crate::plan_serde::PlanNode;
     use crate::plan_stats::PlanStats;
+    use crate::plan_visitor;
     use crate::predicate::Predicate;
-    use crate::cost_model;
     use crate::scalar_expr::ScalarExpr;
     use crate::type_map;
-    use crate::expr::{self, CompareOp};
     use crate::url::ConnectorUrl;
     use serde_json::json;
 
@@ -343,7 +343,10 @@ mod edge_case_tests {
     // Type map edge cases
     #[test]
     fn test_type_map_case_insensitive() {
-        assert_eq!(type_map::from_type_name("VARCHAR"), type_map::from_type_name("varchar"));
+        assert_eq!(
+            type_map::from_type_name("VARCHAR"),
+            type_map::from_type_name("varchar")
+        );
     }
 
     #[test]
@@ -362,7 +365,11 @@ mod edge_case_tests {
 
     #[test]
     fn test_compare_null() {
-        assert!(expr::compare(&json!(null), &CompareOp::IsNull, &json!(null)));
+        assert!(expr::compare(
+            &json!(null),
+            &CompareOp::IsNull,
+            &json!(null)
+        ));
         assert!(!expr::compare(&json!(42), &CompareOp::IsNull, &json!(null)));
     }
 
@@ -385,7 +392,10 @@ mod edge_case_tests {
     #[test]
     fn test_optimize_no_filters() {
         let ops = vec![
-            crate::optimizer::LogicalOp::Scan { datasource: "a".into(), table: "t".into() },
+            crate::optimizer::LogicalOp::Scan {
+                datasource: "a".into(),
+                table: "t".into(),
+            },
             crate::optimizer::LogicalOp::Limit { count: 10 },
         ];
         let optimized = crate::optimizer::optimize(ops);
@@ -405,19 +415,18 @@ mod edge_case_tests {
     }
 }
 
-
 #[cfg(test)]
 mod advanced_tests {
+    use crate::cost_model;
+    use crate::expr::{self, CompareOp};
     use crate::plan_builder::PlanBuilder;
-    use crate::plan_visitor;
-    use crate::plan_merge::{MergedPlan, SubPlan};
     use crate::plan_builder::PlanOp;
+    use crate::plan_compare;
+    use crate::plan_merge::{MergedPlan, SubPlan};
+    use crate::plan_visitor;
     use crate::predicate::Predicate;
     use crate::scalar_expr::ScalarExpr;
-    use crate::cost_model;
-    use crate::plan_compare;
     use crate::type_map::{self, DataType};
-    use crate::expr::{self, CompareOp};
     use serde_json::json;
 
     #[test]
@@ -435,9 +444,27 @@ mod advanced_tests {
     #[test]
     fn test_merged_plan_three_way_union() {
         let plan = MergedPlan::union(vec![
-            SubPlan { datasource: "a".into(), plan: PlanOp::Scan { datasource: "a".into(), table: "t".into() } },
-            SubPlan { datasource: "b".into(), plan: PlanOp::Scan { datasource: "b".into(), table: "t".into() } },
-            SubPlan { datasource: "c".into(), plan: PlanOp::Scan { datasource: "c".into(), table: "t".into() } },
+            SubPlan {
+                datasource: "a".into(),
+                plan: PlanOp::Scan {
+                    datasource: "a".into(),
+                    table: "t".into(),
+                },
+            },
+            SubPlan {
+                datasource: "b".into(),
+                plan: PlanOp::Scan {
+                    datasource: "b".into(),
+                    table: "t".into(),
+                },
+            },
+            SubPlan {
+                datasource: "c".into(),
+                plan: PlanOp::Scan {
+                    datasource: "c".into(),
+                    table: "t".into(),
+                },
+            },
         ]);
         assert_eq!(plan.datasource_count(), 3);
     }
@@ -471,12 +498,18 @@ mod advanced_tests {
     #[test]
     fn test_type_same_compatible() {
         assert!(type_map::types_compatible(&DataType::Utf8, &DataType::Utf8));
-        assert!(type_map::types_compatible(&DataType::Boolean, &DataType::Boolean));
+        assert!(type_map::types_compatible(
+            &DataType::Boolean,
+            &DataType::Boolean
+        ));
     }
 
     #[test]
     fn test_type_int_float_compatible() {
-        assert!(type_map::types_compatible(&DataType::Int32, &DataType::Float64));
+        assert!(type_map::types_compatible(
+            &DataType::Int32,
+            &DataType::Float64
+        ));
     }
 
     #[test]
@@ -553,7 +586,9 @@ mod advanced_tests {
     fn test_config_validator_postgres() {
         let mut props = std::collections::HashMap::new();
         props.insert("url".into(), "postgresql://localhost/db".into());
-        assert!(crate::config_validator::validate_connector_config("pg", "postgres", &props).is_empty());
+        assert!(
+            crate::config_validator::validate_connector_config("pg", "postgres", &props).is_empty()
+        );
     }
 
     #[test]
@@ -562,14 +597,13 @@ mod advanced_tests {
     }
 }
 
-
 #[cfg(test)]
 mod error_path_tests {
-    use crate::predicate::Predicate;
+    use crate::expr::{self, CompareOp};
     use crate::plan_serde::PlanNode;
+    use crate::predicate::Predicate;
     use crate::scalar_expr::ScalarExpr;
     use crate::type_map;
-    use crate::expr::{self, CompareOp};
     use serde_json::json;
 
     // Predicate edge cases
@@ -619,7 +653,10 @@ mod error_path_tests {
 
     #[test]
     fn test_scalar_func_multiple_args() {
-        let e = ScalarExpr::func("COALESCE", vec![ScalarExpr::col("a"), ScalarExpr::lit("default")]);
+        let e = ScalarExpr::func(
+            "COALESCE",
+            vec![ScalarExpr::col("a"), ScalarExpr::lit("default")],
+        );
         assert_eq!(e.to_sql(), "COALESCE(a, 'default')");
     }
 
@@ -631,12 +668,18 @@ mod error_path_tests {
 
     #[test]
     fn test_type_map_binary() {
-        assert_eq!(type_map::from_type_name("bytea"), type_map::DataType::Binary);
+        assert_eq!(
+            type_map::from_type_name("bytea"),
+            type_map::DataType::Binary
+        );
     }
 
     #[test]
     fn test_type_map_timestamp() {
-        assert_eq!(type_map::from_type_name("timestamptz"), type_map::DataType::Timestamp);
+        assert_eq!(
+            type_map::from_type_name("timestamptz"),
+            type_map::DataType::Timestamp
+        );
     }
 
     // Expr comparison edge cases
@@ -652,7 +695,11 @@ mod error_path_tests {
 
     #[test]
     fn test_compare_not_null_is_not_null() {
-        assert!(expr::compare(&json!("x"), &CompareOp::IsNotNull, &json!(null)));
+        assert!(expr::compare(
+            &json!("x"),
+            &CompareOp::IsNotNull,
+            &json!(null)
+        ));
     }
 
     // URL edge cases
@@ -671,13 +718,21 @@ mod error_path_tests {
     // Config validator edge cases
     #[test]
     fn test_validator_empty_type() {
-        let errs = crate::config_validator::validate_connector_config("id", "", &std::collections::HashMap::new());
+        let errs = crate::config_validator::validate_connector_config(
+            "id",
+            "",
+            &std::collections::HashMap::new(),
+        );
         assert!(errs.iter().any(|e| e.field == "type"));
     }
 
     #[test]
     fn test_validator_mysql_needs_url() {
-        let errs = crate::config_validator::validate_connector_config("my", "mysql", &std::collections::HashMap::new());
+        let errs = crate::config_validator::validate_connector_config(
+            "my",
+            "mysql",
+            &std::collections::HashMap::new(),
+        );
         assert!(!errs.is_empty());
     }
 
@@ -716,7 +771,9 @@ mod error_path_tests {
     #[test]
     fn test_health_history_max_entries() {
         let h = crate::health_history::HealthHistory::new(3);
-        for i in 0..5 { h.record("ds", true, Some(i)); }
+        for i in 0..5 {
+            h.record("ds", true, Some(i));
+        }
         assert_eq!(h.get("ds").len(), 3);
     }
 
@@ -731,13 +788,12 @@ mod error_path_tests {
     }
 }
 
-
 #[cfg(test)]
 mod validator_estimator_tests {
     use crate::plan_builder::PlanBuilder;
     use crate::plan_validator;
-    use crate::size_estimator;
     use crate::predicate::Predicate;
+    use crate::size_estimator;
 
     #[test]
     fn test_validator_complex_plan() {
@@ -799,96 +855,297 @@ mod validator_estimator_tests {
     }
 }
 
-
 #[cfg(test)]
 mod toward_1500 {
+    use crate::cost_model;
+    use crate::expr::{self, CompareOp};
     use crate::plan_builder::PlanBuilder;
     use crate::predicate::Predicate;
     use crate::scalar_expr::ScalarExpr;
-    use crate::cost_model;
     use crate::type_map;
-    use crate::expr::{self, CompareOp};
     use serde_json::json;
 
     // Plan builder exhaustive
-    #[test] fn test_plan_filter_only() { let p = PlanBuilder::scan("d", "t").filter(&Predicate::eq("a", "1")).build(); assert_eq!(crate::plan_visitor::node_count(&p.root), 2); }
-    #[test] fn test_plan_project_only() { let p = PlanBuilder::scan("d", "t").project(vec!["a"]).build(); assert_eq!(crate::plan_visitor::node_count(&p.root), 2); }
-    #[test] fn test_plan_sort_only() { let p = PlanBuilder::scan("d", "t").sort("a", true).build(); assert_eq!(crate::plan_visitor::node_count(&p.root), 2); }
-    #[test] fn test_plan_limit_only() { let p = PlanBuilder::scan("d", "t").limit(1).build(); assert_eq!(crate::plan_visitor::node_count(&p.root), 2); }
+    #[test]
+    fn test_plan_filter_only() {
+        let p = PlanBuilder::scan("d", "t")
+            .filter(&Predicate::eq("a", "1"))
+            .build();
+        assert_eq!(crate::plan_visitor::node_count(&p.root), 2);
+    }
+    #[test]
+    fn test_plan_project_only() {
+        let p = PlanBuilder::scan("d", "t").project(vec!["a"]).build();
+        assert_eq!(crate::plan_visitor::node_count(&p.root), 2);
+    }
+    #[test]
+    fn test_plan_sort_only() {
+        let p = PlanBuilder::scan("d", "t").sort("a", true).build();
+        assert_eq!(crate::plan_visitor::node_count(&p.root), 2);
+    }
+    #[test]
+    fn test_plan_limit_only() {
+        let p = PlanBuilder::scan("d", "t").limit(1).build();
+        assert_eq!(crate::plan_visitor::node_count(&p.root), 2);
+    }
 
     // Predicate exhaustive
-    #[test] fn test_pred_lt() { assert!(Predicate::lt("x", "5").to_sql().contains("<")); }
-    #[test] fn test_pred_like_start() { assert!(Predicate::like("n", "a%").to_sql().contains("LIKE")); }
-    #[test] fn test_pred_in_single() { assert!(Predicate::in_list("x", vec!["1"]).to_sql().contains("IN")); }
-    #[test] fn test_pred_and_three() { let p = Predicate::and(vec![Predicate::eq("a","1"), Predicate::eq("b","2"), Predicate::eq("c","3")]); assert_eq!(p.to_sql().matches("AND").count(), 2); }
+    #[test]
+    fn test_pred_lt() {
+        assert!(Predicate::lt("x", "5").to_sql().contains("<"));
+    }
+    #[test]
+    fn test_pred_like_start() {
+        assert!(Predicate::like("n", "a%").to_sql().contains("LIKE"));
+    }
+    #[test]
+    fn test_pred_in_single() {
+        assert!(Predicate::in_list("x", vec!["1"]).to_sql().contains("IN"));
+    }
+    #[test]
+    fn test_pred_and_three() {
+        let p = Predicate::and(vec![
+            Predicate::eq("a", "1"),
+            Predicate::eq("b", "2"),
+            Predicate::eq("c", "3"),
+        ]);
+        assert_eq!(p.to_sql().matches("AND").count(), 2);
+    }
 
     // Scalar expr exhaustive
-    #[test] fn test_scalar_col_dot() { assert_eq!(ScalarExpr::col("t.id").to_sql(), "t.id"); }
-    #[test] fn test_scalar_lit_number() { assert_eq!(ScalarExpr::lit("42").to_sql(), "'42'"); }
-    #[test] fn test_scalar_nested_func() { let e = ScalarExpr::func("LOWER", vec![ScalarExpr::func("TRIM", vec![ScalarExpr::col("name")])]); assert_eq!(e.to_sql(), "LOWER(TRIM(name))"); }
+    #[test]
+    fn test_scalar_col_dot() {
+        assert_eq!(ScalarExpr::col("t.id").to_sql(), "t.id");
+    }
+    #[test]
+    fn test_scalar_lit_number() {
+        assert_eq!(ScalarExpr::lit("42").to_sql(), "'42'");
+    }
+    #[test]
+    fn test_scalar_nested_func() {
+        let e = ScalarExpr::func(
+            "LOWER",
+            vec![ScalarExpr::func("TRIM", vec![ScalarExpr::col("name")])],
+        );
+        assert_eq!(e.to_sql(), "LOWER(TRIM(name))");
+    }
 
     // Cost model exhaustive
-    #[test] fn test_scan_single_col() { let c = cost_model::scan_cost(100, 1); assert!(c.estimated_cost > 0.0); }
-    #[test] fn test_join_equal_sides() { let c = cost_model::join_cost(1000, 1000); assert!(c.estimated_cost > 0.0); }
-    #[test] fn test_sort_large() { let c = cost_model::sort_cost(1_000_000); assert!(c.cpu_cost > 0.0); }
-    #[test] fn test_total_single() { let t = cost_model::total_cost(&[cost_model::scan_cost(100, 5)]); assert_eq!(t.estimated_rows, 100); }
+    #[test]
+    fn test_scan_single_col() {
+        let c = cost_model::scan_cost(100, 1);
+        assert!(c.estimated_cost > 0.0);
+    }
+    #[test]
+    fn test_join_equal_sides() {
+        let c = cost_model::join_cost(1000, 1000);
+        assert!(c.estimated_cost > 0.0);
+    }
+    #[test]
+    fn test_sort_large() {
+        let c = cost_model::sort_cost(1_000_000);
+        assert!(c.cpu_cost > 0.0);
+    }
+    #[test]
+    fn test_total_single() {
+        let t = cost_model::total_cost(&[cost_model::scan_cost(100, 5)]);
+        assert_eq!(t.estimated_rows, 100);
+    }
 
     // Type map exhaustive
-    #[test] fn test_type_real() { assert_eq!(type_map::from_type_name("real"), type_map::DataType::Float32); }
-    #[test] fn test_type_keyword() { assert_eq!(type_map::from_type_name("keyword"), type_map::DataType::Utf8); }
-    #[test] fn test_type_blob() { assert_eq!(type_map::from_type_name("blob"), type_map::DataType::Binary); }
-    #[test] fn test_type_null() { assert_eq!(type_map::from_type_name("null"), type_map::DataType::Null); }
+    #[test]
+    fn test_type_real() {
+        assert_eq!(
+            type_map::from_type_name("real"),
+            type_map::DataType::Float32
+        );
+    }
+    #[test]
+    fn test_type_keyword() {
+        assert_eq!(
+            type_map::from_type_name("keyword"),
+            type_map::DataType::Utf8
+        );
+    }
+    #[test]
+    fn test_type_blob() {
+        assert_eq!(type_map::from_type_name("blob"), type_map::DataType::Binary);
+    }
+    #[test]
+    fn test_type_null() {
+        assert_eq!(type_map::from_type_name("null"), type_map::DataType::Null);
+    }
 
     // Expr exhaustive
-    #[test] fn test_expr_eq_strings() { assert!(expr::compare(&json!("abc"), &CompareOp::Eq, &json!("abc"))); }
-    #[test] fn test_expr_neq_types() { assert!(expr::compare(&json!(1), &CompareOp::Neq, &json!("1"))); }
-    #[test] fn test_expr_gt_negative() { assert!(expr::compare(&json!(0), &CompareOp::Gt, &json!(-1))); }
-    #[test] fn test_expr_lt_equal() { assert!(!expr::compare(&json!(5), &CompareOp::Lt, &json!(5))); }
+    #[test]
+    fn test_expr_eq_strings() {
+        assert!(expr::compare(&json!("abc"), &CompareOp::Eq, &json!("abc")));
+    }
+    #[test]
+    fn test_expr_neq_types() {
+        assert!(expr::compare(&json!(1), &CompareOp::Neq, &json!("1")));
+    }
+    #[test]
+    fn test_expr_gt_negative() {
+        assert!(expr::compare(&json!(0), &CompareOp::Gt, &json!(-1)));
+    }
+    #[test]
+    fn test_expr_lt_equal() {
+        assert!(!expr::compare(&json!(5), &CompareOp::Lt, &json!(5)));
+    }
 
     // URL exhaustive
-    #[test] fn test_url_postgres() { let u = crate::url::ConnectorUrl::parse("postgresql://user:pass@host:5432/db").unwrap(); assert_eq!(u.port, Some(5432)); }
-    #[test] fn test_url_https_no_port() { let u = crate::url::ConnectorUrl::parse("https://example.com/api").unwrap(); assert!(u.is_tls); assert!(u.port.is_none()); }
+    #[test]
+    fn test_url_postgres() {
+        let u = crate::url::ConnectorUrl::parse("postgresql://user:pass@host:5432/db").unwrap();
+        assert_eq!(u.port, Some(5432));
+    }
+    #[test]
+    fn test_url_https_no_port() {
+        let u = crate::url::ConnectorUrl::parse("https://example.com/api").unwrap();
+        assert!(u.is_tls);
+        assert!(u.port.is_none());
+    }
 
     // Plan serde exhaustive
-    #[test] fn test_serde_with_cost() { let n = crate::plan_serde::PlanNode::leaf("S", "t").with_cost(50, 0.5); assert_eq!(n.estimated_rows, Some(50)); }
-    #[test] fn test_serde_node_count_deep() { let n = crate::plan_serde::PlanNode::leaf("J", "").with_child(crate::plan_serde::PlanNode::leaf("S", "a")).with_child(crate::plan_serde::PlanNode::leaf("S", "b").with_child(crate::plan_serde::PlanNode::leaf("F", "x>1"))); assert_eq!(n.node_count(), 4); }
+    #[test]
+    fn test_serde_with_cost() {
+        let n = crate::plan_serde::PlanNode::leaf("S", "t").with_cost(50, 0.5);
+        assert_eq!(n.estimated_rows, Some(50));
+    }
+    #[test]
+    fn test_serde_node_count_deep() {
+        let n = crate::plan_serde::PlanNode::leaf("J", "")
+            .with_child(crate::plan_serde::PlanNode::leaf("S", "a"))
+            .with_child(
+                crate::plan_serde::PlanNode::leaf("S", "b")
+                    .with_child(crate::plan_serde::PlanNode::leaf("F", "x>1")),
+            );
+        assert_eq!(n.node_count(), 4);
+    }
 
     // Plan stats exhaustive
-    #[test] fn test_stats_multiple_nodes() { let s = crate::plan_stats::PlanStats::new(); s.record("a", 0, 100, 10, 800); s.record("b", 100, 50, 20, 400); s.record("c", 50, 50, 5, 200); assert_eq!(s.all().len(), 3); }
+    #[test]
+    fn test_stats_multiple_nodes() {
+        let s = crate::plan_stats::PlanStats::new();
+        s.record("a", 0, 100, 10, 800);
+        s.record("b", 100, 50, 20, 400);
+        s.record("c", 50, 50, 5, 200);
+        assert_eq!(s.all().len(), 3);
+    }
 
     // Plan compare exhaustive
-    #[test] fn test_cheapest_three() { let p = vec![cost_model::scan_cost(1000, 5), cost_model::scan_cost(10, 5), cost_model::scan_cost(500, 5)]; assert_eq!(crate::plan_compare::cheapest(&p), Some(1)); }
+    #[test]
+    fn test_cheapest_three() {
+        let p = vec![
+            cost_model::scan_cost(1000, 5),
+            cost_model::scan_cost(10, 5),
+            cost_model::scan_cost(500, 5),
+        ];
+        assert_eq!(crate::plan_compare::cheapest(&p), Some(1));
+    }
 
     // Plan merge exhaustive
-    #[test] fn test_merge_join_ds_count() { let p = crate::plan_merge::MergedPlan::join(crate::plan_merge::SubPlan { datasource: "a".into(), plan: crate::plan_builder::PlanOp::Scan { datasource: "a".into(), table: "t".into() } }, crate::plan_merge::SubPlan { datasource: "b".into(), plan: crate::plan_builder::PlanOp::Scan { datasource: "b".into(), table: "t".into() } }); assert_eq!(p.datasource_count(), 2); }
+    #[test]
+    fn test_merge_join_ds_count() {
+        let p = crate::plan_merge::MergedPlan::join(
+            crate::plan_merge::SubPlan {
+                datasource: "a".into(),
+                plan: crate::plan_builder::PlanOp::Scan {
+                    datasource: "a".into(),
+                    table: "t".into(),
+                },
+            },
+            crate::plan_merge::SubPlan {
+                datasource: "b".into(),
+                plan: crate::plan_builder::PlanOp::Scan {
+                    datasource: "b".into(),
+                    table: "t".into(),
+                },
+            },
+        );
+        assert_eq!(p.datasource_count(), 2);
+    }
 
     // Plan validator exhaustive
-    #[test] fn test_validator_empty_sort_keys() { let p = PlanBuilder::scan("ds", "t").sort("", false).build(); let e = crate::plan_validator::validate(&p.root); assert!(e.is_empty() || !e.is_empty()); /* sort key "" is valid string */ }
+    #[test]
+    fn test_validator_empty_sort_keys() {
+        let p = PlanBuilder::scan("ds", "t").sort("", false).build();
+        let e = crate::plan_validator::validate(&p.root);
+        assert!(e.is_empty() || !e.is_empty()); /* sort key "" is valid string */
+    }
 
     // Size estimator exhaustive
-    #[test] fn test_estimator_high_selectivity() { let e = crate::size_estimator::estimate(1000, 100, 0.99, None); assert_eq!(e.estimated_rows, 990); }
+    #[test]
+    fn test_estimator_high_selectivity() {
+        let e = crate::size_estimator::estimate(1000, 100, 0.99, None);
+        assert_eq!(e.estimated_rows, 990);
+    }
 
     // Limit pushdown exhaustive
-    #[test] fn test_union_fetch_single() { assert_eq!(crate::limit_pushdown::union_fetch_limit(50, 1), 50); }
+    #[test]
+    fn test_union_fetch_single() {
+        assert_eq!(crate::limit_pushdown::union_fetch_limit(50, 1), 50);
+    }
 
     // Config validator exhaustive
-    #[test] fn test_validator_s3_with_bucket() { let mut p = std::collections::HashMap::new(); p.insert("bucket".into(), "my-bucket".into()); assert!(crate::config_validator::validate_connector_config("s3", "s3", &p).is_empty()); }
+    #[test]
+    fn test_validator_s3_with_bucket() {
+        let mut p = std::collections::HashMap::new();
+        p.insert("bucket".into(), "my-bucket".into());
+        assert!(crate::config_validator::validate_connector_config("s3", "s3", &p).is_empty());
+    }
 
     // Factory exhaustive
-    #[test] fn test_factory_count() { let r = crate::factory::FactoryRegistry::new(); r.register("a", Box::new(|_| Ok("".into()))); r.register("b", Box::new(|_| Ok("".into()))); assert_eq!(r.count(), 2); }
+    #[test]
+    fn test_factory_count() {
+        let r = crate::factory::FactoryRegistry::new();
+        r.register("a", Box::new(|_| Ok("".into())));
+        r.register("b", Box::new(|_| Ok("".into())));
+        assert_eq!(r.count(), 2);
+    }
 
     // Dependency graph exhaustive
-    #[test] fn test_dep_graph_top_pairs_limit() { let g = crate::dependency_graph::DependencyGraph::new(); g.record(&["a".into(), "b".into()]); g.record(&["c".into(), "d".into()]); assert_eq!(g.top_pairs(1).len(), 1); }
+    #[test]
+    fn test_dep_graph_top_pairs_limit() {
+        let g = crate::dependency_graph::DependencyGraph::new();
+        g.record(&["a".into(), "b".into()]);
+        g.record(&["c".into(), "d".into()]);
+        assert_eq!(g.top_pairs(1).len(), 1);
+    }
 
     // Health history exhaustive
-    #[test] fn test_health_all_unhealthy() { let h = crate::health_history::HealthHistory::new(10); h.record("ds", false, None); h.record("ds", false, None); assert_eq!(h.uptime("ds"), 0.0); }
+    #[test]
+    fn test_health_all_unhealthy() {
+        let h = crate::health_history::HealthHistory::new(10);
+        h.record("ds", false, None);
+        h.record("ds", false, None);
+        assert_eq!(h.uptime("ds"), 0.0);
+    }
 
     // Metadata cache exhaustive
-    #[test] fn test_metadata_fields_miss() { let c = crate::metadata_cache::MetadataCache::new(60); assert!(c.get_fields("ds", "t").is_none()); }
+    #[test]
+    fn test_metadata_fields_miss() {
+        let c = crate::metadata_cache::MetadataCache::new(60);
+        assert!(c.get_fields("ds", "t").is_none());
+    }
 
     // Schema compat exhaustive
-    #[test] fn test_schema_no_overlap() { let r = crate::schema_compat::check_compatibility(&["a".into()], &["b".into()]); assert!(!r.compatible); assert!(r.common_columns.is_empty()); }
+    #[test]
+    fn test_schema_no_overlap() {
+        let r = crate::schema_compat::check_compatibility(&["a".into()], &["b".into()]);
+        assert!(!r.compatible);
+        assert!(r.common_columns.is_empty());
+    }
 
     // Query stats exhaustive
-    #[test] fn test_stats_min_max() { let s = crate::query_stats::StatsCollector::new(); s.record("ds", true, 10, 100); s.record("ds", true, 20, 50); let st = s.get("ds").unwrap(); assert_eq!(st.min_duration_ms, 50); assert_eq!(st.max_duration_ms, 100); }
+    #[test]
+    fn test_stats_min_max() {
+        let s = crate::query_stats::StatsCollector::new();
+        s.record("ds", true, 10, 100);
+        s.record("ds", true, 20, 50);
+        let st = s.get("ds").unwrap();
+        assert_eq!(st.min_duration_ms, 50);
+        assert_eq!(st.max_duration_ms, 100);
+    }
 }

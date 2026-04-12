@@ -16,7 +16,10 @@ pub fn pivot(
     let mut pivot_values = BTreeSet::new();
     for row in rows {
         if let Some(v) = row.get(pivot_col) {
-            let s = match v { Value::String(s) => s.clone(), _ => v.to_string() };
+            let s = match v {
+                Value::String(s) => s.clone(),
+                _ => v.to_string(),
+            };
             pivot_values.insert(s);
         }
     }
@@ -26,7 +29,13 @@ pub fn pivot(
     let mut groups: BTreeMap<String, BTreeMap<String, Value>> = BTreeMap::new();
     for row in rows {
         let key = row.get(row_col).map(|v| v.to_string()).unwrap_or_default();
-        let pv = row.get(pivot_col).map(|v| match v { Value::String(s) => s.clone(), _ => v.to_string() }).unwrap_or_default();
+        let pv = row
+            .get(pivot_col)
+            .map(|v| match v {
+                Value::String(s) => s.clone(),
+                _ => v.to_string(),
+            })
+            .unwrap_or_default();
         let val = row.get(value_col).cloned().unwrap_or(Value::Null);
         groups.entry(key).or_default().insert(pv, val);
     }
@@ -35,13 +44,16 @@ pub fn pivot(
     let mut columns = vec!["key".to_string()];
     columns.extend(pivot_cols.iter().cloned());
 
-    let result_rows: Vec<Vec<Value>> = groups.into_iter().map(|(key, vals)| {
-        let mut row = vec![Value::String(key)];
-        for pc in &pivot_cols {
-            row.push(vals.get(pc).cloned().unwrap_or(Value::Null));
-        }
-        row
-    }).collect();
+    let result_rows: Vec<Vec<Value>> = groups
+        .into_iter()
+        .map(|(key, vals)| {
+            let mut row = vec![Value::String(key)];
+            for pc in &pivot_cols {
+                row.push(vals.get(pc).cloned().unwrap_or(Value::Null));
+            }
+            row
+        })
+        .collect();
 
     (columns, result_rows)
 }

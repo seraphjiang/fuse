@@ -42,7 +42,11 @@ impl CloudWatchConnector {
             .load()
             .await;
         let client = cwl::Client::new(&config);
-        Self { id, client, log_group }
+        Self {
+            id,
+            client,
+            log_group,
+        }
     }
 
     fn build_insights_query(&self, query: &SubQuery) -> String {
@@ -53,9 +57,11 @@ impl CloudWatchConnector {
             }
         }
         if !query.sort.is_empty() {
-            let s: Vec<String> = query.sort.iter().map(|s| {
-                format!("{} {}", s.field, if s.descending { "desc" } else { "asc" })
-            }).collect();
+            let s: Vec<String> = query
+                .sort
+                .iter()
+                .map(|s| format!("{} {}", s.field, if s.descending { "desc" } else { "asc" }))
+                .collect();
             parts.push(format!("| sort {}", s.join(", ")));
         }
         if let Some(limit) = query.limit {
@@ -86,11 +92,16 @@ impl CloudWatchConnector {
             streams.push(stream);
         }
         let schema = Arc::new(self.schema());
-        RecordBatch::try_new(schema, vec![
-            Arc::new(StringArray::from(timestamps)),
-            Arc::new(StringArray::from(messages)),
-            Arc::new(StringArray::from(streams)),
-        ]).into_iter().collect()
+        RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(timestamps)),
+                Arc::new(StringArray::from(messages)),
+                Arc::new(StringArray::from(streams)),
+            ],
+        )
+        .into_iter()
+        .collect()
     }
 
     fn schema(&self) -> Schema {
@@ -114,14 +125,23 @@ fn filter_to_insights(expr: &FilterExpr) -> Option<String> {
                 ComparisonOp::Gte => ">=",
                 ComparisonOp::Like | ComparisonOp::ILike | ComparisonOp::Contains => "like",
             };
-            Some(format!("{} {} {}", field, op_str, scalar_to_insights(value)))
+            Some(format!(
+                "{} {} {}",
+                field,
+                op_str,
+                scalar_to_insights(value)
+            ))
         }
-        FilterExpr::And(l, r) => {
-            Some(format!("({} and {})", filter_to_insights(l)?, filter_to_insights(r)?))
-        }
-        FilterExpr::Or(l, r) => {
-            Some(format!("({} or {})", filter_to_insights(l)?, filter_to_insights(r)?))
-        }
+        FilterExpr::And(l, r) => Some(format!(
+            "({} and {})",
+            filter_to_insights(l)?,
+            filter_to_insights(r)?
+        )),
+        FilterExpr::Or(l, r) => Some(format!(
+            "({} or {})",
+            filter_to_insights(l)?,
+            filter_to_insights(r)?
+        )),
         FilterExpr::Not(inner) => Some(format!("not {}", filter_to_insights(inner)?)),
         FilterExpr::IsNotNull(field) => Some(format!("ispresent({})", field)),
         _ => None,
@@ -140,8 +160,12 @@ fn scalar_to_insights(v: &ScalarValue) -> String {
 
 #[async_trait]
 impl FederatedConnector for CloudWatchConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "cloudwatch" }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "cloudwatch"
+    }
 
     fn capabilities(&self) -> ConnectorCapabilities {
         ConnectorCapabilities {
@@ -159,7 +183,14 @@ impl FederatedConnector for CloudWatchConnector {
 
     async fn health_check(&self) -> ConnectorHealth {
         let start = Instant::now();
-        match self.client.describe_log_groups().log_group_name_prefix(&self.log_group).limit(1).send().await {
+        match self
+            .client
+            .describe_log_groups()
+            .log_group_name_prefix(&self.log_group)
+            .limit(1)
+            .send()
+            .await
+        {
             Ok(_) => ConnectorHealth {
                 status: HealthStatus::Healthy,
                 latency_ms: Some(start.elapsed().as_millis() as u64),
@@ -187,9 +218,13 @@ impl FederatedConnector for CloudWatchConnector {
 
     async fn execute(&self, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
         let insights_query = self.build_insights_query(query);
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
 
-        let start_resp = self.client
+        let start_resp = self
+            .client
             .start_query()
             .log_group_name(&self.log_group)
             .start_time(now - 3600)
@@ -199,15 +234,24 @@ impl FederatedConnector for CloudWatchConnector {
             .await
             .map_err(|e| ConnectorError::QueryFailed(format!("start_query: {e}")))?;
 
-        let query_id = start_resp.query_id()
+        let query_id = start_resp
+            .query_id()
             .ok_or_else(|| ConnectorError::QueryFailed("no query_id".into()))?
             .to_string();
 
         for _ in 0..60 {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-            let result = self.client.get_query_results().query_id(&query_id).send().await
+            let result = self
+                .client
+                .get_query_results()
+                .query_id(&query_id)
+                .send()
+                .await
                 .map_err(|e| ConnectorError::QueryFailed(format!("get_query_results: {e}")))?;
-            let status = result.status().map(|s| s.as_str().to_string()).unwrap_or_default();
+            let status = result
+                .status()
+                .map(|s| s.as_str().to_string())
+                .unwrap_or_default();
             match status.as_str() {
                 "Complete" => return Ok(self.results_to_batches(result.results())),
                 "Failed" | "Cancelled" | "Timeout" => {
@@ -216,7 +260,9 @@ impl FederatedConnector for CloudWatchConnector {
                 _ => continue,
             }
         }
-        Err(ConnectorError::QueryFailed("query timed out after 30s".into()))
+        Err(ConnectorError::QueryFailed(
+            "query timed out after 30s".into(),
+        ))
     }
 
     async fn execute_streaming(
@@ -238,17 +284,30 @@ pub struct CloudWatchConnectorFactory;
 
 #[async_trait]
 impl ConnectorFactory for CloudWatchConnectorFactory {
-    fn connector_type(&self) -> &str { "cloudwatch" }
+    fn connector_type(&self) -> &str {
+        "cloudwatch"
+    }
 
-    async fn create(&self, config: &ConnectorConfig) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
-        let log_group = config.properties.get("log_group")
+    async fn create(
+        &self,
+        config: &ConnectorConfig,
+    ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
+        let log_group = config
+            .properties
+            .get("log_group")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ConnectorError::Connection("cloudwatch requires 'log_group' property".into()))?
+            .ok_or_else(|| {
+                ConnectorError::Connection("cloudwatch requires 'log_group' property".into())
+            })?
             .to_string();
-        let region = config.properties.get("region")
+        let region = config
+            .properties
+            .get("region")
             .and_then(|v| v.as_str())
             .unwrap_or("us-east-1");
-        Ok(Arc::new(CloudWatchConnector::new(config.id.clone(), region, log_group).await))
+        Ok(Arc::new(
+            CloudWatchConnector::new(config.id.clone(), region, log_group).await,
+        ))
     }
 }
 
@@ -257,23 +316,37 @@ mod tests {
     use super::*;
 
     fn make_connector() -> CloudWatchConnector {
-        tokio::runtime::Runtime::new().unwrap().block_on(
-            CloudWatchConnector::new("cw1".into(), "us-east-1", "/aws/lambda/my-fn".into())
-        )
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(CloudWatchConnector::new(
+                "cw1".into(),
+                "us-east-1",
+                "/aws/lambda/my-fn".into(),
+            ))
     }
 
     fn empty_sq() -> SubQuery {
         SubQuery {
-            table: "logs".into(), projections: vec![], filter: None,
-            aggregations: vec![], group_by: vec![], having: None,
-            sort: vec![], limit: None, passthrough: None, offset: None,
+            table: "logs".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            having: None,
+            sort: vec![],
+            limit: None,
+            passthrough: None,
+            offset: None,
         }
     }
 
     #[test]
     fn test_insights_query_basic() {
         let c = make_connector();
-        let q = c.build_insights_query(&SubQuery { limit: Some(20), ..empty_sq() });
+        let q = c.build_insights_query(&SubQuery {
+            limit: Some(20),
+            ..empty_sq()
+        });
         assert!(q.starts_with("fields @timestamp"));
         assert!(q.contains("| limit 20"));
         assert!(!q.contains("| filter"));
@@ -284,12 +357,15 @@ mod tests {
         let c = make_connector();
         let sq = SubQuery {
             filter: Some(FilterExpr::Comparison {
-                field: "level".into(), op: ComparisonOp::Eq,
+                field: "level".into(),
+                op: ComparisonOp::Eq,
                 value: ScalarValue::Utf8("ERROR".into()),
             }),
             ..empty_sq()
         };
-        assert!(c.build_insights_query(&sq).contains(r#"| filter level = "ERROR""#));
+        assert!(c
+            .build_insights_query(&sq)
+            .contains(r#"| filter level = "ERROR""#));
     }
 
     #[test]
@@ -298,11 +374,13 @@ mod tests {
         let sq = SubQuery {
             filter: Some(FilterExpr::And(
                 Box::new(FilterExpr::Comparison {
-                    field: "level".into(), op: ComparisonOp::Eq,
+                    field: "level".into(),
+                    op: ComparisonOp::Eq,
                     value: ScalarValue::Utf8("ERROR".into()),
                 }),
                 Box::new(FilterExpr::Comparison {
-                    field: "status".into(), op: ComparisonOp::Gte,
+                    field: "status".into(),
+                    op: ComparisonOp::Gte,
                     value: ScalarValue::Int64(500),
                 }),
             )),
@@ -316,7 +394,10 @@ mod tests {
     fn test_insights_query_sort_and_limit() {
         let c = make_connector();
         let sq = SubQuery {
-            sort: vec![SortExpr { field: "@timestamp".into(), descending: true }],
+            sort: vec![SortExpr {
+                field: "@timestamp".into(),
+                descending: true,
+            }],
             limit: Some(10),
             ..empty_sq()
         };
@@ -328,7 +409,10 @@ mod tests {
     #[test]
     fn test_scalar_to_insights() {
         assert_eq!(scalar_to_insights(&ScalarValue::Int64(42)), "42");
-        assert_eq!(scalar_to_insights(&ScalarValue::Utf8("hi".into())), "\"hi\"");
+        assert_eq!(
+            scalar_to_insights(&ScalarValue::Utf8("hi".into())),
+            "\"hi\""
+        );
         assert_eq!(scalar_to_insights(&ScalarValue::Boolean(true)), "true");
         assert_eq!(scalar_to_insights(&ScalarValue::Null), "null");
     }
@@ -364,12 +448,15 @@ mod tests {
         let c = make_connector();
         let sq = SubQuery {
             filter: Some(FilterExpr::Not(Box::new(FilterExpr::Comparison {
-                field: "level".into(), op: ComparisonOp::Eq,
+                field: "level".into(),
+                op: ComparisonOp::Eq,
                 value: ScalarValue::Utf8("DEBUG".into()),
             }))),
             ..empty_sq()
         };
-        assert!(c.build_insights_query(&sq).contains(r#"not level = "DEBUG""#));
+        assert!(c
+            .build_insights_query(&sq)
+            .contains(r#"not level = "DEBUG""#));
     }
 
     #[test]

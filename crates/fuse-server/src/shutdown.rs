@@ -8,7 +8,9 @@ use tokio::sync::watch;
 /// Create a shutdown signal that triggers on SIGINT/SIGTERM.
 pub async fn shutdown_signal() {
     let ctrl_c = async {
-        signal::ctrl_c().await.expect("failed to install Ctrl+C handler");
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
     };
 
     #[cfg(unix)]
@@ -79,7 +81,10 @@ pub async fn drain_queries(
             break;
         }
         if start.elapsed() > timeout {
-            tracing::warn!(remaining = count, "Drain timeout — cancelling remaining queries");
+            tracing::warn!(
+                remaining = count,
+                "Drain timeout — cancelling remaining queries"
+            );
             running.cancel_all();
             break;
         }

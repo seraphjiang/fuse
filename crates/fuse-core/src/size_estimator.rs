@@ -11,7 +11,12 @@ pub struct SizeEstimate {
 }
 
 /// Estimate result size from table stats and query characteristics.
-pub fn estimate(table_rows: u64, avg_row_bytes: u64, selectivity: f64, limit: Option<u64>) -> SizeEstimate {
+pub fn estimate(
+    table_rows: u64,
+    avg_row_bytes: u64,
+    selectivity: f64,
+    limit: Option<u64>,
+) -> SizeEstimate {
     let filtered_rows = (table_rows as f64 * selectivity) as u64;
     let rows = match limit {
         Some(l) => filtered_rows.min(l),

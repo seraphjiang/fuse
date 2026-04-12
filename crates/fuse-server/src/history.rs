@@ -62,7 +62,13 @@ impl QueryHistory {
         let q = self.entries.lock().unwrap();
         let total = q.len() as u64;
         if total == 0 {
-            return QueryStats { total_queries: 0, error_count: 0, avg_latency_ms: 0, p95_latency_ms: 0, total_rows_returned: 0 };
+            return QueryStats {
+                total_queries: 0,
+                error_count: 0,
+                avg_latency_ms: 0,
+                p95_latency_ms: 0,
+                total_rows_returned: 0,
+            };
         }
         let error_count = q.iter().filter(|e| e.error.is_some()).count() as u64;
         let total_rows_returned: u64 = q.iter().map(|e| e.row_count).sum();
@@ -71,7 +77,13 @@ impl QueryHistory {
         latencies.sort_unstable();
         let p95_idx = ((latencies.len() as f64) * 0.95).ceil() as usize;
         let p95_latency_ms = latencies[p95_idx.min(latencies.len() - 1)];
-        QueryStats { total_queries: total, error_count, avg_latency_ms, p95_latency_ms, total_rows_returned }
+        QueryStats {
+            total_queries: total,
+            error_count,
+            avg_latency_ms,
+            p95_latency_ms,
+            total_rows_returned,
+        }
     }
 }
 
@@ -164,8 +176,22 @@ mod tests {
     #[test]
     fn test_stats_counts() {
         let h = QueryHistory::new();
-        h.push(HistoryEntry { query: "q1".into(), format: "sql".into(), timestamp: 0, latency_ms: 10, row_count: 5, error: None });
-        h.push(HistoryEntry { query: "q2".into(), format: "sql".into(), timestamp: 0, latency_ms: 30, row_count: 0, error: Some("err".into()) });
+        h.push(HistoryEntry {
+            query: "q1".into(),
+            format: "sql".into(),
+            timestamp: 0,
+            latency_ms: 10,
+            row_count: 5,
+            error: None,
+        });
+        h.push(HistoryEntry {
+            query: "q2".into(),
+            format: "sql".into(),
+            timestamp: 0,
+            latency_ms: 30,
+            row_count: 0,
+            error: Some("err".into()),
+        });
         let s = h.stats();
         assert_eq!(s.total_queries, 2);
         assert_eq!(s.error_count, 1);
@@ -198,19 +224,30 @@ impl QueryAdvisor {
     /// Analyze history entries and return suggestions.
     pub fn analyze(entries: &[HistoryEntry]) -> Vec<QueryAdvice> {
         let mut advice = Vec::new();
-        if entries.is_empty() { return advice; }
+        if entries.is_empty() {
+            return advice;
+        }
 
         // 1. Identify slow queries (above p95 latency)
         let mut latencies: Vec<u64> = entries.iter().map(|e| e.latency_ms).collect();
         latencies.sort_unstable();
         let p95_idx = (latencies.len() as f64 * 0.95) as usize;
-        let p95 = latencies.get(p95_idx.min(latencies.len() - 1)).copied().unwrap_or(0);
-        let slow: Vec<&HistoryEntry> = entries.iter().filter(|e| e.latency_ms > p95 && e.error.is_none()).collect();
+        let p95 = latencies
+            .get(p95_idx.min(latencies.len() - 1))
+            .copied()
+            .unwrap_or(0);
+        let slow: Vec<&HistoryEntry> = entries
+            .iter()
+            .filter(|e| e.latency_ms > p95 && e.error.is_none())
+            .collect();
         if !slow.is_empty() && p95 > 100 {
-            let no_limit = slow.iter().filter(|e| {
-                let lower = e.query.to_lowercase();
-                !lower.contains("limit ")
-            }).count();
+            let no_limit = slow
+                .iter()
+                .filter(|e| {
+                    let lower = e.query.to_lowercase();
+                    !lower.contains("limit ")
+                })
+                .count();
             if no_limit > 0 {
                 advice.push(QueryAdvice {
                     category: "missing_limit".into(),
@@ -227,13 +264,19 @@ impl QueryAdvisor {
         if error_rate > 0.1 && errors > 2 {
             advice.push(QueryAdvice {
                 category: "high_error_rate".into(),
-                message: format!("{:.0}% error rate ({}/{} queries). Check connector health and query syntax.", error_rate * 100.0, errors, total),
+                message: format!(
+                    "{:.0}% error rate ({}/{} queries). Check connector health and query syntax.",
+                    error_rate * 100.0,
+                    errors,
+                    total
+                ),
                 affected_queries: errors,
             });
         }
 
         // 3. Identify repeated queries (caching opportunity)
-        let mut query_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        let mut query_counts: std::collections::HashMap<&str, usize> =
+            std::collections::HashMap::new();
         for e in entries {
             *query_counts.entry(&e.query).or_default() += 1;
         }
@@ -248,10 +291,16 @@ impl QueryAdvisor {
         }
 
         // 4. Identify queries without filters (full table scans)
-        let no_filter = entries.iter().filter(|e| {
-            let lower = e.query.to_lowercase();
-            e.error.is_none() && !lower.contains("where ") && !lower.contains("| where") && e.row_count > 1000
-        }).count();
+        let no_filter = entries
+            .iter()
+            .filter(|e| {
+                let lower = e.query.to_lowercase();
+                e.error.is_none()
+                    && !lower.contains("where ")
+                    && !lower.contains("| where")
+                    && e.row_count > 1000
+            })
+            .count();
         if no_filter > 0 {
             advice.push(QueryAdvice {
                 category: "missing_filter".into(),
@@ -270,26 +319,35 @@ mod advisor_tests {
 
     fn entry(query: &str, latency_ms: u64, row_count: u64, error: Option<&str>) -> HistoryEntry {
         HistoryEntry {
-            query: query.into(), format: "sql".into(), timestamp: now_secs(),
-            latency_ms, row_count, error: error.map(|s| s.into()),
+            query: query.into(),
+            format: "sql".into(),
+            timestamp: now_secs(),
+            latency_ms,
+            row_count,
+            error: error.map(|s| s.into()),
         }
     }
 
     #[test]
     fn test_missing_limit_advice() {
-        let mut entries: Vec<HistoryEntry> = (0..20).map(|_| {
-            entry("SELECT * FROM a.t LIMIT 10", 50, 10, None)
-        }).collect();
+        let mut entries: Vec<HistoryEntry> = (0..20)
+            .map(|_| entry("SELECT * FROM a.t LIMIT 10", 50, 10, None))
+            .collect();
         // Add outliers well above p95
         entries.push(entry("SELECT * FROM a.t", 2000, 10000, None));
         entries.push(entry("SELECT * FROM a.t", 3000, 10000, None));
         let advice = QueryAdvisor::analyze(&entries);
-        assert!(advice.iter().any(|a| a.category == "missing_limit"), "advice: {:?}", advice);
+        assert!(
+            advice.iter().any(|a| a.category == "missing_limit"),
+            "advice: {:?}",
+            advice
+        );
     }
 
     #[test]
     fn test_high_error_rate_advice() {
-        let mut entries: Vec<HistoryEntry> = (0..8).map(|_| entry("SELECT 1", 10, 1, None)).collect();
+        let mut entries: Vec<HistoryEntry> =
+            (0..8).map(|_| entry("SELECT 1", 10, 1, None)).collect();
         entries.extend((0..3).map(|_| entry("SELECT bad", 10, 0, Some("parse error"))));
         let advice = QueryAdvisor::analyze(&entries);
         assert!(advice.iter().any(|a| a.category == "high_error_rate"));
@@ -297,16 +355,25 @@ mod advisor_tests {
 
     #[test]
     fn test_cache_opportunity_advice() {
-        let entries: Vec<HistoryEntry> = (0..5).map(|_| entry("SELECT * FROM a.t WHERE x = 1", 50, 10, None)).collect();
+        let entries: Vec<HistoryEntry> = (0..5)
+            .map(|_| entry("SELECT * FROM a.t WHERE x = 1", 50, 10, None))
+            .collect();
         let advice = QueryAdvisor::analyze(&entries);
         assert!(advice.iter().any(|a| a.category == "cache_opportunity"));
     }
 
     #[test]
     fn test_no_advice_for_healthy_history() {
-        let entries: Vec<HistoryEntry> = (0..5).map(|i| {
-            entry(&format!("SELECT * FROM a.t WHERE id = {} LIMIT 10", i), 30, 10, None)
-        }).collect();
+        let entries: Vec<HistoryEntry> = (0..5)
+            .map(|i| {
+                entry(
+                    &format!("SELECT * FROM a.t WHERE id = {} LIMIT 10", i),
+                    30,
+                    10,
+                    None,
+                )
+            })
+            .collect();
         let advice = QueryAdvisor::analyze(&entries);
         assert!(advice.is_empty(), "expected no advice, got: {:?}", advice);
     }

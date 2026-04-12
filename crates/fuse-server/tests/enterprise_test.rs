@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //! #720 Enterprise stack E2E — multi-tenancy + auth + rate limit + audit + governor.
 
-use fuse_server::auth::{AuthState, ApiKeyEntry, Role};
-use fuse_server::tenant::{TenantConfig, TenantRegistry, QueryGovernor};
-use fuse_server::audit::{AuditLog, AuditEntry};
+use fuse_server::audit::{AuditEntry, AuditLog};
+use fuse_server::auth::{ApiKeyEntry, AuthState, Role};
+use fuse_server::tenant::{QueryGovernor, TenantConfig, TenantRegistry};
 
 // ── Multi-tenancy ──
 
@@ -22,7 +22,11 @@ fn test_tenant_restricted_sees_only_allowed() {
     let registry = TenantRegistry::new(vec![restricted]);
     let all_ds = vec!["os1".into(), "ddb1".into(), "s3".into()];
     let filtered = registry.filter_datasources("team-a", &all_ds);
-    assert_eq!(filtered, vec!["os1".to_string()], "should only see allowed datasources");
+    assert_eq!(
+        filtered,
+        vec!["os1".to_string()],
+        "should only see allowed datasources"
+    );
 }
 
 #[test]
@@ -114,8 +118,16 @@ fn test_governor_effective_timeout() {
 #[test]
 fn test_auth_admin_vs_viewer_roles() {
     let auth = AuthState::new(vec![
-        ApiKeyEntry { key: "admin-key".into(), identity: "alice".into(), role: Role::Admin },
-        ApiKeyEntry { key: "viewer-key".into(), identity: "bob".into(), role: Role::Viewer },
+        ApiKeyEntry {
+            key: "admin-key".into(),
+            identity: "alice".into(),
+            role: Role::Admin,
+        },
+        ApiKeyEntry {
+            key: "viewer-key".into(),
+            identity: "bob".into(),
+            role: Role::Viewer,
+        },
     ]);
     let admin = auth.validate("admin-key").unwrap();
     let viewer = auth.validate("viewer-key").unwrap();
@@ -140,7 +152,8 @@ async fn test_audit_log_records_entries() {
         row_count: 10,
         error: None,
         client_ip: None,
-    }).await;
+    })
+    .await;
     let entries = log.recent(10).await;
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].identity, "alice");
@@ -161,7 +174,8 @@ async fn test_audit_log_respects_max_entries() {
             row_count: 0,
             error: None,
             client_ip: None,
-        }).await;
+        })
+        .await;
     }
     let count = log.count().await;
     assert!(count <= 3, "should cap at max_entries, got {}", count);
@@ -181,8 +195,16 @@ fn test_rate_limit_state_creation() {
 #[test]
 fn test_tenant_isolation_different_keys_different_access() {
     let auth = AuthState::new(vec![
-        ApiKeyEntry { key: "team-a-key".into(), identity: "team-a".into(), role: Role::Viewer },
-        ApiKeyEntry { key: "team-b-key".into(), identity: "team-b".into(), role: Role::Viewer },
+        ApiKeyEntry {
+            key: "team-a-key".into(),
+            identity: "team-a".into(),
+            role: Role::Viewer,
+        },
+        ApiKeyEntry {
+            key: "team-b-key".into(),
+            identity: "team-b".into(),
+            role: Role::Viewer,
+        },
     ]);
     let tenants = TenantRegistry::new(vec![
         TenantConfig::with_datasources("team-a", vec!["os-prod".into()]),

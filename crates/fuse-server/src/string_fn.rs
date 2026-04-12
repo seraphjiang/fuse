@@ -32,11 +32,25 @@ pub fn trim(rows: &mut [Vec<Value>], col: usize) {
 
 /// Concatenate two columns into a new value.
 pub fn concat_columns(rows: &[Vec<Value>], col_a: usize, col_b: usize, sep: &str) -> Vec<Value> {
-    rows.iter().map(|row| {
-        let a = row.get(col_a).map(|v| match v { Value::String(s) => s.clone(), _ => v.to_string() }).unwrap_or_default();
-        let b = row.get(col_b).map(|v| match v { Value::String(s) => s.clone(), _ => v.to_string() }).unwrap_or_default();
-        Value::String(format!("{}{}{}", a, sep, b))
-    }).collect()
+    rows.iter()
+        .map(|row| {
+            let a = row
+                .get(col_a)
+                .map(|v| match v {
+                    Value::String(s) => s.clone(),
+                    _ => v.to_string(),
+                })
+                .unwrap_or_default();
+            let b = row
+                .get(col_b)
+                .map(|v| match v {
+                    Value::String(s) => s.clone(),
+                    _ => v.to_string(),
+                })
+                .unwrap_or_default();
+            Value::String(format!("{}{}{}", a, sep, b))
+        })
+        .collect()
 }
 
 #[cfg(test)]

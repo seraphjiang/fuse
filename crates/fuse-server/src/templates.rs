@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Query templates — parameterized queries for reuse.
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryTemplate {
@@ -47,11 +47,16 @@ impl Default for TemplateStore {
 
 impl TemplateStore {
     pub fn new() -> Self {
-        Self { templates: Mutex::new(HashMap::new()) }
+        Self {
+            templates: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn save(&self, template: QueryTemplate) {
-        self.templates.lock().unwrap().insert(template.name.clone(), template);
+        self.templates
+            .lock()
+            .unwrap()
+            .insert(template.name.clone(), template);
     }
 
     pub fn get(&self, name: &str) -> Option<QueryTemplate> {
@@ -75,7 +80,8 @@ mod tests {
     fn test_render() {
         let t = QueryTemplate {
             name: "errors".into(),
-            template: "SELECT * FROM {{ds}}.logs WHERE status >= {{min_status}} LIMIT {{limit}}".into(),
+            template: "SELECT * FROM {{ds}}.logs WHERE status >= {{min_status}} LIMIT {{limit}}"
+                .into(),
             params: vec!["ds".into(), "min_status".into(), "limit".into()],
             description: None,
         };
@@ -84,14 +90,19 @@ mod tests {
         vals.insert("min_status".into(), "500".into());
         vals.insert("limit".into(), "100".into());
         let sql = t.render(&vals).unwrap();
-        assert_eq!(sql, "SELECT * FROM cluster_a.logs WHERE status >= 500 LIMIT 100");
+        assert_eq!(
+            sql,
+            "SELECT * FROM cluster_a.logs WHERE status >= 500 LIMIT 100"
+        );
     }
 
     #[test]
     fn test_missing_param() {
         let t = QueryTemplate {
-            name: "t".into(), template: "SELECT {{x}}".into(),
-            params: vec!["x".into()], description: None,
+            name: "t".into(),
+            template: "SELECT {{x}}".into(),
+            params: vec!["x".into()],
+            description: None,
         };
         assert!(t.render(&HashMap::new()).is_err());
     }
@@ -100,8 +111,10 @@ mod tests {
     fn test_store() {
         let store = TemplateStore::new();
         store.save(QueryTemplate {
-            name: "t1".into(), template: "SELECT 1".into(),
-            params: vec![], description: None,
+            name: "t1".into(),
+            template: "SELECT 1".into(),
+            params: vec![],
+            description: None,
         });
         assert!(store.get("t1").is_some());
         assert_eq!(store.list().len(), 1);

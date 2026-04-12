@@ -16,8 +16,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use arrow::array::{
-    Array, ArrayRef, BooleanArray, Float64Array, Int64Array, RecordBatch, StringArray,
-    UInt32Array,
+    Array, ArrayRef, BooleanArray, Float64Array, Int64Array, RecordBatch, StringArray, UInt32Array,
 };
 use arrow::compute::{concat_batches, take};
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
@@ -168,7 +167,13 @@ pub fn hash_join(
 ) -> Result<Vec<RecordBatch>> {
     // RIGHT JOIN = swap sides + LEFT JOIN
     if join_type == JoinType::Right {
-        return hash_join(probe_batches, probe_key, build_batches, build_key, JoinType::Left);
+        return hash_join(
+            probe_batches,
+            probe_key,
+            build_batches,
+            build_key,
+            JoinType::Left,
+        );
     }
 
     if build_batches.is_empty() || probe_batches.is_empty() {
@@ -180,12 +185,12 @@ pub fn hash_join(
     let build_merged = concat_batches(&build_schema, build_batches)?;
     let probe_merged = concat_batches(&probe_schema, probe_batches)?;
 
-    let build_key_idx = build_schema.index_of(build_key).map_err(|_| {
-        DataFusionError::Plan(format!("build key '{}' not found", build_key))
-    })?;
-    let probe_key_idx = probe_schema.index_of(probe_key).map_err(|_| {
-        DataFusionError::Plan(format!("probe key '{}' not found", probe_key))
-    })?;
+    let build_key_idx = build_schema
+        .index_of(build_key)
+        .map_err(|_| DataFusionError::Plan(format!("build key '{}' not found", build_key)))?;
+    let probe_key_idx = probe_schema
+        .index_of(probe_key)
+        .map_err(|_| DataFusionError::Plan(format!("probe key '{}' not found", probe_key)))?;
 
     // Build hash table: key_string -> Vec<row_index>
     let build_col = build_merged.column(build_key_idx);
@@ -194,8 +199,7 @@ pub fn hash_join(
         if build_col.is_null(row) {
             continue;
         }
-        let key = arrow::util::display::array_value_to_string(build_col, row)
-            .unwrap_or_default();
+        let key = arrow::util::display::array_value_to_string(build_col, row).unwrap_or_default();
         hash_table.entry(key).or_default().push(row as u32);
     }
 
@@ -207,14 +211,17 @@ pub fn hash_join(
 
     for probe_row in 0..probe_merged.num_rows() {
         if probe_col.is_null(probe_row) {
-            if join_type == JoinType::Left || join_type == JoinType::Anti || join_type == JoinType::Full {
+            if join_type == JoinType::Left
+                || join_type == JoinType::Anti
+                || join_type == JoinType::Full
+            {
                 build_indices.push(None);
                 probe_indices.push(Some(probe_row as u32));
             }
             continue;
         }
-        let key = arrow::util::display::array_value_to_string(probe_col, probe_row)
-            .unwrap_or_default();
+        let key =
+            arrow::util::display::array_value_to_string(probe_col, probe_row).unwrap_or_default();
         match hash_table.get(&key) {
             Some(build_rows) => {
                 match join_type {
@@ -235,7 +242,10 @@ pub fn hash_join(
                 }
             }
             None => {
-                if join_type == JoinType::Left || join_type == JoinType::Anti || join_type == JoinType::Full {
+                if join_type == JoinType::Left
+                    || join_type == JoinType::Anti
+                    || join_type == JoinType::Full
+                {
                     build_indices.push(None);
                     probe_indices.push(Some(probe_row as u32));
                 }
@@ -268,7 +278,13 @@ pub fn hash_join(
     }
 
     // Assemble output: build columns (with nulls for unmatched) + probe columns (with nulls for unmatched)
-    let output_schema = merge_schemas(&build_schema, &probe_schema, build_key, probe_key, join_type);
+    let output_schema = merge_schemas(
+        &build_schema,
+        &probe_schema,
+        build_key,
+        probe_key,
+        join_type,
+    );
 
     let mut output_columns: Vec<ArrayRef> = Vec::new();
 
@@ -345,7 +361,13 @@ pub async fn execute_semi_join(
         .map_err(|e| DataFusionError::External(Box::new(e)))?;
 
     // Step 5: local hash join
-    hash_join(&build_batches, build_key, &probe_batches, probe_key, join_type)
+    hash_join(
+        &build_batches,
+        build_key,
+        &probe_batches,
+        probe_key,
+        join_type,
+    )
 }
 
 // ── Internal helpers ──
@@ -634,7 +656,10 @@ mod tests {
         let probe = probe_batch(&["a", "b"], &["alice", "bob"]);
         let result = hash_join(&[build], "id", &[probe], "id", JoinType::Semi).unwrap();
         let rows: usize = result.iter().map(|b| b.num_rows()).sum();
-        assert_eq!(rows, 2, "semi with full overlap should return all probe rows");
+        assert_eq!(
+            rows, 2,
+            "semi with full overlap should return all probe rows"
+        );
     }
 
     #[test]
@@ -652,11 +677,35 @@ mod tests {
         // Semi + Anti should equal total probe rows
         let build = build_batch(&["a", "c"], &[1, 3]);
         let probe = probe_batch(&["a", "b", "c", "d"], &["a1", "b1", "c1", "d1"]);
-        let semi: usize = hash_join(std::slice::from_ref(&build), "id", std::slice::from_ref(&probe), "id", JoinType::Semi)
-            .unwrap().iter().map(|b| b.num_rows()).sum();
-        let anti: usize = hash_join(std::slice::from_ref(&build), "id", std::slice::from_ref(&probe), "id", JoinType::Anti)
-            .unwrap().iter().map(|b| b.num_rows()).sum();
-        assert_eq!(semi + anti, 4, "semi ({}) + anti ({}) should equal probe rows (4)", semi, anti);
+        let semi: usize = hash_join(
+            std::slice::from_ref(&build),
+            "id",
+            std::slice::from_ref(&probe),
+            "id",
+            JoinType::Semi,
+        )
+        .unwrap()
+        .iter()
+        .map(|b| b.num_rows())
+        .sum();
+        let anti: usize = hash_join(
+            std::slice::from_ref(&build),
+            "id",
+            std::slice::from_ref(&probe),
+            "id",
+            JoinType::Anti,
+        )
+        .unwrap()
+        .iter()
+        .map(|b| b.num_rows())
+        .sum();
+        assert_eq!(
+            semi + anti,
+            4,
+            "semi ({}) + anti ({}) should equal probe rows (4)",
+            semi,
+            anti
+        );
     }
 
     #[test]
@@ -667,8 +716,16 @@ mod tests {
         let schema = result[0].schema();
         let cols: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
         // Should have probe columns (id, name), NOT build columns (id, value)
-        assert!(cols.contains(&"name"), "should have probe 'name' column: {:?}", cols);
-        assert!(!cols.contains(&"value"), "should NOT have build 'value' column: {:?}", cols);
+        assert!(
+            cols.contains(&"name"),
+            "should have probe 'name' column: {:?}",
+            cols
+        );
+        assert!(
+            !cols.contains(&"value"),
+            "should NOT have build 'value' column: {:?}",
+            cols
+        );
     }
 
     #[test]
@@ -711,19 +768,43 @@ mod tests {
         let mut has_null = false;
         for col_idx in 0..batch.num_columns() {
             let col = batch.column(col_idx);
-            if col.null_count() > 0 { has_null = true; break; }
+            if col.null_count() > 0 {
+                has_null = true;
+                break;
+            }
         }
-        assert!(has_null, "FULL OUTER JOIN should produce NULL values for unmatched rows");
+        assert!(
+            has_null,
+            "FULL OUTER JOIN should produce NULL values for unmatched rows"
+        );
     }
 
     #[test]
     fn test_full_outer_join_superset_of_inner() {
         let build = build_batch(&["a", "c"], &[100, 300]);
         let probe = probe_batch(&["a", "b"], &["alice", "bob"]);
-        let inner = hash_join(std::slice::from_ref(&build), "id", std::slice::from_ref(&probe), "id", JoinType::Inner).unwrap();
-        let full = hash_join(std::slice::from_ref(&build), "id", std::slice::from_ref(&probe), "id", JoinType::Full).unwrap();
-        assert!(full[0].num_rows() >= inner[0].num_rows(),
-            "FULL should have >= INNER rows: {} vs {}", full[0].num_rows(), inner[0].num_rows());
+        let inner = hash_join(
+            std::slice::from_ref(&build),
+            "id",
+            std::slice::from_ref(&probe),
+            "id",
+            JoinType::Inner,
+        )
+        .unwrap();
+        let full = hash_join(
+            std::slice::from_ref(&build),
+            "id",
+            std::slice::from_ref(&probe),
+            "id",
+            JoinType::Full,
+        )
+        .unwrap();
+        assert!(
+            full[0].num_rows() >= inner[0].num_rows(),
+            "FULL should have >= INNER rows: {} vs {}",
+            full[0].num_rows(),
+            inner[0].num_rows()
+        );
     }
 
     #[test]

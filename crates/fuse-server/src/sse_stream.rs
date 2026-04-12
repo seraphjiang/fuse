@@ -18,7 +18,10 @@ pub enum StreamEvent {
     /// Schema/columns available.
     Schema { columns: Vec<ColumnDef> },
     /// A batch of rows.
-    Rows { rows: Vec<Vec<serde_json::Value>>, batch_index: u32 },
+    Rows {
+        rows: Vec<Vec<serde_json::Value>>,
+        batch_index: u32,
+    },
     /// Query complete with summary.
     Complete { total_rows: u64, elapsed_ms: u64 },
     /// Error during execution.
@@ -50,7 +53,9 @@ mod tests {
 
     #[test]
     fn test_format_sse_started() {
-        let e = StreamEvent::Started { query_id: "q1".into() };
+        let e = StreamEvent::Started {
+            query_id: "q1".into(),
+        };
         let sse = format_sse(&e);
         assert!(sse.starts_with("event: started\n"));
         assert!(sse.contains("\"query_id\":\"q1\""));
@@ -59,7 +64,12 @@ mod tests {
 
     #[test]
     fn test_format_sse_schema() {
-        let e = StreamEvent::Schema { columns: vec![ColumnDef { name: "id".into(), data_type: "Int64".into() }] };
+        let e = StreamEvent::Schema {
+            columns: vec![ColumnDef {
+                name: "id".into(),
+                data_type: "Int64".into(),
+            }],
+        };
         let sse = format_sse(&e);
         assert!(sse.contains("event: schema"));
         assert!(sse.contains("\"name\":\"id\""));
@@ -77,7 +87,10 @@ mod tests {
 
     #[test]
     fn test_format_sse_complete() {
-        let e = StreamEvent::Complete { total_rows: 100, elapsed_ms: 42 };
+        let e = StreamEvent::Complete {
+            total_rows: 100,
+            elapsed_ms: 42,
+        };
         let sse = format_sse(&e);
         assert!(sse.contains("event: complete"));
         assert!(sse.contains("\"total_rows\":100"));
@@ -85,7 +98,9 @@ mod tests {
 
     #[test]
     fn test_format_sse_error() {
-        let e = StreamEvent::Error { message: "timeout".into() };
+        let e = StreamEvent::Error {
+            message: "timeout".into(),
+        };
         let sse = format_sse(&e);
         assert!(sse.contains("event: error"));
         assert!(sse.contains("timeout"));

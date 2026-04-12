@@ -10,8 +10,7 @@ use std::net::IpAddr;
 /// Validate a callback URL is safe for outbound requests.
 /// Rejects private IPs, loopback, link-local, metadata endpoints.
 pub fn validate_callback_url(url: &str) -> Result<(), String> {
-    let parsed = url::Url::parse(url)
-        .map_err(|e| format!("invalid URL: {e}"))?;
+    let parsed = url::Url::parse(url).map_err(|e| format!("invalid URL: {e}"))?;
 
     // Only allow http/https schemes
     match parsed.scheme() {
@@ -19,8 +18,7 @@ pub fn validate_callback_url(url: &str) -> Result<(), String> {
         s => return Err(format!("scheme '{}' not allowed (use http or https)", s)),
     }
 
-    let host = parsed.host_str()
-        .ok_or("URL must have a host")?;
+    let host = parsed.host_str().ok_or("URL must have a host")?;
 
     // Block known dangerous hostnames
     let lower = host.to_lowercase();
@@ -30,7 +28,10 @@ pub fn validate_callback_url(url: &str) -> Result<(), String> {
 
     // If host is an IP, check for private/reserved ranges
     // Strip brackets for IPv6 addresses (url crate returns "[::1]")
-    let bare_host = host.strip_prefix('[').and_then(|h| h.strip_suffix(']')).unwrap_or(host);
+    let bare_host = host
+        .strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host);
     if let Ok(ip) = bare_host.parse::<IpAddr>() {
         if is_private_ip(&ip) {
             return Err(format!("private/reserved IP '{}' is blocked", ip));
@@ -52,11 +53,11 @@ fn is_private_ip(ip: &IpAddr) -> bool {
             || v4.is_private()            // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
             || v4.is_link_local()         // 169.254.0.0/16
             || v4.is_unspecified()        // 0.0.0.0
-            || v4.is_broadcast()          // 255.255.255.255
+            || v4.is_broadcast() // 255.255.255.255
         }
         IpAddr::V6(v6) => {
             v6.is_loopback()              // ::1
-            || v6.is_unspecified()        // ::
+            || v6.is_unspecified() // ::
         }
     }
 }

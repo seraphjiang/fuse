@@ -51,12 +51,16 @@ pub enum ExecStatus {
 /// Format: `minute hour day_of_month month day_of_week`
 pub fn cron_matches(cron: &str, minute: u32, hour: u32) -> bool {
     let parts: Vec<&str> = cron.split_whitespace().collect();
-    if parts.len() < 2 { return false; }
+    if parts.len() < 2 {
+        return false;
+    }
     field_matches(parts[0], minute) && field_matches(parts[1], hour)
 }
 
 fn field_matches(field: &str, value: u32) -> bool {
-    if field == "*" { return true; }
+    if field == "*" {
+        return true;
+    }
     if let Some(interval) = field.strip_prefix("*/") {
         if let Ok(n) = interval.parse::<u32>() {
             return n > 0 && value.is_multiple_of(n);
@@ -66,7 +70,9 @@ fn field_matches(field: &str, value: u32) -> bool {
         return n == value;
     }
     // Comma-separated values
-    field.split(',').any(|v| v.trim().parse::<u32>().ok() == Some(value))
+    field
+        .split(',')
+        .any(|v| v.trim().parse::<u32>().ok() == Some(value))
 }
 
 /// Schedule registry — stores and manages scheduled queries.
@@ -86,7 +92,10 @@ impl ScheduleRegistry {
     }
 
     pub fn add(&self, schedule: ScheduledQuery) {
-        self.schedules.lock().unwrap().insert(schedule.id.clone(), schedule);
+        self.schedules
+            .lock()
+            .unwrap()
+            .insert(schedule.id.clone(), schedule);
     }
 
     pub fn remove(&self, id: &str) -> bool {
@@ -103,9 +112,13 @@ impl ScheduleRegistry {
 
     /// Get schedules that should run at the given minute/hour.
     pub fn due(&self, minute: u32, hour: u32) -> Vec<ScheduledQuery> {
-        self.schedules.lock().unwrap().values()
+        self.schedules
+            .lock()
+            .unwrap()
+            .values()
             .filter(|s| s.enabled && cron_matches(&s.cron, minute, hour))
-            .cloned().collect()
+            .cloned()
+            .collect()
     }
 
     pub fn record_execution(&self, exec: ScheduleExecution) {
@@ -120,7 +133,11 @@ impl ScheduleRegistry {
     pub fn history(&self, schedule_id: Option<&str>) -> Vec<ScheduleExecution> {
         let history = self.history.lock().unwrap();
         match schedule_id {
-            Some(id) => history.iter().filter(|e| e.schedule_id == id).cloned().collect(),
+            Some(id) => history
+                .iter()
+                .filter(|e| e.schedule_id == id)
+                .cloned()
+                .collect(),
             None => history.clone(),
         }
     }
@@ -140,9 +157,15 @@ mod tests {
 
     fn sq(id: &str, cron: &str) -> ScheduledQuery {
         ScheduledQuery {
-            id: id.into(), name: id.into(), query: "SELECT 1".into(),
-            format: "sql".into(), cron: cron.into(), enabled: true,
-            alert_on_change: false, alert_on_error: false, created_at: 0,
+            id: id.into(),
+            name: id.into(),
+            query: "SELECT 1".into(),
+            format: "sql".into(),
+            cron: cron.into(),
+            enabled: true,
+            alert_on_change: false,
+            alert_on_error: false,
+            created_at: 0,
         }
     }
 
@@ -219,8 +242,12 @@ mod tests {
     fn test_execution_history() {
         let reg = ScheduleRegistry::new(100);
         reg.record_execution(ScheduleExecution {
-            schedule_id: "s1".into(), executed_at: 1000, row_count: 5,
-            latency_ms: 42, status: ExecStatus::Success, error: None,
+            schedule_id: "s1".into(),
+            executed_at: 1000,
+            row_count: 5,
+            latency_ms: 42,
+            status: ExecStatus::Success,
+            error: None,
         });
         assert_eq!(reg.history(None).len(), 1);
         assert_eq!(reg.history(Some("s1")).len(), 1);
@@ -232,8 +259,12 @@ mod tests {
         let reg = ScheduleRegistry::new(3);
         for i in 0..5 {
             reg.record_execution(ScheduleExecution {
-                schedule_id: format!("s{}", i), executed_at: i as u64,
-                row_count: 0, latency_ms: 0, status: ExecStatus::Success, error: None,
+                schedule_id: format!("s{}", i),
+                executed_at: i as u64,
+                row_count: 0,
+                latency_ms: 0,
+                status: ExecStatus::Success,
+                error: None,
             });
         }
         assert_eq!(reg.history(None).len(), 3);

@@ -3,7 +3,11 @@
 
 /// Build a cache key from query components.
 pub fn build_key(format: &str, query: &str, tenant: Option<&str>) -> String {
-    let normalized = query.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
+    let normalized = query
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
     match tenant {
         Some(t) => format!("{}:{}:{}", t, format, normalized),
         None => format!("{}:{}", format, normalized),

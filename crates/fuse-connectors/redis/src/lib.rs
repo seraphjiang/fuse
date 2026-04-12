@@ -49,18 +49,32 @@ impl std::fmt::Debug for RedisConnector {
 }
 
 impl RedisConnector {
-    pub async fn new(id: String, url: &str, key_pattern: String, max_connections: u32) -> Result<Self, ConnectorError> {
+    pub async fn new(
+        id: String,
+        url: &str,
+        key_pattern: String,
+        max_connections: u32,
+    ) -> Result<Self, ConnectorError> {
         let manager = RedisConnectionManager::new(url)
             .map_err(|e| ConnectorError::Connection(format!("Redis connect: {e}")))?;
         let pool = bb8::Pool::builder()
             .max_size(max_connections)
-            .build(manager).await
+            .build(manager)
+            .await
             .map_err(|e| ConnectorError::Connection(format!("Redis pool: {e}")))?;
-        Ok(Self { id, pool, key_pattern })
+        Ok(Self {
+            id,
+            pool,
+            key_pattern,
+        })
     }
 
-    async fn get_connection(&self) -> Result<bb8::PooledConnection<'_, RedisConnectionManager>, ConnectorError> {
-        self.pool.get().await
+    async fn get_connection(
+        &self,
+    ) -> Result<bb8::PooledConnection<'_, RedisConnectionManager>, ConnectorError> {
+        self.pool
+            .get()
+            .await
             .map_err(|e| ConnectorError::Connection(format!("Redis pool get: {e}")))
     }
 
@@ -71,24 +85,38 @@ impl RedisConnector {
         let mut keys = Vec::new();
         let max = limit.unwrap_or(10_000) as usize;
 
-        let mut iter: redis::AsyncIter<String> = inner.scan_match(&self.key_pattern).await
+        let mut iter: redis::AsyncIter<String> = inner
+            .scan_match(&self.key_pattern)
+            .await
             .map_err(|e| ConnectorError::QueryFailed(format!("SCAN: {e}")))?;
 
         while let Some(key) = iter.next_item().await {
             keys.push(key);
-            if keys.len() >= max { break; }
+            if keys.len() >= max {
+                break;
+            }
         }
         Ok(keys)
     }
 
-    async fn read_hash(conn: &mut redis::aio::MultiplexedConnection, key: &str) -> Result<BTreeMap<String, String>, ConnectorError> {
-        let fields: BTreeMap<String, String> = conn.hgetall(key).await
+    async fn read_hash(
+        conn: &mut redis::aio::MultiplexedConnection,
+        key: &str,
+    ) -> Result<BTreeMap<String, String>, ConnectorError> {
+        let fields: BTreeMap<String, String> = conn
+            .hgetall(key)
+            .await
             .map_err(|e| ConnectorError::QueryFailed(format!("HGETALL {key}: {e}")))?;
         Ok(fields)
     }
 
-    async fn read_string(conn: &mut redis::aio::MultiplexedConnection, key: &str) -> Result<String, ConnectorError> {
-        let val: String = conn.get(key).await
+    async fn read_string(
+        conn: &mut redis::aio::MultiplexedConnection,
+        key: &str,
+    ) -> Result<String, ConnectorError> {
+        let val: String = conn
+            .get(key)
+            .await
             .map_err(|e| ConnectorError::QueryFailed(format!("GET {key}: {e}")))?;
         Ok(val)
     }
@@ -98,10 +126,14 @@ impl RedisConnector {
         let mut conn = self.get_connection().await?;
         let inner = &mut *conn;
         let keys = self.scan_keys(Some(10)).await?;
-        let key = keys.first()
+        let key = keys
+            .first()
             .ok_or_else(|| ConnectorError::SchemaDiscovery("no keys match pattern".into()))?;
 
-        let key_type: String = redis::cmd("TYPE").arg(key).query_async(inner).await
+        let key_type: String = redis::cmd("TYPE")
+            .arg(key)
+            .query_async(inner)
+            .await
             .map_err(|e| ConnectorError::SchemaDiscovery(format!("TYPE: {e}")))?;
 
         match key_type.as_str() {
@@ -119,18 +151,25 @@ impl RedisConnector {
                 }
                 Ok((Schema::new(fields), "hash".into()))
             }
-            "string" => {
-                Ok((Schema::new(vec![
+            "string" => Ok((
+                Schema::new(vec![
                     Field::new("_key", DataType::Utf8, false),
                     Field::new("value", DataType::Utf8, false),
-                ]), "string".into()))
-            }
-            other => Err(ConnectorError::SchemaDiscovery(format!("unsupported key type: {other}"))),
+                ]),
+                "string".into(),
+            )),
+            other => Err(ConnectorError::SchemaDiscovery(format!(
+                "unsupported key type: {other}"
+            ))),
         }
     }
 
     /// Build RecordBatches from hash keys.
-    fn hashes_to_batch(keys: &[String], rows: &[BTreeMap<String, String>], schema: &Arc<Schema>) -> Result<RecordBatch, ConnectorError> {
+    fn hashes_to_batch(
+        keys: &[String],
+        rows: &[BTreeMap<String, String>],
+        schema: &Arc<Schema>,
+    ) -> Result<RecordBatch, ConnectorError> {
         let num_cols = schema.fields().len();
         let mut columns: Vec<Vec<Option<String>>> = vec![Vec::with_capacity(rows.len()); num_cols];
 
@@ -144,7 +183,8 @@ impl RedisConnector {
             }
         }
 
-        let arrays: Vec<Arc<dyn arrow::array::Array>> = columns.into_iter()
+        let arrays: Vec<Arc<dyn arrow::array::Array>> = columns
+            .into_iter()
             .map(|col| Arc::new(StringArray::from(col)) as Arc<dyn arrow::array::Array>)
             .collect();
 
@@ -153,18 +193,30 @@ impl RedisConnector {
     }
 
     /// Build RecordBatch from string keys.
-    fn strings_to_batch(keys: &[String], values: &[String], schema: &Arc<Schema>) -> Result<RecordBatch, ConnectorError> {
-        RecordBatch::try_new(schema.clone(), vec![
-            Arc::new(StringArray::from(keys.to_vec())),
-            Arc::new(StringArray::from(values.to_vec())),
-        ]).map_err(|e| ConnectorError::QueryFailed(format!("build batch: {e}")))
+    fn strings_to_batch(
+        keys: &[String],
+        values: &[String],
+        schema: &Arc<Schema>,
+    ) -> Result<RecordBatch, ConnectorError> {
+        RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(StringArray::from(keys.to_vec())),
+                Arc::new(StringArray::from(values.to_vec())),
+            ],
+        )
+        .map_err(|e| ConnectorError::QueryFailed(format!("build batch: {e}")))
     }
 }
 
 #[async_trait]
 impl FederatedConnector for RedisConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "redis" }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "redis"
+    }
 
     fn capabilities(&self) -> ConnectorCapabilities {
         ConnectorCapabilities {
@@ -207,8 +259,17 @@ impl FederatedConnector for RedisConnector {
     }
 
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
-        let table_name = self.key_pattern.replace('*', "").replace(':', "_").trim_matches('_').to_string();
-        let name = if table_name.is_empty() { "keys".to_string() } else { table_name };
+        let table_name = self
+            .key_pattern
+            .replace('*', "")
+            .replace(':', "_")
+            .trim_matches('_')
+            .to_string();
+        let name = if table_name.is_empty() {
+            "keys".to_string()
+        } else {
+            table_name
+        };
         Ok(vec![SchemaInfo {
             name,
             schema_type: SchemaType::Table,
@@ -269,17 +330,34 @@ pub struct RedisConnectorFactory;
 
 #[async_trait]
 impl ConnectorFactory for RedisConnectorFactory {
-    fn connector_type(&self) -> &str { "redis" }
+    fn connector_type(&self) -> &str {
+        "redis"
+    }
 
-    async fn create(&self, config: &ConnectorConfig) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
-        let url = config.properties.get("url")
+    async fn create(
+        &self,
+        config: &ConnectorConfig,
+    ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
+        let url = config
+            .properties
+            .get("url")
             .and_then(|v| v.as_str())
             .unwrap_or("redis://127.0.0.1:6379");
-        let key_pattern = config.properties.get("key_pattern")
+        let key_pattern = config
+            .properties
+            .get("key_pattern")
             .and_then(|v| v.as_str())
             .unwrap_or("*")
             .to_string();
-        Ok(Arc::new(RedisConnector::new(config.id.clone(), url, key_pattern, config.max_connections(8)).await?))
+        Ok(Arc::new(
+            RedisConnector::new(
+                config.id.clone(),
+                url,
+                key_pattern,
+                config.max_connections(8),
+            )
+            .await?,
+        ))
     }
 }
 
@@ -288,7 +366,9 @@ mod tests {
     use super::*;
 
     async fn make_connector() -> RedisConnector {
-        RedisConnector::new("r1".into(), "redis://localhost:6379", "user:*".into(), 2).await.unwrap()
+        RedisConnector::new("r1".into(), "redis://localhost:6379", "user:*".into(), 2)
+            .await
+            .unwrap()
     }
 
     #[tokio::test]
@@ -351,7 +431,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_discover_schemas_wildcard_only() {
-        let c = RedisConnector::new("r".into(), "redis://localhost:6379", "*".into(), 2).await.unwrap();
+        let c = RedisConnector::new("r".into(), "redis://localhost:6379", "*".into(), 2)
+            .await
+            .unwrap();
         let schemas = c.discover_schemas().await.unwrap();
         assert_eq!(schemas[0].name, "keys");
     }
@@ -401,7 +483,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_new_valid_url_formats() {
-        assert!(RedisConnector::new("r".into(), "redis://localhost", "*".into(), 2).await.is_ok());
-        assert!(RedisConnector::new("r".into(), "redis://localhost:6379", "*".into(), 2).await.is_ok());
+        assert!(
+            RedisConnector::new("r".into(), "redis://localhost", "*".into(), 2)
+                .await
+                .is_ok()
+        );
+        assert!(
+            RedisConnector::new("r".into(), "redis://localhost:6379", "*".into(), 2)
+                .await
+                .is_ok()
+        );
     }
 }

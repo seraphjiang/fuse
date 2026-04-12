@@ -17,7 +17,11 @@ pub struct ConnectorVersion {
 
 impl ConnectorVersion {
     pub const fn new(major: u32, minor: u32, patch: u32) -> Self {
-        Self { major, minor, patch }
+        Self {
+            major,
+            minor,
+            patch,
+        }
     }
 
     /// Current engine protocol version.
@@ -43,7 +47,10 @@ pub enum Compatibility {
     /// Fully compatible.
     Compatible,
     /// Connector is newer minor version — engine may not support all features.
-    ConnectorAhead { connector: ConnectorVersion, engine: ConnectorVersion },
+    ConnectorAhead {
+        connector: ConnectorVersion,
+        engine: ConnectorVersion,
+    },
     /// Connector major version mismatch — incompatible.
     Incompatible { reason: String },
 }
@@ -114,7 +121,10 @@ mod tests {
     #[test]
     fn test_compatible() {
         let n = VersionNegotiator::new();
-        assert_eq!(n.check(&ConnectorVersion::new(1, 0, 0)), Compatibility::Compatible);
+        assert_eq!(
+            n.check(&ConnectorVersion::new(1, 0, 0)),
+            Compatibility::Compatible
+        );
     }
 
     #[test]
@@ -140,7 +150,10 @@ mod tests {
 
     #[test]
     fn test_incompatible_not_usable() {
-        assert!(!Compatibility::Incompatible { reason: "test".into() }.is_usable());
+        assert!(!Compatibility::Incompatible {
+            reason: "test".into()
+        }
+        .is_usable());
     }
 
     #[test]

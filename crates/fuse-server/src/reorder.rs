@@ -9,26 +9,39 @@ pub fn reorder(
     rows: &[Vec<Value>],
     desired_order: &[String],
 ) -> (Vec<String>, Vec<Vec<Value>>) {
-    let indices: Vec<Option<usize>> = desired_order.iter()
+    let indices: Vec<Option<usize>> = desired_order
+        .iter()
         .map(|d| columns.iter().position(|c| c == d))
         .collect();
 
-    let new_cols: Vec<String> = indices.iter().enumerate()
+    let new_cols: Vec<String> = indices
+        .iter()
+        .enumerate()
         .filter_map(|(i, idx)| idx.map(|_| desired_order[i].clone()))
         .collect();
 
     let valid_indices: Vec<usize> = indices.into_iter().flatten().collect();
 
-    let new_rows: Vec<Vec<Value>> = rows.iter().map(|row| {
-        valid_indices.iter().map(|&i| row.get(i).cloned().unwrap_or(Value::Null)).collect()
-    }).collect();
+    let new_rows: Vec<Vec<Value>> = rows
+        .iter()
+        .map(|row| {
+            valid_indices
+                .iter()
+                .map(|&i| row.get(i).cloned().unwrap_or(Value::Null))
+                .collect()
+        })
+        .collect();
 
     (new_cols, new_rows)
 }
 
 /// Move a column to a specific position.
 pub fn move_column(columns: &[String], from: &str, to_pos: usize) -> Vec<String> {
-    let mut cols: Vec<String> = columns.iter().filter(|c| c.as_str() != from).cloned().collect();
+    let mut cols: Vec<String> = columns
+        .iter()
+        .filter(|c| c.as_str() != from)
+        .cloned()
+        .collect();
     let pos = to_pos.min(cols.len());
     cols.insert(pos, from.to_string());
     cols

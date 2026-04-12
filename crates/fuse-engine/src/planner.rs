@@ -6,8 +6,8 @@ use arrow::datatypes::SchemaRef;
 use async_trait::async_trait;
 use datafusion::error::{DataFusionError, Result};
 use datafusion::execution::context::SessionContext;
-use datafusion::physical_plan::{PhysicalExpr, SendableRecordBatchStream};
 use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
+use datafusion::physical_plan::{PhysicalExpr, SendableRecordBatchStream};
 use datafusion::sql::unparser::dialect::{DefaultDialect, Dialect};
 use datafusion_federation::sql::{
     RemoteTable, RemoteTableRef, SQLExecutor, SQLFederationProvider, SQLTableSource,
@@ -87,10 +87,7 @@ impl FuseEngine {
     ///
     /// Detects PPL by checking if the input starts with `source` or `search`.
     /// PPL queries are translated to SQL before execution.
-    pub async fn execute(
-        &self,
-        query: &str,
-    ) -> Result<Vec<arrow::record_batch::RecordBatch>> {
+    pub async fn execute(&self, query: &str) -> Result<Vec<arrow::record_batch::RecordBatch>> {
         let sql = self.resolve_query(query)?;
         let df = self.ctx.sql(&sql).await?;
         df.collect().await
@@ -184,9 +181,7 @@ impl SQLExecutor for FuseExecutor {
             Ok(batches)
         })
         .flat_map(|result| match result {
-            Ok(batches) => {
-                futures::stream::iter(batches.into_iter().map(Ok).collect::<Vec<_>>())
-            }
+            Ok(batches) => futures::stream::iter(batches.into_iter().map(Ok).collect::<Vec<_>>()),
             Err(e) => futures::stream::iter(vec![Err(e)]),
         });
 
@@ -237,29 +232,53 @@ mod tests {
 
     #[async_trait]
     impl FederatedConnector for MockConn {
-        fn id(&self) -> &str { &self.name }
-        fn connector_type(&self) -> &str { "mock" }
-        fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+        fn id(&self) -> &str {
+            &self.name
+        }
+        fn connector_type(&self) -> &str {
+            "mock"
+        }
+        fn capabilities(&self) -> ConnectorCapabilities {
+            ConnectorCapabilities::full()
+        }
         async fn health_check(&self) -> ConnectorHealth {
-            ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(1), message: None }
+            ConnectorHealth {
+                status: HealthStatus::Healthy,
+                latency_ms: Some(1),
+                message: None,
+            }
         }
         async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
-            Ok(vec![SchemaInfo { name: "logs".into(), schema_type: SchemaType::Index, estimated_row_count: Some(10) }])
+            Ok(vec![SchemaInfo {
+                name: "logs".into(),
+                schema_type: SchemaType::Index,
+                estimated_row_count: Some(10),
+            }])
         }
         async fn get_schema(&self, _: &str) -> Result<Schema, ConnectorError> {
             Ok(Self::schema())
         }
         async fn execute(&self, _: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
             let schema = Arc::new(Self::schema());
-            Ok(vec![RecordBatch::try_new(schema, vec![
-                Arc::new(StringArray::from(vec!["h1", "h2"])),
-                Arc::new(Int64Array::from(vec![200, 500])),
-            ]).map_err(ConnectorError::query)?])
+            Ok(vec![RecordBatch::try_new(
+                schema,
+                vec![
+                    Arc::new(StringArray::from(vec!["h1", "h2"])),
+                    Arc::new(Int64Array::from(vec![200, 500])),
+                ],
+            )
+            .map_err(ConnectorError::query)?])
         }
         async fn execute_streaming(
-            &self, q: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+            &self,
+            q: &SubQuery,
+            tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
         ) -> Result<(), ConnectorError> {
-            for b in self.execute(q).await? { tx.send(Ok(b)).await.map_err(|_| ConnectorError::ChannelClosed)?; }
+            for b in self.execute(q).await? {
+                tx.send(Ok(b))
+                    .await
+                    .map_err(|_| ConnectorError::ChannelClosed)?;
+            }
             Ok(())
         }
     }
@@ -273,7 +292,9 @@ mod tests {
             ctx: SessionContext::new_with_state(datafusion_federation::default_session_state()),
             registry: Arc::new(reg),
         };
-        let sql = engine.resolve_query("source = logs | where status = 200").unwrap();
+        let sql = engine
+            .resolve_query("source = logs | where status = 200")
+            .unwrap();
         assert!(sql.to_lowercase().contains("select"));
         assert!(sql.to_lowercase().contains("where"));
     }
@@ -296,7 +317,9 @@ mod tests {
             ctx: SessionContext::new_with_state(datafusion_federation::default_session_state()),
             registry: Arc::new(reg),
         };
-        let sql = engine.resolve_query("source = logs | stats count() by host").unwrap();
+        let sql = engine
+            .resolve_query("source = logs | stats count() by host")
+            .unwrap();
         assert!(sql.to_lowercase().contains("count"));
         assert!(sql.to_lowercase().contains("group by"));
     }

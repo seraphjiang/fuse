@@ -32,23 +32,28 @@ pub fn infer_type(value: &Value) -> InferredType {
 
 /// Infer column types from a set of rows.
 pub fn infer_column_types(rows: &[Vec<Value>], columns: &[String]) -> Vec<(String, InferredType)> {
-    columns.iter().enumerate().map(|(i, name)| {
-        let types: Vec<InferredType> = rows.iter()
-            .filter_map(|row| row.get(i))
-            .filter(|v| !v.is_null())
-            .map(infer_type)
-            .collect();
+    columns
+        .iter()
+        .enumerate()
+        .map(|(i, name)| {
+            let types: Vec<InferredType> = rows
+                .iter()
+                .filter_map(|row| row.get(i))
+                .filter(|v| !v.is_null())
+                .map(infer_type)
+                .collect();
 
-        let inferred = if types.is_empty() {
-            InferredType::Null
-        } else if types.iter().all(|t| t == &types[0]) {
-            types[0].clone()
-        } else {
-            InferredType::Mixed
-        };
+            let inferred = if types.is_empty() {
+                InferredType::Null
+            } else if types.iter().all(|t| t == &types[0]) {
+                types[0].clone()
+            } else {
+                InferredType::Mixed
+            };
 
-        (name.clone(), inferred)
-    }).collect()
+            (name.clone(), inferred)
+        })
+        .collect()
 }
 
 #[cfg(test)]

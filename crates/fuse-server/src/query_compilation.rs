@@ -48,8 +48,17 @@ impl CompiledQuery {
         fingerprint: String,
     ) -> Self {
         Self {
-            sources, is_union, is_join, is_distinct, limit, offset,
-            order_by, group_by, has_having, has_subquery, fingerprint,
+            sources,
+            is_union,
+            is_join,
+            is_distinct,
+            limit,
+            offset,
+            order_by,
+            group_by,
+            has_having,
+            has_subquery,
+            fingerprint,
             compiled_at: Instant::now(),
         }
     }
@@ -151,8 +160,17 @@ mod tests {
 
     fn sample(fp: &str) -> CompiledQuery {
         CompiledQuery::new(
-            vec![("ds".into(), "t".into())], false, false, false,
-            Some(100), 0, vec![], vec![], false, false, fp.into(),
+            vec![("ds".into(), "t".into())],
+            false,
+            false,
+            false,
+            Some(100),
+            0,
+            vec![],
+            vec![],
+            false,
+            false,
+            fp.into(),
         )
     }
 
@@ -191,14 +209,38 @@ mod tests {
     #[test]
     fn test_invalidate_datasource() {
         let c = CompilationCache::new(60, 100);
-        c.insert("q1".into(), CompiledQuery::new(
-            vec![("cluster_a".into(), "logs".into())],
-            false, false, false, None, 0, vec![], vec![], false, false, "q1".into(),
-        ));
-        c.insert("q2".into(), CompiledQuery::new(
-            vec![("dynamodb".into(), "users".into())],
-            false, false, false, None, 0, vec![], vec![], false, false, "q2".into(),
-        ));
+        c.insert(
+            "q1".into(),
+            CompiledQuery::new(
+                vec![("cluster_a".into(), "logs".into())],
+                false,
+                false,
+                false,
+                None,
+                0,
+                vec![],
+                vec![],
+                false,
+                false,
+                "q1".into(),
+            ),
+        );
+        c.insert(
+            "q2".into(),
+            CompiledQuery::new(
+                vec![("dynamodb".into(), "users".into())],
+                false,
+                false,
+                false,
+                None,
+                0,
+                vec![],
+                vec![],
+                false,
+                false,
+                "q2".into(),
+            ),
+        );
         assert_eq!(c.len(), 2);
         c.invalidate_datasource("cluster_a");
         assert_eq!(c.len(), 1);
@@ -231,9 +273,16 @@ mod tests {
     fn test_compiled_query_fields() {
         let cq = CompiledQuery::new(
             vec![("a".into(), "t1".into()), ("b".into(), "t2".into())],
-            true, false, true, Some(50), 10,
-            vec![("col".into(), true)], vec!["g".into()],
-            true, true, "fp".into(),
+            true,
+            false,
+            true,
+            Some(50),
+            10,
+            vec![("col".into(), true)],
+            vec!["g".into()],
+            true,
+            true,
+            "fp".into(),
         );
         assert!(cq.is_union);
         assert!(cq.is_distinct);

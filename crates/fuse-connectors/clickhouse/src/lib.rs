@@ -36,13 +36,17 @@ pub struct ClickHouseConnector {
 
 impl ClickHouseConnector {
     pub async fn from_config(config: &ConnectorConfig) -> Result<Self, ConnectorError> {
-        let url = config.properties.get("url")
+        let url = config
+            .properties
+            .get("url")
             .and_then(|v| v.as_str())
             .unwrap_or("http://localhost:8123")
             .trim_end_matches('/')
             .to_string();
 
-        let database = config.properties.get("database")
+        let database = config
+            .properties
+            .get("database")
             .and_then(|v| v.as_str())
             .unwrap_or("default")
             .to_string();
@@ -61,10 +65,13 @@ impl ClickHouseConnector {
         let mut client_builder = reqwest::Client::builder()
             .default_headers(headers)
             .pool_max_idle_per_host(config.max_connections(16) as usize)
-            .timeout(std::time::Duration::from_secs(config.connection_timeout_secs(30)));
+            .timeout(std::time::Duration::from_secs(
+                config.connection_timeout_secs(30),
+            ));
 
         if let Some(tls) = config.tls_config() {
-            tls.validate().map_err(|e| ConnectorError::Connection(e.to_string()))?;
+            tls.validate()
+                .map_err(|e| ConnectorError::Connection(e.to_string()))?;
             client_builder = tls
                 .apply_to_reqwest(client_builder)
                 .map_err(|e| ConnectorError::Connection(e.to_string()))?;
@@ -74,7 +81,12 @@ impl ClickHouseConnector {
             .build()
             .map_err(|e| ConnectorError::Connection(e.to_string()))?;
 
-        Ok(Self { id: config.id.clone(), client, base_url: url, database })
+        Ok(Self {
+            id: config.id.clone(),
+            client,
+            base_url: url,
+            database,
+        })
     }
 
     async fn run_query(&self, sql: &str) -> Result<String, ConnectorError> {
@@ -84,8 +96,12 @@ impl ClickHouseConnector {
             .post(&self.base_url)
             .query(&[("database", &self.database)])
             .body(query)
-            .send().await.map_err(ConnectorError::query)?
-            .text().await.map_err(ConnectorError::query)
+            .send()
+            .await
+            .map_err(ConnectorError::query)?
+            .text()
+            .await
+            .map_err(ConnectorError::query)
     }
 }
 
@@ -96,19 +112,44 @@ fn base64_encode(s: &str) -> String {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     for chunk in bytes.chunks(3) {
         let b0 = chunk[0] as usize;
-        let b1 = if chunk.len() > 1 { chunk[1] as usize } else { 0 };
-        let b2 = if chunk.len() > 2 { chunk[2] as usize } else { 0 };
-        let _ = write!(out, "{}{}{}{}", CHARS[b0 >> 2] as char, CHARS[((b0 & 3) << 4) | (b1 >> 4)] as char,
-            if chunk.len() > 1 { CHARS[((b1 & 0xf) << 2) | (b2 >> 6)] as char } else { '=' },
-            if chunk.len() > 2 { CHARS[b2 & 0x3f] as char } else { '=' });
+        let b1 = if chunk.len() > 1 {
+            chunk[1] as usize
+        } else {
+            0
+        };
+        let b2 = if chunk.len() > 2 {
+            chunk[2] as usize
+        } else {
+            0
+        };
+        let _ = write!(
+            out,
+            "{}{}{}{}",
+            CHARS[b0 >> 2] as char,
+            CHARS[((b0 & 3) << 4) | (b1 >> 4)] as char,
+            if chunk.len() > 1 {
+                CHARS[((b1 & 0xf) << 2) | (b2 >> 6)] as char
+            } else {
+                '='
+            },
+            if chunk.len() > 2 {
+                CHARS[b2 & 0x3f] as char
+            } else {
+                '='
+            }
+        );
     }
     out
 }
 
 #[async_trait]
 impl FederatedConnector for ClickHouseConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "clickhouse" }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "clickhouse"
+    }
 
     fn capabilities(&self) -> ConnectorCapabilities {
         ConnectorCapabilities {
@@ -126,33 +167,63 @@ impl FederatedConnector for ClickHouseConnector {
 
     async fn health_check(&self) -> ConnectorHealth {
         let start = Instant::now();
-        match self.client.get(format!("{}/ping", self.base_url)).send().await {
-            Ok(r) if r.status().is_success() =>
-                ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(start.elapsed().as_millis() as u64), message: None },
-            Ok(r) =>
-                ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some(format!("HTTP {}", r.status())) },
-            Err(e) =>
-                ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some(e.to_string()) },
+        match self
+            .client
+            .get(format!("{}/ping", self.base_url))
+            .send()
+            .await
+        {
+            Ok(r) if r.status().is_success() => ConnectorHealth {
+                status: HealthStatus::Healthy,
+                latency_ms: Some(start.elapsed().as_millis() as u64),
+                message: None,
+            },
+            Ok(r) => ConnectorHealth {
+                status: HealthStatus::Unhealthy,
+                latency_ms: None,
+                message: Some(format!("HTTP {}", r.status())),
+            },
+            Err(e) => ConnectorHealth {
+                status: HealthStatus::Unhealthy,
+                latency_ms: None,
+                message: Some(e.to_string()),
+            },
         }
     }
 
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
-        let text = self.run_query(&format!("SELECT name FROM system.tables WHERE database = '{}'", self.database.replace('\'', "''"))).await?;
-        let names: Vec<String> = text.lines()
+        let text = self
+            .run_query(&format!(
+                "SELECT name FROM system.tables WHERE database = '{}'",
+                self.database.replace('\'', "''")
+            ))
+            .await?;
+        let names: Vec<String> = text
+            .lines()
             .filter(|l| !l.is_empty())
             .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
             .filter_map(|v| v.get("name")?.as_str().map(|s| s.to_string()))
             .collect();
-        Ok(names.into_iter().map(|name| SchemaInfo { name, schema_type: SchemaType::Table, estimated_row_count: None }).collect())
+        Ok(names
+            .into_iter()
+            .map(|name| SchemaInfo {
+                name,
+                schema_type: SchemaType::Table,
+                estimated_row_count: None,
+            })
+            .collect())
     }
 
     async fn get_schema(&self, table: &str) -> Result<Schema, ConnectorError> {
-        let text = self.run_query(&format!(
-            "SELECT name, type FROM system.columns WHERE database = '{}' AND table = '{table}'",
-            self.database
-        )).await?;
+        let text = self
+            .run_query(&format!(
+                "SELECT name, type FROM system.columns WHERE database = '{}' AND table = '{table}'",
+                self.database
+            ))
+            .await?;
 
-        let fields: Vec<Field> = text.lines()
+        let fields: Vec<Field> = text
+            .lines()
             .filter(|l| !l.is_empty())
             .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
             .filter_map(|v| {
@@ -163,7 +234,10 @@ impl FederatedConnector for ClickHouseConnector {
             .collect();
 
         if fields.is_empty() {
-            return Err(ConnectorError::schema(format!("table '{table}' not found in database '{}'", self.database)));
+            return Err(ConnectorError::schema(format!(
+                "table '{table}' not found in database '{}'",
+                self.database
+            )));
         }
         Ok(Schema::new(fields))
     }
@@ -180,14 +254,19 @@ impl FederatedConnector for ClickHouseConnector {
         tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
     ) -> Result<(), ConnectorError> {
         for batch in self.execute(query).await? {
-            tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+            tx.send(Ok(batch))
+                .await
+                .map_err(|_| ConnectorError::ChannelClosed)?;
         }
         Ok(())
     }
 }
 
 /// Traverse a dot-separated path through a JSON object.
-fn get_nested_json<'a>(mut val: &'a serde_json::Value, path: &str) -> Option<&'a serde_json::Value> {
+fn get_nested_json<'a>(
+    mut val: &'a serde_json::Value,
+    path: &str,
+) -> Option<&'a serde_json::Value> {
     for key in path.split('.') {
         val = val.get(key)?;
     }
@@ -196,7 +275,9 @@ fn get_nested_json<'a>(mut val: &'a serde_json::Value, path: &str) -> Option<&'a
 
 fn ch_type_to_arrow(ch_type: &str) -> DataType {
     // Strip Nullable() wrapper
-    let inner = ch_type.trim_start_matches("Nullable(").trim_end_matches(')');
+    let inner = ch_type
+        .trim_start_matches("Nullable(")
+        .trim_end_matches(')');
     match inner {
         t if t.starts_with("Int") || t.starts_with("UInt") => DataType::Int64,
         t if t.starts_with("Float") || t.starts_with("Decimal") => DataType::Float64,
@@ -206,15 +287,19 @@ fn ch_type_to_arrow(ch_type: &str) -> DataType {
 }
 
 fn parse_json_each_row(text: &str) -> Result<Vec<RecordBatch>, ConnectorError> {
-    let rows: Vec<serde_json::Value> = text.lines()
+    let rows: Vec<serde_json::Value> = text
+        .lines()
         .filter(|l| !l.is_empty())
         .filter_map(|l| serde_json::from_str(l).ok())
         .collect();
 
-    if rows.is_empty() { return Ok(vec![]); }
+    if rows.is_empty() {
+        return Ok(vec![]);
+    }
 
     // Collect columns from first row
-    let cols: Vec<String> = rows[0].as_object()
+    let cols: Vec<String> = rows[0]
+        .as_object()
         .map(|m| m.keys().cloned().collect())
         .unwrap_or_default();
 
@@ -222,28 +307,45 @@ fn parse_json_each_row(text: &str) -> Result<Vec<RecordBatch>, ConnectorError> {
     let mut arrays: Vec<ArrayRef> = Vec::new();
 
     for col in &cols {
-        let first = rows.iter().find_map(|r| get_nested_json(r, col)).filter(|v| !v.is_null());
+        let first = rows
+            .iter()
+            .find_map(|r| get_nested_json(r, col))
+            .filter(|v| !v.is_null());
         match first {
             Some(serde_json::Value::Number(n)) if n.is_i64() => {
-                let vals: Vec<Option<i64>> = rows.iter().map(|r| get_nested_json(r, col).and_then(|v| v.as_i64())).collect();
+                let vals: Vec<Option<i64>> = rows
+                    .iter()
+                    .map(|r| get_nested_json(r, col).and_then(|v| v.as_i64()))
+                    .collect();
                 fields.push(Field::new(col, DataType::Int64, true));
                 arrays.push(Arc::new(Int64Array::from(vals)) as ArrayRef);
             }
             Some(serde_json::Value::Number(_)) => {
-                let vals: Vec<Option<f64>> = rows.iter().map(|r| get_nested_json(r, col).and_then(|v| v.as_f64())).collect();
+                let vals: Vec<Option<f64>> = rows
+                    .iter()
+                    .map(|r| get_nested_json(r, col).and_then(|v| v.as_f64()))
+                    .collect();
                 fields.push(Field::new(col, DataType::Float64, true));
                 arrays.push(Arc::new(Float64Array::from(vals)) as ArrayRef);
             }
             Some(serde_json::Value::Bool(_)) => {
-                let vals: Vec<Option<bool>> = rows.iter().map(|r| get_nested_json(r, col).and_then(|v| v.as_bool())).collect();
+                let vals: Vec<Option<bool>> = rows
+                    .iter()
+                    .map(|r| get_nested_json(r, col).and_then(|v| v.as_bool()))
+                    .collect();
                 fields.push(Field::new(col, DataType::Boolean, true));
                 arrays.push(Arc::new(BooleanArray::from(vals)) as ArrayRef);
             }
             _ => {
-                let vals: Vec<Option<String>> = rows.iter().map(|r| get_nested_json(r, col).map(|v| match v {
-                    serde_json::Value::String(s) => s.clone(),
-                    other => other.to_string(),
-                })).collect();
+                let vals: Vec<Option<String>> = rows
+                    .iter()
+                    .map(|r| {
+                        get_nested_json(r, col).map(|v| match v {
+                            serde_json::Value::String(s) => s.clone(),
+                            other => other.to_string(),
+                        })
+                    })
+                    .collect();
                 fields.push(Field::new(col, DataType::Utf8, true));
                 arrays.push(Arc::new(StringArray::from(vals)) as ArrayRef);
             }
@@ -260,8 +362,13 @@ pub struct ClickHouseConnectorFactory;
 
 #[async_trait]
 impl ConnectorFactory for ClickHouseConnectorFactory {
-    fn connector_type(&self) -> &str { "clickhouse" }
-    async fn create(&self, config: &ConnectorConfig) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
+    fn connector_type(&self) -> &str {
+        "clickhouse"
+    }
+    async fn create(
+        &self,
+        config: &ConnectorConfig,
+    ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
         Ok(Arc::new(ClickHouseConnector::from_config(config).await?))
     }
 }
@@ -317,7 +424,18 @@ mod tests {
 
     #[test]
     fn test_subquery_to_sql_basic() {
-        let q = SubQuery { table: "events".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: Some(5), passthrough: None, offset: None };
+        let q = SubQuery {
+            table: "events".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            having: None,
+            sort: vec![],
+            limit: Some(5),
+            passthrough: None,
+            offset: None,
+        };
         let sql = subquery_to_sql(&q);
         assert_eq!(sql, "SELECT * FROM `events` LIMIT 5");
     }

@@ -4,7 +4,9 @@
 use serde_json::Value;
 
 /// Merge multiple result sets by appending rows (UNION ALL semantics).
-pub fn merge_results(results: Vec<(Vec<String>, Vec<Vec<Value>>)>) -> (Vec<String>, Vec<Vec<Value>>) {
+pub fn merge_results(
+    results: Vec<(Vec<String>, Vec<Vec<Value>>)>,
+) -> (Vec<String>, Vec<Vec<Value>>) {
     if results.is_empty() {
         return (vec![], vec![]);
     }
@@ -14,13 +16,22 @@ pub fn merge_results(results: Vec<(Vec<String>, Vec<Vec<Value>>)>) -> (Vec<Strin
 }
 
 /// Merge and deduplicate results (UNION semantics).
-pub fn merge_distinct(results: Vec<(Vec<String>, Vec<Vec<Value>>)>) -> (Vec<String>, Vec<Vec<Value>>) {
+pub fn merge_distinct(
+    results: Vec<(Vec<String>, Vec<Vec<Value>>)>,
+) -> (Vec<String>, Vec<Vec<Value>>) {
     let (columns, rows) = merge_results(results);
     let mut seen = std::collections::HashSet::new();
-    let deduped: Vec<Vec<Value>> = rows.into_iter().filter(|row| {
-        let key = row.iter().map(|v| v.to_string()).collect::<Vec<_>>().join("|");
-        seen.insert(key)
-    }).collect();
+    let deduped: Vec<Vec<Value>> = rows
+        .into_iter()
+        .filter(|row| {
+            let key = row
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join("|");
+            seen.insert(key)
+        })
+        .collect();
     (columns, deduped)
 }
 
@@ -70,7 +81,10 @@ mod extra_tests {
 
     #[test]
     fn test_distinct_preserves_order() {
-        let r1 = (vec!["x".into()], vec![vec![json!(1)], vec![json!(2)], vec![json!(1)]]);
+        let r1 = (
+            vec!["x".into()],
+            vec![vec![json!(1)], vec![json!(2)], vec![json!(1)]],
+        );
         let r2 = (vec!["x".into()], vec![vec![json!(2)], vec![json!(3)]]);
         let (_, rows) = merge_distinct(vec![r1, r2]);
         assert_eq!(rows[0][0], json!(1));
@@ -88,7 +102,10 @@ mod extra_tests {
 
     #[test]
     fn test_distinct_all_same() {
-        let r = (vec!["x".into()], vec![vec![json!(1)], vec![json!(1)], vec![json!(1)]]);
+        let r = (
+            vec!["x".into()],
+            vec![vec![json!(1)], vec![json!(1)], vec![json!(1)]],
+        );
         let (_, rows) = merge_distinct(vec![r]);
         assert_eq!(rows.len(), 1);
     }

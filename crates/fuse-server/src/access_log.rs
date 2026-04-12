@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //! API access log — lightweight HTTP request logging.
 
+use serde::Serialize;
 use std::collections::VecDeque;
 use std::sync::Mutex;
-use serde::Serialize;
 
 const MAX_ENTRIES: usize = 1000;
 
@@ -30,7 +30,9 @@ impl Default for AccessLog {
 
 impl AccessLog {
     pub fn new() -> Self {
-        Self { entries: Mutex::new(VecDeque::new()) }
+        Self {
+            entries: Mutex::new(VecDeque::new()),
+        }
     }
 
     pub fn record(&self, entry: AccessEntry) {
@@ -42,7 +44,14 @@ impl AccessLog {
     }
 
     pub fn recent(&self, limit: usize) -> Vec<AccessEntry> {
-        self.entries.lock().unwrap().iter().rev().take(limit).cloned().collect()
+        self.entries
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .take(limit)
+            .cloned()
+            .collect()
     }
 
     pub fn count_by_status(&self) -> std::collections::HashMap<u16, usize> {
@@ -63,8 +72,14 @@ mod tests {
     use super::*;
 
     fn sample(status: u16) -> AccessEntry {
-        AccessEntry { method: "POST".into(), path: "/api/fuse/query".into(),
-            status, duration_ms: 50, timestamp: 0, client_ip: None }
+        AccessEntry {
+            method: "POST".into(),
+            path: "/api/fuse/query".into(),
+            status,
+            duration_ms: 50,
+            timestamp: 0,
+            client_ip: None,
+        }
     }
 
     #[test]

@@ -6,17 +6,23 @@ use serde_json::Value;
 /// Add ROW_NUMBER column to rows (1-based sequential).
 pub fn add_row_number(rows: &[Vec<Value>], col_name: &str) -> (Vec<Value>, Vec<Vec<Value>>) {
     let header = Value::String(col_name.to_string());
-    let numbered: Vec<Vec<Value>> = rows.iter().enumerate().map(|(i, row)| {
-        let mut new_row = vec![Value::Number((i as u64 + 1).into())];
-        new_row.extend(row.iter().cloned());
-        new_row
-    }).collect();
+    let numbered: Vec<Vec<Value>> = rows
+        .iter()
+        .enumerate()
+        .map(|(i, row)| {
+            let mut new_row = vec![Value::Number((i as u64 + 1).into())];
+            new_row.extend(row.iter().cloned());
+            new_row
+        })
+        .collect();
     (vec![header], numbered)
 }
 
 /// Add RANK column based on a sort column (same values get same rank).
 pub fn add_rank(rows: &[Vec<Value>], sort_col: usize) -> Vec<Vec<Value>> {
-    if rows.is_empty() { return vec![]; }
+    if rows.is_empty() {
+        return vec![];
+    }
     let mut result = Vec::with_capacity(rows.len());
     let mut rank = 1u64;
     let mut prev: Option<String> = None;
@@ -104,7 +110,12 @@ mod tests {
 
     #[test]
     fn test_rank_string_values() {
-        let rows = vec![vec![json!("a")], vec![json!("a")], vec![json!("b")], vec![json!("c")]];
+        let rows = vec![
+            vec![json!("a")],
+            vec![json!("a")],
+            vec![json!("b")],
+            vec![json!("c")],
+        ];
         let ranked = add_rank(&rows, 0);
         assert_eq!(ranked[0][0], json!(1));
         assert_eq!(ranked[1][0], json!(1)); // tie
@@ -125,9 +136,12 @@ mod tests {
     fn test_rank_alternating_ties() {
         // Pattern: a, a, b, b, c, c
         let rows = vec![
-            vec![json!(1)], vec![json!(1)],
-            vec![json!(2)], vec![json!(2)],
-            vec![json!(3)], vec![json!(3)],
+            vec![json!(1)],
+            vec![json!(1)],
+            vec![json!(2)],
+            vec![json!(2)],
+            vec![json!(3)],
+            vec![json!(3)],
         ];
         let ranked = add_rank(&rows, 0);
         assert_eq!(ranked[0][0], json!(1));

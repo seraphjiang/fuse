@@ -25,13 +25,21 @@ impl Default for PlanStats {
 
 impl PlanStats {
     pub fn new() -> Self {
-        Self { nodes: Mutex::new(HashMap::new()) }
+        Self {
+            nodes: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn record(&self, node_id: &str, rows_in: u64, rows_out: u64, duration_ms: u64, bytes: u64) {
-        self.nodes.lock().unwrap().insert(node_id.to_string(), NodeStats {
-            rows_in, rows_out, duration_ms, bytes_processed: bytes,
-        });
+        self.nodes.lock().unwrap().insert(
+            node_id.to_string(),
+            NodeStats {
+                rows_in,
+                rows_out,
+                duration_ms,
+                bytes_processed: bytes,
+            },
+        );
     }
 
     pub fn get(&self, node_id: &str) -> Option<NodeStats> {
@@ -39,11 +47,22 @@ impl PlanStats {
     }
 
     pub fn total_duration(&self) -> u64 {
-        self.nodes.lock().unwrap().values().map(|s| s.duration_ms).sum()
+        self.nodes
+            .lock()
+            .unwrap()
+            .values()
+            .map(|s| s.duration_ms)
+            .sum()
     }
 
     pub fn total_rows_out(&self) -> u64 {
-        self.nodes.lock().unwrap().values().map(|s| s.rows_out).max().unwrap_or(0)
+        self.nodes
+            .lock()
+            .unwrap()
+            .values()
+            .map(|s| s.rows_out)
+            .max()
+            .unwrap_or(0)
     }
 
     pub fn all(&self) -> HashMap<String, NodeStats> {

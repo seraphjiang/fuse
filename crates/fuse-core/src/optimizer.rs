@@ -39,7 +39,10 @@ pub fn optimize(ops: Vec<LogicalOp>) -> Vec<LogicalOp> {
     }
     if !filters.is_empty() {
         // Place remaining filters after scans
-        let scan_end = result.iter().position(|o| !matches!(o, LogicalOp::Scan { .. })).unwrap_or(result.len());
+        let scan_end = result
+            .iter()
+            .position(|o| !matches!(o, LogicalOp::Scan { .. }))
+            .unwrap_or(result.len());
         for (i, f) in filters.into_iter().enumerate() {
             result.insert(scan_end + i, f);
         }
@@ -54,22 +57,40 @@ mod tests {
     #[test]
     fn test_filter_before_join() {
         let ops = vec![
-            LogicalOp::Scan { datasource: "a".into(), table: "t1".into() },
-            LogicalOp::Join { join_type: "inner".into() },
-            LogicalOp::Filter { predicate: "x > 5".into() },
+            LogicalOp::Scan {
+                datasource: "a".into(),
+                table: "t1".into(),
+            },
+            LogicalOp::Join {
+                join_type: "inner".into(),
+            },
+            LogicalOp::Filter {
+                predicate: "x > 5".into(),
+            },
         ];
         let optimized = optimize(ops);
         // Filter should come before Join
-        let filter_pos = optimized.iter().position(|o| matches!(o, LogicalOp::Filter { .. })).unwrap();
-        let join_pos = optimized.iter().position(|o| matches!(o, LogicalOp::Join { .. })).unwrap();
+        let filter_pos = optimized
+            .iter()
+            .position(|o| matches!(o, LogicalOp::Filter { .. }))
+            .unwrap();
+        let join_pos = optimized
+            .iter()
+            .position(|o| matches!(o, LogicalOp::Join { .. }))
+            .unwrap();
         assert!(filter_pos < join_pos);
     }
 
     #[test]
     fn test_no_reorder_needed() {
         let ops = vec![
-            LogicalOp::Scan { datasource: "a".into(), table: "t".into() },
-            LogicalOp::Filter { predicate: "x = 1".into() },
+            LogicalOp::Scan {
+                datasource: "a".into(),
+                table: "t".into(),
+            },
+            LogicalOp::Filter {
+                predicate: "x = 1".into(),
+            },
             LogicalOp::Limit { count: 10 },
         ];
         let optimized = optimize(ops.clone());
@@ -84,13 +105,26 @@ mod tests {
     #[test]
     fn test_filter_before_aggregate() {
         let ops = vec![
-            LogicalOp::Scan { datasource: "a".into(), table: "t".into() },
-            LogicalOp::Aggregate { group_by: vec!["x".into()] },
-            LogicalOp::Filter { predicate: "y > 0".into() },
+            LogicalOp::Scan {
+                datasource: "a".into(),
+                table: "t".into(),
+            },
+            LogicalOp::Aggregate {
+                group_by: vec!["x".into()],
+            },
+            LogicalOp::Filter {
+                predicate: "y > 0".into(),
+            },
         ];
         let optimized = optimize(ops);
-        let filter_pos = optimized.iter().position(|o| matches!(o, LogicalOp::Filter { .. })).unwrap();
-        let agg_pos = optimized.iter().position(|o| matches!(o, LogicalOp::Aggregate { .. })).unwrap();
+        let filter_pos = optimized
+            .iter()
+            .position(|o| matches!(o, LogicalOp::Filter { .. }))
+            .unwrap();
+        let agg_pos = optimized
+            .iter()
+            .position(|o| matches!(o, LogicalOp::Aggregate { .. }))
+            .unwrap();
         assert!(filter_pos < agg_pos);
     }
 }

@@ -29,13 +29,18 @@ impl Default for NotificationHub {
 
 impl NotificationHub {
     pub fn new() -> Self {
-        Self { subscribers: Mutex::new(HashMap::new()) }
+        Self {
+            subscribers: Mutex::new(HashMap::new()),
+        }
     }
 
     /// Subscribe to notifications for a query.
     pub fn subscribe(&self, query_id: &str) -> mpsc::Receiver<QueryNotification> {
         let (tx, rx) = mpsc::channel(1);
-        self.subscribers.lock().unwrap().insert(query_id.to_string(), tx);
+        self.subscribers
+            .lock()
+            .unwrap()
+            .insert(query_id.to_string(), tx);
         rx
     }
 
@@ -61,7 +66,11 @@ mod tests {
         let hub = NotificationHub::new();
         let mut rx = hub.subscribe("q-1");
         hub.notify(QueryNotification {
-            query_id: "q-1".into(), success: true, duration_ms: 50, row_count: 10, error: None,
+            query_id: "q-1".into(),
+            success: true,
+            duration_ms: 50,
+            row_count: 10,
+            error: None,
         });
         let n = rx.recv().await.unwrap();
         assert!(n.success);
@@ -81,7 +90,11 @@ mod tests {
         let hub = NotificationHub::new();
         let _rx = hub.subscribe("q-1");
         hub.notify(QueryNotification {
-            query_id: "q-1".into(), success: false, duration_ms: 0, row_count: 0, error: Some("timeout".into()),
+            query_id: "q-1".into(),
+            success: false,
+            duration_ms: 0,
+            row_count: 0,
+            error: Some("timeout".into()),
         });
         assert_eq!(hub.pending_count(), 0);
     }

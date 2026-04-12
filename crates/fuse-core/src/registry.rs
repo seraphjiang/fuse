@@ -58,11 +58,8 @@ impl ConnectorRegistry {
             let c = c.clone();
             async move {
                 let id = c.id().to_string();
-                match tokio::time::timeout(
-                    std::time::Duration::from_secs(5),
-                    c.health_check(),
-                )
-                .await
+                match tokio::time::timeout(std::time::Duration::from_secs(5), c.health_check())
+                    .await
                 {
                     Ok(h) => (id, h),
                     Err(_) => (
@@ -100,35 +97,70 @@ pub trait ConnectorFactory: Send + Sync {
 mod tests {
     use super::*;
     use crate::connector::*;
+    use arrow::record_batch::RecordBatch;
     use async_trait::async_trait;
     use tokio::sync::mpsc;
-    use arrow::record_batch::RecordBatch;
 
     #[derive(Debug)]
-    struct StubConnector { id: String, health: HealthStatus }
+    struct StubConnector {
+        id: String,
+        health: HealthStatus,
+    }
 
     #[async_trait]
     impl FederatedConnector for StubConnector {
-        fn id(&self) -> &str { &self.id }
-        fn connector_type(&self) -> &str { "stub" }
-        fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
-        async fn health_check(&self) -> ConnectorHealth {
-            ConnectorHealth { status: self.health.clone(), latency_ms: Some(1), message: None }
+        fn id(&self) -> &str {
+            &self.id
         }
-        async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, crate::error::ConnectorError> { Ok(vec![]) }
-        async fn get_schema(&self, _: &str) -> Result<arrow::datatypes::Schema, crate::error::ConnectorError> {
+        fn connector_type(&self) -> &str {
+            "stub"
+        }
+        fn capabilities(&self) -> ConnectorCapabilities {
+            ConnectorCapabilities::full()
+        }
+        async fn health_check(&self) -> ConnectorHealth {
+            ConnectorHealth {
+                status: self.health.clone(),
+                latency_ms: Some(1),
+                message: None,
+            }
+        }
+        async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, crate::error::ConnectorError> {
+            Ok(vec![])
+        }
+        async fn get_schema(
+            &self,
+            _: &str,
+        ) -> Result<arrow::datatypes::Schema, crate::error::ConnectorError> {
             Ok(arrow::datatypes::Schema::empty())
         }
-        async fn execute(&self, _: &SubQuery) -> Result<Vec<RecordBatch>, crate::error::ConnectorError> { Ok(vec![]) }
-        async fn execute_streaming(&self, _: &SubQuery, _: mpsc::Sender<Result<RecordBatch, crate::error::ConnectorError>>) -> Result<(), crate::error::ConnectorError> { Ok(()) }
+        async fn execute(
+            &self,
+            _: &SubQuery,
+        ) -> Result<Vec<RecordBatch>, crate::error::ConnectorError> {
+            Ok(vec![])
+        }
+        async fn execute_streaming(
+            &self,
+            _: &SubQuery,
+            _: mpsc::Sender<Result<RecordBatch, crate::error::ConnectorError>>,
+        ) -> Result<(), crate::error::ConnectorError> {
+            Ok(())
+        }
     }
 
     fn stub(id: &str) -> Arc<dyn FederatedConnector> {
-        Arc::new(StubConnector { id: id.to_string(), health: HealthStatus::Healthy })
+        Arc::new(StubConnector {
+            id: id.to_string(),
+            health: HealthStatus::Healthy,
+        })
     }
 
     fn unhealthy_stub(id: &str) -> Arc<dyn FederatedConnector> {
-        Arc::new(StubConnector { id: id.to_string(), health: HealthStatus::Unhealthy })
+        Arc::new(StubConnector {
+            id: id.to_string(),
+            health: HealthStatus::Unhealthy,
+        })
     }
 
     #[test]

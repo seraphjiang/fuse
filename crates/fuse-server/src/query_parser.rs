@@ -81,7 +81,10 @@ mod tests {
 
     #[test]
     fn test_format_hint() {
-        assert_eq!(extract_format_hint("/* format:ppl */ source = t"), Some("ppl".into()));
+        assert_eq!(
+            extract_format_hint("/* format:ppl */ source = t"),
+            Some("ppl".into())
+        );
         assert_eq!(extract_format_hint("SELECT 1"), None);
     }
 
@@ -93,7 +96,10 @@ mod tests {
 
     #[test]
     fn test_limit_with_offset() {
-        assert_eq!(extract_limit("SELECT * FROM t LIMIT 50 OFFSET 10"), Some(50));
+        assert_eq!(
+            extract_limit("SELECT * FROM t LIMIT 50 OFFSET 10"),
+            Some(50)
+        );
     }
 
     #[test]

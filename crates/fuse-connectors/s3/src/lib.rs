@@ -91,10 +91,7 @@ impl S3ParquetConnector {
                 req = req.continuation_token(token);
             }
 
-            let resp = req
-                .send()
-                .await
-                .map_err(ConnectorError::schema)?;
+            let resp = req.send().await.map_err(ConnectorError::schema)?;
 
             for obj in resp.contents() {
                 if let Some(key) = obj.key() {
@@ -166,7 +163,9 @@ impl S3ParquetConnector {
             })
             .collect();
         if matching.is_empty() {
-            Err(ConnectorError::schema(format!("no Parquet file found for table '{table}'")))
+            Err(ConnectorError::schema(format!(
+                "no Parquet file found for table '{table}'"
+            )))
         } else {
             Ok(matching)
         }
@@ -185,11 +184,11 @@ impl FederatedConnector for S3ParquetConnector {
 
     fn capabilities(&self) -> ConnectorCapabilities {
         ConnectorCapabilities {
-            supports_filtering: true,   // Partial via S3 Select
-            supports_projection: true,  // Full — column pruning in Parquet
+            supports_filtering: true,  // Partial via S3 Select
+            supports_projection: true, // Full — column pruning in Parquet
             supports_aggregation: false,
             supports_sorting: false,
-            supports_limit: true,       // Partial via S3 Select
+            supports_limit: true, // Partial via S3 Select
             supports_join: false,
             max_concurrent_queries: 8,
             supports_streaming: true,
@@ -199,13 +198,7 @@ impl FederatedConnector for S3ParquetConnector {
 
     async fn health_check(&self) -> ConnectorHealth {
         let start = Instant::now();
-        match self
-            .client
-            .head_bucket()
-            .bucket(&self.bucket)
-            .send()
-            .await
-        {
+        match self.client.head_bucket().bucket(&self.bucket).send().await {
             Ok(_) => ConnectorHealth {
                 status: HealthStatus::Healthy,
                 latency_ms: Some(start.elapsed().as_millis() as u64),
@@ -229,7 +222,9 @@ impl FederatedConnector for S3ParquetConnector {
             *tables.entry(name).or_default() += 1;
         }
 
-        Ok(tables.into_keys().map(|name| SchemaInfo {
+        Ok(tables
+            .into_keys()
+            .map(|name| SchemaInfo {
                 name,
                 schema_type: SchemaType::Bucket,
                 estimated_row_count: None, // would need to read footers
@@ -246,8 +241,14 @@ impl FederatedConnector for S3ParquetConnector {
     }
 
     async fn execute(&self, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
-        let keys = self.find_keys_for_table(&query.table, query.filter.as_ref()).await?;
-        debug!(files = keys.len(), table = query.table.as_str(), "Executing S3 Parquet query with partition pruning");
+        let keys = self
+            .find_keys_for_table(&query.table, query.filter.as_ref())
+            .await?;
+        debug!(
+            files = keys.len(),
+            table = query.table.as_str(),
+            "Executing S3 Parquet query with partition pruning"
+        );
 
         let mut all_batches = Vec::new();
         for key in &keys {
@@ -255,7 +256,8 @@ impl FederatedConnector for S3ParquetConnector {
             // Paginated: read row-group by row-group for memory efficiency
             let rg_count = reader::row_group_count(&data)?;
             for rg in 0..rg_count {
-                let batches = reader::read_row_group(&data, rg, &query.projections, DEFAULT_BATCH_SIZE)?;
+                let batches =
+                    reader::read_row_group(&data, rg, &query.projections, DEFAULT_BATCH_SIZE)?;
                 all_batches.extend(batches);
             }
         }
@@ -290,7 +292,9 @@ impl FederatedConnector for S3ParquetConnector {
         query: &SubQuery,
         tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
     ) -> Result<(), ConnectorError> {
-        let keys = self.find_keys_for_table(&query.table, query.filter.as_ref()).await?;
+        let keys = self
+            .find_keys_for_table(&query.table, query.filter.as_ref())
+            .await?;
 
         let limit = query.limit.map(|n| n as usize);
         let mut sent = 0usize;
@@ -300,17 +304,30 @@ impl FederatedConnector for S3ParquetConnector {
             let rg_count = reader::row_group_count(&data)?;
 
             'rg: for rg in 0..rg_count {
-                let batches = reader::read_row_group(&data, rg, &query.projections, DEFAULT_BATCH_SIZE)?;
+                let batches =
+                    reader::read_row_group(&data, rg, &query.projections, DEFAULT_BATCH_SIZE)?;
                 for batch in batches {
                     if let Some(lim) = limit {
-                        if sent >= lim { break 'outer; }
+                        if sent >= lim {
+                            break 'outer;
+                        }
                         let remaining = lim - sent;
-                        let batch = if batch.num_rows() > remaining { batch.slice(0, remaining) } else { batch };
+                        let batch = if batch.num_rows() > remaining {
+                            batch.slice(0, remaining)
+                        } else {
+                            batch
+                        };
                         sent += batch.num_rows();
-                        tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
-                        if sent >= lim { break 'rg; }
+                        tx.send(Ok(batch))
+                            .await
+                            .map_err(|_| ConnectorError::ChannelClosed)?;
+                        if sent >= lim {
+                            break 'rg;
+                        }
                     } else {
-                        tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+                        tx.send(Ok(batch))
+                            .await
+                            .map_err(|_| ConnectorError::ChannelClosed)?;
                     }
                 }
             }
@@ -324,7 +341,9 @@ impl FederatedConnector for S3ParquetConnector {
         table: &str,
         batches: Vec<RecordBatch>,
     ) -> Result<u64, ConnectorError> {
-        if batches.is_empty() { return Ok(0); }
+        if batches.is_empty() {
+            return Ok(0);
+        }
 
         let schema = batches[0].schema();
         let mut buf = Vec::new();
@@ -334,16 +353,27 @@ impl FederatedConnector for S3ParquetConnector {
                 .map_err(|e| ConnectorError::query(e.to_string()))?;
             for batch in &batches {
                 total_rows += batch.num_rows() as u64;
-                writer.write(batch).map_err(|e| ConnectorError::query(e.to_string()))?;
+                writer
+                    .write(batch)
+                    .map_err(|e| ConnectorError::query(e.to_string()))?;
             }
-            writer.close().map_err(|e| ConnectorError::query(e.to_string()))?;
+            writer
+                .close()
+                .map_err(|e| ConnectorError::query(e.to_string()))?;
         }
 
         let key = format!(
             "{}{}/{}.parquet",
-            if self.prefix.is_empty() { String::new() } else { format!("{}/", self.prefix.trim_end_matches('/')) },
+            if self.prefix.is_empty() {
+                String::new()
+            } else {
+                format!("{}/", self.prefix.trim_end_matches('/'))
+            },
             table,
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
         );
         debug!(connector = %self.id, key = key.as_str(), bytes = buf.len(), rows = total_rows, "S3 Parquet write");
 
@@ -456,12 +486,7 @@ mod tests {
                 .await
         });
         let client = S3Client::new(&sdk_config);
-        let connector = S3ParquetConnector::new(
-            "my-s3".into(),
-            client,
-            "bucket".into(),
-            "".into(),
-        );
+        let connector = S3ParquetConnector::new("my-s3".into(), client, "bucket".into(), "".into());
         assert_eq!(connector.id(), "my-s3");
         assert_eq!(connector.connector_type(), "s3");
     }
@@ -482,7 +507,8 @@ mod tests {
                 Arc::new(Int64Array::from(vec![1, 2, 3])) as arrow::array::ArrayRef,
                 Arc::new(StringArray::from(vec!["a", "b", "c"])) as arrow::array::ArrayRef,
             ],
-        ).unwrap();
+        )
+        .unwrap();
 
         let mut buf = Vec::new();
         let mut writer = parquet::arrow::ArrowWriter::try_new(&mut buf, schema, None).unwrap();
@@ -499,10 +525,7 @@ mod tests {
         let prefix = "data/output";
         let table = "results";
         let ts = 1234567890u128;
-        let key = format!(
-            "{}/{}/{}.parquet",
-            prefix.trim_end_matches('/'), table, ts
-        );
+        let key = format!("{}/{}/{}.parquet", prefix.trim_end_matches('/'), table, ts);
         assert_eq!(key, "data/output/results/1234567890.parquet");
     }
 
@@ -513,8 +536,13 @@ mod tests {
         let ts = 42u128;
         let key = format!(
             "{}{}/{}.parquet",
-            if prefix.is_empty() { String::new() } else { format!("{}/", prefix.trim_end_matches('/')) },
-            table, ts
+            if prefix.is_empty() {
+                String::new()
+            } else {
+                format!("{}/", prefix.trim_end_matches('/'))
+            },
+            table,
+            ts
         );
         assert_eq!(key, "out/42.parquet");
     }
@@ -528,7 +556,8 @@ mod tests {
         let empty = RecordBatch::new_empty(schema);
         // Can't call async write_batches without S3 client, but verify Parquet serialization
         let mut buf = Vec::new();
-        let mut writer = parquet::arrow::ArrowWriter::try_new(&mut buf, empty.schema(), None).unwrap();
+        let mut writer =
+            parquet::arrow::ArrowWriter::try_new(&mut buf, empty.schema(), None).unwrap();
         writer.write(&empty).unwrap();
         writer.close().unwrap();
         assert!(!buf.is_empty()); // Even empty batch produces valid Parquet
@@ -542,8 +571,13 @@ mod tests {
         let ts = 999u128;
         let key = format!(
             "{}{}/{}.parquet",
-            if prefix.is_empty() { String::new() } else { format!("{}/", prefix.trim_end_matches('/')) },
-            table, ts
+            if prefix.is_empty() {
+                String::new()
+            } else {
+                format!("{}/", prefix.trim_end_matches('/'))
+            },
+            table,
+            ts
         );
         assert_eq!(key, "data/output/results/999.parquet");
     }
@@ -557,14 +591,22 @@ mod tests {
             Field::new("id", DataType::Int64, false),
             Field::new("val", DataType::Utf8, true),
         ]));
-        let b1 = RecordBatch::try_new(schema.clone(), vec![
-            Arc::new(Int64Array::from(vec![1, 2])) as arrow::array::ArrayRef,
-            Arc::new(StringArray::from(vec!["a", "b"])) as arrow::array::ArrayRef,
-        ]).unwrap();
-        let b2 = RecordBatch::try_new(schema.clone(), vec![
-            Arc::new(Int64Array::from(vec![3])) as arrow::array::ArrayRef,
-            Arc::new(StringArray::from(vec!["c"])) as arrow::array::ArrayRef,
-        ]).unwrap();
+        let b1 = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(Int64Array::from(vec![1, 2])) as arrow::array::ArrayRef,
+                Arc::new(StringArray::from(vec!["a", "b"])) as arrow::array::ArrayRef,
+            ],
+        )
+        .unwrap();
+        let b2 = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(Int64Array::from(vec![3])) as arrow::array::ArrayRef,
+                Arc::new(StringArray::from(vec!["c"])) as arrow::array::ArrayRef,
+            ],
+        )
+        .unwrap();
 
         let mut buf = Vec::new();
         let mut writer = parquet::arrow::ArrowWriter::try_new(&mut buf, schema, None).unwrap();

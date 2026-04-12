@@ -28,7 +28,8 @@ fn test_query(table: &str) -> SubQuery {
         having: None,
         sort: vec![],
         limit: Some(10),
-        offset: None, passthrough: None,
+        offset: None,
+        passthrough: None,
     }
 }
 
@@ -38,7 +39,10 @@ async fn assert_connector_contract(connector: &dyn FederatedConnector, table: &s
     assert!(!connector.connector_type().is_empty());
 
     let health = connector.health_check().await;
-    assert!(matches!(health.status, HealthStatus::Healthy | HealthStatus::Degraded | HealthStatus::Unhealthy));
+    assert!(matches!(
+        health.status,
+        HealthStatus::Healthy | HealthStatus::Degraded | HealthStatus::Unhealthy
+    ));
 
     let caps = connector.capabilities();
     assert!(caps.max_concurrent_queries > 0);
@@ -59,8 +63,13 @@ async fn assert_connector_contract(connector: &dyn FederatedConnector, table: &s
 async fn assert_limit_respected(connector: &dyn FederatedConnector, table: &str, limit: u64) {
     let mut q = test_query(table);
     q.limit = Some(limit);
-    let rows: u64 = connector.execute(&q).await.unwrap()
-        .iter().map(|b| b.num_rows() as u64).sum();
+    let rows: u64 = connector
+        .execute(&q)
+        .await
+        .unwrap()
+        .iter()
+        .map(|b| b.num_rows() as u64)
+        .sum();
     assert!(rows <= limit, "got {} rows, expected <= {}", rows, limit);
 }
 
@@ -70,11 +79,21 @@ struct MockConnector;
 
 #[async_trait]
 impl FederatedConnector for MockConnector {
-    fn id(&self) -> &str { "mock" }
-    fn connector_type(&self) -> &str { "mock" }
-    fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+    fn id(&self) -> &str {
+        "mock"
+    }
+    fn connector_type(&self) -> &str {
+        "mock"
+    }
+    fn capabilities(&self) -> ConnectorCapabilities {
+        ConnectorCapabilities::full()
+    }
     async fn health_check(&self) -> ConnectorHealth {
-        ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(1), message: None }
+        ConnectorHealth {
+            status: HealthStatus::Healthy,
+            latency_ms: Some(1),
+            message: None,
+        }
     }
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
         Ok(vec![SchemaInfo {
@@ -97,12 +116,20 @@ impl FederatedConnector for MockConnector {
         ]));
         let ids: Vec<&str> = ["1", "2", "3"][..n].to_vec();
         let vals: Vec<&str> = ["a", "b", "c"][..n].to_vec();
-        Ok(vec![RecordBatch::try_new(schema, vec![
-            Arc::new(StringArray::from(ids)),
-            Arc::new(StringArray::from(vals)),
-        ]).unwrap()])
+        Ok(vec![RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(ids)),
+                Arc::new(StringArray::from(vals)),
+            ],
+        )
+        .unwrap()])
     }
-    async fn execute_streaming(&self, _q: &SubQuery, _tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>) -> Result<(), ConnectorError> {
+    async fn execute_streaming(
+        &self,
+        _q: &SubQuery,
+        _tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+    ) -> Result<(), ConnectorError> {
         Ok(())
     }
 }

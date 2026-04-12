@@ -49,10 +49,16 @@ impl TelemetryConfig {
         };
         Self {
             enabled: t.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false),
-            otlp_endpoint: t.get("otlp_endpoint").and_then(|v| v.as_str())
-                .unwrap_or("http://localhost:4317").into(),
-            service_name: t.get("service_name").and_then(|v| v.as_str())
-                .unwrap_or("fuse").into(),
+            otlp_endpoint: t
+                .get("otlp_endpoint")
+                .and_then(|v| v.as_str())
+                .unwrap_or("http://localhost:4317")
+                .into(),
+            service_name: t
+                .get("service_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("fuse")
+                .into(),
         }
     }
 }
@@ -61,8 +67,7 @@ impl TelemetryConfig {
 ///
 /// Returns the provider guard — drop on shutdown to flush pending spans.
 pub fn init_tracing(config: &TelemetryConfig) -> Option<SdkTracerProvider> {
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     if config.enabled {
         let exporter = SpanExporter::builder()
@@ -120,11 +125,14 @@ mod tests {
 
     #[test]
     fn test_config_from_toml_enabled() {
-        let val: toml::Value = toml::from_str(r#"
+        let val: toml::Value = toml::from_str(
+            r#"
             enabled = true
             otlp_endpoint = "http://collector:4317"
             service_name = "fuse-prod"
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         let cfg = TelemetryConfig::from_toml(Some(&val));
         assert!(cfg.enabled);
         assert_eq!(cfg.otlp_endpoint, "http://collector:4317");
@@ -133,9 +141,12 @@ mod tests {
 
     #[test]
     fn test_config_from_toml_partial() {
-        let val: toml::Value = toml::from_str(r#"
+        let val: toml::Value = toml::from_str(
+            r#"
             enabled = true
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         let cfg = TelemetryConfig::from_toml(Some(&val));
         assert!(cfg.enabled);
         assert_eq!(cfg.otlp_endpoint, "http://localhost:4317");
@@ -144,10 +155,13 @@ mod tests {
 
     #[test]
     fn test_config_from_toml_disabled_explicit() {
-        let val: toml::Value = toml::from_str(r#"
+        let val: toml::Value = toml::from_str(
+            r#"
             enabled = false
             otlp_endpoint = "http://custom:4317"
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         let cfg = TelemetryConfig::from_toml(Some(&val));
         assert!(!cfg.enabled);
         assert_eq!(cfg.otlp_endpoint, "http://custom:4317");

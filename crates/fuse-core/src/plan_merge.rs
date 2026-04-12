@@ -19,18 +19,24 @@ pub struct SubPlan {
 
 #[derive(Debug, Clone, Serialize)]
 pub enum MergeStrategy {
-    Append,      // UNION ALL
-    HashJoin,    // JOIN
-    Interleave,  // Round-robin merge
+    Append,     // UNION ALL
+    HashJoin,   // JOIN
+    Interleave, // Round-robin merge
 }
 
 impl MergedPlan {
     pub fn union(plans: Vec<SubPlan>) -> Self {
-        Self { sub_plans: plans, merge_strategy: MergeStrategy::Append }
+        Self {
+            sub_plans: plans,
+            merge_strategy: MergeStrategy::Append,
+        }
     }
 
     pub fn join(left: SubPlan, right: SubPlan) -> Self {
-        Self { sub_plans: vec![left, right], merge_strategy: MergeStrategy::HashJoin }
+        Self {
+            sub_plans: vec![left, right],
+            merge_strategy: MergeStrategy::HashJoin,
+        }
     }
 
     pub fn datasource_count(&self) -> usize {
@@ -43,7 +49,13 @@ mod tests {
     use super::*;
 
     fn sub(ds: &str) -> SubPlan {
-        SubPlan { datasource: ds.into(), plan: PlanOp::Scan { datasource: ds.into(), table: "t".into() } }
+        SubPlan {
+            datasource: ds.into(),
+            plan: PlanOp::Scan {
+                datasource: ds.into(),
+                table: "t".into(),
+            },
+        }
     }
 
     #[test]

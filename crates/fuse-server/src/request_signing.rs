@@ -26,11 +26,17 @@ pub struct SigningKey {
 
 impl SigningConfig {
     pub fn new(secrets: Vec<SigningKey>, max_age_secs: u64) -> Self {
-        Self { secrets, max_age_secs }
+        Self {
+            secrets,
+            max_age_secs,
+        }
     }
 
     pub fn disabled() -> Self {
-        Self { secrets: vec![], max_age_secs: 300 }
+        Self {
+            secrets: vec![],
+            max_age_secs: 300,
+        }
     }
 
     pub fn is_enabled(&self) -> bool {
@@ -66,8 +72,8 @@ pub fn verify_signature(
     let payload = build_payload(timestamp, body);
 
     for key in &config.secrets {
-        let mut mac = HmacSha256::new_from_slice(&key.secret)
-            .map_err(|_| SigningError::InvalidKey)?;
+        let mut mac =
+            HmacSha256::new_from_slice(&key.secret).map_err(|_| SigningError::InvalidKey)?;
         mac.update(&payload);
         if mac.verify_slice(&expected).is_ok() {
             return Ok(());
@@ -102,8 +108,11 @@ fn hex_encode(bytes: &[u8]) -> String {
 }
 
 fn hex_decode(hex: &str) -> Result<Vec<u8>, ()> {
-    if !hex.len().is_multiple_of(2) { return Err(()); }
-    (0..hex.len()).step_by(2)
+    if !hex.len().is_multiple_of(2) {
+        return Err(());
+    }
+    (0..hex.len())
+        .step_by(2)
         .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).map_err(|_| ()))
         .collect()
 }
@@ -143,7 +152,10 @@ pub async fn signing_middleware(
     }
 
     let path = req.uri().path().to_string();
-    if matches!(path.as_str(), "/api/fuse/health" | "/metrics" | "/" | "/playground") {
+    if matches!(
+        path.as_str(),
+        "/api/fuse/health" | "/metrics" | "/" | "/playground"
+    ) {
         return next.run(req).await;
     }
 
@@ -152,11 +164,15 @@ pub async fn signing_middleware(
         return next.run(req).await;
     }
 
-    let sig_header = req.headers().get("x-fuse-signature")
+    let sig_header = req
+        .headers()
+        .get("x-fuse-signature")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
 
-    let timestamp = req.headers().get("x-fuse-timestamp")
+    let timestamp = req
+        .headers()
+        .get("x-fuse-timestamp")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.parse::<u64>().ok());
 
@@ -164,7 +180,10 @@ pub async fn signing_middleware(
     let bytes = match axum::body::to_bytes(body, 10 * 1024 * 1024).await {
         Ok(b) => b,
         Err(_) => {
-            return error_response(axum::http::StatusCode::PAYLOAD_TOO_LARGE, "request body too large");
+            return error_response(
+                axum::http::StatusCode::PAYLOAD_TOO_LARGE,
+                "request body too large",
+            );
         }
     };
 
@@ -173,7 +192,10 @@ pub async fn signing_middleware(
             return error_response(axum::http::StatusCode::UNAUTHORIZED, &e.to_string());
         }
     } else {
-        return error_response(axum::http::StatusCode::UNAUTHORIZED, "missing X-Fuse-Signature header");
+        return error_response(
+            axum::http::StatusCode::UNAUTHORIZED,
+            "missing X-Fuse-Signature header",
+        );
     }
 
     let req = axum::extract::Request::from_parts(parts, axum::body::Body::from(bytes));
@@ -196,7 +218,10 @@ mod tests {
 
     fn test_config() -> SigningConfig {
         SigningConfig::new(
-            vec![SigningKey { key_id: "k1".into(), secret: b"my-secret-key".to_vec() }],
+            vec![SigningKey {
+                key_id: "k1".into(),
+                secret: b"my-secret-key".to_vec(),
+            }],
             300,
         )
     }
@@ -212,7 +237,9 @@ mod tests {
     fn test_sign_with_timestamp() {
         let config = test_config();
         let now = std::time::SystemTime::now()
-            .duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_secs();
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let sig = sign_request(b"my-secret-key", Some(now), b"hello");
         assert!(verify_signature(&config, &sig, Some(now), b"hello").is_ok());
     }
@@ -221,27 +248,39 @@ mod tests {
     fn test_wrong_key_rejected() {
         let config = test_config();
         let sig = sign_request(b"wrong-key", None, b"hello");
-        assert_eq!(verify_signature(&config, &sig, None, b"hello"), Err(SigningError::InvalidSignature));
+        assert_eq!(
+            verify_signature(&config, &sig, None, b"hello"),
+            Err(SigningError::InvalidSignature)
+        );
     }
 
     #[test]
     fn test_tampered_body_rejected() {
         let config = test_config();
         let sig = sign_request(b"my-secret-key", None, b"original");
-        assert_eq!(verify_signature(&config, &sig, None, b"tampered"), Err(SigningError::InvalidSignature));
+        assert_eq!(
+            verify_signature(&config, &sig, None, b"tampered"),
+            Err(SigningError::InvalidSignature)
+        );
     }
 
     #[test]
     fn test_expired_timestamp() {
         let config = test_config();
         let sig = sign_request(b"my-secret-key", Some(1000), b"hello");
-        assert_eq!(verify_signature(&config, &sig, Some(1000), b"hello"), Err(SigningError::Expired));
+        assert_eq!(
+            verify_signature(&config, &sig, Some(1000), b"hello"),
+            Err(SigningError::Expired)
+        );
     }
 
     #[test]
     fn test_invalid_format() {
         let config = test_config();
-        assert_eq!(verify_signature(&config, "bad", None, b"x"), Err(SigningError::InvalidFormat));
+        assert_eq!(
+            verify_signature(&config, "bad", None, b"x"),
+            Err(SigningError::InvalidFormat)
+        );
     }
 
     #[test]
@@ -252,10 +291,19 @@ mod tests {
 
     #[test]
     fn test_multiple_keys() {
-        let config = SigningConfig::new(vec![
-            SigningKey { key_id: "old".into(), secret: b"old-secret".to_vec() },
-            SigningKey { key_id: "new".into(), secret: b"new-secret".to_vec() },
-        ], 300);
+        let config = SigningConfig::new(
+            vec![
+                SigningKey {
+                    key_id: "old".into(),
+                    secret: b"old-secret".to_vec(),
+                },
+                SigningKey {
+                    key_id: "new".into(),
+                    secret: b"new-secret".to_vec(),
+                },
+            ],
+            300,
+        );
         let sig_old = sign_request(b"old-secret", None, b"test");
         let sig_new = sign_request(b"new-secret", None, b"test");
         assert!(verify_signature(&config, &sig_old, None, b"test").is_ok());

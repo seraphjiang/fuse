@@ -197,21 +197,54 @@ mod tests {
 
     #[test]
     fn test_fuse_error_code_method() {
-        assert_eq!(FuseError::config("bad").error_code(), ErrorCode::CONFIG_INVALID);
-        assert_eq!(FuseError::connector("fail").error_code(), ErrorCode::CONNECTOR_ERROR);
-        assert_eq!(FuseError::Parse("x".into()).error_code(), ErrorCode::PARSE_ERROR);
-        assert_eq!(FuseError::Plan("x".into()).error_code(), ErrorCode::PLAN_ERROR);
-        assert_eq!(FuseError::Execution("x".into()).error_code(), ErrorCode::EXECUTION_ERROR);
+        assert_eq!(
+            FuseError::config("bad").error_code(),
+            ErrorCode::CONFIG_INVALID
+        );
+        assert_eq!(
+            FuseError::connector("fail").error_code(),
+            ErrorCode::CONNECTOR_ERROR
+        );
+        assert_eq!(
+            FuseError::Parse("x".into()).error_code(),
+            ErrorCode::PARSE_ERROR
+        );
+        assert_eq!(
+            FuseError::Plan("x".into()).error_code(),
+            ErrorCode::PLAN_ERROR
+        );
+        assert_eq!(
+            FuseError::Execution("x".into()).error_code(),
+            ErrorCode::EXECUTION_ERROR
+        );
     }
 
     #[test]
     fn test_connector_error_codes() {
-        assert_eq!(ConnectorError::query("t").error_code(), ErrorCode::CONNECTOR_QUERY_FAILED);
-        assert_eq!(ConnectorError::schema("t").error_code(), ErrorCode::CONNECTOR_SCHEMA_FAILED);
-        assert_eq!(ConnectorError::Auth("t".into()).error_code(), ErrorCode::AUTH_FAILED);
-        assert_eq!(ConnectorError::Connection("t".into()).error_code(), ErrorCode::AUTH_CONNECTION_FAILED);
-        assert_eq!(ConnectorError::ChannelClosed.error_code(), ErrorCode::CONNECTOR_CHANNEL_CLOSED);
-        assert_eq!(ConnectorError::Unsupported("t".into()).error_code(), ErrorCode::CONNECTOR_UNSUPPORTED);
+        assert_eq!(
+            ConnectorError::query("t").error_code(),
+            ErrorCode::CONNECTOR_QUERY_FAILED
+        );
+        assert_eq!(
+            ConnectorError::schema("t").error_code(),
+            ErrorCode::CONNECTOR_SCHEMA_FAILED
+        );
+        assert_eq!(
+            ConnectorError::Auth("t".into()).error_code(),
+            ErrorCode::AUTH_FAILED
+        );
+        assert_eq!(
+            ConnectorError::Connection("t".into()).error_code(),
+            ErrorCode::AUTH_CONNECTION_FAILED
+        );
+        assert_eq!(
+            ConnectorError::ChannelClosed.error_code(),
+            ErrorCode::CONNECTOR_CHANNEL_CLOSED
+        );
+        assert_eq!(
+            ConnectorError::Unsupported("t".into()).error_code(),
+            ErrorCode::CONNECTOR_UNSUPPORTED
+        );
     }
 
     #[test]
@@ -223,7 +256,10 @@ mod tests {
     #[test]
     fn test_connector_error_schema_helper() {
         let e = ConnectorError::schema("no properties found");
-        assert_eq!(e.to_string(), "schema discovery failed: no properties found");
+        assert_eq!(
+            e.to_string(),
+            "schema discovery failed: no properties found"
+        );
     }
 
     #[test]
@@ -257,9 +293,15 @@ mod tests {
 
     #[test]
     fn test_connector_error_variants_display() {
-        assert!(ConnectorError::Auth("bad token".into()).to_string().contains("bad token"));
-        assert!(ConnectorError::Connection("refused".into()).to_string().contains("refused"));
-        assert!(ConnectorError::Unsupported("no scroll".into()).to_string().contains("no scroll"));
+        assert!(ConnectorError::Auth("bad token".into())
+            .to_string()
+            .contains("bad token"));
+        assert!(ConnectorError::Connection("refused".into())
+            .to_string()
+            .contains("refused"));
+        assert!(ConnectorError::Unsupported("no scroll".into())
+            .to_string()
+            .contains("no scroll"));
     }
 
     #[test]

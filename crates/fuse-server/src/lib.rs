@@ -1,45 +1,48 @@
 // SPDX-License-Identifier: Apache-2.0
 
+pub mod access_log;
+pub mod adaptive_cache;
 pub mod adaptive_parallelism;
 pub mod adaptive_timeout;
-pub mod access_log;
-pub mod alert_api;
-pub mod alert_monitor;
 pub mod agg_functions;
 pub mod aggregator;
+pub mod alert_api;
+pub mod alert_monitor;
 pub mod alias;
-pub mod arrow_export;
-pub mod api;
 pub mod anomaly;
 pub mod anomaly_alert;
+pub mod api;
+pub mod api_versioning;
+pub mod arrow_export;
 pub mod arrow_ipc;
 pub mod async_query;
 pub mod audit;
 pub mod audit_meta;
 pub mod auth;
-pub mod bookmarks;
 pub mod auto_suggest;
 pub mod autocomplete;
-pub mod complexity;
-pub mod coercer;
-pub mod column_stats;
+pub mod bookmarks;
 pub mod cache_key;
 pub mod capability_summary;
 pub mod case_when;
 pub mod cdc;
-pub mod circuit_breaker;
 pub mod chaos;
+pub mod circuit_breaker;
+pub mod coercer;
+pub mod column_stats;
+pub mod complexity;
 pub mod config_watch;
-pub mod cost_estimator;
+pub mod connector_health_history;
 pub mod cors;
-pub mod data_quality;
+pub mod cost_estimator;
 pub mod cost_tracker;
-pub mod dedup;
+pub mod data_quality;
 pub mod date_fn;
+pub mod dedup;
 pub mod delivery;
 pub mod distinct;
-pub mod export;
 pub mod explain_cache;
+pub mod export;
 pub mod federation;
 pub mod fingerprint;
 pub mod flattener;
@@ -48,85 +51,89 @@ pub mod graphql;
 pub mod grouper;
 pub mod having;
 pub mod health;
-pub mod intersect;
-pub mod joiner;
 pub mod health_monitor;
-pub mod connector_health_history;
 pub mod history;
 pub mod history_analytics;
+pub mod intersect;
+pub mod joiner;
 pub mod lineage;
-pub mod adaptive_cache;
-pub mod usage_metering;
+pub mod load_scenarios;
 pub mod math_fn;
 pub mod metrics;
 pub mod nl_query;
 pub mod notifications;
-pub mod otel_ingest;
-pub mod pagination;
 pub mod null_handler;
 pub mod offset_pagination;
+pub mod otel_ingest;
+pub mod pagination;
+pub mod perf_regression;
+pub mod pipeline;
 pub mod pivot;
 pub mod plan_cache;
 pub mod pool_stats;
-pub mod pipeline;
-pub mod query_policy;
-pub mod query_replay;
-pub mod profiler;
-pub mod query_parser;
-pub mod query_predictor;
-pub mod projector;
-pub mod registry_snapshot;pub mod query_context;
 pub mod prepared;
+pub mod profiler;
+pub mod projector;
 pub mod query_advisor;
+pub mod query_autotuner;
 pub mod query_compilation;
+pub mod query_context;
 pub mod query_diff;
 pub mod query_explain;
+pub mod query_parser;
+pub mod query_policy;
+pub mod query_predictor;
+pub mod query_replay;
+pub mod query_similarity;
 pub mod rate_limit;
-pub mod rate_monitor;pub mod redis_cache;
+pub mod rate_monitor;
+pub mod redis_cache;
 pub mod refresh_scheduler;
-pub mod request_id;
-pub mod request_signing;
-pub mod url_validator;
+pub mod registry_snapshot;
 pub mod renamer;
 pub mod reorder;
+pub mod request_id;
+pub mod request_signing;
 pub mod response_builder;
-pub mod result_filter;pub mod retry;
+pub mod result_filter;
+pub mod retry;
 pub mod rewrite;
 pub mod row_limit;
+pub mod sampling;
+pub mod sanitize;
+pub mod saved_queries;
+pub mod scheduler;
+pub mod schema_cache;
+pub mod schema_discovery;
+pub mod security_headers;
+mod server_integration_tests;
+pub mod set_ops;
+pub mod shared_state;
 pub mod shutdown;
 pub mod slow_query;
 pub mod smart_routing;
-pub mod set_ops;
 pub mod sorter;
-pub mod string_fn;
-pub mod wasm_plugin;
-pub mod webhook;
-pub mod ws_streaming;
-mod server_integration_tests;pub mod window_fn;pub mod saved_queries;
-pub mod sanitize;
-pub mod sampling;
-pub mod scheduler;
-pub mod schema_discovery;
-pub mod security_headers;
-pub mod shared_state;
 pub mod sse_stream;
 pub mod streaming;
+pub mod string_fn;
+pub mod tags;
 pub mod telemetry;
+pub mod templates;
 pub mod tenant;
-pub mod templates;pub mod tags;pub mod transaction;
-pub mod type_infer;
-pub mod top_n;
-pub mod transpose;
 pub mod timeout_tracker;
-pub mod union_typed;
-pub mod validate;
+pub mod top_n;
 pub mod tracing_ctx;
-pub mod api_versioning;
-pub mod query_autotuner;
-pub mod query_similarity;
-pub mod load_scenarios;
-pub mod perf_regression;
-pub mod schema_cache;
+pub mod transaction;
+pub mod transpose;
+pub mod type_infer;
+pub mod union_typed;
+pub mod url_validator;
+pub mod usage_metering;
+pub mod validate;
+pub mod wasm_plugin;
+pub mod webhook;
+pub mod window_fn;
+pub mod ws_streaming;
 
 use std::sync::Arc;
 
@@ -136,8 +143,8 @@ use axum::middleware;
 use axum::response::{Html, IntoResponse};
 use axum::routing::{get, post};
 use axum::Router;
-use tower_http::trace::TraceLayer;
 use tower_http::compression::CompressionLayer;
+use tower_http::trace::TraceLayer;
 use tracing::Level;
 
 use api::AppState;
@@ -197,7 +204,10 @@ async fn changelog() -> impl IntoResponse {
 }
 
 async fn feedback_widget() -> impl IntoResponse {
-    ([(header::CACHE_CONTROL, "no-cache")], Html(FEEDBACK_WIDGET_HTML))
+    (
+        [(header::CACHE_CONTROL, "no-cache")],
+        Html(FEEDBACK_WIDGET_HTML),
+    )
 }
 
 async fn views_page() -> impl IntoResponse {
@@ -270,7 +280,9 @@ fn build_alert_routes(_state: Arc<api::AppState>) -> Router<Arc<api::AppState>> 
 fn build_otel_routes(state: Arc<api::AppState>) -> Router<Arc<api::AppState>> {
     match &state.otel_store {
         Some(store) => {
-            let otel_state = otel_ingest::OtelIngestState { store: store.clone() };
+            let otel_state = otel_ingest::OtelIngestState {
+                store: store.clone(),
+            };
             Router::new()
                 .route("/traces", post(otel_ingest::ingest_traces))
                 .route("/metrics", post(otel_ingest::ingest_metrics))
@@ -309,10 +321,7 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/api/fuse/query", post(api::query_handler))
         .route("/api/fuse/query/stream", post(streaming::stream_handler))
         .route("/api/fuse/datasources", get(api::list_datasources))
-        .route(
-            "/api/fuse/datasources/{id}/schemas",
-            get(api::get_schemas),
-        )
+        .route("/api/fuse/datasources/{id}/schemas", get(api::get_schemas))
         .route(
             "/api/fuse/datasources/{id}/schemas/{table}/fields",
             get(api::get_fields),
@@ -320,7 +329,10 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/api/fuse/query/explain", post(api::explain_handler))
         .route("/api/fuse/query/validate", post(api::validate_handler))
         .route("/api/fuse/query/export/csv", post(api::export_csv_handler))
-        .route("/api/fuse/query/export/json", post(api::export_json_handler))
+        .route(
+            "/api/fuse/query/export/json",
+            post(api::export_json_handler),
+        )
         .route("/api/fuse/query/diff", post(api::query_diff_handler))
         .route("/api/fuse/health", get(api::health_handler))
         .route("/api/fuse/info", get(api::info_handler))
@@ -329,14 +341,29 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/api/fuse/pool-stats", get(api::pool_stats_handler))
         .route("/api/fuse/audit", get(api::audit_handler))
         .route("/api/fuse/keys/rotate", post(api::rotate_key_handler))
-        .route("/api/fuse/cache", axum::routing::delete(api::clear_cache_handler))
-        .route("/api/fuse/saved", get(api::list_saved_queries).post(api::save_query))
-        .route("/api/fuse/saved/{name}", get(api::get_saved_query).delete(api::delete_saved_query))
+        .route(
+            "/api/fuse/cache",
+            axum::routing::delete(api::clear_cache_handler),
+        )
+        .route(
+            "/api/fuse/saved",
+            get(api::list_saved_queries).post(api::save_query),
+        )
+        .route(
+            "/api/fuse/saved/{name}",
+            get(api::get_saved_query).delete(api::delete_saved_query),
+        )
         .route("/api/fuse/queries/running", get(api::list_running_queries))
-        .route("/api/fuse/query/{id}/cancel", axum::routing::delete(api::cancel_query))
+        .route(
+            "/api/fuse/query/{id}/cancel",
+            axum::routing::delete(api::cancel_query),
+        )
         .route("/api/fuse/alerts", get(api::list_alerts))
         .route("/api/fuse/alerts/evaluate", post(api::evaluate_alerts))
-        .route("/api/fuse/views", get(api::list_views).post(api::create_view))
+        .route(
+            "/api/fuse/views",
+            get(api::list_views).post(api::create_view),
+        )
         .route("/api/fuse/multi", post(api::multi_query_handler))
         .route("/api/fuse/nl", post(api::nl_to_sql_handler))
         .route("/api/fuse/advisor", get(api::query_advisor_handler))
@@ -345,20 +372,38 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/api/fuse/similarity", get(api::similarity_handler))
         .route("/api/fuse/routing/stats", get(api::routing_stats_handler))
         .route("/api/fuse/anomaly", get(api::anomaly_handler))
-        .route("/api/fuse/chaos", get(api::chaos_config_handler).post(api::chaos_enable_handler))
+        .route(
+            "/api/fuse/chaos",
+            get(api::chaos_config_handler).post(api::chaos_enable_handler),
+        )
         .route("/api/fuse/pool/stats", get(api::pool_stats_handler))
-        .route("/api/fuse/connectors/health-history", get(api::connector_health_history_handler))
+        .route(
+            "/api/fuse/connectors/health-history",
+            get(api::connector_health_history_handler),
+        )
         .route("/api/fuse/load-scenarios", get(api::load_scenarios_handler))
-        .route("/api/fuse/views/{name}", get(api::get_view).delete(api::delete_view))
+        .route(
+            "/api/fuse/views/{name}",
+            get(api::get_view).delete(api::delete_view),
+        )
         .route("/api/fuse/views/{name}/refresh", post(api::refresh_view))
         .route("/api/fuse/trace/{trace_id}", get(api::trace_handler))
         .route("/api/fuse/federation", get(api::federation_handler))
-        .route("/api/fuse/relationships", get(schema_discovery::relationships_handler))
+        .route(
+            "/api/fuse/relationships",
+            get(schema_discovery::relationships_handler),
+        )
         .route("/api/fuse/predict", get(query_predictor::predict_handler))
         .route("/api/fuse/lineage", post(api::lineage_handler))
-        .route("/api/fuse/replay/recordings", get(api::list_recordings).delete(api::clear_recordings))
+        .route(
+            "/api/fuse/replay/recordings",
+            get(api::list_recordings).delete(api::clear_recordings),
+        )
         .route("/api/fuse/replay/record", post(api::record_query))
-        .route("/api/fuse/graphql", get(graphql::graphiql_handler).post(graphql::graphql_handler))
+        .route(
+            "/api/fuse/graphql",
+            get(graphql::graphiql_handler).post(graphql::graphql_handler),
+        )
         .route("/api/fuse/graphql/ws", get(graphql::graphql_ws_handler))
         .route("/metrics", get(metrics::metrics_handler))
         .route("/api/versions", get(api_versioning::versions_handler))
@@ -377,12 +422,18 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .layer(middleware::from_fn(auth::auth_middleware))
         .layer(middleware::from_fn(request_signing::signing_middleware))
         .layer(axum::Extension(auth::AuthState::default()))
-        .layer(TraceLayer::new_for_http()
-            .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(Level::INFO))
-            .on_response(tower_http::trace::DefaultOnResponse::new().level(Level::INFO)))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(Level::INFO))
+                .on_response(tower_http::trace::DefaultOnResponse::new().level(Level::INFO)),
+        )
         .layer(CompressionLayer::new())
-        .layer(middleware::from_fn(security_headers::security_headers_middleware))
-        .layer(middleware::from_fn(api_versioning::version_header_middleware))
+        .layer(middleware::from_fn(
+            security_headers::security_headers_middleware,
+        ))
+        .layer(middleware::from_fn(
+            api_versioning::version_header_middleware,
+        ))
         .layer(DefaultBodyLimit::max(10 * 1024 * 1024)) // 10MB request body limit
         .layer(axum::Extension(graphql::build_schema(state.clone())))
         .with_state(state)

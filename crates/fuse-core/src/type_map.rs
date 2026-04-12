@@ -38,12 +38,23 @@ pub fn from_type_name(name: &str) -> DataType {
 
 /// Check if two types are compatible for UNION.
 pub fn types_compatible(a: &DataType, b: &DataType) -> bool {
-    if a == b { return true; }
-    matches!((a, b),
-        (DataType::Int32, DataType::Int64) | (DataType::Int64, DataType::Int32) |
-        (DataType::Float32, DataType::Float64) | (DataType::Float64, DataType::Float32) |
-        (DataType::Int32 | DataType::Int64, DataType::Float32 | DataType::Float64) |
-        (DataType::Float32 | DataType::Float64, DataType::Int32 | DataType::Int64)
+    if a == b {
+        return true;
+    }
+    matches!(
+        (a, b),
+        (DataType::Int32, DataType::Int64)
+            | (DataType::Int64, DataType::Int32)
+            | (DataType::Float32, DataType::Float64)
+            | (DataType::Float64, DataType::Float32)
+            | (
+                DataType::Int32 | DataType::Int64,
+                DataType::Float32 | DataType::Float64
+            )
+            | (
+                DataType::Float32 | DataType::Float64,
+                DataType::Int32 | DataType::Int64
+            )
     )
 }
 

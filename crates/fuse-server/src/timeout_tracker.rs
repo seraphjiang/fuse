@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Timeout tracker — record timed-out queries for debugging.
 
+use serde::Serialize;
 use std::collections::VecDeque;
 use std::sync::Mutex;
-use serde::Serialize;
 
 const MAX_ENTRIES: usize = 100;
 
@@ -28,7 +28,9 @@ impl Default for TimeoutTracker {
 
 impl TimeoutTracker {
     pub fn new() -> Self {
-        Self { entries: Mutex::new(VecDeque::new()) }
+        Self {
+            entries: Mutex::new(VecDeque::new()),
+        }
     }
 
     pub fn record(&self, query_id: &str, datasource: &str, timeout_ms: u64, elapsed_ms: u64) {
@@ -47,7 +49,14 @@ impl TimeoutTracker {
     }
 
     pub fn recent(&self, limit: usize) -> Vec<TimeoutEntry> {
-        self.entries.lock().unwrap().iter().rev().take(limit).cloned().collect()
+        self.entries
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .take(limit)
+            .cloned()
+            .collect()
     }
 
     pub fn count(&self) -> usize {
@@ -55,7 +64,12 @@ impl TimeoutTracker {
     }
 
     pub fn count_for_datasource(&self, datasource: &str) -> usize {
-        self.entries.lock().unwrap().iter().filter(|e| e.datasource == datasource).count()
+        self.entries
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| e.datasource == datasource)
+            .count()
     }
 }
 

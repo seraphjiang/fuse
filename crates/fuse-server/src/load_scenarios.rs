@@ -30,9 +30,7 @@ pub enum LoadPattern {
     /// Sustained constant load for the full duration.
     Soak,
     /// Linearly increasing load from base_qps to peak over duration.
-    Stress {
-        base_qps: u32,
-    },
+    Stress { base_qps: u32 },
 }
 
 /// Result of a load test run.
@@ -53,7 +51,12 @@ pub struct LoadResult {
 
 impl LoadResult {
     /// Compute stats from a list of latencies (in ms).
-    pub fn from_latencies(scenario: &str, latencies: &mut [u64], failed: u64, duration_secs: f64) -> Self {
+    pub fn from_latencies(
+        scenario: &str,
+        latencies: &mut [u64],
+        failed: u64,
+        duration_secs: f64,
+    ) -> Self {
         latencies.sort_unstable();
         let n = latencies.len();
         let total = n as u64 + failed;
@@ -63,12 +66,32 @@ impl LoadResult {
             successful: n as u64,
             failed,
             p50_ms: if n > 0 { latencies[n / 2] } else { 0 },
-            p95_ms: if n > 0 { latencies[(n * 95 / 100).min(n - 1)] } else { 0 },
-            p99_ms: if n > 0 { latencies[(n * 99 / 100).min(n - 1)] } else { 0 },
+            p95_ms: if n > 0 {
+                latencies[(n * 95 / 100).min(n - 1)]
+            } else {
+                0
+            },
+            p99_ms: if n > 0 {
+                latencies[(n * 99 / 100).min(n - 1)]
+            } else {
+                0
+            },
             max_ms: latencies.last().copied().unwrap_or(0),
-            avg_ms: if n > 0 { latencies.iter().sum::<u64>() as f64 / n as f64 } else { 0.0 },
-            actual_qps: if duration_secs > 0.0 { total as f64 / duration_secs } else { 0.0 },
-            error_rate_pct: if total > 0 { failed as f64 / total as f64 * 100.0 } else { 0.0 },
+            avg_ms: if n > 0 {
+                latencies.iter().sum::<u64>() as f64 / n as f64
+            } else {
+                0.0
+            },
+            actual_qps: if duration_secs > 0.0 {
+                total as f64 / duration_secs
+            } else {
+                0.0
+            },
+            error_rate_pct: if total > 0 {
+                failed as f64 / total as f64 * 100.0
+            } else {
+                0.0
+            },
         }
     }
 }
@@ -76,23 +99,35 @@ impl LoadResult {
 /// Compute the target QPS at a given elapsed second for a scenario.
 pub fn qps_at(scenario: &LoadScenario, elapsed_secs: u64) -> u32 {
     match &scenario.pattern {
-        LoadPattern::Spike { ramp_up_secs, hold_secs, ramp_down_secs } => {
+        LoadPattern::Spike {
+            ramp_up_secs,
+            hold_secs,
+            ramp_down_secs,
+        } => {
             if elapsed_secs < *ramp_up_secs {
                 // Linear ramp up
-                if *ramp_up_secs == 0 { scenario.peak_qps }
-                else { (scenario.peak_qps as u64 * elapsed_secs / ramp_up_secs) as u32 }
+                if *ramp_up_secs == 0 {
+                    scenario.peak_qps
+                } else {
+                    (scenario.peak_qps as u64 * elapsed_secs / ramp_up_secs) as u32
+                }
             } else if elapsed_secs < ramp_up_secs + hold_secs {
                 scenario.peak_qps
             } else {
                 let down_elapsed = elapsed_secs - ramp_up_secs - hold_secs;
-                if *ramp_down_secs == 0 || down_elapsed >= *ramp_down_secs { 0 }
-                else { (scenario.peak_qps as u64 * (ramp_down_secs - down_elapsed) / ramp_down_secs) as u32 }
+                if *ramp_down_secs == 0 || down_elapsed >= *ramp_down_secs {
+                    0
+                } else {
+                    (scenario.peak_qps as u64 * (ramp_down_secs - down_elapsed) / ramp_down_secs)
+                        as u32
+                }
             }
         }
         LoadPattern::Soak => scenario.peak_qps,
         LoadPattern::Stress { base_qps } => {
-            if scenario.duration_secs == 0 { scenario.peak_qps }
-            else {
+            if scenario.duration_secs == 0 {
+                scenario.peak_qps
+            } else {
                 let range = scenario.peak_qps.saturating_sub(*base_qps);
                 base_qps + (range as u64 * elapsed_secs / scenario.duration_secs) as u32
             }
@@ -104,7 +139,11 @@ pub fn qps_at(scenario: &LoadScenario, elapsed_secs: u64) -> u32 {
 pub fn preset_spike() -> LoadScenario {
     LoadScenario {
         name: "spike".into(),
-        pattern: LoadPattern::Spike { ramp_up_secs: 2, hold_secs: 5, ramp_down_secs: 2 },
+        pattern: LoadPattern::Spike {
+            ramp_up_secs: 2,
+            hold_secs: 5,
+            ramp_down_secs: 2,
+        },
         duration_secs: 9,
         peak_qps: 100,
     }
@@ -150,7 +189,7 @@ mod tests {
     fn test_spike_qps_ramp_down() {
         let s = preset_spike();
         assert_eq!(qps_at(&s, 7), 100); // start of ramp down
-        assert_eq!(qps_at(&s, 8), 50);  // halfway down
+        assert_eq!(qps_at(&s, 8), 50); // halfway down
     }
 
     #[test]
@@ -164,7 +203,7 @@ mod tests {
     #[test]
     fn test_stress_linear_increase() {
         let s = preset_stress();
-        assert_eq!(qps_at(&s, 0), 10);  // base
+        assert_eq!(qps_at(&s, 0), 10); // base
         assert_eq!(qps_at(&s, 10), 105); // halfway
         assert_eq!(qps_at(&s, 20), 200); // peak
     }

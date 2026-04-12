@@ -57,11 +57,9 @@ const TOTAL_ROWS_THRESHOLD: u64 = 1_000_000;
 
 /// Decide whether a join should be delegated to Spark.
 pub fn should_delegate_to_spark(left_stats: &TableStats, right_stats: &TableStats) -> bool {
-    let both_large =
-        left_stats.estimated_rows > BOTH_SIDES_THRESHOLD
-            && right_stats.estimated_rows > BOTH_SIDES_THRESHOLD;
-    let total_large =
-        left_stats.estimated_rows + right_stats.estimated_rows > TOTAL_ROWS_THRESHOLD;
+    let both_large = left_stats.estimated_rows > BOTH_SIDES_THRESHOLD
+        && right_stats.estimated_rows > BOTH_SIDES_THRESHOLD;
+    let total_large = left_stats.estimated_rows + right_stats.estimated_rows > TOTAL_ROWS_THRESHOLD;
     both_large || total_large
 }
 
@@ -183,15 +181,21 @@ impl SparkBackend for EmrServerlessBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::join::{JoinSide, JoinStrategy};
     use crate::cost::CostEstimate;
+    use crate::join::{JoinSide, JoinStrategy};
 
     fn small_stats() -> TableStats {
-        TableStats { estimated_rows: 1_000, avg_row_bytes: 256 }
+        TableStats {
+            estimated_rows: 1_000,
+            avg_row_bytes: 256,
+        }
     }
 
     fn large_stats() -> TableStats {
-        TableStats { estimated_rows: 500_000, avg_row_bytes: 256 }
+        TableStats {
+            estimated_rows: 500_000,
+            avg_row_bytes: 256,
+        }
     }
 
     fn dummy_plan() -> JoinPlan {
@@ -214,8 +218,14 @@ mod tests {
 
     #[test]
     fn test_delegation_when_total_exceeds_threshold() {
-        let a = TableStats { estimated_rows: 50_000, avg_row_bytes: 256 };
-        let b = TableStats { estimated_rows: 960_000, avg_row_bytes: 256 };
+        let a = TableStats {
+            estimated_rows: 50_000,
+            avg_row_bytes: 256,
+        };
+        let b = TableStats {
+            estimated_rows: 960_000,
+            avg_row_bytes: 256,
+        };
         assert!(should_delegate_to_spark(&a, &b));
     }
 
@@ -227,27 +237,17 @@ mod tests {
 
     #[test]
     fn test_plan_delegates_with_backend_and_large_tables() {
-        let backend: Arc<dyn SparkBackend> =
-            Arc::new(LivyBackend::new("http://livy:8998"));
-        let plan = plan_federated_join(
-            &large_stats(),
-            &large_stats(),
-            dummy_plan(),
-            Some(&backend),
-        );
+        let backend: Arc<dyn SparkBackend> = Arc::new(LivyBackend::new("http://livy:8998"));
+        let plan =
+            plan_federated_join(&large_stats(), &large_stats(), dummy_plan(), Some(&backend));
         assert!(matches!(plan, FederatedJoinStrategy::Spark { .. }));
     }
 
     #[test]
     fn test_plan_stays_local_with_backend_but_small_tables() {
-        let backend: Arc<dyn SparkBackend> =
-            Arc::new(LivyBackend::new("http://livy:8998"));
-        let plan = plan_federated_join(
-            &small_stats(),
-            &small_stats(),
-            dummy_plan(),
-            Some(&backend),
-        );
+        let backend: Arc<dyn SparkBackend> = Arc::new(LivyBackend::new("http://livy:8998"));
+        let plan =
+            plan_federated_join(&small_stats(), &small_stats(), dummy_plan(), Some(&backend));
         assert!(matches!(plan, FederatedJoinStrategy::Local(_)));
     }
 }

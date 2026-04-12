@@ -51,7 +51,10 @@ impl TransactionStore {
     pub fn add_write(&self, txn_id: &str, write: PendingWrite) -> bool {
         let mut txns = self.txns.lock().unwrap();
         match txns.get_mut(txn_id) {
-            Some(txn) => { txn.writes.push(write); true }
+            Some(txn) => {
+                txn.writes.push(write);
+                true
+            }
             None => false,
         }
     }
@@ -90,7 +93,11 @@ mod tests {
     }
 
     fn pw(ds: &str, tbl: &str) -> PendingWrite {
-        PendingWrite { datasource: ds.into(), table: tbl.into(), batches: test_batch() }
+        PendingWrite {
+            datasource: ds.into(),
+            table: tbl.into(),
+            batches: test_batch(),
+        }
     }
 
     #[test]

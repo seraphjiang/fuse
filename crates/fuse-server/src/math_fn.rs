@@ -21,15 +21,23 @@ pub fn apply_math(rows: &mut [Vec<Value>], col: usize, func: MathFn) {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum MathFn { Abs, Round, Ceil, Floor }
+pub enum MathFn {
+    Abs,
+    Round,
+    Ceil,
+    Floor,
+}
 
 /// Modulo operation on a column.
 pub fn modulo(rows: &[Vec<Value>], col: usize, divisor: f64) -> Vec<Value> {
-    rows.iter().map(|row| {
-        row.get(col).and_then(|v| v.as_f64())
-            .and_then(|n| serde_json::Number::from_f64(n % divisor).map(Value::Number))
-            .unwrap_or(Value::Null)
-    }).collect()
+    rows.iter()
+        .map(|row| {
+            row.get(col)
+                .and_then(|v| v.as_f64())
+                .and_then(|n| serde_json::Number::from_f64(n % divisor).map(Value::Number))
+                .unwrap_or(Value::Null)
+        })
+        .collect()
 }
 
 #[cfg(test)]

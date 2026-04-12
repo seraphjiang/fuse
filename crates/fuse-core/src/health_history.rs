@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Connector health history — track health status over time.
 
+use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
-use serde::Serialize;
 
 const DEFAULT_MAX_ENTRIES: usize = 60;
 
@@ -22,7 +22,10 @@ pub struct HealthHistory {
 
 impl HealthHistory {
     pub fn new(max_entries: usize) -> Self {
-        Self { entries: Mutex::new(HashMap::new()), max_entries }
+        Self {
+            entries: Mutex::new(HashMap::new()),
+            max_entries,
+        }
     }
 
     pub fn with_defaults() -> Self {
@@ -39,11 +42,17 @@ impl HealthHistory {
         if history.len() >= self.max_entries {
             history.pop_front();
         }
-        history.push_back(HealthSnapshot { timestamp: now, healthy, latency_ms });
+        history.push_back(HealthSnapshot {
+            timestamp: now,
+            healthy,
+            latency_ms,
+        });
     }
 
     pub fn get(&self, connector: &str) -> Vec<HealthSnapshot> {
-        self.entries.lock().unwrap()
+        self.entries
+            .lock()
+            .unwrap()
             .get(connector)
             .map(|h| h.iter().cloned().collect())
             .unwrap_or_default()
@@ -66,7 +75,9 @@ impl HealthHistory {
         let map = self.entries.lock().unwrap();
         let h = map.get(connector)?;
         let latencies: Vec<u64> = h.iter().filter_map(|s| s.latency_ms).collect();
-        if latencies.is_empty() { return None; }
+        if latencies.is_empty() {
+            return None;
+        }
         Some(latencies.iter().sum::<u64>() / latencies.len() as u64)
     }
 }

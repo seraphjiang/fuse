@@ -21,12 +21,11 @@ async fn test_mock_connector_health() {
 
 #[tokio::test]
 async fn test_mock_connector_unhealthy() {
-    let mock = MockConnector::new("bad_ds")
-        .with_health(ConnectorHealth {
-            status: HealthStatus::Unhealthy,
-            latency_ms: None,
-            message: Some("down".into()),
-        });
+    let mock = MockConnector::new("bad_ds").with_health(ConnectorHealth {
+        status: HealthStatus::Unhealthy,
+        latency_ms: None,
+        message: Some("down".into()),
+    });
     let h = mock.health_check().await;
     assert!(matches!(h.status, HealthStatus::Unhealthy));
     assert_eq!(h.message.as_deref(), Some("down"));
@@ -46,7 +45,8 @@ async fn test_mock_connector_execute() {
         group_by: vec![],
         sort: vec![],
         limit: None,
-        offset: None, passthrough: None,
+        offset: None,
+        passthrough: None,
         having: None,
     };
     let batches = mock.execute(&query).await.unwrap();
@@ -57,8 +57,7 @@ async fn test_mock_connector_execute() {
 
 #[tokio::test]
 async fn test_mock_connector_execute_count() {
-    let mock = MockConnector::new("ds")
-        .with_table("t", vec!["a"]);
+    let mock = MockConnector::new("ds").with_table("t", vec!["a"]);
 
     let query = SubQuery {
         table: "t".into(),
@@ -68,7 +67,8 @@ async fn test_mock_connector_execute_count() {
         group_by: vec![],
         sort: vec![],
         limit: None,
-        offset: None, passthrough: None,
+        offset: None,
+        passthrough: None,
         having: None,
     };
     assert_eq!(mock.execute_count(), 0);
@@ -80,8 +80,7 @@ async fn test_mock_connector_execute_count() {
 
 #[test]
 fn test_mock_connector_metadata() {
-    let mock = MockConnector::new("my_ds")
-        .with_type("custom");
+    let mock = MockConnector::new("my_ds").with_type("custom");
     assert_eq!(mock.id(), "my_ds");
     assert_eq!(mock.connector_type(), "custom");
 }

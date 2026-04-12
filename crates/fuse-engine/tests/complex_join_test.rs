@@ -14,7 +14,10 @@ use fuse_engine::{extract_join_keys, hash_join, keys_to_in_filter, JoinType};
 
 fn batch(fields: &[(&str, DataType)], cols: Vec<Arc<dyn arrow::array::Array>>) -> RecordBatch {
     let schema = Arc::new(Schema::new(
-        fields.iter().map(|(n, dt)| Field::new(*n, dt.clone(), true)).collect::<Vec<_>>(),
+        fields
+            .iter()
+            .map(|(n, dt)| Field::new(*n, dt.clone(), true))
+            .collect::<Vec<_>>(),
     ));
     RecordBatch::try_new(schema, cols).unwrap()
 }
@@ -45,7 +48,10 @@ fn test_three_way_inner_join() {
     );
     let roles = batch(
         &[("role_id", DataType::Utf8), ("role_name", DataType::Utf8)],
-        vec![str_col(&["r1", "r2", "r3"]), str_col(&["admin", "viewer", "editor"])],
+        vec![
+            str_col(&["r1", "r2", "r3"]),
+            str_col(&["admin", "viewer", "editor"]),
+        ],
     );
 
     let step1 = hash_join(&[logs], "user_id", &[users], "user_id", JoinType::Inner).unwrap();
@@ -93,7 +99,11 @@ fn test_self_join_circular_refs() {
 #[test]
 fn test_self_join_employee_hierarchy() {
     let emp = batch(
-        &[("emp_id", DataType::Utf8), ("name", DataType::Utf8), ("mgr_id", DataType::Utf8)],
+        &[
+            ("emp_id", DataType::Utf8),
+            ("name", DataType::Utf8),
+            ("mgr_id", DataType::Utf8),
+        ],
         vec![
             str_col(&["e1", "e2", "e3", "e4"]),
             str_col(&["alice", "bob", "carol", "dave"]),
@@ -108,11 +118,20 @@ fn test_self_join_employee_hierarchy() {
 
 #[test]
 fn test_anti_join_multi_batch_build() {
-    let b1 = batch(&[("id", DataType::Utf8), ("v", DataType::Int64)], vec![str_col(&["a", "b"]), i64_col(&[1, 2])]);
-    let b2 = batch(&[("id", DataType::Utf8), ("v", DataType::Int64)], vec![str_col(&["c", "d"]), i64_col(&[3, 4])]);
+    let b1 = batch(
+        &[("id", DataType::Utf8), ("v", DataType::Int64)],
+        vec![str_col(&["a", "b"]), i64_col(&[1, 2])],
+    );
+    let b2 = batch(
+        &[("id", DataType::Utf8), ("v", DataType::Int64)],
+        vec![str_col(&["c", "d"]), i64_col(&[3, 4])],
+    );
     let probe = batch(
         &[("id", DataType::Utf8), ("name", DataType::Utf8)],
-        vec![str_col(&["a", "b", "c", "d", "e", "f"]), str_col(&["A", "B", "C", "D", "E", "F"])],
+        vec![
+            str_col(&["a", "b", "c", "d", "e", "f"]),
+            str_col(&["A", "B", "C", "D", "E", "F"]),
+        ],
     );
 
     let result = hash_join(&[b1, b2], "id", &[probe], "id", JoinType::Anti).unwrap();
@@ -121,9 +140,18 @@ fn test_anti_join_multi_batch_build() {
 
 #[test]
 fn test_anti_join_multi_batch_probe() {
-    let build = batch(&[("id", DataType::Utf8), ("v", DataType::Int64)], vec![str_col(&["a", "c"]), i64_col(&[1, 3])]);
-    let p1 = batch(&[("id", DataType::Utf8), ("name", DataType::Utf8)], vec![str_col(&["a", "b"]), str_col(&["A", "B"])]);
-    let p2 = batch(&[("id", DataType::Utf8), ("name", DataType::Utf8)], vec![str_col(&["c", "d"]), str_col(&["C", "D"])]);
+    let build = batch(
+        &[("id", DataType::Utf8), ("v", DataType::Int64)],
+        vec![str_col(&["a", "c"]), i64_col(&[1, 3])],
+    );
+    let p1 = batch(
+        &[("id", DataType::Utf8), ("name", DataType::Utf8)],
+        vec![str_col(&["a", "b"]), str_col(&["A", "B"])],
+    );
+    let p2 = batch(
+        &[("id", DataType::Utf8), ("name", DataType::Utf8)],
+        vec![str_col(&["c", "d"]), str_col(&["C", "D"])],
+    );
 
     let result = hash_join(&[build], "id", &[p1, p2], "id", JoinType::Anti).unwrap();
     assert_eq!(result[0].num_rows(), 2); // b, d
@@ -134,7 +162,10 @@ fn test_anti_join_blocklist_pattern() {
     let blocklist = batch(&[("id", DataType::Utf8)], vec![str_col(&["u2", "u4"])]);
     let users = batch(
         &[("id", DataType::Utf8), ("name", DataType::Utf8)],
-        vec![str_col(&["u1", "u2", "u3", "u4", "u5"]), str_col(&["alice", "bob", "carol", "dave", "eve"])],
+        vec![
+            str_col(&["u1", "u2", "u3", "u4", "u5"]),
+            str_col(&["alice", "bob", "carol", "dave", "eve"]),
+        ],
     );
 
     let keys = extract_join_keys(&[blocklist.clone()], "id").unwrap();
@@ -154,7 +185,10 @@ fn test_exists_via_semi_join() {
     );
     let users = batch(
         &[("id", DataType::Utf8), ("name", DataType::Utf8)],
-        vec![str_col(&["u1", "u2", "u3", "u4"]), str_col(&["alice", "bob", "carol", "dave"])],
+        vec![
+            str_col(&["u1", "u2", "u3", "u4"]),
+            str_col(&["alice", "bob", "carol", "dave"]),
+        ],
     );
 
     let result = hash_join(&[orders], "user_id", &[users], "id", JoinType::Semi).unwrap();
@@ -170,7 +204,10 @@ fn test_not_exists_via_anti_join() {
     );
     let users = batch(
         &[("id", DataType::Utf8), ("name", DataType::Utf8)],
-        vec![str_col(&["u1", "u2", "u3", "u4"]), str_col(&["alice", "bob", "carol", "dave"])],
+        vec![
+            str_col(&["u1", "u2", "u3", "u4"]),
+            str_col(&["alice", "bob", "carol", "dave"]),
+        ],
     );
 
     let result = hash_join(&[orders], "user_id", &[users], "id", JoinType::Anti).unwrap();
@@ -179,10 +216,16 @@ fn test_not_exists_via_anti_join() {
 
 #[test]
 fn test_in_subquery_via_key_extraction() {
-    let premium = batch(&[("user_id", DataType::Utf8)], vec![str_col(&["u1", "u3", "u5"])]);
+    let premium = batch(
+        &[("user_id", DataType::Utf8)],
+        vec![str_col(&["u1", "u3", "u5"])],
+    );
     let logs = batch(
         &[("user_id", DataType::Utf8), ("event", DataType::Utf8)],
-        vec![str_col(&["u1", "u2", "u3", "u4"]), str_col(&["login", "login", "purchase", "logout"])],
+        vec![
+            str_col(&["u1", "u2", "u3", "u4"]),
+            str_col(&["login", "login", "purchase", "logout"]),
+        ],
     );
 
     let keys = extract_join_keys(&[premium.clone()], "user_id").unwrap();
@@ -202,14 +245,27 @@ fn test_in_subquery_via_key_extraction() {
 fn test_join_nulls_dont_match() {
     let build = batch(
         &[("id", DataType::Utf8), ("v", DataType::Int64)],
-        vec![nullable_str_col(&[Some("a"), None, Some("c")]), i64_col(&[1, 2, 3])],
+        vec![
+            nullable_str_col(&[Some("a"), None, Some("c")]),
+            i64_col(&[1, 2, 3]),
+        ],
     );
     let probe = batch(
         &[("id", DataType::Utf8), ("name", DataType::Utf8)],
-        vec![nullable_str_col(&[Some("a"), None, Some("b")]), str_col(&["alice", "null-user", "bob"])],
+        vec![
+            nullable_str_col(&[Some("a"), None, Some("b")]),
+            str_col(&["alice", "null-user", "bob"]),
+        ],
     );
 
-    let inner = hash_join(&[build.clone()], "id", &[probe.clone()], "id", JoinType::Inner).unwrap();
+    let inner = hash_join(
+        &[build.clone()],
+        "id",
+        &[probe.clone()],
+        "id",
+        JoinType::Inner,
+    )
+    .unwrap();
     assert_eq!(inner[0].num_rows(), 1); // only "a"
 
     let anti = hash_join(&[build], "id", &[probe], "id", JoinType::Anti).unwrap();
@@ -233,8 +289,14 @@ fn test_many_to_many_cross_product() {
 
 #[test]
 fn test_single_row_join() {
-    let build = batch(&[("id", DataType::Utf8), ("v", DataType::Int64)], vec![str_col(&["a"]), i64_col(&[1])]);
-    let probe = batch(&[("id", DataType::Utf8), ("name", DataType::Utf8)], vec![str_col(&["a"]), str_col(&["alice"])]);
+    let build = batch(
+        &[("id", DataType::Utf8), ("v", DataType::Int64)],
+        vec![str_col(&["a"]), i64_col(&[1])],
+    );
+    let probe = batch(
+        &[("id", DataType::Utf8), ("name", DataType::Utf8)],
+        vec![str_col(&["a"]), str_col(&["alice"])],
+    );
 
     let result = hash_join(&[build], "id", &[probe], "id", JoinType::Inner).unwrap();
     assert_eq!(result[0].num_rows(), 1);
@@ -243,25 +305,59 @@ fn test_single_row_join() {
 
 #[test]
 fn test_semi_anti_complement_multi_batch() {
-    let b1 = batch(&[("id", DataType::Utf8), ("v", DataType::Int64)], vec![str_col(&["a"]), i64_col(&[1])]);
-    let b2 = batch(&[("id", DataType::Utf8), ("v", DataType::Int64)], vec![str_col(&["c"]), i64_col(&[3])]);
+    let b1 = batch(
+        &[("id", DataType::Utf8), ("v", DataType::Int64)],
+        vec![str_col(&["a"]), i64_col(&[1])],
+    );
+    let b2 = batch(
+        &[("id", DataType::Utf8), ("v", DataType::Int64)],
+        vec![str_col(&["c"]), i64_col(&[3])],
+    );
     let probe = batch(
         &[("id", DataType::Utf8), ("name", DataType::Utf8)],
-        vec![str_col(&["a", "b", "c", "d", "e"]), str_col(&["A", "B", "C", "D", "E"])],
+        vec![
+            str_col(&["a", "b", "c", "d", "e"]),
+            str_col(&["A", "B", "C", "D", "E"]),
+        ],
     );
 
-    let semi: usize = hash_join(&[b1.clone(), b2.clone()], "id", &[probe.clone()], "id", JoinType::Semi)
-        .unwrap().iter().map(|b| b.num_rows()).sum();
+    let semi: usize = hash_join(
+        &[b1.clone(), b2.clone()],
+        "id",
+        &[probe.clone()],
+        "id",
+        JoinType::Semi,
+    )
+    .unwrap()
+    .iter()
+    .map(|b| b.num_rows())
+    .sum();
     let anti: usize = hash_join(&[b1, b2], "id", &[probe], "id", JoinType::Anti)
-        .unwrap().iter().map(|b| b.num_rows()).sum();
-    assert_eq!(semi + anti, 5, "semi ({semi}) + anti ({anti}) = probe rows (5)");
+        .unwrap()
+        .iter()
+        .map(|b| b.num_rows())
+        .sum();
+    assert_eq!(
+        semi + anti,
+        5,
+        "semi ({semi}) + anti ({anti}) = probe rows (5)"
+    );
 }
 
 #[test]
 fn test_full_outer_three_way() {
-    let a = batch(&[("id", DataType::Utf8), ("a_val", DataType::Int64)], vec![str_col(&["x", "y"]), i64_col(&[1, 2])]);
-    let b = batch(&[("id", DataType::Utf8), ("b_val", DataType::Utf8)], vec![str_col(&["y", "z"]), str_col(&["b1", "b2"])]);
-    let c = batch(&[("id", DataType::Utf8), ("c_val", DataType::Utf8)], vec![str_col(&["z", "w"]), str_col(&["c1", "c2"])]);
+    let a = batch(
+        &[("id", DataType::Utf8), ("a_val", DataType::Int64)],
+        vec![str_col(&["x", "y"]), i64_col(&[1, 2])],
+    );
+    let b = batch(
+        &[("id", DataType::Utf8), ("b_val", DataType::Utf8)],
+        vec![str_col(&["y", "z"]), str_col(&["b1", "b2"])],
+    );
+    let c = batch(
+        &[("id", DataType::Utf8), ("c_val", DataType::Utf8)],
+        vec![str_col(&["z", "w"]), str_col(&["c1", "c2"])],
+    );
 
     let step1 = hash_join(&[a], "id", &[b], "id", JoinType::Full).unwrap();
     assert_eq!(step1[0].num_rows(), 3); // x(unmatched) + y(match) + z(unmatched)

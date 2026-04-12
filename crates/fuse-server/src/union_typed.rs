@@ -6,23 +6,33 @@ use serde_json::Value;
 /// Align two result sets to a common schema, then merge.
 /// Missing columns are filled with null.
 pub fn union_aligned(
-    left_cols: &[String], left_rows: &[Vec<Value>],
-    right_cols: &[String], right_rows: &[Vec<Value>],
+    left_cols: &[String],
+    left_rows: &[Vec<Value>],
+    right_cols: &[String],
+    right_rows: &[Vec<Value>],
 ) -> (Vec<String>, Vec<Vec<Value>>) {
     // Build unified column list preserving left order, then right-only
     let mut all_cols = left_cols.to_vec();
     for c in right_cols {
-        if !all_cols.contains(c) { all_cols.push(c.clone()); }
+        if !all_cols.contains(c) {
+            all_cols.push(c.clone());
+        }
     }
 
     let align = |cols: &[String], rows: &[Vec<Value>]| -> Vec<Vec<Value>> {
-        rows.iter().map(|row| {
-            all_cols.iter().map(|c| {
-                cols.iter().position(|x| x == c)
-                    .and_then(|i| row.get(i).cloned())
-                    .unwrap_or(Value::Null)
-            }).collect()
-        }).collect()
+        rows.iter()
+            .map(|row| {
+                all_cols
+                    .iter()
+                    .map(|c| {
+                        cols.iter()
+                            .position(|x| x == c)
+                            .and_then(|i| row.get(i).cloned())
+                            .unwrap_or(Value::Null)
+                    })
+                    .collect()
+            })
+            .collect()
     };
 
     let mut result = align(left_cols, left_rows);

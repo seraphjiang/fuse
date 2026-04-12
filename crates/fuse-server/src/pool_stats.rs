@@ -35,13 +35,21 @@ impl Default for PoolStatsTracker {
 
 impl PoolStatsTracker {
     pub fn new() -> Self {
-        Self { stats: Mutex::new(HashMap::new()) }
+        Self {
+            stats: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn register(&self, connector_id: &str, max_size: u32) {
-        self.stats.lock().unwrap().insert(connector_id.to_string(), PoolState {
-            active: 0, max_size, total_acquired: 0, total_timeouts: 0,
-        });
+        self.stats.lock().unwrap().insert(
+            connector_id.to_string(),
+            PoolState {
+                active: 0,
+                max_size,
+                total_acquired: 0,
+                total_timeouts: 0,
+            },
+        );
     }
 
     pub fn acquire(&self, connector_id: &str) {
@@ -72,13 +80,19 @@ impl PoolStatsTracker {
             active: s.active,
             idle,
             max_size: s.max_size,
-            utilization_pct: if s.max_size > 0 { s.active as f64 / s.max_size as f64 * 100.0 } else { 0.0 },
+            utilization_pct: if s.max_size > 0 {
+                s.active as f64 / s.max_size as f64 * 100.0
+            } else {
+                0.0
+            },
             total_acquired: s.total_acquired,
             total_timeouts: s.total_timeouts,
         })
     }
 
-    pub fn snapshot(&self) -> Vec<PoolStats> { self.all() }
+    pub fn snapshot(&self) -> Vec<PoolStats> {
+        self.all()
+    }
 
     pub fn all(&self) -> Vec<PoolStats> {
         let ids: Vec<String> = self.stats.lock().unwrap().keys().cloned().collect();

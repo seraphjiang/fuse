@@ -17,17 +17,36 @@ pub enum FilterOp {
 
 /// Apply filters to rows.
 pub fn filter_rows(rows: &[Vec<Value>], filters: &[FilterOp]) -> Vec<Vec<Value>> {
-    rows.iter().filter(|row| filters.iter().all(|f| matches_filter(row, f))).cloned().collect()
+    rows.iter()
+        .filter(|row| filters.iter().all(|f| matches_filter(row, f)))
+        .cloned()
+        .collect()
 }
 
 fn matches_filter(row: &[Value], filter: &FilterOp) -> bool {
     match filter {
         FilterOp::Eq(i, v) => row.get(*i).map(|r| r == v).unwrap_or(false),
         FilterOp::Neq(i, v) => row.get(*i).map(|r| r != v).unwrap_or(true),
-        FilterOp::Gt(i, n) => row.get(*i).and_then(|v| v.as_f64()).map(|v| v > *n).unwrap_or(false),
-        FilterOp::Gte(i, n) => row.get(*i).and_then(|v| v.as_f64()).map(|v| v >= *n).unwrap_or(false),
-        FilterOp::Lt(i, n) => row.get(*i).and_then(|v| v.as_f64()).map(|v| v < *n).unwrap_or(false),
-        FilterOp::Lte(i, n) => row.get(*i).and_then(|v| v.as_f64()).map(|v| v <= *n).unwrap_or(false),
+        FilterOp::Gt(i, n) => row
+            .get(*i)
+            .and_then(|v| v.as_f64())
+            .map(|v| v > *n)
+            .unwrap_or(false),
+        FilterOp::Gte(i, n) => row
+            .get(*i)
+            .and_then(|v| v.as_f64())
+            .map(|v| v >= *n)
+            .unwrap_or(false),
+        FilterOp::Lt(i, n) => row
+            .get(*i)
+            .and_then(|v| v.as_f64())
+            .map(|v| v < *n)
+            .unwrap_or(false),
+        FilterOp::Lte(i, n) => row
+            .get(*i)
+            .and_then(|v| v.as_f64())
+            .map(|v| v <= *n)
+            .unwrap_or(false),
         FilterOp::IsNull(i) => row.get(*i).map(|v| v.is_null()).unwrap_or(true),
         FilterOp::IsNotNull(i) => row.get(*i).map(|v| !v.is_null()).unwrap_or(false),
     }
@@ -66,10 +85,10 @@ mod tests {
             vec![json!("a"), json!(20)],
             vec![json!("b"), json!(15)],
         ];
-        let result = filter_rows(&rows, &[
-            FilterOp::Eq(0, json!("a")),
-            FilterOp::Gte(1, 15.0),
-        ]);
+        let result = filter_rows(
+            &rows,
+            &[FilterOp::Eq(0, json!("a")), FilterOp::Gte(1, 15.0)],
+        );
         assert_eq!(result.len(), 1);
         assert_eq!(result[0][1], json!(20));
     }

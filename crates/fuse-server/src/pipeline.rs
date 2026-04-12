@@ -31,7 +31,9 @@ pub fn run_pipeline(query: &str, stages: &[Box<dyn PipelineStage>]) -> Result<St
 /// Whitespace normalization stage.
 pub struct NormalizeStage;
 impl PipelineStage for NormalizeStage {
-    fn name(&self) -> &str { "normalize" }
+    fn name(&self) -> &str {
+        "normalize"
+    }
     fn process(&self, query: &str) -> StageResult {
         StageResult::Continue(query.split_whitespace().collect::<Vec<_>>().join(" "))
     }
@@ -40,7 +42,9 @@ impl PipelineStage for NormalizeStage {
 /// Empty query rejection stage.
 pub struct RejectEmptyStage;
 impl PipelineStage for RejectEmptyStage {
-    fn name(&self) -> &str { "reject_empty" }
+    fn name(&self) -> &str {
+        "reject_empty"
+    }
     fn process(&self, query: &str) -> StageResult {
         if query.trim().is_empty() {
             StageResult::Error("query cannot be empty".into())
@@ -56,27 +60,21 @@ mod tests {
 
     #[test]
     fn test_pipeline_continue() {
-        let stages: Vec<Box<dyn PipelineStage>> = vec![
-            Box::new(NormalizeStage),
-        ];
+        let stages: Vec<Box<dyn PipelineStage>> = vec![Box::new(NormalizeStage)];
         let result = run_pipeline("SELECT  *  FROM  t", &stages).unwrap();
         assert_eq!(result, "SELECT * FROM t");
     }
 
     #[test]
     fn test_pipeline_error() {
-        let stages: Vec<Box<dyn PipelineStage>> = vec![
-            Box::new(RejectEmptyStage),
-        ];
+        let stages: Vec<Box<dyn PipelineStage>> = vec![Box::new(RejectEmptyStage)];
         assert!(run_pipeline("", &stages).is_err());
     }
 
     #[test]
     fn test_pipeline_chain() {
-        let stages: Vec<Box<dyn PipelineStage>> = vec![
-            Box::new(NormalizeStage),
-            Box::new(RejectEmptyStage),
-        ];
+        let stages: Vec<Box<dyn PipelineStage>> =
+            vec![Box::new(NormalizeStage), Box::new(RejectEmptyStage)];
         assert!(run_pipeline("SELECT 1", &stages).is_ok());
     }
 
@@ -84,7 +82,9 @@ mod tests {
     fn test_short_circuit() {
         struct CacheHit;
         impl PipelineStage for CacheHit {
-            fn name(&self) -> &str { "cache" }
+            fn name(&self) -> &str {
+                "cache"
+            }
             fn process(&self, _: &str) -> StageResult {
                 StageResult::ShortCircuit("cached result".into())
             }

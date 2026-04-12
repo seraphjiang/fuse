@@ -43,7 +43,10 @@ fn test_limit_pushdown_large_value() {
 fn test_where_pushdown_equality() {
     let sq = sql_to_subquery("SELECT * FROM logs WHERE service = 'api-gateway'").unwrap();
     let f = sq.filter.expect("filter should be present");
-    assert!(format!("{f:?}").contains("api-gateway"), "filter should contain the value");
+    assert!(
+        format!("{f:?}").contains("api-gateway"),
+        "filter should contain the value"
+    );
 }
 
 #[test]
@@ -51,15 +54,16 @@ fn test_where_pushdown_comparison() {
     let sq = sql_to_subquery("SELECT * FROM logs WHERE status >= 500").unwrap();
     let f = sq.filter.expect("filter should be present");
     let dbg = format!("{f:?}");
-    assert!(dbg.contains("status") || dbg.contains("500"), "filter should reference status/500");
+    assert!(
+        dbg.contains("status") || dbg.contains("500"),
+        "filter should reference status/500"
+    );
 }
 
 #[test]
 fn test_where_pushdown_and() {
-    let sq = sql_to_subquery(
-        "SELECT * FROM logs WHERE status >= 500 AND service = 'auth-service'",
-    )
-    .unwrap();
+    let sq = sql_to_subquery("SELECT * FROM logs WHERE status >= 500 AND service = 'auth-service'")
+        .unwrap();
     assert!(sq.filter.is_some(), "compound AND filter should be present");
 }
 
@@ -86,10 +90,9 @@ fn test_full_pushdown_pipeline() {
 
 #[test]
 fn test_aggregation_pushdown() {
-    let sq = sql_to_subquery(
-        "SELECT service, COUNT(*) FROM logs WHERE status >= 500 GROUP BY service",
-    )
-    .unwrap();
+    let sq =
+        sql_to_subquery("SELECT service, COUNT(*) FROM logs WHERE status >= 500 GROUP BY service")
+            .unwrap();
     assert_eq!(sq.table, "logs");
     assert!(sq.filter.is_some());
     assert!(!sq.group_by.is_empty());

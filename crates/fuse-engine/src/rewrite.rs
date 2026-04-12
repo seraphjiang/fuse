@@ -100,7 +100,10 @@ pub fn split_join_filters(
     filter: &fuse_core::connector::FilterExpr,
     left_columns: &[String],
     right_columns: &[String],
-) -> (Option<fuse_core::connector::FilterExpr>, Option<fuse_core::connector::FilterExpr>) {
+) -> (
+    Option<fuse_core::connector::FilterExpr>,
+    Option<fuse_core::connector::FilterExpr>,
+) {
     use fuse_core::connector::FilterExpr;
     match filter {
         FilterExpr::And(l, r) => {
@@ -147,7 +150,9 @@ mod tests {
             group_by: vec![],
             sort: vec![],
             limit: None,
-            having: None, offset: None, passthrough: None,
+            having: None,
+            offset: None,
+            passthrough: None,
         }
     }
 
@@ -301,7 +306,10 @@ mod tests {
         push_down_to_sources(&base, &mut sources);
         // Existing having not overwritten (aggregations already present, so no push)
         match &sources[0].having {
-            Some(FilterExpr::Comparison { value: ScalarValue::Int64(10), .. }) => {}
+            Some(FilterExpr::Comparison {
+                value: ScalarValue::Int64(10),
+                ..
+            }) => {}
             _ => panic!("expected existing having with value 10"),
         }
     }
@@ -310,15 +318,31 @@ mod tests {
     fn test_top_n_pushdown_uses_min_limit() {
         // Source has default 10k limit, base has LIMIT 10 → should push 10
         let base = SubQuery {
-            table: "t".into(), projections: vec![], filter: None,
-            aggregations: vec![], group_by: vec![],
-            sort: vec![SortExpr { field: "count".into(), descending: true }],
-            limit: Some(10), having: None, offset: None, passthrough: None,
+            table: "t".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![SortExpr {
+                field: "count".into(),
+                descending: true,
+            }],
+            limit: Some(10),
+            having: None,
+            offset: None,
+            passthrough: None,
         };
         let mut sources = vec![SubQuery {
-            table: "t".into(), projections: vec![], filter: None,
-            aggregations: vec![], group_by: vec![], sort: vec![],
-            limit: Some(10_000), having: None, offset: None, passthrough: None,
+            table: "t".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: Some(10_000),
+            having: None,
+            offset: None,
+            passthrough: None,
         }];
         push_down_to_sources(&base, &mut sources);
         assert_eq!(sources[0].limit, Some(10));
@@ -329,14 +353,28 @@ mod tests {
     fn test_pushdown_limit_no_existing() {
         // Source has no limit, base has LIMIT 50 → should push 50
         let base = SubQuery {
-            table: "t".into(), projections: vec![], filter: None,
-            aggregations: vec![], group_by: vec![], sort: vec![],
-            limit: Some(50), having: None, offset: None, passthrough: None,
+            table: "t".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: Some(50),
+            having: None,
+            offset: None,
+            passthrough: None,
         };
         let mut sources = vec![SubQuery {
-            table: "t".into(), projections: vec![], filter: None,
-            aggregations: vec![], group_by: vec![], sort: vec![],
-            limit: None, having: None, offset: None, passthrough: None,
+            table: "t".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            having: None,
+            offset: None,
+            passthrough: None,
         }];
         push_down_to_sources(&base, &mut sources);
         assert_eq!(sources[0].limit, Some(50));
@@ -345,22 +383,43 @@ mod tests {
     #[test]
     fn test_eliminate_redundant_sort_with_group_by() {
         let mut sq = SubQuery {
-            table: "t".into(), projections: vec![], filter: None,
-            aggregations: vec![], group_by: vec!["host".into()],
-            sort: vec![SortExpr { field: "host".into(), descending: false }],
-            limit: None, having: None, offset: None, passthrough: None,
+            table: "t".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec!["host".into()],
+            sort: vec![SortExpr {
+                field: "host".into(),
+                descending: false,
+            }],
+            limit: None,
+            having: None,
+            offset: None,
+            passthrough: None,
         };
         eliminate_redundant_sort(&mut sq);
-        assert!(sq.sort.is_empty(), "sort should be removed when GROUP BY + no LIMIT");
+        assert!(
+            sq.sort.is_empty(),
+            "sort should be removed when GROUP BY + no LIMIT"
+        );
     }
 
     #[test]
     fn test_keep_sort_with_limit() {
         let mut sq = SubQuery {
-            table: "t".into(), projections: vec![], filter: None,
-            aggregations: vec![], group_by: vec!["host".into()],
-            sort: vec![SortExpr { field: "host".into(), descending: true }],
-            limit: Some(10), having: None, offset: None, passthrough: None,
+            table: "t".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec!["host".into()],
+            sort: vec![SortExpr {
+                field: "host".into(),
+                descending: true,
+            }],
+            limit: Some(10),
+            having: None,
+            offset: None,
+            passthrough: None,
         };
         eliminate_redundant_sort(&mut sq);
         assert_eq!(sq.sort.len(), 1, "sort should be kept for Top-N");
@@ -369,9 +428,16 @@ mod tests {
     #[test]
     fn test_merge_limit_offset() {
         let mut sq = SubQuery {
-            table: "t".into(), projections: vec![], filter: None,
-            aggregations: vec![], group_by: vec![], sort: vec![],
-            limit: Some(10), having: None, offset: Some(5), passthrough: None,
+            table: "t".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: Some(10),
+            having: None,
+            offset: Some(5),
+            passthrough: None,
         };
         merge_adjacent_limits(&mut sq);
         assert_eq!(sq.limit, Some(15), "limit should be limit+offset");

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Query bookmarks — save frequently used queries with metadata.
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bookmark {
@@ -30,11 +30,16 @@ impl Default for BookmarkStore {
 
 impl BookmarkStore {
     pub fn new() -> Self {
-        Self { bookmarks: Mutex::new(HashMap::new()) }
+        Self {
+            bookmarks: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn save(&self, bookmark: Bookmark) {
-        self.bookmarks.lock().unwrap().insert(bookmark.id.clone(), bookmark);
+        self.bookmarks
+            .lock()
+            .unwrap()
+            .insert(bookmark.id.clone(), bookmark);
     }
 
     pub fn get(&self, id: &str) -> Option<Bookmark> {
@@ -51,10 +56,15 @@ impl BookmarkStore {
 
     pub fn search(&self, term: &str) -> Vec<Bookmark> {
         let lower = term.to_lowercase();
-        self.bookmarks.lock().unwrap().values()
-            .filter(|b| b.name.to_lowercase().contains(&lower)
-                || b.query.to_lowercase().contains(&lower)
-                || b.tags.iter().any(|t| t.to_lowercase().contains(&lower)))
+        self.bookmarks
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|b| {
+                b.name.to_lowercase().contains(&lower)
+                    || b.query.to_lowercase().contains(&lower)
+                    || b.tags.iter().any(|t| t.to_lowercase().contains(&lower))
+            })
             .cloned()
             .collect()
     }
@@ -65,8 +75,15 @@ mod tests {
     use super::*;
 
     fn sample(id: &str, name: &str) -> Bookmark {
-        Bookmark { id: id.into(), name: name.into(), query: "SELECT 1".into(),
-            format: "sql".into(), description: None, tags: vec![], created_at: 0 }
+        Bookmark {
+            id: id.into(),
+            name: name.into(),
+            query: "SELECT 1".into(),
+            format: "sql".into(),
+            description: None,
+            tags: vec![],
+            created_at: 0,
+        }
     }
 
     #[test]
@@ -87,7 +104,10 @@ mod tests {
     #[test]
     fn test_search() {
         let s = BookmarkStore::new();
-        s.save(Bookmark { tags: vec!["prod".into()], ..sample("b1", "Error Logs") });
+        s.save(Bookmark {
+            tags: vec!["prod".into()],
+            ..sample("b1", "Error Logs")
+        });
         s.save(sample("b2", "User Stats"));
         assert_eq!(s.search("error").len(), 1);
         assert_eq!(s.search("prod").len(), 1);

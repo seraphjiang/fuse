@@ -47,8 +47,12 @@ fn test_postgres_escapes_all_payloads() {
         let sql = subquery_to_sql(&make_query(payload));
         if payload.contains('\'') {
             let escaped = payload.replace('\'', "''");
-            assert!(sql.contains(&escaped),
-                "PG unescaped: {}\nSQL: {}", payload, sql);
+            assert!(
+                sql.contains(&escaped),
+                "PG unescaped: {}\nSQL: {}",
+                payload,
+                sql
+            );
         }
     }
 }
@@ -62,8 +66,12 @@ fn test_clickhouse_escapes_all_payloads() {
         let sql = subquery_to_sql(&make_query(payload));
         if payload.contains('\'') {
             let escaped = payload.replace('\'', "''");
-            assert!(sql.contains(&escaped),
-                "CH unescaped: {}\nSQL: {}", payload, sql);
+            assert!(
+                sql.contains(&escaped),
+                "CH unescaped: {}\nSQL: {}",
+                payload,
+                sql
+            );
         }
     }
 }
@@ -96,7 +104,11 @@ fn test_elasticsearch_preserves_payloads_in_json() {
 
 use axum::http::StatusCode;
 
-async fn post_query(app: axum::Router, query: &str, format: &str) -> (StatusCode, serde_json::Value) {
+async fn post_query(
+    app: axum::Router,
+    query: &str,
+    format: &str,
+) -> (StatusCode, serde_json::Value) {
     use axum::body::Body;
     use axum::http::Request;
     use tower::ServiceExt;
@@ -109,47 +121,86 @@ async fn post_query(app: axum::Router, query: &str, format: &str) -> (StatusCode
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     let status = resp.status();
-    let bytes = axum::body::to_bytes(resp.into_body(), 10_000_000).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), 10_000_000)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or_default();
     (status, json)
 }
 
 fn build_test_app() -> axum::Router {
-    use std::sync::Arc;
     use fuse_core::registry::ConnectorRegistry;
     use fuse_server::api::{AppState, RunningQueries};
+    use std::sync::Arc;
 
     #[derive(Debug)]
     struct MockConn;
     #[async_trait::async_trait]
     impl FederatedConnector for MockConn {
-        fn id(&self) -> &str { "testds" }
-        fn connector_type(&self) -> &str { "mock" }
-        fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+        fn id(&self) -> &str {
+            "testds"
+        }
+        fn connector_type(&self) -> &str {
+            "mock"
+        }
+        fn capabilities(&self) -> ConnectorCapabilities {
+            ConnectorCapabilities::full()
+        }
         async fn health_check(&self) -> ConnectorHealth {
-            ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(1), message: None }
+            ConnectorHealth {
+                status: HealthStatus::Healthy,
+                latency_ms: Some(1),
+                message: None,
+            }
         }
-        async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, fuse_core::error::ConnectorError> {
-            Ok(vec![SchemaInfo { name: "logs".into(), schema_type: SchemaType::Table, estimated_row_count: Some(2) }])
+        async fn discover_schemas(
+            &self,
+        ) -> Result<Vec<SchemaInfo>, fuse_core::error::ConnectorError> {
+            Ok(vec![SchemaInfo {
+                name: "logs".into(),
+                schema_type: SchemaType::Table,
+                estimated_row_count: Some(2),
+            }])
         }
-        async fn get_schema(&self, _: &str) -> Result<arrow::datatypes::Schema, fuse_core::error::ConnectorError> {
+        async fn get_schema(
+            &self,
+            _: &str,
+        ) -> Result<arrow::datatypes::Schema, fuse_core::error::ConnectorError> {
             use arrow::datatypes::{DataType, Field};
-            Ok(arrow::datatypes::Schema::new(vec![
-                Field::new("name", DataType::Utf8, false),
-            ]))
+            Ok(arrow::datatypes::Schema::new(vec![Field::new(
+                "name",
+                DataType::Utf8,
+                false,
+            )]))
         }
-        async fn execute(&self, _: &SubQuery) -> Result<Vec<arrow::record_batch::RecordBatch>, fuse_core::error::ConnectorError> {
+        async fn execute(
+            &self,
+            _: &SubQuery,
+        ) -> Result<Vec<arrow::record_batch::RecordBatch>, fuse_core::error::ConnectorError>
+        {
             use arrow::array::StringArray;
             use std::sync::Arc as A;
             let schema = A::new(arrow::datatypes::Schema::new(vec![
                 arrow::datatypes::Field::new("name", arrow::datatypes::DataType::Utf8, false),
             ]));
-            Ok(vec![arrow::record_batch::RecordBatch::try_new(schema, vec![
-                A::new(StringArray::from(vec!["alice", "bob"])) as arrow::array::ArrayRef,
-            ]).unwrap()])
+            Ok(vec![arrow::record_batch::RecordBatch::try_new(
+                schema,
+                vec![A::new(StringArray::from(vec!["alice", "bob"])) as arrow::array::ArrayRef],
+            )
+            .unwrap()])
         }
-        async fn execute_streaming(&self, q: &SubQuery, tx: tokio::sync::mpsc::Sender<Result<arrow::record_batch::RecordBatch, fuse_core::error::ConnectorError>>) -> Result<(), fuse_core::error::ConnectorError> {
-            for b in self.execute(q).await? { tx.send(Ok(b)).await.map_err(|_| fuse_core::error::ConnectorError::ChannelClosed)?; }
+        async fn execute_streaming(
+            &self,
+            q: &SubQuery,
+            tx: tokio::sync::mpsc::Sender<
+                Result<arrow::record_batch::RecordBatch, fuse_core::error::ConnectorError>,
+            >,
+        ) -> Result<(), fuse_core::error::ConnectorError> {
+            for b in self.execute(q).await? {
+                tx.send(Ok(b))
+                    .await
+                    .map_err(|_| fuse_core::error::ConnectorError::ChannelClosed)?;
+            }
             Ok(())
         }
     }
@@ -171,7 +222,31 @@ fn build_test_app() -> axum::Router {
         adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
         shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
         shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
-        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(fuse_server::api::SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     fuse_server::build_router(state)
 }
@@ -182,8 +257,12 @@ async fn test_server_handles_injection_in_where_clause() {
         let query = format!("SELECT * FROM testds.logs WHERE name = '{}'", payload);
         let (status, _) = post_query(build_test_app(), &query, "sql").await;
         // Must not panic or return 5xx server error
-        assert_ne!(status, StatusCode::INTERNAL_SERVER_ERROR,
-            "Server crashed on payload: {}", payload);
+        assert_ne!(
+            status,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Server crashed on payload: {}",
+            payload
+        );
     }
 }
 
@@ -197,7 +276,11 @@ async fn test_server_handles_injection_in_table_name() {
     for payload in payloads {
         let query = format!("SELECT * FROM {}", payload);
         let (status, _) = post_query(build_test_app(), &query, "sql").await;
-        assert_ne!(status, StatusCode::INTERNAL_SERVER_ERROR,
-            "Server crashed on table injection: {}", payload);
+        assert_ne!(
+            status,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Server crashed on table injection: {}",
+            payload
+        );
     }
 }

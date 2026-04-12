@@ -18,7 +18,9 @@ impl Default for DependencyGraph {
 
 impl DependencyGraph {
     pub fn new() -> Self {
-        Self { edges: Mutex::new(HashMap::new()) }
+        Self {
+            edges: Mutex::new(HashMap::new()),
+        }
     }
 
     /// Record that these datasources were queried together.
@@ -47,11 +49,16 @@ impl DependencyGraph {
     /// Get datasources commonly paired with a given one.
     pub fn neighbors(&self, ds: &str) -> Vec<(String, u64)> {
         let edges = self.edges.lock().unwrap();
-        let mut result: Vec<(String, u64)> = edges.iter()
+        let mut result: Vec<(String, u64)> = edges
+            .iter()
             .filter_map(|((a, b), count)| {
-                if a == ds { Some((b.clone(), *count)) }
-                else if b == ds { Some((a.clone(), *count)) }
-                else { None }
+                if a == ds {
+                    Some((b.clone(), *count))
+                } else if b == ds {
+                    Some((a.clone(), *count))
+                } else {
+                    None
+                }
             })
             .collect();
         result.sort_by(|a, b| b.1.cmp(&a.1));

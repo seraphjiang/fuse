@@ -99,21 +99,34 @@ async fn run_query(
         // Print header
         let headers: Vec<&str> = cols.iter().filter_map(|c| c.as_str()).collect();
         println!("{}", headers.join("\t"));
-        println!("{}", headers.iter().map(|h| "-".repeat(h.len().max(8))).collect::<Vec<_>>().join("\t"));
+        println!(
+            "{}",
+            headers
+                .iter()
+                .map(|h| "-".repeat(h.len().max(8)))
+                .collect::<Vec<_>>()
+                .join("\t")
+        );
         // Print rows
         for row in rows {
             if let Some(cells) = row.as_array() {
-                let line: Vec<String> = cells.iter().map(|c| match c {
-                    serde_json::Value::Null => "NULL".into(),
-                    serde_json::Value::String(s) => s.clone(),
-                    other => other.to_string(),
-                }).collect();
+                let line: Vec<String> = cells
+                    .iter()
+                    .map(|c| match c {
+                        serde_json::Value::Null => "NULL".into(),
+                        serde_json::Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    })
+                    .collect();
                 println!("{}", line.join("\t"));
             }
         }
         // Metadata
         if let Some(meta) = res.get("metadata") {
-            let total = meta.get("total_rows").and_then(|v| v.as_u64()).unwrap_or(rows.len() as u64);
+            let total = meta
+                .get("total_rows")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(rows.len() as u64);
             eprint!("{total} rows");
             if let Some(ms) = meta.get("elapsed_ms").and_then(|v| v.as_u64()) {
                 eprint!(" in {ms}ms");
@@ -148,10 +161,7 @@ async fn run_explain(
     Ok(())
 }
 
-async fn run_health(
-    client: &reqwest::Client,
-    url: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn run_health(client: &reqwest::Client, url: &str) -> Result<(), Box<dyn std::error::Error>> {
     let res: serde_json::Value = client
         .get(format!("{url}/api/fuse/health"))
         .send()
@@ -191,8 +201,16 @@ async fn run_datasources(
             match item {
                 serde_json::Value::String(s) => println!("{s}"),
                 serde_json::Value::Object(obj) => {
-                    let name = obj.get("name").or(obj.get("id")).and_then(|v| v.as_str()).unwrap_or("?");
-                    if let Some(ft) = obj.get("field_type").or(obj.get("type")).and_then(|v| v.as_str()) {
+                    let name = obj
+                        .get("name")
+                        .or(obj.get("id"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?");
+                    if let Some(ft) = obj
+                        .get("field_type")
+                        .or(obj.get("type"))
+                        .and_then(|v| v.as_str())
+                    {
                         println!("{name}: {ft}");
                     } else {
                         println!("{name}");

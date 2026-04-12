@@ -32,14 +32,26 @@ pub async fn create_rule(
     Json(rule): Json<AlertRule>,
 ) -> impl IntoResponse {
     if rule.id.is_empty() {
-        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "rule id is required" }))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "rule id is required" })),
+        )
+            .into_response();
     }
     // Check for duplicate
     if monitor.list_rules().iter().any(|r| r.id == rule.id) {
-        return (StatusCode::CONFLICT, Json(serde_json::json!({ "error": format!("rule '{}' already exists", rule.id) }))).into_response();
+        return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": format!("rule '{}' already exists", rule.id) })),
+        )
+            .into_response();
     }
     monitor.add_rule(rule.clone());
-    (StatusCode::CREATED, Json(serde_json::json!({ "created": rule.id }))).into_response()
+    (
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "created": rule.id })),
+    )
+        .into_response()
 }
 
 /// DELETE /api/fuse/alert-rules/:id
@@ -76,7 +88,9 @@ pub struct HistoryParams {
     #[serde(default = "default_max")]
     pub max: usize,
 }
-fn default_max() -> usize { 100 }
+fn default_max() -> usize {
+    100
+}
 
 /// GET /api/fuse/alert-rules/history
 pub async fn list_alert_history(
@@ -109,7 +123,9 @@ mod tests {
     #[tokio::test]
     async fn test_create_and_list() {
         let m = monitor();
-        let resp = create_rule(State(m.clone()), Json(rule("r1"))).await.into_response();
+        let resp = create_rule(State(m.clone()), Json(rule("r1")))
+            .await
+            .into_response();
         assert_eq!(resp.status(), StatusCode::CREATED);
         assert_eq!(m.list_rules().len(), 1);
     }
@@ -118,7 +134,9 @@ mod tests {
     async fn test_create_duplicate() {
         let m = monitor();
         m.add_rule(rule("r1"));
-        let resp = create_rule(State(m.clone()), Json(rule("r1"))).await.into_response();
+        let resp = create_rule(State(m.clone()), Json(rule("r1")))
+            .await
+            .into_response();
         assert_eq!(resp.status(), StatusCode::CONFLICT);
     }
 
@@ -147,6 +165,9 @@ mod tests {
         metrics.insert("latency_p95".into(), 2000.0);
         m.evaluate(&metrics);
         acknowledge_alert(State(m.clone()), Path("r1".into())).await;
-        assert_eq!(m.list_active()[0].status, crate::alert_monitor::AlertStatus::Acknowledged);
+        assert_eq!(
+            m.list_active()[0].status,
+            crate::alert_monitor::AlertStatus::Acknowledged
+        );
     }
 }

@@ -7,8 +7,8 @@
 //!
 //! Returns 429 Too Many Requests with `Retry-After: 60` on violation.
 
-use std::net::IpAddr;
 use std::collections::HashMap;
+use std::net::IpAddr;
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 
@@ -17,9 +17,9 @@ use axum::extract::Request;
 use axum::http::{HeaderValue, Response, StatusCode};
 use axum::middleware::Next;
 use governor::clock::DefaultClock;
+use governor::state::keyed::DefaultKeyedStateStore;
 use governor::state::{InMemoryState, NotKeyed};
 use governor::{Quota, RateLimiter};
-use governor::state::keyed::DefaultKeyedStateStore;
 
 pub type GlobalLimiter = RateLimiter<NotKeyed, InMemoryState, DefaultClock>;
 pub type PerIpLimiter = RateLimiter<IpAddr, DefaultKeyedStateStore<IpAddr>, DefaultClock>;
@@ -41,22 +41,29 @@ impl Default for DatasourceLimiter {
 
 impl DatasourceLimiter {
     pub fn new() -> Self {
-        Self { semaphores: Mutex::new(HashMap::new()) }
+        Self {
+            semaphores: Mutex::new(HashMap::new()),
+        }
     }
 
     /// Register a datasource with its concurrency limit.
     pub fn register(&self, datasource_id: &str, max_concurrent: usize) {
-        let max = if max_concurrent == 0 { 16 } else { max_concurrent };
-        self.semaphores.lock().unwrap()
+        let max = if max_concurrent == 0 {
+            16
+        } else {
+            max_concurrent
+        };
+        self.semaphores
+            .lock()
+            .unwrap()
             .entry(datasource_id.to_string())
             .or_insert_with(|| Arc::new(tokio::sync::Semaphore::new(max)));
     }
 
     /// Acquire a permit for the given datasource. Returns None if unknown.
     pub async fn acquire(&self, datasource_id: &str) -> Option<tokio::sync::OwnedSemaphorePermit> {
-        let sem: Option<Arc<tokio::sync::Semaphore>> = {
-            self.semaphores.lock().unwrap().get(datasource_id).cloned()
-        };
+        let sem: Option<Arc<tokio::sync::Semaphore>> =
+            { self.semaphores.lock().unwrap().get(datasource_id).cloned() };
         if let Some(s) = sem {
             let permit: Result<tokio::sync::OwnedSemaphorePermit, _> = s.acquire_owned().await;
             permit.ok()
@@ -67,7 +74,10 @@ impl DatasourceLimiter {
 
     /// Available permits for a datasource.
     pub fn available(&self, datasource_id: &str) -> Option<usize> {
-        self.semaphores.lock().unwrap().get(datasource_id)
+        self.semaphores
+            .lock()
+            .unwrap()
+            .get(datasource_id)
             .map(|s: &Arc<tokio::sync::Semaphore>| s.available_permits())
     }
 
@@ -122,7 +132,8 @@ fn too_many_requests() -> Response<Body> {
 fn too_many_requests_for_key(_identity: &str) -> Response<Body> {
     let body = serde_json::json!({
         "error": "rate limit exceeded for API key",
-    }).to_string();
+    })
+    .to_string();
     Response::builder()
         .status(StatusCode::TOO_MANY_REQUESTS)
         .header("Retry-After", HeaderValue::from_static("60"))
@@ -236,15 +247,28 @@ mod tests {
             .layer(axum::Extension(state));
 
         // First request succeeds
-        let r1 = app.clone()
-            .oneshot(axum::http::Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await.unwrap();
+        let r1 = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(r1.status(), StatusCode::OK);
 
         // Second request hits limit
         let r2 = app
-            .oneshot(axum::http::Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await.unwrap();
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(r2.status(), StatusCode::TOO_MANY_REQUESTS);
         assert_eq!(r2.headers().get("Retry-After").unwrap(), "60");
     }

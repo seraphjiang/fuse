@@ -38,8 +38,12 @@ pub struct MaterializedViewDef {
     pub max_age_secs: Option<u64>,
 }
 
-fn default_format() -> String { "sql".to_string() }
-fn default_refresh() -> u64 { 300 }
+fn default_format() -> String {
+    "sql".to_string()
+}
+fn default_refresh() -> u64 {
+    300
+}
 
 // ── View state ──
 
@@ -79,8 +83,7 @@ impl ViewEntry {
         match self.last_refreshed {
             None => true,
             Some(t) => {
-                let max_age = self.def.max_age_secs
-                    .unwrap_or(self.def.refresh_secs * 2);
+                let max_age = self.def.max_age_secs.unwrap_or(self.def.refresh_secs * 2);
                 t.elapsed() > Duration::from_secs(max_age)
             }
         }
@@ -191,9 +194,9 @@ impl Default for MaterializedViewRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use arrow::array::StringArray;
     use arrow::datatypes::{DataType, Field, Schema};
+    use std::sync::Arc;
 
     fn make_batch() -> RecordBatch {
         let schema = Arc::new(Schema::new(vec![Field::new("v", DataType::Utf8, true)]));
@@ -213,14 +216,18 @@ mod tests {
     #[test]
     fn test_uninitialized_returns_none() {
         let reg = MaterializedViewRegistry::new();
-        reg.register_from_config(&ViewConfig { views: vec![def("v1", 60)] });
+        reg.register_from_config(&ViewConfig {
+            views: vec![def("v1", 60)],
+        });
         assert!(reg.get("v1").is_none());
     }
 
     #[test]
     fn test_put_and_get() {
         let reg = MaterializedViewRegistry::new();
-        reg.register_from_config(&ViewConfig { views: vec![def("v1", 3600)] });
+        reg.register_from_config(&ViewConfig {
+            views: vec![def("v1", 3600)],
+        });
         reg.put("v1", vec![make_batch()]);
         assert!(reg.get("v1").is_some());
     }
@@ -228,7 +235,9 @@ mod tests {
     #[test]
     fn test_needs_refresh_when_uninitialized() {
         let reg = MaterializedViewRegistry::new();
-        reg.register_from_config(&ViewConfig { views: vec![def("v1", 60)] });
+        reg.register_from_config(&ViewConfig {
+            views: vec![def("v1", 60)],
+        });
         let pending = reg.views_needing_refresh();
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].0, "v1");
@@ -237,7 +246,9 @@ mod tests {
     #[test]
     fn test_no_refresh_needed_after_put() {
         let reg = MaterializedViewRegistry::new();
-        reg.register_from_config(&ViewConfig { views: vec![def("v1", 3600)] });
+        reg.register_from_config(&ViewConfig {
+            views: vec![def("v1", 3600)],
+        });
         reg.put("v1", vec![make_batch()]);
         assert!(reg.views_needing_refresh().is_empty());
     }
@@ -246,14 +257,18 @@ mod tests {
     fn test_has_view() {
         let reg = MaterializedViewRegistry::new();
         assert!(!reg.has_view("v1"));
-        reg.register_from_config(&ViewConfig { views: vec![def("v1", 60)] });
+        reg.register_from_config(&ViewConfig {
+            views: vec![def("v1", 60)],
+        });
         assert!(reg.has_view("v1"));
     }
 
     #[test]
     fn test_get_stale_ok_returns_data_even_when_stale() {
         let reg = MaterializedViewRegistry::new();
-        reg.register_from_config(&ViewConfig { views: vec![def("v1", 3600)] });
+        reg.register_from_config(&ViewConfig {
+            views: vec![def("v1", 3600)],
+        });
         reg.put("v1", vec![make_batch()]);
         // get_stale_ok should return data regardless of staleness
         assert!(reg.get_stale_ok("v1").is_some());
@@ -262,7 +277,9 @@ mod tests {
     #[test]
     fn test_mark_error_and_status_all() {
         let reg = MaterializedViewRegistry::new();
-        reg.register_from_config(&ViewConfig { views: vec![def("v1", 60)] });
+        reg.register_from_config(&ViewConfig {
+            views: vec![def("v1", 60)],
+        });
         reg.mark_error("v1", "connection refused".into());
         let statuses = reg.status_all();
         assert!(statuses.contains_key("v1"));
@@ -272,7 +289,9 @@ mod tests {
     #[test]
     fn test_status_all_multiple_views() {
         let reg = MaterializedViewRegistry::new();
-        reg.register_from_config(&ViewConfig { views: vec![def("a", 60), def("b", 120)] });
+        reg.register_from_config(&ViewConfig {
+            views: vec![def("a", 60), def("b", 120)],
+        });
         reg.put("a", vec![make_batch()]);
         let statuses = reg.status_all();
         assert_eq!(statuses.len(), 2);

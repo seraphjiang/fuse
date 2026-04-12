@@ -18,37 +18,44 @@ pub struct ColumnStats {
 
 /// Compute statistics for each column.
 pub fn compute_stats(columns: &[String], rows: &[Vec<Value>]) -> Vec<ColumnStats> {
-    columns.iter().enumerate().map(|(i, name)| {
-        let values: Vec<&Value> = rows.iter().filter_map(|r| r.get(i)).collect();
-        let null_count = values.iter().filter(|v| v.is_null()).count();
-        let non_null: Vec<&Value> = values.iter().filter(|v| !v.is_null()).copied().collect();
+    columns
+        .iter()
+        .enumerate()
+        .map(|(i, name)| {
+            let values: Vec<&Value> = rows.iter().filter_map(|r| r.get(i)).collect();
+            let null_count = values.iter().filter(|v| v.is_null()).count();
+            let non_null: Vec<&Value> = values.iter().filter(|v| !v.is_null()).copied().collect();
 
-        let mut seen = std::collections::HashSet::new();
-        for v in &non_null {
-            seen.insert(v.to_string());
-        }
+            let mut seen = std::collections::HashSet::new();
+            for v in &non_null {
+                seen.insert(v.to_string());
+            }
 
-        let (min, max) = if non_null.is_empty() {
-            (None, None)
-        } else {
-            let strs: Vec<String> = non_null.iter().map(|v| match v {
-                Value::String(s) => s.clone(),
-                _ => v.to_string(),
-            }).collect();
-            let min = strs.iter().min().cloned().map(Value::String);
-            let max = strs.iter().max().cloned().map(Value::String);
-            (min, max)
-        };
+            let (min, max) = if non_null.is_empty() {
+                (None, None)
+            } else {
+                let strs: Vec<String> = non_null
+                    .iter()
+                    .map(|v| match v {
+                        Value::String(s) => s.clone(),
+                        _ => v.to_string(),
+                    })
+                    .collect();
+                let min = strs.iter().min().cloned().map(Value::String);
+                let max = strs.iter().max().cloned().map(Value::String);
+                (min, max)
+            };
 
-        ColumnStats {
-            name: name.clone(),
-            count: values.len(),
-            null_count,
-            distinct_approx: seen.len(),
-            min,
-            max,
-        }
-    }).collect()
+            ColumnStats {
+                name: name.clone(),
+                count: values.len(),
+                null_count,
+                distinct_approx: seen.len(),
+                min,
+                max,
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]

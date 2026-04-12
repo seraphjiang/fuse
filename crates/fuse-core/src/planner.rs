@@ -35,12 +35,28 @@ impl ExecutionPlan {
 }
 
 /// Plan a single-source query.
-pub fn plan_single(datasource: &str, caps: &ConnectorCapabilities, estimated_rows: u64) -> ExecutionPlan {
+pub fn plan_single(
+    datasource: &str,
+    caps: &ConnectorCapabilities,
+    estimated_rows: u64,
+) -> ExecutionPlan {
     let mut pushdown = Vec::new();
     let mut local = Vec::new();
-    if caps.supports_filtering { pushdown.push("filter".into()); } else { local.push("filter".into()); }
-    if caps.supports_projection { pushdown.push("projection".into()); } else { local.push("projection".into()); }
-    if caps.supports_limit { pushdown.push("limit".into()); } else { local.push("limit".into()); }
+    if caps.supports_filtering {
+        pushdown.push("filter".into());
+    } else {
+        local.push("filter".into());
+    }
+    if caps.supports_projection {
+        pushdown.push("projection".into());
+    } else {
+        local.push("projection".into());
+    }
+    if caps.supports_limit {
+        pushdown.push("limit".into());
+    } else {
+        local.push("limit".into());
+    }
 
     ExecutionPlan {
         datasources: vec![datasource.to_string()],

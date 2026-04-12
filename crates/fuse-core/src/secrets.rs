@@ -60,7 +60,11 @@ fn validate_recursive<'a>(
     errors: &mut Vec<String>,
 ) {
     for (key, value) in iter {
-        let full_key = if prefix.is_empty() { key.clone() } else { format!("{prefix}.{key}") };
+        let full_key = if prefix.is_empty() {
+            key.clone()
+        } else {
+            format!("{prefix}.{key}")
+        };
         match value {
             toml::Value::String(s) if s.starts_with(SECRET_PREFIX) => {
                 if s[SECRET_PREFIX.len()..].trim().is_empty() {
@@ -93,7 +97,11 @@ fn collect_recursive<'a>(
     refs: &mut Vec<(String, String)>,
 ) {
     for (key, value) in iter {
-        let full_key = if prefix.is_empty() { key.clone() } else { format!("{prefix}.{key}") };
+        let full_key = if prefix.is_empty() {
+            key.clone()
+        } else {
+            format!("{prefix}.{key}")
+        };
         match value {
             toml::Value::String(s) => {
                 if let Some(name) = s.strip_prefix(SECRET_PREFIX) {
@@ -165,7 +173,9 @@ fn resolve_value<'a>(
     key: &'a str,
     value: &'a toml::Value,
     resolver: &'a dyn SecretResolver,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<toml::Value, crate::error::FuseError>> + Send + 'a>> {
+) -> std::pin::Pin<
+    Box<dyn std::future::Future<Output = Result<toml::Value, crate::error::FuseError>> + Send + 'a>,
+> {
     Box::pin(async move {
         match value {
             toml::Value::String(s) if s.starts_with(SECRET_PREFIX) => {
@@ -231,7 +241,10 @@ mod tests {
     #[test]
     fn test_validate_secret_refs_valid() {
         let mut props = HashMap::new();
-        props.insert("url".into(), toml::Value::String("secret://fuse/db-url".into()));
+        props.insert(
+            "url".into(),
+            toml::Value::String("secret://fuse/db-url".into()),
+        );
         props.insert("port".into(), toml::Value::Integer(5432));
         assert!(validate_secret_refs("pg", &props).is_empty());
     }
@@ -266,7 +279,10 @@ mod tests {
     #[test]
     fn test_validate_nested_valid_secret() {
         let mut auth = toml::map::Map::new();
-        auth.insert("password".into(), toml::Value::String("secret://fuse/pass".into()));
+        auth.insert(
+            "password".into(),
+            toml::Value::String("secret://fuse/pass".into()),
+        );
         let mut props = HashMap::new();
         props.insert("auth".into(), toml::Value::Table(auth));
         assert!(validate_secret_refs("os", &props).is_empty());
@@ -277,7 +293,10 @@ mod tests {
         let mut props = HashMap::new();
         props.insert("url".into(), toml::Value::String("secret://fuse/db".into()));
         props.insert("port".into(), toml::Value::Integer(5432));
-        props.insert("pass".into(), toml::Value::String("secret://fuse/pass".into()));
+        props.insert(
+            "pass".into(),
+            toml::Value::String("secret://fuse/pass".into()),
+        );
         assert_eq!(collect_secret_refs(&props).len(), 2);
     }
 
@@ -291,7 +310,10 @@ mod tests {
     #[test]
     fn test_collect_nested_secret_refs() {
         let mut auth = toml::map::Map::new();
-        auth.insert("token".into(), toml::Value::String("secret://fuse/token".into()));
+        auth.insert(
+            "token".into(),
+            toml::Value::String("secret://fuse/token".into()),
+        );
         let mut props = HashMap::new();
         props.insert("url".into(), toml::Value::String("http://localhost".into()));
         props.insert("auth".into(), toml::Value::Table(auth));
@@ -321,7 +343,10 @@ mod tests {
     impl MockResolver {
         fn new(pairs: &[(&str, &str)]) -> Self {
             Self {
-                secrets: pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+                secrets: pairs
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
             }
         }
     }
@@ -340,10 +365,16 @@ mod tests {
     async fn test_resolve_with_mock() {
         let resolver = MockResolver::new(&[("fuse/db-url", "postgresql://user:pass@host/db")]);
         let mut props = HashMap::new();
-        props.insert("url".into(), toml::Value::String("secret://fuse/db-url".into()));
+        props.insert(
+            "url".into(),
+            toml::Value::String("secret://fuse/db-url".into()),
+        );
         props.insert("port".into(), toml::Value::Integer(5432));
         let resolved = resolve_secrets_with(&props, &resolver).await.unwrap();
-        assert_eq!(resolved["url"].as_str(), Some("postgresql://user:pass@host/db"));
+        assert_eq!(
+            resolved["url"].as_str(),
+            Some("postgresql://user:pass@host/db")
+        );
         assert_eq!(resolved["port"].as_integer(), Some(5432));
     }
 
@@ -351,7 +382,10 @@ mod tests {
     async fn test_resolve_missing_secret_errors() {
         let resolver = MockResolver::new(&[]);
         let mut props = HashMap::new();
-        props.insert("url".into(), toml::Value::String("secret://nonexistent".into()));
+        props.insert(
+            "url".into(),
+            toml::Value::String("secret://nonexistent".into()),
+        );
         let result = resolve_secrets_with(&props, &resolver).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("nonexistent"));
@@ -361,8 +395,14 @@ mod tests {
     async fn test_resolve_multiple_secrets() {
         let resolver = MockResolver::new(&[("fuse/url", "pg://host/db"), ("fuse/pass", "s3cret")]);
         let mut props = HashMap::new();
-        props.insert("url".into(), toml::Value::String("secret://fuse/url".into()));
-        props.insert("password".into(), toml::Value::String("secret://fuse/pass".into()));
+        props.insert(
+            "url".into(),
+            toml::Value::String("secret://fuse/url".into()),
+        );
+        props.insert(
+            "password".into(),
+            toml::Value::String("secret://fuse/pass".into()),
+        );
         props.insert("port".into(), toml::Value::Integer(5432));
         let resolved = resolve_secrets_with(&props, &resolver).await.unwrap();
         assert_eq!(resolved["url"].as_str(), Some("pg://host/db"));
@@ -384,9 +424,15 @@ mod tests {
         let mut auth = toml::map::Map::new();
         auth.insert("type".into(), toml::Value::String("basic".into()));
         auth.insert("username".into(), toml::Value::String("admin".into()));
-        auth.insert("password".into(), toml::Value::String("secret://fuse/pass".into()));
+        auth.insert(
+            "password".into(),
+            toml::Value::String("secret://fuse/pass".into()),
+        );
         let mut props = HashMap::new();
-        props.insert("url".into(), toml::Value::String("https://localhost:9200".into()));
+        props.insert(
+            "url".into(),
+            toml::Value::String("https://localhost:9200".into()),
+        );
         props.insert("auth".into(), toml::Value::Table(auth));
         let resolved = resolve_secrets_with(&props, &resolver).await.unwrap();
         assert_eq!(resolved["url"].as_str(), Some("https://localhost:9200"));
@@ -400,7 +446,10 @@ mod tests {
     async fn test_resolve_nested_missing_secret_errors() {
         let resolver = MockResolver::new(&[]);
         let mut auth = toml::map::Map::new();
-        auth.insert("token".into(), toml::Value::String("secret://missing".into()));
+        auth.insert(
+            "token".into(),
+            toml::Value::String("secret://missing".into()),
+        );
         let mut props = HashMap::new();
         props.insert("auth".into(), toml::Value::Table(auth));
         let result = resolve_secrets_with(&props, &resolver).await;

@@ -51,12 +51,30 @@ impl ResponseBuilder {
         }
     }
 
-    pub fn columns(mut self, cols: Vec<String>) -> Self { self.columns = cols; self }
-    pub fn rows(mut self, rows: Vec<Vec<Value>>) -> Self { self.rows = rows; self }
-    pub fn duration_ms(mut self, ms: u64) -> Self { self.duration_ms = ms; self }
-    pub fn datasources(mut self, ds: Vec<String>) -> Self { self.datasources = ds; self }
-    pub fn cached(mut self, c: bool) -> Self { self.cached = c; self }
-    pub fn warning(mut self, w: &str) -> Self { self.warnings.push(w.to_string()); self }
+    pub fn columns(mut self, cols: Vec<String>) -> Self {
+        self.columns = cols;
+        self
+    }
+    pub fn rows(mut self, rows: Vec<Vec<Value>>) -> Self {
+        self.rows = rows;
+        self
+    }
+    pub fn duration_ms(mut self, ms: u64) -> Self {
+        self.duration_ms = ms;
+        self
+    }
+    pub fn datasources(mut self, ds: Vec<String>) -> Self {
+        self.datasources = ds;
+        self
+    }
+    pub fn cached(mut self, c: bool) -> Self {
+        self.cached = c;
+        self
+    }
+    pub fn warning(mut self, w: &str) -> Self {
+        self.warnings.push(w.to_string());
+        self
+    }
 
     pub fn build(self) -> QueryResponse {
         QueryResponse {
@@ -65,12 +83,20 @@ impl ResponseBuilder {
                 format: self.format,
                 trace_id: self.trace_id,
                 duration_ms: self.duration_ms,
-                datasources_queried: if self.datasources.is_empty() { None } else { Some(self.datasources) },
+                datasources_queried: if self.datasources.is_empty() {
+                    None
+                } else {
+                    Some(self.datasources)
+                },
                 cached: if self.cached { Some(true) } else { None },
             },
             columns: self.columns,
             rows: self.rows,
-            warnings: if self.warnings.is_empty() { None } else { Some(self.warnings) },
+            warnings: if self.warnings.is_empty() {
+                None
+            } else {
+                Some(self.warnings)
+            },
         }
     }
 }
@@ -102,9 +128,7 @@ mod tests {
 
     #[test]
     fn test_cached_response() {
-        let resp = ResponseBuilder::new("q-3", "sql")
-            .cached(true)
-            .build();
+        let resp = ResponseBuilder::new("q-3", "sql").cached(true).build();
         assert_eq!(resp.metadata.cached, Some(true));
     }
 

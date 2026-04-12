@@ -15,14 +15,18 @@ use crate::api::AppState;
 /// Initialize the Prometheus metrics recorder and return the handle for rendering.
 pub fn init() -> PrometheusHandle {
     let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
-    builder.install_recorder().expect("failed to install metrics recorder")
+    builder
+        .install_recorder()
+        .expect("failed to install metrics recorder")
 }
 
 /// Record a completed query.
 pub fn record_query(format: &str, success: bool, duration_ms: u64) {
     let status = if success { "ok" } else { "error" };
-    metrics::counter!("fuse_queries_total", "format" => format.to_string(), "status" => status).increment(1);
-    metrics::histogram!("fuse_query_duration_ms", "format" => format.to_string()).record(duration_ms as f64);
+    metrics::counter!("fuse_queries_total", "format" => format.to_string(), "status" => status)
+        .increment(1);
+    metrics::histogram!("fuse_query_duration_ms", "format" => format.to_string())
+        .record(duration_ms as f64);
 }
 
 /// Update the active queries gauge.
@@ -64,9 +68,7 @@ pub fn set_tenant_count(count: usize) {
 }
 
 /// GET /metrics — Prometheus scrape endpoint.
-pub async fn metrics_handler(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+pub async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     set_active_queries(state.running_queries.count());
     record_cache_stats(state.plan_cache.hits(), state.plan_cache.misses());
     record_result_cache_stats(state.result_cache.len());

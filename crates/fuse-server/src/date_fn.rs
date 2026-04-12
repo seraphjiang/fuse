@@ -5,33 +5,36 @@ use serde_json::Value;
 
 /// Extract date part from ISO timestamp strings.
 pub fn extract_date(rows: &[Vec<Value>], col: usize) -> Vec<Value> {
-    rows.iter().map(|row| {
-        match row.get(col) {
+    rows.iter()
+        .map(|row| match row.get(col) {
             Some(Value::String(s)) => {
                 let date = s.split('T').next().unwrap_or(s);
                 Value::String(date.to_string())
             }
             Some(v) => v.clone(),
             None => Value::Null,
-        }
-    }).collect()
+        })
+        .collect()
 }
 
 /// Extract hour from ISO timestamp strings.
 pub fn extract_hour(rows: &[Vec<Value>], col: usize) -> Vec<Value> {
-    rows.iter().map(|row| {
-        match row.get(col) {
+    rows.iter()
+        .map(|row| match row.get(col) {
             Some(Value::String(s)) => {
                 if let Some(time_part) = s.split('T').nth(1) {
                     let hour = time_part.split(':').next().unwrap_or("0");
-                    hour.parse::<u32>().ok().map(|h| Value::Number(h.into())).unwrap_or(Value::Null)
+                    hour.parse::<u32>()
+                        .ok()
+                        .map(|h| Value::Number(h.into()))
+                        .unwrap_or(Value::Null)
                 } else {
                     Value::Null
                 }
             }
             _ => Value::Null,
-        }
-    }).collect()
+        })
+        .collect()
 }
 
 /// Get current timestamp as ISO string.

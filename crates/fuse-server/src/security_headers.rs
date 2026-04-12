@@ -18,7 +18,10 @@ use axum::middleware::Next;
 pub async fn security_headers_middleware(req: Request, next: Next) -> Response<Body> {
     let mut resp = next.run(req).await;
     let h = resp.headers_mut();
-    h.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
+    h.insert(
+        "x-content-type-options",
+        HeaderValue::from_static("nosniff"),
+    );
     h.insert("x-frame-options", HeaderValue::from_static("DENY"));
     h.insert("x-xss-protection", HeaderValue::from_static("0"));
     h.insert(
@@ -58,7 +61,10 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(resp.headers().get("x-content-type-options").unwrap(), "nosniff");
+        assert_eq!(
+            resp.headers().get("x-content-type-options").unwrap(),
+            "nosniff"
+        );
         assert_eq!(resp.headers().get("x-frame-options").unwrap(), "DENY");
         assert_eq!(resp.headers().get("x-xss-protection").unwrap(), "0");
         assert_eq!(

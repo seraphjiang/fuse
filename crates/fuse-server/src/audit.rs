@@ -50,7 +50,10 @@ pub struct AuditLog {
 
 impl AuditLog {
     pub fn new(max_entries: usize) -> Self {
-        Self { entries: Mutex::new(Vec::new()), max_entries }
+        Self {
+            entries: Mutex::new(Vec::new()),
+            max_entries,
+        }
     }
 
     /// Record an audit entry.
@@ -80,7 +83,9 @@ impl AuditLog {
     /// Get entries for a specific identity.
     pub async fn for_identity(&self, identity: &str, limit: usize) -> Vec<AuditEntry> {
         let entries = self.entries.lock().await;
-        entries.iter().rev()
+        entries
+            .iter()
+            .rev()
             .filter(|e| e.identity == identity)
             .take(limit)
             .cloned()
@@ -94,7 +99,8 @@ impl AuditLog {
     /// Export all entries as NDJSON (newline-delimited JSON).
     pub async fn export_ndjson(&self) -> String {
         let entries = self.entries.lock().await;
-        entries.iter()
+        entries
+            .iter()
             .filter_map(|e| serde_json::to_string(e).ok())
             .collect::<Vec<_>>()
             .join("\n")
@@ -103,7 +109,8 @@ impl AuditLog {
     /// Export entries since a given timestamp as NDJSON.
     pub async fn export_since(&self, since_secs: u64) -> String {
         let entries = self.entries.lock().await;
-        entries.iter()
+        entries
+            .iter()
             .filter(|e| e.timestamp >= since_secs)
             .filter_map(|e| serde_json::to_string(e).ok())
             .collect::<Vec<_>>()
@@ -118,7 +125,10 @@ impl AuditLog {
 }
 
 pub fn now_secs() -> u64 {
-    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs()
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 #[cfg(test)]
@@ -143,8 +153,18 @@ mod tests {
     #[tokio::test]
     async fn test_record_and_recent() {
         let log = AuditLog::new(100);
-        log.record(sample_entry("alice", AuditAction::Query, AuditStatus::Success)).await;
-        log.record(sample_entry("bob", AuditAction::Explain, AuditStatus::Success)).await;
+        log.record(sample_entry(
+            "alice",
+            AuditAction::Query,
+            AuditStatus::Success,
+        ))
+        .await;
+        log.record(sample_entry(
+            "bob",
+            AuditAction::Explain,
+            AuditStatus::Success,
+        ))
+        .await;
         let recent = log.recent(10).await;
         assert_eq!(recent.len(), 2);
         assert_eq!(recent[0].identity, "bob"); // most recent first
@@ -154,9 +174,24 @@ mod tests {
     #[tokio::test]
     async fn test_for_identity() {
         let log = AuditLog::new(100);
-        log.record(sample_entry("alice", AuditAction::Query, AuditStatus::Success)).await;
-        log.record(sample_entry("bob", AuditAction::Query, AuditStatus::Success)).await;
-        log.record(sample_entry("alice", AuditAction::Explain, AuditStatus::Success)).await;
+        log.record(sample_entry(
+            "alice",
+            AuditAction::Query,
+            AuditStatus::Success,
+        ))
+        .await;
+        log.record(sample_entry(
+            "bob",
+            AuditAction::Query,
+            AuditStatus::Success,
+        ))
+        .await;
+        log.record(sample_entry(
+            "alice",
+            AuditAction::Explain,
+            AuditStatus::Success,
+        ))
+        .await;
         let alice = log.for_identity("alice", 10).await;
         assert_eq!(alice.len(), 2);
     }
@@ -165,7 +200,12 @@ mod tests {
     async fn test_max_entries_eviction() {
         let log = AuditLog::new(3);
         for i in 0..5 {
-            log.record(sample_entry(&format!("u{}", i), AuditAction::Query, AuditStatus::Success)).await;
+            log.record(sample_entry(
+                &format!("u{}", i),
+                AuditAction::Query,
+                AuditStatus::Success,
+            ))
+            .await;
         }
         assert_eq!(log.count().await, 3);
         let recent = log.recent(10).await;
@@ -187,7 +227,12 @@ mod tests {
     #[tokio::test]
     async fn test_denied_entry() {
         let log = AuditLog::new(100);
-        log.record(sample_entry("intruder", AuditAction::Query, AuditStatus::Denied)).await;
+        log.record(sample_entry(
+            "intruder",
+            AuditAction::Query,
+            AuditStatus::Denied,
+        ))
+        .await;
         let recent = log.recent(1).await;
         assert!(matches!(recent[0].status, AuditStatus::Denied));
     }
@@ -204,9 +249,13 @@ mod tests {
     #[test]
     fn test_all_actions_serialize() {
         let actions = vec![
-            AuditAction::Query, AuditAction::Explain, AuditAction::Validate,
-            AuditAction::ListDatasources, AuditAction::GetSchema,
-            AuditAction::TraceReconstruction, AuditAction::SavedQueryCreate,
+            AuditAction::Query,
+            AuditAction::Explain,
+            AuditAction::Validate,
+            AuditAction::ListDatasources,
+            AuditAction::GetSchema,
+            AuditAction::TraceReconstruction,
+            AuditAction::SavedQueryCreate,
             AuditAction::SavedQueryDelete,
         ];
         for action in actions {
@@ -218,8 +267,18 @@ mod tests {
     #[tokio::test]
     async fn test_export_ndjson() {
         let log = AuditLog::new(100);
-        log.record(sample_entry("alice", AuditAction::Query, AuditStatus::Success)).await;
-        log.record(sample_entry("bob", AuditAction::Explain, AuditStatus::Success)).await;
+        log.record(sample_entry(
+            "alice",
+            AuditAction::Query,
+            AuditStatus::Success,
+        ))
+        .await;
+        log.record(sample_entry(
+            "bob",
+            AuditAction::Explain,
+            AuditStatus::Success,
+        ))
+        .await;
         let ndjson = log.export_ndjson().await;
         let lines: Vec<&str> = ndjson.lines().collect();
         assert_eq!(lines.len(), 2);
@@ -230,9 +289,19 @@ mod tests {
     #[tokio::test]
     async fn test_export_since() {
         let log = AuditLog::new(100);
-        log.record(sample_entry("old", AuditAction::Query, AuditStatus::Success)).await;
+        log.record(sample_entry(
+            "old",
+            AuditAction::Query,
+            AuditStatus::Success,
+        ))
+        .await;
         let cutoff = super::now_secs();
-        log.record(sample_entry("new", AuditAction::Query, AuditStatus::Success)).await;
+        log.record(sample_entry(
+            "new",
+            AuditAction::Query,
+            AuditStatus::Success,
+        ))
+        .await;
         let exported = log.export_since(cutoff).await;
         // At least the "new" entry should be included (timestamps may be same second)
         assert!(exported.contains("new") || exported.contains("old"));
@@ -241,8 +310,10 @@ mod tests {
     #[tokio::test]
     async fn test_drain() {
         let log = AuditLog::new(100);
-        log.record(sample_entry("a", AuditAction::Query, AuditStatus::Success)).await;
-        log.record(sample_entry("b", AuditAction::Query, AuditStatus::Success)).await;
+        log.record(sample_entry("a", AuditAction::Query, AuditStatus::Success))
+            .await;
+        log.record(sample_entry("b", AuditAction::Query, AuditStatus::Success))
+            .await;
         let drained = log.drain().await;
         assert_eq!(drained.len(), 2);
         assert_eq!(log.count().await, 0);

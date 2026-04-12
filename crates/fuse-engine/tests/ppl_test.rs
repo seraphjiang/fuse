@@ -17,8 +17,12 @@ fn test_ppl_complex_pipeline() {
     assert_eq!(q.sources[0].table, "logs");
     assert_eq!(q.commands.len(), 4);
     assert!(matches!(&q.commands[0], PplCommand::Where(w) if w == "status >= 500"));
-    assert!(matches!(&q.commands[1], PplCommand::Stats { aggs, by } if aggs.len() == 1 && by == &["service"]));
-    assert!(matches!(&q.commands[2], PplCommand::Sort(fields) if fields.len() == 1 && fields[0].descending));
+    assert!(
+        matches!(&q.commands[1], PplCommand::Stats { aggs, by } if aggs.len() == 1 && by == &["service"])
+    );
+    assert!(
+        matches!(&q.commands[2], PplCommand::Sort(fields) if fields.len() == 1 && fields[0].descending)
+    );
     assert!(matches!(&q.commands[3], PplCommand::Head(10)));
 }
 
@@ -62,10 +66,8 @@ fn test_ppl_to_sql_fields_projection() {
 
 #[test]
 fn test_ppl_to_sql_multi_source_with_stats() {
-    let q = parse_ppl(
-        "source = a.logs, b.logs | where level = 'ERROR' | stats count() by service",
-    )
-    .unwrap();
+    let q = parse_ppl("source = a.logs, b.logs | where level = 'ERROR' | stats count() by service")
+        .unwrap();
     let sql = ppl_to_sql(&q).unwrap();
     assert!(sql.contains("UNION ALL"));
     assert!(sql.contains("FROM a.logs"));
@@ -204,7 +206,10 @@ fn test_ppl_chained_pipeline() {
     assert!(matches!(&q.commands[0], PplCommand::Where(_)));
     assert!(matches!(&q.commands[1], PplCommand::Eval(_)));
     assert!(matches!(&q.commands[2], PplCommand::Dedup(_)));
-    assert!(matches!(&q.commands[3], PplCommand::Fields { include: true, .. }));
+    assert!(matches!(
+        &q.commands[3],
+        PplCommand::Fields { include: true, .. }
+    ));
     assert!(matches!(&q.commands[4], PplCommand::Head(20)));
 }
 
@@ -243,7 +248,8 @@ fn test_ppl_dedup_multiple_fields() {
 
 #[test]
 fn test_ppl_stats_multiple_aggs() {
-    let q = parse_ppl("source = ds.logs | stats count(), avg(latency), max(latency) by service").unwrap();
+    let q = parse_ppl("source = ds.logs | stats count(), avg(latency), max(latency) by service")
+        .unwrap();
     if let PplCommand::Stats { aggs, by } = &q.commands[0] {
         assert_eq!(aggs.len(), 3);
         assert_eq!(by, &["service"]);

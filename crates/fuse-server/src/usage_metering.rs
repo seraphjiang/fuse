@@ -37,7 +37,9 @@ impl Default for UsageMeter {
 
 impl UsageMeter {
     pub fn new() -> Self {
-        Self { usage: Mutex::new(HashMap::new()) }
+        Self {
+            usage: Mutex::new(HashMap::new()),
+        }
     }
 
     /// Record a query execution for a tenant.
@@ -50,17 +52,27 @@ impl UsageMeter {
         duration_ms: u64,
     ) {
         let mut usage = self.usage.lock().unwrap();
-        let entry = usage.entry(tenant_id.to_string()).or_insert_with(|| TenantUsage {
-            tenant_id: tenant_id.to_string(),
-            ..Default::default()
-        });
+        let entry = usage
+            .entry(tenant_id.to_string())
+            .or_insert_with(|| TenantUsage {
+                tenant_id: tenant_id.to_string(),
+                ..Default::default()
+            });
         entry.query_count += 1;
         entry.total_rows += rows;
         entry.total_bytes += bytes;
         entry.total_duration_ms += duration_ms;
 
-        let per_ds_rows = if datasources.is_empty() { 0 } else { rows / datasources.len() as u64 };
-        let per_ds_bytes = if datasources.is_empty() { 0 } else { bytes / datasources.len() as u64 };
+        let per_ds_rows = if datasources.is_empty() {
+            0
+        } else {
+            rows / datasources.len() as u64
+        };
+        let per_ds_bytes = if datasources.is_empty() {
+            0
+        } else {
+            bytes / datasources.len() as u64
+        };
         for ds in datasources {
             let ds_usage = entry.datasource_breakdown.entry(ds.clone()).or_default();
             ds_usage.query_count += 1;

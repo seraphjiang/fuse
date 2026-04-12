@@ -20,7 +20,10 @@ pub fn translate_to_query_dsl(query: &SubQuery) -> serde_json::Value {
     }
 
     if !query.aggregations.is_empty() {
-        body.insert("aggs".into(), translate_aggs(&query.aggregations, &query.group_by));
+        body.insert(
+            "aggs".into(),
+            translate_aggs(&query.aggregations, &query.group_by),
+        );
         body.insert("size".into(), serde_json::json!(0));
     } else {
         if !query.sort.is_empty() {
@@ -39,14 +42,22 @@ pub fn translate_to_query_dsl(query: &SubQuery) -> serde_json::Value {
 
 fn translate_filter(expr: &FilterExpr) -> serde_json::Value {
     match expr {
-        FilterExpr::And(l, r) => serde_json::json!({"bool": {"must": [translate_filter(l), translate_filter(r)]}}),
-        FilterExpr::Or(l, r) => serde_json::json!({"bool": {"should": [translate_filter(l), translate_filter(r)], "minimum_should_match": 1}}),
-        FilterExpr::Not(inner) => serde_json::json!({"bool": {"must_not": [translate_filter(inner)]}}),
+        FilterExpr::And(l, r) => {
+            serde_json::json!({"bool": {"must": [translate_filter(l), translate_filter(r)]}})
+        }
+        FilterExpr::Or(l, r) => {
+            serde_json::json!({"bool": {"should": [translate_filter(l), translate_filter(r)], "minimum_should_match": 1}})
+        }
+        FilterExpr::Not(inner) => {
+            serde_json::json!({"bool": {"must_not": [translate_filter(inner)]}})
+        }
         FilterExpr::Comparison { field, op, value } => {
             let v = scalar_to_json(value);
             match op {
                 ComparisonOp::Eq => serde_json::json!({"term": {field: v}}),
-                ComparisonOp::Neq => serde_json::json!({"bool": {"must_not": [{"term": {field: v}}]}}),
+                ComparisonOp::Neq => {
+                    serde_json::json!({"bool": {"must_not": [{"term": {field: v}}]}})
+                }
                 ComparisonOp::Lt => serde_json::json!({"range": {field: {"lt": v}}}),
                 ComparisonOp::Lte => serde_json::json!({"range": {field: {"lte": v}}}),
                 ComparisonOp::Gt => serde_json::json!({"range": {field: {"gt": v}}}),
@@ -61,43 +72,63 @@ fn translate_filter(expr: &FilterExpr) -> serde_json::Value {
             let vals: Vec<serde_json::Value> = values.iter().map(scalar_to_json).collect();
             serde_json::json!({"terms": {field: vals}})
         }
-        FilterExpr::IsNull(field) => serde_json::json!({"bool": {"must_not": [{"exists": {"field": field}}]}}),
+        FilterExpr::IsNull(field) => {
+            serde_json::json!({"bool": {"must_not": [{"exists": {"field": field}}]}})
+        }
         FilterExpr::IsNotNull(field) => serde_json::json!({"exists": {"field": field}}),
     }
 }
 
-fn translate_aggs(aggs: &[fuse_core::connector::AggregationExpr], group_by: &[String]) -> serde_json::Value {
+fn translate_aggs(
+    aggs: &[fuse_core::connector::AggregationExpr],
+    group_by: &[String],
+) -> serde_json::Value {
     let mut result = serde_json::Map::new();
     if let Some(gb) = group_by.first() {
         let mut inner = serde_json::Map::new();
         for agg in aggs {
             let field = agg.field.as_deref().unwrap_or("_id");
             let agg_body = match agg.function {
-                AggFunction::Count | AggFunction::CountDistinct => serde_json::json!({"value_count": {"field": field}}),
+                AggFunction::Count | AggFunction::CountDistinct => {
+                    serde_json::json!({"value_count": {"field": field}})
+                }
                 AggFunction::Sum => serde_json::json!({"sum": {"field": field}}),
                 AggFunction::Avg => serde_json::json!({"avg": {"field": field}}),
                 AggFunction::Min => serde_json::json!({"min": {"field": field}}),
                 AggFunction::Max => serde_json::json!({"max": {"field": field}}),
-                AggFunction::ApproxCountDistinct => serde_json::json!({"cardinality": {"field": field}}),
-                AggFunction::ApproxPercentile(p) => serde_json::json!({"percentiles": {"field": field, "percents": [p * 100.0]}}),
+                AggFunction::ApproxCountDistinct => {
+                    serde_json::json!({"cardinality": {"field": field}})
+                }
+                AggFunction::ApproxPercentile(p) => {
+                    serde_json::json!({"percentiles": {"field": field, "percents": [p * 100.0]}})
+                }
             };
             inner.insert(agg.alias.clone(), agg_body);
         }
-        result.insert(gb.clone(), serde_json::json!({
-            "terms": {"field": gb},
-            "aggs": inner
-        }));
+        result.insert(
+            gb.clone(),
+            serde_json::json!({
+                "terms": {"field": gb},
+                "aggs": inner
+            }),
+        );
     } else {
         for agg in aggs {
             let field = agg.field.as_deref().unwrap_or("_id");
             let agg_body = match agg.function {
-                AggFunction::Count | AggFunction::CountDistinct => serde_json::json!({"value_count": {"field": field}}),
+                AggFunction::Count | AggFunction::CountDistinct => {
+                    serde_json::json!({"value_count": {"field": field}})
+                }
                 AggFunction::Sum => serde_json::json!({"sum": {"field": field}}),
                 AggFunction::Avg => serde_json::json!({"avg": {"field": field}}),
                 AggFunction::Min => serde_json::json!({"min": {"field": field}}),
                 AggFunction::Max => serde_json::json!({"max": {"field": field}}),
-                AggFunction::ApproxCountDistinct => serde_json::json!({"cardinality": {"field": field}}),
-                AggFunction::ApproxPercentile(p) => serde_json::json!({"percentiles": {"field": field, "percents": [p * 100.0]}}),
+                AggFunction::ApproxCountDistinct => {
+                    serde_json::json!({"cardinality": {"field": field}})
+                }
+                AggFunction::ApproxPercentile(p) => {
+                    serde_json::json!({"percentiles": {"field": field, "percents": [p * 100.0]}})
+                }
             };
             result.insert(agg.alias.clone(), agg_body);
         }
@@ -131,7 +162,18 @@ mod tests {
     use fuse_core::connector::{AggFunction, AggregationExpr, SortExpr, SubQuery};
 
     fn base() -> SubQuery {
-        SubQuery { table: "logs".into(), projections: vec![], filter: None, aggregations: vec![], group_by: vec![], having: None, sort: vec![], limit: None, passthrough: None, offset: None }
+        SubQuery {
+            table: "logs".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            having: None,
+            sort: vec![],
+            limit: None,
+            passthrough: None,
+            offset: None,
+        }
     }
 
     #[test]
@@ -142,20 +184,33 @@ mod tests {
 
     #[test]
     fn test_limit_sets_size() {
-        let q = SubQuery { limit: Some(20), ..base() };
+        let q = SubQuery {
+            limit: Some(20),
+            ..base()
+        };
         assert_eq!(translate_to_query_dsl(&q)["size"], 20);
     }
 
     #[test]
     fn test_projections_set_source() {
-        let q = SubQuery { projections: vec!["a".into(), "b".into()], ..base() };
-        assert_eq!(translate_to_query_dsl(&q)["_source"], serde_json::json!(["a", "b"]));
+        let q = SubQuery {
+            projections: vec!["a".into(), "b".into()],
+            ..base()
+        };
+        assert_eq!(
+            translate_to_query_dsl(&q)["_source"],
+            serde_json::json!(["a", "b"])
+        );
     }
 
     #[test]
     fn test_eq_filter() {
         let q = SubQuery {
-            filter: Some(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(200) }),
+            filter: Some(FilterExpr::Comparison {
+                field: "status".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Int64(200),
+            }),
             ..base()
         };
         let dsl = translate_to_query_dsl(&q);
@@ -165,7 +220,11 @@ mod tests {
     #[test]
     fn test_range_filter() {
         let q = SubQuery {
-            filter: Some(FilterExpr::Comparison { field: "age".into(), op: ComparisonOp::Gte, value: ScalarValue::Int64(18) }),
+            filter: Some(FilterExpr::Comparison {
+                field: "age".into(),
+                op: ComparisonOp::Gte,
+                value: ScalarValue::Int64(18),
+            }),
             ..base()
         };
         let dsl = translate_to_query_dsl(&q);
@@ -175,7 +234,13 @@ mod tests {
     #[test]
     fn test_in_filter() {
         let q = SubQuery {
-            filter: Some(FilterExpr::In { field: "env".into(), values: vec![ScalarValue::Utf8("prod".into()), ScalarValue::Utf8("staging".into())] }),
+            filter: Some(FilterExpr::In {
+                field: "env".into(),
+                values: vec![
+                    ScalarValue::Utf8("prod".into()),
+                    ScalarValue::Utf8("staging".into()),
+                ],
+            }),
             ..base()
         };
         let dsl = translate_to_query_dsl(&q);
@@ -185,7 +250,10 @@ mod tests {
     #[test]
     fn test_sort() {
         let q = SubQuery {
-            sort: vec![SortExpr { field: "ts".into(), descending: true }],
+            sort: vec![SortExpr {
+                field: "ts".into(),
+                descending: true,
+            }],
             ..base()
         };
         let dsl = translate_to_query_dsl(&q);
@@ -195,7 +263,11 @@ mod tests {
     #[test]
     fn test_count_agg() {
         let q = SubQuery {
-            aggregations: vec![AggregationExpr { function: AggFunction::Count, field: None, alias: "cnt".into() }],
+            aggregations: vec![AggregationExpr {
+                function: AggFunction::Count,
+                field: None,
+                alias: "cnt".into(),
+            }],
             ..base()
         };
         let dsl = translate_to_query_dsl(&q);
@@ -239,8 +311,16 @@ mod tests {
     fn test_and_filter_bool_must() {
         let q = SubQuery {
             filter: Some(FilterExpr::And(
-                Box::new(FilterExpr::Comparison { field: "a".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(1) }),
-                Box::new(FilterExpr::Comparison { field: "b".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(2) }),
+                Box::new(FilterExpr::Comparison {
+                    field: "a".into(),
+                    op: ComparisonOp::Eq,
+                    value: ScalarValue::Int64(1),
+                }),
+                Box::new(FilterExpr::Comparison {
+                    field: "b".into(),
+                    op: ComparisonOp::Eq,
+                    value: ScalarValue::Int64(2),
+                }),
             )),
             ..base()
         };
@@ -253,8 +333,16 @@ mod tests {
     fn test_or_filter_bool_should() {
         let q = SubQuery {
             filter: Some(FilterExpr::Or(
-                Box::new(FilterExpr::Comparison { field: "a".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(1) }),
-                Box::new(FilterExpr::Comparison { field: "b".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(2) }),
+                Box::new(FilterExpr::Comparison {
+                    field: "a".into(),
+                    op: ComparisonOp::Eq,
+                    value: ScalarValue::Int64(1),
+                }),
+                Box::new(FilterExpr::Comparison {
+                    field: "b".into(),
+                    op: ComparisonOp::Eq,
+                    value: ScalarValue::Int64(2),
+                }),
             )),
             ..base()
         };
@@ -266,9 +354,11 @@ mod tests {
     #[test]
     fn test_not_filter_must_not() {
         let q = SubQuery {
-            filter: Some(FilterExpr::Not(Box::new(
-                FilterExpr::Comparison { field: "x".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(0) },
-            ))),
+            filter: Some(FilterExpr::Not(Box::new(FilterExpr::Comparison {
+                field: "x".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Int64(0),
+            }))),
             ..base()
         };
         let dsl = translate_to_query_dsl(&q);
@@ -299,7 +389,9 @@ mod tests {
     fn test_neq_uses_must_not_term() {
         let q = SubQuery {
             filter: Some(FilterExpr::Comparison {
-                field: "status".into(), op: ComparisonOp::Neq, value: ScalarValue::Int64(500),
+                field: "status".into(),
+                op: ComparisonOp::Neq,
+                value: ScalarValue::Int64(500),
             }),
             ..base()
         };
@@ -310,7 +402,11 @@ mod tests {
     #[test]
     fn test_group_by_terms_agg() {
         let q = SubQuery {
-            aggregations: vec![AggregationExpr { function: AggFunction::Sum, field: Some("amount".into()), alias: "total".into() }],
+            aggregations: vec![AggregationExpr {
+                function: AggFunction::Sum,
+                field: Some("amount".into()),
+                alias: "total".into(),
+            }],
             group_by: vec!["region".into()],
             ..base()
         };

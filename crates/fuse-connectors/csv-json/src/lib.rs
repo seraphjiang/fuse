@@ -41,7 +41,10 @@ impl FileFormat {
         let lower = key.to_lowercase();
         if lower.ends_with(".csv") || lower.ends_with(".csv.gz") {
             Some(Self::Csv)
-        } else if lower.ends_with(".json") || lower.ends_with(".jsonl") || lower.ends_with(".ndjson") {
+        } else if lower.ends_with(".json")
+            || lower.ends_with(".jsonl")
+            || lower.ends_with(".ndjson")
+        {
             Some(Self::Json)
         } else {
             None
@@ -72,12 +75,19 @@ impl CsvJsonConnector {
             .region(aws_config::Region::new(region.to_string()))
             .load()
             .await;
-        Self { id, client: S3Client::new(&config), bucket, prefix }
+        Self {
+            id,
+            client: S3Client::new(&config),
+            bucket,
+            prefix,
+        }
     }
 
     /// List files under the prefix.
     async fn list_files(&self) -> Result<Vec<String>, ConnectorError> {
-        let resp = self.client.list_objects_v2()
+        let resp = self
+            .client
+            .list_objects_v2()
             .bucket(&self.bucket)
             .prefix(&self.prefix)
             .max_keys(1000)
@@ -85,7 +95,8 @@ impl CsvJsonConnector {
             .await
             .map_err(|e| ConnectorError::Connection(format!("S3 list: {e}")))?;
 
-        Ok(resp.contents()
+        Ok(resp
+            .contents()
             .iter()
             .filter_map(|obj| obj.key().map(String::from))
             .filter(|k| FileFormat::from_key(k).is_some())
@@ -94,20 +105,28 @@ impl CsvJsonConnector {
 
     /// Fetch a file from S3.
     async fn get_file(&self, key: &str) -> Result<Vec<u8>, ConnectorError> {
-        let resp = self.client.get_object()
+        let resp = self
+            .client
+            .get_object()
             .bucket(&self.bucket)
             .key(key)
             .send()
             .await
             .map_err(|e| ConnectorError::Connection(format!("S3 get {key}: {e}")))?;
 
-        resp.body.collect().await
+        resp.body
+            .collect()
+            .await
             .map(|b| b.to_vec())
             .map_err(|e| ConnectorError::QueryFailed(format!("read body: {e}")))
     }
 
     /// Parse a file into RecordBatches based on format.
-    fn parse_file(&self, data: &[u8], format: FileFormat) -> Result<Vec<RecordBatch>, ConnectorError> {
+    fn parse_file(
+        &self,
+        data: &[u8],
+        format: FileFormat,
+    ) -> Result<Vec<RecordBatch>, ConnectorError> {
         match format {
             FileFormat::Csv => self.parse_csv(data),
             FileFormat::Json => self.parse_json(data),
@@ -116,7 +135,8 @@ impl CsvJsonConnector {
 
     fn parse_csv(&self, data: &[u8]) -> Result<Vec<RecordBatch>, ConnectorError> {
         let format = arrow_csv::reader::Format::default().with_header(true);
-        let (schema, _) = format.infer_schema(Cursor::new(data), Some(100))
+        let (schema, _) = format
+            .infer_schema(Cursor::new(data), Some(100))
             .map_err(|e| ConnectorError::QueryFailed(format!("CSV schema infer: {e}")))?;
 
         let reader = arrow_csv::ReaderBuilder::new(Arc::new(schema))
@@ -132,8 +152,10 @@ impl CsvJsonConnector {
     fn parse_json(&self, data: &[u8]) -> Result<Vec<RecordBatch>, ConnectorError> {
         use std::io::BufReader;
         let (schema, _) = arrow_json::reader::infer_json_schema_from_seekable(
-            &mut BufReader::new(Cursor::new(data)), None,
-        ).map_err(|e| ConnectorError::QueryFailed(format!("JSON schema infer: {e}")))?;
+            &mut BufReader::new(Cursor::new(data)),
+            None,
+        )
+        .map_err(|e| ConnectorError::QueryFailed(format!("JSON schema infer: {e}")))?;
 
         let reader = arrow_json::ReaderBuilder::new(Arc::new(schema))
             .with_batch_size(8192)
@@ -142,7 +164,8 @@ impl CsvJsonConnector {
 
         let mut batches = Vec::new();
         for batch in reader {
-            batches.push(batch.map_err(|e| ConnectorError::QueryFailed(format!("JSON read: {e}")))?);
+            batches
+                .push(batch.map_err(|e| ConnectorError::QueryFailed(format!("JSON read: {e}")))?);
         }
         Ok(batches)
     }
@@ -150,14 +173,16 @@ impl CsvJsonConnector {
     /// Infer schema from the first file found.
     async fn infer_schema(&self) -> Result<Schema, ConnectorError> {
         let files = self.list_files().await?;
-        let key = files.first()
+        let key = files
+            .first()
             .ok_or_else(|| ConnectorError::SchemaDiscovery("no files found".into()))?;
         let data = self.get_file(key).await?;
         let format = FileFormat::from_key(key)
             .ok_or_else(|| ConnectorError::SchemaDiscovery("unknown format".into()))?;
 
         let batches = self.parse_file(&data, format)?;
-        batches.first()
+        batches
+            .first()
             .map(|b| b.schema().as_ref().clone())
             .ok_or_else(|| ConnectorError::SchemaDiscovery("empty file".into()))
     }
@@ -169,7 +194,9 @@ impl CsvJsonConnector {
         let mut result = Vec::new();
         let mut remaining = limit;
         for batch in batches {
-            if remaining == 0 { break; }
+            if remaining == 0 {
+                break;
+            }
             if batch.num_rows() <= remaining {
                 remaining -= batch.num_rows();
                 result.push(batch);
@@ -183,22 +210,34 @@ impl CsvJsonConnector {
 
     /// Apply column projection to batches.
     fn apply_projection(batches: Vec<RecordBatch>, projections: &[String]) -> Vec<RecordBatch> {
-        if projections.is_empty() { return batches; }
-        batches.into_iter().filter_map(|batch| {
-            let schema = batch.schema();
-            let indices: Vec<usize> = projections.iter()
-                .filter_map(|p| schema.index_of(p).ok())
-                .collect();
-            if indices.is_empty() { return None; }
-            batch.project(&indices).ok()
-        }).collect()
+        if projections.is_empty() {
+            return batches;
+        }
+        batches
+            .into_iter()
+            .filter_map(|batch| {
+                let schema = batch.schema();
+                let indices: Vec<usize> = projections
+                    .iter()
+                    .filter_map(|p| schema.index_of(p).ok())
+                    .collect();
+                if indices.is_empty() {
+                    return None;
+                }
+                batch.project(&indices).ok()
+            })
+            .collect()
     }
 }
 
 #[async_trait]
 impl FederatedConnector for CsvJsonConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "csv-json" }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "csv-json"
+    }
 
     fn capabilities(&self) -> ConnectorCapabilities {
         ConnectorCapabilities {
@@ -233,8 +272,13 @@ impl FederatedConnector for CsvJsonConnector {
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
         // Each unique "directory" under prefix is a table
         let files = self.list_files().await?;
-        let table_name = self.prefix.trim_end_matches('/').rsplit('/').next()
-            .unwrap_or("data").to_string();
+        let table_name = self
+            .prefix
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or("data")
+            .to_string();
         Ok(vec![SchemaInfo {
             name: table_name,
             schema_type: SchemaType::Table,
@@ -285,21 +329,34 @@ pub struct CsvJsonConnectorFactory;
 
 #[async_trait]
 impl ConnectorFactory for CsvJsonConnectorFactory {
-    fn connector_type(&self) -> &str { "csv-json" }
+    fn connector_type(&self) -> &str {
+        "csv-json"
+    }
 
-    async fn create(&self, config: &ConnectorConfig) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
-        let bucket = config.properties.get("bucket")
+    async fn create(
+        &self,
+        config: &ConnectorConfig,
+    ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
+        let bucket = config
+            .properties
+            .get("bucket")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ConnectorError::Connection("csv-json requires 'bucket'".into()))?
             .to_string();
-        let prefix = config.properties.get("prefix")
+        let prefix = config
+            .properties
+            .get("prefix")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        let region = config.properties.get("region")
+        let region = config
+            .properties
+            .get("region")
             .and_then(|v| v.as_str())
             .unwrap_or("us-east-1");
-        Ok(Arc::new(CsvJsonConnector::new(config.id.clone(), region, bucket, prefix).await))
+        Ok(Arc::new(
+            CsvJsonConnector::new(config.id.clone(), region, bucket, prefix).await,
+        ))
     }
 }
 
@@ -311,7 +368,10 @@ mod tests {
 
     #[test]
     fn test_format_detection_csv() {
-        assert_eq!(FileFormat::from_key("data/users.csv"), Some(FileFormat::Csv));
+        assert_eq!(
+            FileFormat::from_key("data/users.csv"),
+            Some(FileFormat::Csv)
+        );
         assert_eq!(FileFormat::from_key("logs/2024.CSV"), Some(FileFormat::Csv));
         assert_eq!(FileFormat::from_key("data.csv.gz"), Some(FileFormat::Csv));
     }
@@ -331,9 +391,14 @@ mod tests {
 
     #[test]
     fn test_parse_csv() {
-        let connector = tokio::runtime::Runtime::new().unwrap().block_on(
-            CsvJsonConnector::new("t".into(), "us-east-1", "b".into(), "p/".into())
-        );
+        let connector = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(CsvJsonConnector::new(
+                "t".into(),
+                "us-east-1",
+                "b".into(),
+                "p/".into(),
+            ));
         let csv = b"name,age,city\nAlice,30,Seattle\nBob,25,Portland\n";
         let batches = connector.parse_csv(csv).unwrap();
         assert_eq!(batches.len(), 1);
@@ -345,9 +410,14 @@ mod tests {
 
     #[test]
     fn test_parse_json() {
-        let connector = tokio::runtime::Runtime::new().unwrap().block_on(
-            CsvJsonConnector::new("t".into(), "us-east-1", "b".into(), "p/".into())
-        );
+        let connector = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(CsvJsonConnector::new(
+                "t".into(),
+                "us-east-1",
+                "b".into(),
+                "p/".into(),
+            ));
         let json = b"{\"name\":\"Alice\",\"age\":30}\n{\"name\":\"Bob\",\"age\":25}\n";
         let batches = connector.parse_json(json).unwrap();
         assert!(!batches.is_empty());
@@ -358,7 +428,9 @@ mod tests {
     #[test]
     fn test_apply_limit() {
         let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Utf8, false)]));
-        let arr = Arc::new(arrow::array::StringArray::from(vec!["a", "b", "c", "d", "e"]));
+        let arr = Arc::new(arrow::array::StringArray::from(vec![
+            "a", "b", "c", "d", "e",
+        ]));
         let batch = RecordBatch::try_new(schema, vec![arr]).unwrap();
         let limited = CsvJsonConnector::apply_limit(vec![batch], Some(3));
         let total: usize = limited.iter().map(|b| b.num_rows()).sum();
@@ -381,11 +453,15 @@ mod tests {
             Field::new("b", DataType::Utf8, false),
             Field::new("c", DataType::Utf8, false),
         ]));
-        let batch = RecordBatch::try_new(schema, vec![
-            Arc::new(arrow::array::StringArray::from(vec!["1"])),
-            Arc::new(arrow::array::StringArray::from(vec!["2"])),
-            Arc::new(arrow::array::StringArray::from(vec!["3"])),
-        ]).unwrap();
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(arrow::array::StringArray::from(vec!["1"])),
+                Arc::new(arrow::array::StringArray::from(vec!["2"])),
+                Arc::new(arrow::array::StringArray::from(vec!["3"])),
+            ],
+        )
+        .unwrap();
         let projected = CsvJsonConnector::apply_projection(vec![batch], &["a".into(), "c".into()]);
         assert_eq!(projected[0].num_columns(), 2);
         assert_eq!(projected[0].schema().field(0).name(), "a");
@@ -403,9 +479,14 @@ mod tests {
 
     #[test]
     fn test_capabilities() {
-        let c = tokio::runtime::Runtime::new().unwrap().block_on(
-            CsvJsonConnector::new("t".into(), "us-east-1", "b".into(), "p/".into())
-        );
+        let c = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(CsvJsonConnector::new(
+                "t".into(),
+                "us-east-1",
+                "b".into(),
+                "p/".into(),
+            ));
         let caps = c.capabilities();
         assert!(caps.supports_projection);
         assert!(caps.supports_limit);
@@ -415,9 +496,14 @@ mod tests {
 
     #[test]
     fn test_metadata() {
-        let c = tokio::runtime::Runtime::new().unwrap().block_on(
-            CsvJsonConnector::new("files".into(), "us-east-1", "b".into(), "data/".into())
-        );
+        let c = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(CsvJsonConnector::new(
+                "files".into(),
+                "us-east-1",
+                "b".into(),
+                "data/".into(),
+            ));
         assert_eq!(c.id(), "files");
         assert_eq!(c.connector_type(), "csv-json");
     }
@@ -429,9 +515,14 @@ mod tests {
 
     #[test]
     fn test_parse_csv_empty() {
-        let c = tokio::runtime::Runtime::new().unwrap().block_on(
-            CsvJsonConnector::new("t".into(), "us-east-1", "b".into(), "p/".into())
-        );
+        let c = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(CsvJsonConnector::new(
+                "t".into(),
+                "us-east-1",
+                "b".into(),
+                "p/".into(),
+            ));
         let csv = b"name,age\n";
         let batches = c.parse_csv(csv).unwrap();
         let total: usize = batches.iter().map(|b| b.num_rows()).sum();
@@ -442,7 +533,10 @@ mod tests {
 
     #[test]
     fn test_format_detection_ndjson() {
-        assert_eq!(FileFormat::from_key("logs/data.ndjson"), Some(FileFormat::Json));
+        assert_eq!(
+            FileFormat::from_key("logs/data.ndjson"),
+            Some(FileFormat::Json)
+        );
     }
 
     #[test]
@@ -453,9 +547,14 @@ mod tests {
 
     #[test]
     fn test_parse_csv_multiple_rows() {
-        let c = tokio::runtime::Runtime::new().unwrap().block_on(
-            CsvJsonConnector::new("t".into(), "us-east-1", "b".into(), "p/".into())
-        );
+        let c = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(CsvJsonConnector::new(
+                "t".into(),
+                "us-east-1",
+                "b".into(),
+                "p/".into(),
+            ));
         let csv = b"name,age,city\nAlice,30,NYC\nBob,25,LA\nCharlie,35,SF\n";
         let batches = c.parse_csv(csv).unwrap();
         let total: usize = batches.iter().map(|b| b.num_rows()).sum();
@@ -465,9 +564,14 @@ mod tests {
 
     #[test]
     fn test_parse_json_multiple_objects() {
-        let c = tokio::runtime::Runtime::new().unwrap().block_on(
-            CsvJsonConnector::new("t".into(), "us-east-1", "b".into(), "p/".into())
-        );
+        let c = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(CsvJsonConnector::new(
+                "t".into(),
+                "us-east-1",
+                "b".into(),
+                "p/".into(),
+            ));
         let json = b"{\"name\":\"Alice\",\"age\":30}\n{\"name\":\"Bob\",\"age\":25}\n";
         let batches = c.parse_json(json).unwrap();
         let total: usize = batches.iter().map(|b| b.num_rows()).sum();
@@ -491,11 +595,15 @@ mod tests {
             Field::new("b", DataType::Utf8, false),
             Field::new("c", DataType::Utf8, false),
         ]));
-        let batch = RecordBatch::try_new(schema, vec![
-            Arc::new(arrow::array::StringArray::from(vec!["1"])),
-            Arc::new(arrow::array::StringArray::from(vec!["2"])),
-            Arc::new(arrow::array::StringArray::from(vec!["3"])),
-        ]).unwrap();
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(arrow::array::StringArray::from(vec!["1"])),
+                Arc::new(arrow::array::StringArray::from(vec!["2"])),
+                Arc::new(arrow::array::StringArray::from(vec!["3"])),
+            ],
+        )
+        .unwrap();
         let result = CsvJsonConnector::apply_projection(vec![batch], &["b".into()]);
         assert_eq!(result[0].num_columns(), 1);
         assert_eq!(result[0].schema().field(0).name(), "b");

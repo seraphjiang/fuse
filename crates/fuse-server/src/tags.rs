@@ -17,11 +17,15 @@ impl Default for TagRegistry {
 
 impl TagRegistry {
     pub fn new() -> Self {
-        Self { tags: Mutex::new(HashMap::new()) }
+        Self {
+            tags: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn tag(&self, query_id: &str, tag: &str) {
-        self.tags.lock().unwrap()
+        self.tags
+            .lock()
+            .unwrap()
             .entry(query_id.to_string())
             .or_default()
             .insert(tag.to_string());
@@ -34,14 +38,18 @@ impl TagRegistry {
     }
 
     pub fn get_tags(&self, query_id: &str) -> Vec<String> {
-        self.tags.lock().unwrap()
+        self.tags
+            .lock()
+            .unwrap()
             .get(query_id)
             .map(|t| t.iter().cloned().collect())
             .unwrap_or_default()
     }
 
     pub fn find_by_tag(&self, tag: &str) -> Vec<String> {
-        self.tags.lock().unwrap()
+        self.tags
+            .lock()
+            .unwrap()
             .iter()
             .filter(|(_, tags)| tags.contains(tag))
             .map(|(id, _)| id.clone())

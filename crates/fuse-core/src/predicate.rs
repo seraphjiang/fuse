@@ -17,15 +17,46 @@ pub enum Predicate {
 }
 
 impl Predicate {
-    pub fn eq(field: &str, value: &str) -> Self { Self::Eq { field: field.into(), value: value.into() } }
-    pub fn gt(field: &str, value: &str) -> Self { Self::Gt { field: field.into(), value: value.into() } }
-    pub fn lt(field: &str, value: &str) -> Self { Self::Lt { field: field.into(), value: value.into() } }
-    pub fn like(field: &str, pattern: &str) -> Self { Self::Like { field: field.into(), pattern: pattern.into() } }
-    pub fn in_list(field: &str, values: Vec<&str>) -> Self { Self::In { field: field.into(), values: values.into_iter().map(String::from).collect() } }
-    pub fn and(preds: Vec<Predicate>) -> Self { Self::And(preds) }
-    pub fn or(preds: Vec<Predicate>) -> Self { Self::Or(preds) }
+    pub fn eq(field: &str, value: &str) -> Self {
+        Self::Eq {
+            field: field.into(),
+            value: value.into(),
+        }
+    }
+    pub fn gt(field: &str, value: &str) -> Self {
+        Self::Gt {
+            field: field.into(),
+            value: value.into(),
+        }
+    }
+    pub fn lt(field: &str, value: &str) -> Self {
+        Self::Lt {
+            field: field.into(),
+            value: value.into(),
+        }
+    }
+    pub fn like(field: &str, pattern: &str) -> Self {
+        Self::Like {
+            field: field.into(),
+            pattern: pattern.into(),
+        }
+    }
+    pub fn in_list(field: &str, values: Vec<&str>) -> Self {
+        Self::In {
+            field: field.into(),
+            values: values.into_iter().map(String::from).collect(),
+        }
+    }
+    pub fn and(preds: Vec<Predicate>) -> Self {
+        Self::And(preds)
+    }
+    pub fn or(preds: Vec<Predicate>) -> Self {
+        Self::Or(preds)
+    }
     #[allow(clippy::should_implement_trait)]
-    pub fn not(pred: Predicate) -> Self { Self::Not(Box::new(pred)) }
+    pub fn not(pred: Predicate) -> Self {
+        Self::Not(Box::new(pred))
+    }
 
     /// Convert to SQL WHERE clause fragment.
     pub fn to_sql(&self) -> String {
@@ -35,11 +66,23 @@ impl Predicate {
             Self::Lt { field, value } => format!("{} < '{}'", field, value),
             Self::Like { field, pattern } => format!("{} LIKE '{}'", field, pattern),
             Self::In { field, values } => {
-                let list = values.iter().map(|v| format!("'{}'", v.replace('\'', "''"))).collect::<Vec<_>>().join(", ");
+                let list = values
+                    .iter()
+                    .map(|v| format!("'{}'", v.replace('\'', "''")))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 format!("{} IN ({})", field, list)
             }
-            Self::And(preds) => preds.iter().map(|p| format!("({})", p.to_sql())).collect::<Vec<_>>().join(" AND "),
-            Self::Or(preds) => preds.iter().map(|p| format!("({})", p.to_sql())).collect::<Vec<_>>().join(" OR "),
+            Self::And(preds) => preds
+                .iter()
+                .map(|p| format!("({})", p.to_sql()))
+                .collect::<Vec<_>>()
+                .join(" AND "),
+            Self::Or(preds) => preds
+                .iter()
+                .map(|p| format!("({})", p.to_sql()))
+                .collect::<Vec<_>>()
+                .join(" OR "),
             Self::Not(pred) => format!("NOT ({})", pred.to_sql()),
         }
     }
@@ -80,11 +123,17 @@ mod tests {
 
     #[test]
     fn test_like() {
-        assert_eq!(Predicate::like("name", "%alice%").to_sql(), "name LIKE '%alice%'");
+        assert_eq!(
+            Predicate::like("name", "%alice%").to_sql(),
+            "name LIKE '%alice%'"
+        );
     }
 
     #[test]
     fn test_escape_quotes() {
-        assert_eq!(Predicate::eq("name", "O'Brien").to_sql(), "name = 'O''Brien'");
+        assert_eq!(
+            Predicate::eq("name", "O'Brien").to_sql(),
+            "name = 'O''Brien'"
+        );
     }
 }

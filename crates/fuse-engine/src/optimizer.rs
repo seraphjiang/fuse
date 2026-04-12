@@ -50,7 +50,13 @@ mod tests {
     use super::*;
     use fuse_core::connector::{ConnectorCapabilities, LatencyClass};
 
-    fn caps(filtering: bool, projection: bool, aggregation: bool, sorting: bool, limit: bool) -> ConnectorCapabilities {
+    fn caps(
+        filtering: bool,
+        projection: bool,
+        aggregation: bool,
+        sorting: bool,
+        limit: bool,
+    ) -> ConnectorCapabilities {
         ConnectorCapabilities {
             supports_filtering: filtering,
             supports_projection: projection,

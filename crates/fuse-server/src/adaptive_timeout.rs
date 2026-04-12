@@ -184,7 +184,10 @@ mod tests {
     #[test]
     fn test_timeout_for_returns_duration() {
         let at = AdaptiveTimeout::new();
-        assert_eq!(at.timeout_for("x"), Duration::from_millis(DEFAULT_FALLBACK_MS));
+        assert_eq!(
+            at.timeout_for("x"),
+            Duration::from_millis(DEFAULT_FALLBACK_MS)
+        );
     }
 
     #[test]

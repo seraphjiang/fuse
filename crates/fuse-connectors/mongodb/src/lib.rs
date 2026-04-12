@@ -16,7 +16,7 @@ use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use async_trait::async_trait;
 use mongodb::bson::{doc, Bson, Document};
-use mongodb::{Client, options::ClientOptions, options::FindOptions};
+use mongodb::{options::ClientOptions, options::FindOptions, Client};
 use tokio::sync::mpsc;
 use tracing::debug;
 
@@ -34,20 +34,29 @@ pub struct MongoDbConnector {
 
 impl MongoDbConnector {
     pub async fn from_config(config: &ConnectorConfig) -> Result<Self, ConnectorError> {
-        let uri = config.properties.get("uri")
+        let uri = config
+            .properties
+            .get("uri")
             .and_then(|v| v.as_str())
             .unwrap_or("mongodb://localhost:27017");
-        let database = config.properties.get("database")
+        let database = config
+            .properties
+            .get("database")
             .and_then(|v| v.as_str())
             .unwrap_or("test")
             .to_string();
 
-        let opts = ClientOptions::parse(uri).await
+        let opts = ClientOptions::parse(uri)
+            .await
             .map_err(|e| ConnectorError::Connection(e.to_string()))?;
-        let client = Client::with_options(opts)
-            .map_err(|e| ConnectorError::Connection(e.to_string()))?;
+        let client =
+            Client::with_options(opts).map_err(|e| ConnectorError::Connection(e.to_string()))?;
 
-        Ok(Self { id: config.id.clone(), client, database })
+        Ok(Self {
+            id: config.id.clone(),
+            client,
+            database,
+        })
     }
 
     fn db(&self) -> mongodb::Database {
@@ -57,8 +66,12 @@ impl MongoDbConnector {
 
 #[async_trait]
 impl FederatedConnector for MongoDbConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "mongodb" }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "mongodb"
+    }
 
     fn capabilities(&self) -> ConnectorCapabilities {
         ConnectorCapabilities {
@@ -77,29 +90,48 @@ impl FederatedConnector for MongoDbConnector {
     async fn health_check(&self) -> ConnectorHealth {
         let start = Instant::now();
         match self.db().run_command(doc! {"ping": 1}).await {
-            Ok(_) => ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(start.elapsed().as_millis() as u64), message: None },
-            Err(e) => ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some(e.to_string()) },
+            Ok(_) => ConnectorHealth {
+                status: HealthStatus::Healthy,
+                latency_ms: Some(start.elapsed().as_millis() as u64),
+                message: None,
+            },
+            Err(e) => ConnectorHealth {
+                status: HealthStatus::Unhealthy,
+                latency_ms: None,
+                message: Some(e.to_string()),
+            },
         }
     }
 
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
-        let names = self.db().list_collection_names().await
+        let names = self
+            .db()
+            .list_collection_names()
+            .await
             .map_err(ConnectorError::schema)?;
-        Ok(names.into_iter().map(|name| SchemaInfo {
-            name,
-            schema_type: SchemaType::Table,
-            estimated_row_count: None,
-        }).collect())
+        Ok(names
+            .into_iter()
+            .map(|name| SchemaInfo {
+                name,
+                schema_type: SchemaType::Table,
+                estimated_row_count: None,
+            })
+            .collect())
     }
 
     async fn get_schema(&self, table: &str) -> Result<Schema, ConnectorError> {
         // Sample one document to infer schema
         let coll = self.db().collection::<Document>(table);
-        let doc = coll.find_one(doc! {}).await
+        let doc = coll
+            .find_one(doc! {})
+            .await
             .map_err(ConnectorError::schema)?
-            .ok_or_else(|| ConnectorError::schema(format!("collection '{table}' is empty or not found")))?;
+            .ok_or_else(|| {
+                ConnectorError::schema(format!("collection '{table}' is empty or not found"))
+            })?;
 
-        let fields: Vec<Field> = doc.iter()
+        let fields: Vec<Field> = doc
+            .iter()
             .filter(|(k, _)| *k != "_id")
             .map(|(k, v)| Field::new(k, bson_type_to_arrow(v), true))
             .collect();
@@ -115,7 +147,11 @@ impl FederatedConnector for MongoDbConnector {
         let coll = self.db().collection::<Document>(&query.table);
         debug!(table = query.table.as_str(), "MongoDB execute");
 
-        let filter = query.filter.as_ref().map(filter_to_bson).unwrap_or_default();
+        let filter = query
+            .filter
+            .as_ref()
+            .map(filter_to_bson)
+            .unwrap_or_default();
 
         let mut opts = FindOptions::default();
         if let Some(limit) = query.limit {
@@ -130,15 +166,24 @@ impl FederatedConnector for MongoDbConnector {
             opts.projection = Some(proj);
         }
 
-        let mut cursor = coll.find(filter).with_options(opts).await
+        let mut cursor = coll
+            .find(filter)
+            .with_options(opts)
+            .await
             .map_err(ConnectorError::query)?;
 
         let mut docs = Vec::new();
         while cursor.advance().await.map_err(ConnectorError::query)? {
-            docs.push(cursor.deserialize_current().map_err(ConnectorError::query)?);
+            docs.push(
+                cursor
+                    .deserialize_current()
+                    .map_err(ConnectorError::query)?,
+            );
         }
 
-        if docs.is_empty() { return Ok(vec![]); }
+        if docs.is_empty() {
+            return Ok(vec![]);
+        }
         docs_to_batch(&docs, query)
     }
 
@@ -148,7 +193,9 @@ impl FederatedConnector for MongoDbConnector {
         tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
     ) -> Result<(), ConnectorError> {
         for batch in self.execute(query).await? {
-            tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+            tx.send(Ok(batch))
+                .await
+                .map_err(|_| ConnectorError::ChannelClosed)?;
         }
         Ok(())
     }
@@ -184,7 +231,11 @@ fn filter_to_bson(f: &FilterExpr) -> Document {
                         ScalarValue::Utf8(s) => s.replace('%', ".*").replace('_', "."),
                         _ => String::new(),
                     };
-                    let opts = if matches!(op, ComparisonOp::ILike) { "i" } else { "" };
+                    let opts = if matches!(op, ComparisonOp::ILike) {
+                        "i"
+                    } else {
+                        ""
+                    };
                     doc! { field: { "$regex": pattern, "$options": opts } }
                 }
             }
@@ -225,7 +276,9 @@ fn docs_to_batch(docs: &[Document], query: &SubQuery) -> Result<Vec<RecordBatch>
         let mut cols = Vec::new();
         for doc in docs {
             for k in doc.keys() {
-                if k != "_id" && seen.insert(k.clone()) { cols.push(k.clone()); }
+                if k != "_id" && seen.insert(k.clone()) {
+                    cols.push(k.clone());
+                }
             }
         }
         cols.sort();
@@ -236,29 +289,61 @@ fn docs_to_batch(docs: &[Document], query: &SubQuery) -> Result<Vec<RecordBatch>
     let mut arrays: Vec<ArrayRef> = Vec::new();
 
     for col in &cols {
-        let first = docs.iter().find_map(|d| get_nested_bson(&Bson::Document(d.clone()), col));
+        let first = docs
+            .iter()
+            .find_map(|d| get_nested_bson(&Bson::Document(d.clone()), col));
         match first {
             Some(Bson::Int32(_)) | Some(Bson::Int64(_)) => {
-                let vals: Vec<Option<i64>> = docs.iter().map(|d| match get_nested_bson(&Bson::Document(d.clone()), col) {
-                    Some(Bson::Int64(n)) => Some(n),
-                    Some(Bson::Int32(n)) => Some(n as i64),
-                    _ => None,
-                }).collect();
+                let vals: Vec<Option<i64>> = docs
+                    .iter()
+                    .map(|d| match get_nested_bson(&Bson::Document(d.clone()), col) {
+                        Some(Bson::Int64(n)) => Some(n),
+                        Some(Bson::Int32(n)) => Some(n as i64),
+                        _ => None,
+                    })
+                    .collect();
                 fields.push(Field::new(col, DataType::Int64, true));
                 arrays.push(Arc::new(Int64Array::from(vals)) as ArrayRef);
             }
             Some(Bson::Double(_)) => {
-                let vals: Vec<Option<f64>> = docs.iter().map(|d| if let Some(Bson::Double(f)) = get_nested_bson(&Bson::Document(d.clone()), col) { Some(f) } else { None }).collect();
+                let vals: Vec<Option<f64>> = docs
+                    .iter()
+                    .map(|d| {
+                        if let Some(Bson::Double(f)) =
+                            get_nested_bson(&Bson::Document(d.clone()), col)
+                        {
+                            Some(f)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 fields.push(Field::new(col, DataType::Float64, true));
                 arrays.push(Arc::new(Float64Array::from(vals)) as ArrayRef);
             }
             Some(Bson::Boolean(_)) => {
-                let vals: Vec<Option<bool>> = docs.iter().map(|d| if let Some(Bson::Boolean(b)) = get_nested_bson(&Bson::Document(d.clone()), col) { Some(b) } else { None }).collect();
+                let vals: Vec<Option<bool>> = docs
+                    .iter()
+                    .map(|d| {
+                        if let Some(Bson::Boolean(b)) =
+                            get_nested_bson(&Bson::Document(d.clone()), col)
+                        {
+                            Some(b)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 fields.push(Field::new(col, DataType::Boolean, true));
                 arrays.push(Arc::new(BooleanArray::from(vals)) as ArrayRef);
             }
             _ => {
-                let vals: Vec<Option<String>> = docs.iter().map(|d| get_nested_bson(&Bson::Document(d.clone()), col).map(|v| v.to_string())).collect();
+                let vals: Vec<Option<String>> = docs
+                    .iter()
+                    .map(|d| {
+                        get_nested_bson(&Bson::Document(d.clone()), col).map(|v| v.to_string())
+                    })
+                    .collect();
                 fields.push(Field::new(col, DataType::Utf8, true));
                 arrays.push(Arc::new(StringArray::from(vals)) as ArrayRef);
             }
@@ -275,8 +360,13 @@ pub struct MongoDbConnectorFactory;
 
 #[async_trait]
 impl ConnectorFactory for MongoDbConnectorFactory {
-    fn connector_type(&self) -> &str { "mongodb" }
-    async fn create(&self, config: &ConnectorConfig) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
+    fn connector_type(&self) -> &str {
+        "mongodb"
+    }
+    async fn create(
+        &self,
+        config: &ConnectorConfig,
+    ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
         Ok(Arc::new(MongoDbConnector::from_config(config).await?))
     }
 }
@@ -287,21 +377,35 @@ mod tests {
 
     #[test]
     fn test_filter_to_bson_eq() {
-        let f = FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("active".into()) };
+        let f = FilterExpr::Comparison {
+            field: "status".into(),
+            op: ComparisonOp::Eq,
+            value: ScalarValue::Utf8("active".into()),
+        };
         let doc = filter_to_bson(&f);
         assert_eq!(doc.get_str("status").unwrap(), "active");
     }
 
     #[test]
     fn test_filter_to_bson_gt() {
-        let f = FilterExpr::Comparison { field: "age".into(), op: ComparisonOp::Gt, value: ScalarValue::Int64(18) };
+        let f = FilterExpr::Comparison {
+            field: "age".into(),
+            op: ComparisonOp::Gt,
+            value: ScalarValue::Int64(18),
+        };
         let doc = filter_to_bson(&f);
         assert!(doc.get_document("age").unwrap().contains_key("$gt"));
     }
 
     #[test]
     fn test_filter_to_bson_in() {
-        let f = FilterExpr::In { field: "env".into(), values: vec![ScalarValue::Utf8("prod".into()), ScalarValue::Utf8("dev".into())] };
+        let f = FilterExpr::In {
+            field: "env".into(),
+            values: vec![
+                ScalarValue::Utf8("prod".into()),
+                ScalarValue::Utf8("dev".into()),
+            ],
+        };
         let doc = filter_to_bson(&f);
         assert!(doc.get_document("env").unwrap().contains_key("$in"));
     }
@@ -316,8 +420,16 @@ mod tests {
     #[test]
     fn test_filter_to_bson_and() {
         let f = FilterExpr::And(
-            Box::new(FilterExpr::Comparison { field: "a".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(1) }),
-            Box::new(FilterExpr::Comparison { field: "b".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(2) }),
+            Box::new(FilterExpr::Comparison {
+                field: "a".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Int64(1),
+            }),
+            Box::new(FilterExpr::Comparison {
+                field: "b".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Int64(2),
+            }),
         );
         let doc = filter_to_bson(&f);
         assert!(doc.contains_key("$and"));
@@ -325,7 +437,11 @@ mod tests {
 
     #[test]
     fn test_filter_to_bson_like() {
-        let f = FilterExpr::Comparison { field: "name".into(), op: ComparisonOp::Like, value: ScalarValue::Utf8("alice%".into()) };
+        let f = FilterExpr::Comparison {
+            field: "name".into(),
+            op: ComparisonOp::Like,
+            value: ScalarValue::Utf8("alice%".into()),
+        };
         let doc = filter_to_bson(&f);
         let inner = doc.get_document("name").unwrap();
         assert!(inner.contains_key("$regex"));
@@ -335,7 +451,10 @@ mod tests {
     fn test_scalar_to_bson() {
         assert_eq!(scalar_to_bson(&ScalarValue::Int64(42)), Bson::Int64(42));
         assert_eq!(scalar_to_bson(&ScalarValue::Null), Bson::Null);
-        assert_eq!(scalar_to_bson(&ScalarValue::Boolean(true)), Bson::Boolean(true));
+        assert_eq!(
+            scalar_to_bson(&ScalarValue::Boolean(true)),
+            Bson::Boolean(true)
+        );
     }
 
     #[test]
@@ -343,19 +462,28 @@ mod tests {
         assert_eq!(bson_type_to_arrow(&Bson::Int64(1)), DataType::Int64);
         assert_eq!(bson_type_to_arrow(&Bson::Double(1.0)), DataType::Float64);
         assert_eq!(bson_type_to_arrow(&Bson::Boolean(true)), DataType::Boolean);
-        assert_eq!(bson_type_to_arrow(&Bson::String("x".into())), DataType::Utf8);
+        assert_eq!(
+            bson_type_to_arrow(&Bson::String("x".into())),
+            DataType::Utf8
+        );
     }
 
     #[test]
     fn test_get_nested_bson_top_level() {
         let doc = doc! { "name": "alice" };
-        assert_eq!(get_nested_bson(&Bson::Document(doc), "name"), Some(Bson::String("alice".into())));
+        assert_eq!(
+            get_nested_bson(&Bson::Document(doc), "name"),
+            Some(Bson::String("alice".into()))
+        );
     }
 
     #[test]
     fn test_get_nested_bson_dot_path() {
         let doc = doc! { "address": { "city": "Seattle" } };
-        assert_eq!(get_nested_bson(&Bson::Document(doc), "address.city"), Some(Bson::String("Seattle".into())));
+        assert_eq!(
+            get_nested_bson(&Bson::Document(doc), "address.city"),
+            Some(Bson::String("Seattle".into()))
+        );
     }
 
     #[test]
@@ -413,6 +541,9 @@ mod tests {
     #[test]
     fn test_nested_bson_deep_path() {
         let doc = doc! { "a": { "b": { "c": 42 } } };
-        assert_eq!(get_nested_bson(&Bson::Document(doc), "a.b.c"), Some(Bson::Int32(42)));
+        assert_eq!(
+            get_nested_bson(&Bson::Document(doc), "a.b.c"),
+            Some(Bson::Int32(42))
+        );
     }
 }

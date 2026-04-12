@@ -41,7 +41,13 @@ impl ExplainCache {
             let ttl = self.ttl;
             entries.retain(|_, v| v.created.elapsed() < ttl);
         }
-        entries.insert(query, CachedExplain { result, created: Instant::now() });
+        entries.insert(
+            query,
+            CachedExplain {
+                result,
+                created: Instant::now(),
+            },
+        );
     }
 
     pub fn len(&self) -> usize {

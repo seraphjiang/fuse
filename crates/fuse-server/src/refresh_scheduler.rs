@@ -29,12 +29,16 @@ impl RefreshScheduler {
     ) -> Self
     where
         F: Fn(String) -> Fut + Send + Sync + 'static,
-        Fut: std::future::Future<Output = Result<Vec<arrow::record_batch::RecordBatch>, String>> + Send,
+        Fut: std::future::Future<Output = Result<Vec<arrow::record_batch::RecordBatch>, String>>
+            + Send,
     {
         let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
 
         tokio::spawn(async move {
-            info!("Materialized view refresh scheduler started (poll every {:?})", poll_interval);
+            info!(
+                "Materialized view refresh scheduler started (poll every {:?})",
+                poll_interval
+            );
             loop {
                 tokio::select! {
                     _ = tokio::time::sleep(poll_interval) => {}
@@ -45,13 +49,17 @@ impl RefreshScheduler {
                 }
 
                 let stale = registry.stale_views();
-                if stale.is_empty() { continue; }
+                if stale.is_empty() {
+                    continue;
+                }
 
                 debug!("Refreshing {} stale view(s): {:?}", stale.len(), stale);
 
                 for name in stale {
                     let (query, is_incremental, watermark_col, last_watermark) = {
-                        let Some(view_arc) = registry.get(&name) else { continue };
+                        let Some(view_arc) = registry.get(&name) else {
+                            continue;
+                        };
                         let view = view_arc.read().unwrap();
                         (
                             view.def.query.clone(),
@@ -74,27 +82,39 @@ impl RefreshScheduler {
 
                     match execute_fn(effective_query).await {
                         Ok(batches) => {
-                            let Some(view_arc) = registry.get(&name) else { continue };
+                            let Some(view_arc) = registry.get(&name) else {
+                                continue;
+                            };
                             let mut view = view_arc.write().unwrap();
                             let row_count: usize = batches.iter().map(|b| b.num_rows()).sum();
                             if is_incremental && last_watermark.is_some() {
                                 // Extract new watermark from last batch
-                                let new_wm = extract_max_watermark(&batches, watermark_col.as_deref().unwrap_or(""));
+                                let new_wm = extract_max_watermark(
+                                    &batches,
+                                    watermark_col.as_deref().unwrap_or(""),
+                                );
                                 view.append_results(batches, new_wm);
                                 debug!("Incremental refresh view '{}': +{} rows", name, row_count);
                             } else {
                                 let new_wm = if is_incremental {
-                                    extract_max_watermark(&batches, watermark_col.as_deref().unwrap_or(""))
+                                    extract_max_watermark(
+                                        &batches,
+                                        watermark_col.as_deref().unwrap_or(""),
+                                    )
                                 } else {
                                     None
                                 };
                                 view.set_results(batches);
-                                if let Some(wm) = new_wm { view.watermark = Some(wm); }
+                                if let Some(wm) = new_wm {
+                                    view.watermark = Some(wm);
+                                }
                                 debug!("Full refresh view '{}': {} rows", name, row_count);
                             }
                         }
                         Err(e) => {
-                            let Some(view_arc) = registry.get(&name) else { continue };
+                            let Some(view_arc) = registry.get(&name) else {
+                                continue;
+                            };
                             let mut view = view_arc.write().unwrap();
                             view.set_error(e.clone());
                             warn!("Failed to refresh view '{}': {}", name, e);
@@ -120,7 +140,10 @@ impl Drop for RefreshScheduler {
 }
 
 /// Extract the maximum value of a watermark column from batches (as string).
-fn extract_max_watermark(batches: &[arrow::record_batch::RecordBatch], column: &str) -> Option<String> {
+fn extract_max_watermark(
+    batches: &[arrow::record_batch::RecordBatch],
+    column: &str,
+) -> Option<String> {
     use arrow::array::Array;
     let mut max_val: Option<String> = None;
     for batch in batches {
@@ -129,7 +152,9 @@ fn extract_max_watermark(batches: &[arrow::record_batch::RecordBatch], column: &
         let arr = arrow::compute::cast(col, &arrow::datatypes::DataType::Utf8).ok()?;
         let str_arr = arr.as_any().downcast_ref::<arrow::array::StringArray>()?;
         for i in 0..str_arr.len() {
-            if str_arr.is_null(i) { continue; }
+            if str_arr.is_null(i) {
+                continue;
+            }
             let v = str_arr.value(i);
             if max_val.as_deref().is_none_or(|m| v > m) {
                 max_val = Some(v.to_string());
@@ -142,10 +167,10 @@ fn extract_max_watermark(batches: &[arrow::record_batch::RecordBatch], column: &
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fuse_engine::materialized::MaterializedViewDef;
     use arrow::array::Int64Array;
     use arrow::datatypes::{DataType, Field, Schema};
     use arrow::record_batch::RecordBatch;
+    use fuse_engine::materialized::MaterializedViewDef;
 
     fn test_def(name: &str) -> MaterializedViewDef {
         MaterializedViewDef {
@@ -170,14 +195,11 @@ mod tests {
         assert_eq!(reg.stale_views(), vec!["v1"]);
 
         let reg2 = reg.clone();
-        let _sched = RefreshScheduler::start(
-            reg.clone(),
-            Duration::from_millis(20),
-            move |_query| {
+        let _sched =
+            RefreshScheduler::start(reg.clone(), Duration::from_millis(20), move |_query| {
                 let _ = &reg2;
                 async { Ok(make_batch()) }
-            },
-        );
+            });
 
         // Wait for refresh
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -193,11 +215,10 @@ mod tests {
         let reg = Arc::new(MaterializedViewRegistry::new());
         reg.register(test_def("v1"));
 
-        let _sched = RefreshScheduler::start(
-            reg.clone(),
-            Duration::from_millis(20),
-            |_query| async { Err("db down".to_string()) },
-        );
+        let _sched =
+            RefreshScheduler::start(reg.clone(), Duration::from_millis(20), |_query| async {
+                Err("db down".to_string())
+            });
 
         tokio::time::sleep(Duration::from_millis(100)).await;
 
@@ -209,11 +230,9 @@ mod tests {
     #[tokio::test]
     async fn test_scheduler_stop() {
         let reg = Arc::new(MaterializedViewRegistry::new());
-        let sched = RefreshScheduler::start(
-            reg.clone(),
-            Duration::from_millis(10),
-            |_| async { Ok(vec![]) },
-        );
+        let sched = RefreshScheduler::start(reg.clone(), Duration::from_millis(10), |_| async {
+            Ok(vec![])
+        });
         sched.stop();
         // Should not panic — task exits gracefully
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -223,11 +242,9 @@ mod tests {
     async fn test_scheduler_skips_empty() {
         let reg = Arc::new(MaterializedViewRegistry::new());
         // No views registered — scheduler should just loop without error
-        let sched = RefreshScheduler::start(
-            reg.clone(),
-            Duration::from_millis(10),
-            |_| async { Ok(vec![]) },
-        );
+        let sched = RefreshScheduler::start(reg.clone(), Duration::from_millis(10), |_| async {
+            Ok(vec![])
+        });
         tokio::time::sleep(Duration::from_millis(50)).await;
         sched.stop();
     }
@@ -242,8 +259,13 @@ mod tests {
         let schema = Arc::new(Schema::new(vec![Field::new("ts", DataType::Utf8, false)]));
         let batch = RecordBatch::try_new(
             schema,
-            vec![Arc::new(StringArray::from(vec!["2026-01-01", "2026-03-15", "2026-02-10"]))],
-        ).unwrap();
+            vec![Arc::new(StringArray::from(vec![
+                "2026-01-01",
+                "2026-03-15",
+                "2026-02-10",
+            ]))],
+        )
+        .unwrap();
         assert_eq!(
             super::extract_max_watermark(&[batch], "ts"),
             Some("2026-03-15".to_string()),
@@ -258,9 +280,8 @@ mod tests {
         use std::sync::Arc;
 
         let schema = Arc::new(Schema::new(vec![Field::new("id", DataType::Int64, false)]));
-        let batch = RecordBatch::try_new(
-            schema, vec![Arc::new(Int64Array::from(vec![1, 2]))],
-        ).unwrap();
+        let batch =
+            RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(vec![1, 2]))]).unwrap();
         assert_eq!(super::extract_max_watermark(&[batch], "ts"), None);
     }
 

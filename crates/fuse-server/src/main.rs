@@ -4,23 +4,26 @@ use std::sync::Arc;
 
 use tracing::info;
 
-use fuse_core::config::FuseConfig;
-use fuse_core::registry::{ConnectorFactory, ConnectorRegistry};
-use fuse_connector_opensearch::OpenSearchConnectorFactory;
-use fuse_connector_s3_o11y::S3O11yConnectorFactory;
-use fuse_connector_dynamodb::DynamoDbConnectorFactory;
-use fuse_connector_postgres::{PostgresConnectorFactory, MysqlConnectorFactory, RedshiftConnectorFactory, SqliteConnectorFactory};
-use fuse_connector_elasticsearch::ElasticsearchConnectorFactory;
-use fuse_connector_mongodb::MongoDbConnectorFactory;
-use fuse_connector_influxdb::InfluxDbConnectorFactory;
 use fuse_connector_clickhouse::ClickHouseConnectorFactory;
 use fuse_connector_cloudwatch::CloudWatchConnectorFactory;
 use fuse_connector_csv_json::CsvJsonConnectorFactory;
-use fuse_connector_redis::RedisConnectorFactory;
-use fuse_connector_duckdb::DuckDbConnectorFactory;
-use fuse_connector_otel::OtelConnectorFactory;
 use fuse_connector_delta_lake::DeltaLakeConnectorFactory;
+use fuse_connector_duckdb::DuckDbConnectorFactory;
+use fuse_connector_dynamodb::DynamoDbConnectorFactory;
+use fuse_connector_elasticsearch::ElasticsearchConnectorFactory;
 use fuse_connector_iceberg::IcebergConnectorFactory;
+use fuse_connector_influxdb::InfluxDbConnectorFactory;
+use fuse_connector_mongodb::MongoDbConnectorFactory;
+use fuse_connector_opensearch::OpenSearchConnectorFactory;
+use fuse_connector_otel::OtelConnectorFactory;
+use fuse_connector_postgres::{
+    MysqlConnectorFactory, PostgresConnectorFactory, RedshiftConnectorFactory,
+    SqliteConnectorFactory,
+};
+use fuse_connector_redis::RedisConnectorFactory;
+use fuse_connector_s3_o11y::S3O11yConnectorFactory;
+use fuse_core::config::FuseConfig;
+use fuse_core::registry::{ConnectorFactory, ConnectorRegistry};
 
 use fuse_server::api::AppState;
 
@@ -37,9 +40,7 @@ async fn main() -> anyhow::Result<()> {
             .with_target(true)
             .init();
     } else {
-        tracing_subscriber::fmt()
-            .with_env_filter(env_filter)
-            .init();
+        tracing_subscriber::fmt().with_env_filter(env_filter).init();
     }
 
     // Load config
@@ -64,9 +65,24 @@ async fn main() -> anyhow::Result<()> {
 
     // Validate config at startup — fail fast with clear errors
     let known_types: Vec<&str> = vec![
-        "opensearch", "elasticsearch", "postgres", "mysql", "dynamodb",
-        "s3", "s3-o11y", "prometheus", "cloudwatch", "redis", "csv-json",
-        "mongodb", "influxdb", "clickhouse", "kafka", "redshift", "duckdb", "sqlite",
+        "opensearch",
+        "elasticsearch",
+        "postgres",
+        "mysql",
+        "dynamodb",
+        "s3",
+        "s3-o11y",
+        "prometheus",
+        "cloudwatch",
+        "redis",
+        "csv-json",
+        "mongodb",
+        "influxdb",
+        "clickhouse",
+        "kafka",
+        "redshift",
+        "duckdb",
+        "sqlite",
         "otel",
         "delta-lake",
         "iceberg",
@@ -110,14 +126,30 @@ async fn main() -> anyhow::Result<()> {
 
         // Special handling for otel connector — capture store for ingestion routes
         if cc.connector_type == "otel" {
-            let max_spans = cc.properties.get("max_spans")
-                .and_then(|v| v.as_integer()).unwrap_or(100_000) as usize;
-            let max_metrics = cc.properties.get("max_metrics")
-                .and_then(|v| v.as_integer()).unwrap_or(100_000) as usize;
-            let max_logs = cc.properties.get("max_logs")
-                .and_then(|v| v.as_integer()).unwrap_or(100_000) as usize;
-            let store = Arc::new(fuse_connector_otel::store::OtelStore::new(max_spans, max_metrics, max_logs));
-            let connector = Arc::new(fuse_connector_otel::OtelConnector::new(&cc.id, store.clone()));
+            let max_spans = cc
+                .properties
+                .get("max_spans")
+                .and_then(|v| v.as_integer())
+                .unwrap_or(100_000) as usize;
+            let max_metrics = cc
+                .properties
+                .get("max_metrics")
+                .and_then(|v| v.as_integer())
+                .unwrap_or(100_000) as usize;
+            let max_logs = cc
+                .properties
+                .get("max_logs")
+                .and_then(|v| v.as_integer())
+                .unwrap_or(100_000) as usize;
+            let store = Arc::new(fuse_connector_otel::store::OtelStore::new(
+                max_spans,
+                max_metrics,
+                max_logs,
+            ));
+            let connector = Arc::new(fuse_connector_otel::OtelConnector::new(
+                &cc.id,
+                store.clone(),
+            ));
             registry.register(connector)?;
             otel_store = Some(store);
             info!(id = %cc.id, r#type = %cc.connector_type, "Registered connector");
@@ -155,8 +187,14 @@ async fn main() -> anyhow::Result<()> {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(fuse_server::api::RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
-        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(config.engine.cache.plan_cache_ttl_secs, config.engine.cache.plan_cache_max_entries)),
-        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(config.engine.cache.result_cache_ttl_secs, config.engine.cache.result_cache_max_entries)),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(
+            config.engine.cache.plan_cache_ttl_secs,
+            config.engine.cache.plan_cache_max_entries,
+        )),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(
+            config.engine.cache.result_cache_ttl_secs,
+            config.engine.cache.result_cache_max_entries,
+        )),
         tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
         audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
         adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
@@ -169,8 +207,11 @@ async fn main() -> anyhow::Result<()> {
         datasource_limiter: {
             let limiter = std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new());
             for c in &config.connector {
-                let max = c.properties.get("max_concurrent_queries")
-                    .and_then(|v| v.as_integer()).map(|n| n as u64)
+                let max = c
+                    .properties
+                    .get("max_concurrent_queries")
+                    .and_then(|v| v.as_integer())
+                    .map(|n| n as u64)
                     .unwrap_or(16) as usize;
                 limiter.register(&c.id, max);
             }
@@ -178,11 +219,17 @@ async fn main() -> anyhow::Result<()> {
         },
         otel_store,
         query_recorder: Arc::new(fuse_server::query_replay::QueryRecorder::new(10000)),
-        adaptive_parallelism: Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()),
+        adaptive_parallelism: Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
         webhook_registry: Arc::new(fuse_server::webhook::WebhookRegistry::new()),
-        compilation_cache: Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)),
+        compilation_cache: Arc::new(fuse_server::query_compilation::CompilationCache::new(
+            300, 5000,
+        )),
         cdc_tracker: Arc::new(fuse_server::cdc::CdcTracker::new(10000)),
-        adaptive_cache: Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)),
+        adaptive_cache: Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
         schema_cache: Arc::new(fuse_server::api::SchemaCache::new(300)),
         column_rbac: if config.security.enabled {
             Some(Arc::new(fuse_core::security::ResultFilter::new(
@@ -264,7 +311,10 @@ async fn shutdown_signal(running_queries: Arc<fuse_server::api::RunningQueries>)
         _ = terminate => info!("Received SIGTERM"),
     }
 
-    info!(in_flight = running_queries.count(), "Shutting down — draining in-flight queries");
+    info!(
+        in_flight = running_queries.count(),
+        "Shutting down — draining in-flight queries"
+    );
 
     // Give in-flight queries up to 10 seconds to complete
     let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(10);
@@ -273,7 +323,10 @@ async fn shutdown_signal(running_queries: Arc<fuse_server::api::RunningQueries>)
     }
 
     if running_queries.count() > 0 {
-        info!(remaining = running_queries.count(), "Grace period expired — cancelling remaining queries");
+        info!(
+            remaining = running_queries.count(),
+            "Grace period expired — cancelling remaining queries"
+        );
         running_queries.cancel_all();
     }
 

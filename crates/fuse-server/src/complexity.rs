@@ -21,16 +21,29 @@ pub fn score_query(query: &str) -> ComplexityScore {
     let has_union = upper.contains(" UNION ");
     let has_subquery = upper.contains("(SELECT") || upper.contains("( SELECT");
     let has_aggregation = ["GROUP BY", "COUNT(", "SUM(", "AVG(", "MAX(", "MIN("]
-        .iter().any(|k| upper.contains(k));
+        .iter()
+        .any(|k| upper.contains(k));
 
     let mut score: u32 = 1;
     score += datasource_count.saturating_sub(1) as u32 * 3; // cross-source penalty
-    if has_join { score += 5; }
-    if has_union { score += 3; }
-    if has_subquery { score += 4; }
-    if has_aggregation { score += 2; }
-    if upper.contains("ORDER BY") { score += 1; }
-    if upper.contains("WINDOW") || upper.contains("OVER(") || upper.contains("OVER (") { score += 3; }
+    if has_join {
+        score += 5;
+    }
+    if has_union {
+        score += 3;
+    }
+    if has_subquery {
+        score += 4;
+    }
+    if has_aggregation {
+        score += 2;
+    }
+    if upper.contains("ORDER BY") {
+        score += 1;
+    }
+    if upper.contains("WINDOW") || upper.contains("OVER(") || upper.contains("OVER (") {
+        score += 3;
+    }
 
     let level = match score {
         0..=3 => "simple",
@@ -39,7 +52,15 @@ pub fn score_query(query: &str) -> ComplexityScore {
         _ => "very_complex",
     };
 
-    ComplexityScore { score, datasource_count, has_join, has_union, has_subquery, has_aggregation, level }
+    ComplexityScore {
+        score,
+        datasource_count,
+        has_join,
+        has_union,
+        has_subquery,
+        has_aggregation,
+        level,
+    }
 }
 
 fn count_datasources(upper: &str) -> usize {
@@ -49,7 +70,9 @@ fn count_datasources(upper: &str) -> usize {
         while let Some(idx) = upper[pos..].find(keyword) {
             let after = &upper[pos + idx + keyword.len()..];
             if let Some(token) = after.split_whitespace().next() {
-                if token.contains('.') { count += 1; }
+                if token.contains('.') {
+                    count += 1;
+                }
             }
             pos += idx + keyword.len();
         }
@@ -79,7 +102,7 @@ mod tests {
     fn test_complex_query() {
         let s = score_query(
             "SELECT a.service, COUNT(*) FROM ds1.logs a JOIN ds2.users b ON a.uid = b.uid \
-             WHERE a.status >= 500 GROUP BY a.service ORDER BY COUNT(*) DESC"
+             WHERE a.status >= 500 GROUP BY a.service ORDER BY COUNT(*) DESC",
         );
         assert!(s.has_join);
         assert!(s.has_aggregation);

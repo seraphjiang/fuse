@@ -38,7 +38,9 @@ impl DuckDbConnector {
     }
 
     pub fn from_config(config: &ConnectorConfig) -> Self {
-        let path = config.properties.get("path")
+        let path = config
+            .properties
+            .get("path")
             .and_then(|v| v.as_str())
             .unwrap_or(":memory:")
             .to_string();
@@ -47,15 +49,18 @@ impl DuckDbConnector {
 
     #[allow(dead_code)]
     fn open(&self) -> Result<duckdb::Connection, ConnectorError> {
-        duckdb::Connection::open(&self.path)
-            .map_err(|e| ConnectorError::Connection(e.to_string()))
+        duckdb::Connection::open(&self.path).map_err(|e| ConnectorError::Connection(e.to_string()))
     }
 }
 
 #[async_trait]
 impl FederatedConnector for DuckDbConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "duckdb" }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "duckdb"
+    }
 
     fn capabilities(&self) -> ConnectorCapabilities {
         ConnectorCapabilities {
@@ -78,12 +83,22 @@ impl FederatedConnector for DuckDbConnector {
             duckdb::Connection::open(&path)
                 .and_then(|conn| conn.execute("SELECT 1", []).map(|_| ()))
                 .is_ok()
-        }).await.unwrap_or(false);
+        })
+        .await
+        .unwrap_or(false);
 
         if ok {
-            ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(start.elapsed().as_millis() as u64), message: None }
+            ConnectorHealth {
+                status: HealthStatus::Healthy,
+                latency_ms: Some(start.elapsed().as_millis() as u64),
+                message: None,
+            }
         } else {
-            ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some("DuckDB open failed".into()) }
+            ConnectorHealth {
+                status: HealthStatus::Unhealthy,
+                latency_ms: None,
+                message: Some("DuckDB open failed".into()),
+            }
         }
     }
 
@@ -101,11 +116,14 @@ impl FederatedConnector for DuckDbConnector {
             Ok(names)
         }).await.map_err(ConnectorError::schema)??;
 
-        Ok(names.into_iter().map(|name| SchemaInfo {
-            name,
-            schema_type: SchemaType::Table,
-            estimated_row_count: None,
-        }).collect())
+        Ok(names
+            .into_iter()
+            .map(|name| SchemaInfo {
+                name,
+                schema_type: SchemaType::Table,
+                estimated_row_count: None,
+            })
+            .collect())
     }
 
     async fn get_schema(&self, table: &str) -> Result<Schema, ConnectorError> {
@@ -125,9 +143,16 @@ impl FederatedConnector for DuckDbConnector {
         }).await.map_err(ConnectorError::schema)??;
 
         if fields.is_empty() {
-            return Err(ConnectorError::schema(format!("table '{table2}' not found")));
+            return Err(ConnectorError::schema(format!(
+                "table '{table2}' not found"
+            )));
         }
-        Ok(Schema::new(fields.iter().map(|(col, dt)| Field::new(col, duckdb_type_to_arrow(dt), true)).collect::<Vec<_>>()))
+        Ok(Schema::new(
+            fields
+                .iter()
+                .map(|(col, dt)| Field::new(col, duckdb_type_to_arrow(dt), true))
+                .collect::<Vec<_>>(),
+        ))
     }
 
     async fn execute(&self, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
@@ -136,8 +161,7 @@ impl FederatedConnector for DuckDbConnector {
         debug!(sql = sql.as_str(), "DuckDB execute");
 
         tokio::task::spawn_blocking(move || -> Result<Vec<RecordBatch>, ConnectorError> {
-            let conn = duckdb::Connection::open(&path)
-                .map_err(ConnectorError::query)?;
+            let conn = duckdb::Connection::open(&path).map_err(ConnectorError::query)?;
             let mut stmt = conn.prepare(&sql).map_err(ConnectorError::query)?;
 
             let mut rows = stmt.query([]).map_err(ConnectorError::query)?;
@@ -152,25 +176,40 @@ impl FederatedConnector for DuckDbConnector {
             #[allow(clippy::needless_range_loop)]
             while let Some(row) = rows.next().map_err(ConnectorError::query)? {
                 for i in 0..col_count {
-                    let val: Option<String> = row.get::<_, Option<String>>(i)
-                        .or_else(|_| row.get::<_, Option<i64>>(i).map(|v| v.map(|n| n.to_string())))
-                        .or_else(|_| row.get::<_, Option<f64>>(i).map(|v| v.map(|f| f.to_string())))
+                    let val: Option<String> = row
+                        .get::<_, Option<String>>(i)
+                        .or_else(|_| {
+                            row.get::<_, Option<i64>>(i)
+                                .map(|v| v.map(|n| n.to_string()))
+                        })
+                        .or_else(|_| {
+                            row.get::<_, Option<f64>>(i)
+                                .map(|v| v.map(|f| f.to_string()))
+                        })
                         .unwrap_or(None);
                     col_data[i].push(val);
                 }
             }
 
-            if col_count == 0 || col_data.is_empty() || col_data[0].is_empty() { return Ok(vec![]); }
+            if col_count == 0 || col_data.is_empty() || col_data[0].is_empty() {
+                return Ok(vec![]);
+            }
 
-            let fields: Vec<Field> = col_names.iter().map(|n| Field::new(n, DataType::Utf8, true)).collect();
-            let arrays: Vec<ArrayRef> = col_data.into_iter()
+            let fields: Vec<Field> = col_names
+                .iter()
+                .map(|n| Field::new(n, DataType::Utf8, true))
+                .collect();
+            let arrays: Vec<ArrayRef> = col_data
+                .into_iter()
                 .map(|vals| Arc::new(StringArray::from(vals)) as ArrayRef)
                 .collect();
 
             let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays)
                 .map_err(ConnectorError::query)?;
             Ok(vec![batch])
-        }).await.map_err(ConnectorError::query)?
+        })
+        .await
+        .map_err(ConnectorError::query)?
     }
 
     async fn execute_streaming(
@@ -179,7 +218,9 @@ impl FederatedConnector for DuckDbConnector {
         tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
     ) -> Result<(), ConnectorError> {
         for batch in self.execute(query).await? {
-            tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+            tx.send(Ok(batch))
+                .await
+                .map_err(|_| ConnectorError::ChannelClosed)?;
         }
         Ok(())
     }
@@ -189,19 +230,24 @@ impl FederatedConnector for DuckDbConnector {
         table: &str,
         batches: Vec<RecordBatch>,
     ) -> Result<u64, ConnectorError> {
-        if batches.is_empty() { return Ok(0); }
+        if batches.is_empty() {
+            return Ok(0);
+        }
         let path = self.path.clone();
         let table = table.to_string();
 
         tokio::task::spawn_blocking(move || -> Result<u64, ConnectorError> {
-            let conn = duckdb::Connection::open(&path)
-                .map_err(ConnectorError::query)?;
+            let conn = duckdb::Connection::open(&path).map_err(ConnectorError::query)?;
             let mut total = 0u64;
 
             for batch in &batches {
-                if batch.num_rows() == 0 { continue; }
+                if batch.num_rows() == 0 {
+                    continue;
+                }
                 let schema = batch.schema();
-                let cols: Vec<String> = schema.fields().iter()
+                let cols: Vec<String> = schema
+                    .fields()
+                    .iter()
                     .map(|f| format!("\"{}\"", f.name()))
                     .collect();
                 let col_list = cols.join(", ");
@@ -214,12 +260,19 @@ impl FederatedConnector for DuckDbConnector {
                     value_rows.push(format!("({})", vals.join(", ")));
                 }
 
-                let sql = format!("INSERT INTO {} ({}) VALUES {}", table, col_list, value_rows.join(", "));
+                let sql = format!(
+                    "INSERT INTO {} ({}) VALUES {}",
+                    table,
+                    col_list,
+                    value_rows.join(", ")
+                );
                 conn.execute_batch(&sql).map_err(ConnectorError::query)?;
                 total += batch.num_rows() as u64;
             }
             Ok(total)
-        }).await.map_err(ConnectorError::query)?
+        })
+        .await
+        .map_err(ConnectorError::query)?
     }
 }
 
@@ -227,14 +280,34 @@ impl FederatedConnector for DuckDbConnector {
 fn cell_to_sql(batch: &RecordBatch, col: usize, row: usize) -> String {
     use arrow::array as aa;
     let arr = batch.column(col);
-    if arr.is_null(row) { return "NULL".into(); }
+    if arr.is_null(row) {
+        return "NULL".into();
+    }
     match arr.data_type() {
-        DataType::Int64 => arr.as_any().downcast_ref::<aa::Int64Array>().map(|a| a.value(row).to_string()).unwrap_or_else(|| "NULL".into()),
-        DataType::Int32 => arr.as_any().downcast_ref::<aa::Int32Array>().map(|a| a.value(row).to_string()).unwrap_or_else(|| "NULL".into()),
-        DataType::Float64 => arr.as_any().downcast_ref::<aa::Float64Array>().map(|a| a.value(row).to_string()).unwrap_or_else(|| "NULL".into()),
-        DataType::Boolean => arr.as_any().downcast_ref::<aa::BooleanArray>().map(|a| a.value(row).to_string()).unwrap_or_else(|| "NULL".into()),
+        DataType::Int64 => arr
+            .as_any()
+            .downcast_ref::<aa::Int64Array>()
+            .map(|a| a.value(row).to_string())
+            .unwrap_or_else(|| "NULL".into()),
+        DataType::Int32 => arr
+            .as_any()
+            .downcast_ref::<aa::Int32Array>()
+            .map(|a| a.value(row).to_string())
+            .unwrap_or_else(|| "NULL".into()),
+        DataType::Float64 => arr
+            .as_any()
+            .downcast_ref::<aa::Float64Array>()
+            .map(|a| a.value(row).to_string())
+            .unwrap_or_else(|| "NULL".into()),
+        DataType::Boolean => arr
+            .as_any()
+            .downcast_ref::<aa::BooleanArray>()
+            .map(|a| a.value(row).to_string())
+            .unwrap_or_else(|| "NULL".into()),
         _ => {
-            let s = arr.as_any().downcast_ref::<aa::StringArray>()
+            let s = arr
+                .as_any()
+                .downcast_ref::<aa::StringArray>()
                 .map(|a| a.value(row).to_string())
                 .unwrap_or_default();
             format!("'{}'", s.replace('\'', "''"))
@@ -244,7 +317,9 @@ fn cell_to_sql(batch: &RecordBatch, col: usize, row: usize) -> String {
 
 fn duckdb_type_to_arrow(t: &str) -> DataType {
     match t.to_uppercase().as_str() {
-        "BIGINT" | "INTEGER" | "SMALLINT" | "TINYINT" | "HUGEINT" | "INT" | "INT4" | "INT8" => DataType::Int64,
+        "BIGINT" | "INTEGER" | "SMALLINT" | "TINYINT" | "HUGEINT" | "INT" | "INT4" | "INT8" => {
+            DataType::Int64
+        }
         "DOUBLE" | "FLOAT" | "REAL" | "DECIMAL" | "NUMERIC" => DataType::Float64,
         "BOOLEAN" | "BOOL" => DataType::Boolean,
         _ => DataType::Utf8,
@@ -256,8 +331,13 @@ pub struct DuckDbConnectorFactory;
 
 #[async_trait]
 impl ConnectorFactory for DuckDbConnectorFactory {
-    fn connector_type(&self) -> &str { "duckdb" }
-    async fn create(&self, config: &ConnectorConfig) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
+    fn connector_type(&self) -> &str {
+        "duckdb"
+    }
+    async fn create(
+        &self,
+        config: &ConnectorConfig,
+    ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
         Ok(Arc::new(DuckDbConnector::from_config(config)))
     }
 }
@@ -311,7 +391,8 @@ mod tests {
             having: None,
             sort: vec![],
             limit: None,
-            passthrough: None, offset: None,
+            passthrough: None,
+            offset: None,
         };
         let batches = c.execute(&q).await.unwrap();
         assert_eq!(batches[0].num_rows(), 1);
@@ -319,23 +400,35 @@ mod tests {
 
     #[test]
     fn test_cell_to_sql_types() {
-        use arrow::array::{Int64Array, StringArray, BooleanArray};
+        use arrow::array::{BooleanArray, Int64Array, StringArray};
         use arrow::datatypes::Field;
 
         // Int64
         let s = Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, true)]));
-        let b = RecordBatch::try_new(s, vec![Arc::new(Int64Array::from(vec![Some(42), None])) as ArrayRef]).unwrap();
+        let b = RecordBatch::try_new(
+            s,
+            vec![Arc::new(Int64Array::from(vec![Some(42), None])) as ArrayRef],
+        )
+        .unwrap();
         assert_eq!(cell_to_sql(&b, 0, 0), "42");
         assert_eq!(cell_to_sql(&b, 0, 1), "NULL");
 
         // String with quote
         let s = Arc::new(Schema::new(vec![Field::new("x", DataType::Utf8, true)]));
-        let b = RecordBatch::try_new(s, vec![Arc::new(StringArray::from(vec!["it's"])) as ArrayRef]).unwrap();
+        let b = RecordBatch::try_new(
+            s,
+            vec![Arc::new(StringArray::from(vec!["it's"])) as ArrayRef],
+        )
+        .unwrap();
         assert_eq!(cell_to_sql(&b, 0, 0), "'it''s'");
 
         // Boolean
         let s = Arc::new(Schema::new(vec![Field::new("x", DataType::Boolean, false)]));
-        let b = RecordBatch::try_new(s, vec![Arc::new(BooleanArray::from(vec![true])) as ArrayRef]).unwrap();
+        let b = RecordBatch::try_new(
+            s,
+            vec![Arc::new(BooleanArray::from(vec![true])) as ArrayRef],
+        )
+        .unwrap();
         assert_eq!(cell_to_sql(&b, 0, 0), "true");
     }
 
@@ -353,7 +446,8 @@ mod tests {
 
         // Create table
         let conn = connector.open().unwrap();
-        conn.execute_batch("CREATE TABLE test_write (id BIGINT, name VARCHAR)").unwrap();
+        conn.execute_batch("CREATE TABLE test_write (id BIGINT, name VARCHAR)")
+            .unwrap();
         drop(conn);
 
         let schema = Arc::new(Schema::new(vec![
@@ -366,9 +460,13 @@ mod tests {
                 Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef,
                 Arc::new(StringArray::from(vec!["alice", "bob"])) as ArrayRef,
             ],
-        ).unwrap();
+        )
+        .unwrap();
 
-        let rows = connector.write_batches("test_write", vec![batch]).await.unwrap();
+        let rows = connector
+            .write_batches("test_write", vec![batch])
+            .await
+            .unwrap();
         assert_eq!(rows, 2);
 
         // Verify data was written
@@ -384,7 +482,8 @@ mod tests {
     async fn test_discover_schemas_memory() {
         let connector = DuckDbConnector::new("test".into(), ":memory:".into());
         let conn = connector.open().unwrap();
-        conn.execute_batch("CREATE TABLE t1 (id INT); CREATE TABLE t2 (name TEXT)").unwrap();
+        conn.execute_batch("CREATE TABLE t1 (id INT); CREATE TABLE t2 (name TEXT)")
+            .unwrap();
         drop(conn);
         // discover_schemas uses a new connection — :memory: won't persist
         // This tests the code path runs without error
@@ -400,7 +499,8 @@ mod tests {
 
         let connector = DuckDbConnector::new("test".into(), path.clone());
         let conn = connector.open().unwrap();
-        conn.execute_batch("CREATE TABLE users (id BIGINT, name VARCHAR, active BOOLEAN)").unwrap();
+        conn.execute_batch("CREATE TABLE users (id BIGINT, name VARCHAR, active BOOLEAN)")
+            .unwrap();
         drop(conn);
 
         let schema = connector.get_schema("users").await.unwrap();
@@ -421,12 +521,20 @@ mod tests {
         drop(conn);
 
         let sq = SubQuery {
-            table: "items".into(), projections: vec!["name".into()],
+            table: "items".into(),
+            projections: vec!["name".into()],
             filter: Some(FilterExpr::Comparison {
-                field: "id".into(), op: ComparisonOp::Gt, value: ScalarValue::Int64(1),
+                field: "id".into(),
+                op: ComparisonOp::Gt,
+                value: ScalarValue::Int64(1),
             }),
-            aggregations: vec![], group_by: vec![], sort: vec![],
-            limit: None, having: None, offset: None, passthrough: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            having: None,
+            offset: None,
+            passthrough: None,
         };
         let batches = connector.execute(&sq).await.unwrap();
         assert!(!batches.is_empty());
@@ -447,7 +555,8 @@ mod tests {
 
         let connector = DuckDbConnector::new("test".into(), path.clone());
         let conn = connector.open().unwrap();
-        conn.execute_batch("CREATE TABLE rt (id BIGINT, val VARCHAR)").unwrap();
+        conn.execute_batch("CREATE TABLE rt (id BIGINT, val VARCHAR)")
+            .unwrap();
         drop(conn);
 
         // Write
@@ -455,18 +564,29 @@ mod tests {
             Field::new("id", DataType::Int64, false),
             Field::new("val", DataType::Utf8, true),
         ]));
-        let batch = RecordBatch::try_new(schema, vec![
-            Arc::new(Int64Array::from(vec![10, 20])) as ArrayRef,
-            Arc::new(StringArray::from(vec!["hello", "world"])) as ArrayRef,
-        ]).unwrap();
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(Int64Array::from(vec![10, 20])) as ArrayRef,
+                Arc::new(StringArray::from(vec!["hello", "world"])) as ArrayRef,
+            ],
+        )
+        .unwrap();
         let written = connector.write_batches("rt", vec![batch]).await.unwrap();
         assert_eq!(written, 2);
 
         // Read back
         let sq = SubQuery {
-            table: "rt".into(), projections: vec![],
-            filter: None, aggregations: vec![], group_by: vec![],
-            sort: vec![], limit: None, having: None, offset: None, passthrough: None,
+            table: "rt".into(),
+            projections: vec![],
+            filter: None,
+            aggregations: vec![],
+            group_by: vec![],
+            sort: vec![],
+            limit: None,
+            having: None,
+            offset: None,
+            passthrough: None,
         };
         let batches = connector.execute(&sq).await.unwrap();
         let total: usize = batches.iter().map(|b| b.num_rows()).sum();

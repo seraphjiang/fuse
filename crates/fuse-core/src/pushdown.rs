@@ -26,19 +26,29 @@ pub fn negotiate(
     let mut local = Vec::new();
 
     let filter_pd = needs_filter && caps.supports_filtering;
-    if needs_filter && !filter_pd { local.push("filter".into()); }
+    if needs_filter && !filter_pd {
+        local.push("filter".into());
+    }
 
     let proj_pd = needs_projection && caps.supports_projection;
-    if needs_projection && !proj_pd { local.push("projection".into()); }
+    if needs_projection && !proj_pd {
+        local.push("projection".into());
+    }
 
     let agg_pd = needs_aggregation && caps.supports_aggregation;
-    if needs_aggregation && !agg_pd { local.push("aggregation".into()); }
+    if needs_aggregation && !agg_pd {
+        local.push("aggregation".into());
+    }
 
     let sort_pd = needs_sort && caps.supports_sorting;
-    if needs_sort && !sort_pd { local.push("sort".into()); }
+    if needs_sort && !sort_pd {
+        local.push("sort".into());
+    }
 
     let limit_pd = needs_limit && caps.supports_limit;
-    if needs_limit && !limit_pd { local.push("limit".into()); }
+    if needs_limit && !limit_pd {
+        local.push("limit".into());
+    }
 
     PushdownPlan {
         filter_pushdown: filter_pd,
@@ -66,10 +76,15 @@ mod tests {
     #[test]
     fn test_no_pushdown() {
         let caps = ConnectorCapabilities {
-            supports_filtering: false, supports_projection: false,
-            supports_aggregation: false, supports_sorting: false,
-            supports_limit: false, supports_join: false, supports_streaming: false,
-            latency_class: crate::connector::LatencyClass::Medium, max_concurrent_queries: 16,
+            supports_filtering: false,
+            supports_projection: false,
+            supports_aggregation: false,
+            supports_sorting: false,
+            supports_limit: false,
+            supports_join: false,
+            supports_streaming: false,
+            latency_class: crate::connector::LatencyClass::Medium,
+            max_concurrent_queries: 16,
         };
         let plan = negotiate(&caps, true, true, true, true, true);
         assert!(!plan.filter_pushdown);

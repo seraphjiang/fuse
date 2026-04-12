@@ -55,9 +55,14 @@ pub enum PplCommand {
     /// rename old_name AS new_name, ...
     Rename(Vec<RenameExpr>),
     /// top N field1, field2 — most frequent values
-    Top { n: u64, fields: Vec<String> },
+    Top {
+        n: u64,
+        fields: Vec<String>,
+    },
     /// rare field1, field2 — least frequent values
-    Rare { fields: Vec<String> },
+    Rare {
+        fields: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -134,11 +139,21 @@ pub fn ppl_to_sql(query: &PplQuery) -> Result<String, PplParseError> {
     let (stats_select, group_by, order_by, limit) = if let Some(top) = find_top(&query.commands) {
         let fields_str = top.fields.join(", ");
         let sel = format!("{}, COUNT(*) AS count", fields_str);
-        (Some(sel), Some(fields_str), Some("count DESC".to_string()), Some(top.n))
+        (
+            Some(sel),
+            Some(fields_str),
+            Some("count DESC".to_string()),
+            Some(top.n),
+        )
     } else if let Some(rare) = find_rare(&query.commands) {
         let fields_str = rare.fields.join(", ");
         let sel = format!("{}, COUNT(*) AS count", fields_str);
-        (Some(sel), Some(fields_str), Some("count ASC".to_string()), Some(10))
+        (
+            Some(sel),
+            Some(fields_str),
+            Some("count ASC".to_string()),
+            Some(10),
+        )
     } else {
         (stats_select, group_by, order_by, limit)
     };
@@ -379,12 +394,16 @@ fn parse_eval(input: &str) -> Result<PplCommand, PplParseError> {
     let mut exprs = Vec::new();
     for part in input.split(',') {
         let part = part.trim();
-        let eq_pos = part.find('=')
+        let eq_pos = part
+            .find('=')
             .ok_or_else(|| PplParseError(format!("eval expression missing '=': '{}'", part)))?;
         let alias = part[..eq_pos].trim().to_string();
         let expr = part[eq_pos + 1..].trim().to_string();
         if alias.is_empty() || expr.is_empty() {
-            return Err(PplParseError(format!("eval expression incomplete: '{}'", part)));
+            return Err(PplParseError(format!(
+                "eval expression incomplete: '{}'",
+                part
+            )));
         }
         exprs.push(EvalExpr { alias, expr });
     }
@@ -397,7 +416,8 @@ fn parse_rename(input: &str) -> Result<PplCommand, PplParseError> {
     for part in input.split(',') {
         let part = part.trim();
         let lower = part.to_lowercase();
-        let as_pos = lower.find(" as ")
+        let as_pos = lower
+            .find(" as ")
             .ok_or_else(|| PplParseError(format!("rename missing 'AS': '{}'", part)))?;
         let old_name = part[..as_pos].trim().to_string();
         let new_name = part[as_pos + 4..].trim().to_string();
@@ -417,7 +437,11 @@ fn parse_top(input: &str) -> Result<PplCommand, PplParseError> {
     } else {
         (10, input)
     };
-    let fields: Vec<String> = field_str.split(',').map(|f| f.trim().to_string()).filter(|f| !f.is_empty()).collect();
+    let fields: Vec<String> = field_str
+        .split(',')
+        .map(|f| f.trim().to_string())
+        .filter(|f| !f.is_empty())
+        .collect();
     if fields.is_empty() {
         return Err(PplParseError("top requires at least one field".into()));
     }
@@ -426,7 +450,11 @@ fn parse_top(input: &str) -> Result<PplCommand, PplParseError> {
 
 /// Parse `rare field1, field2`
 fn parse_rare(input: &str) -> Result<PplCommand, PplParseError> {
-    let fields: Vec<String> = input.split(',').map(|f| f.trim().to_string()).filter(|f| !f.is_empty()).collect();
+    let fields: Vec<String> = input
+        .split(',')
+        .map(|f| f.trim().to_string())
+        .filter(|f| !f.is_empty())
+        .collect();
     if fields.is_empty() {
         return Err(PplParseError("rare requires at least one field".into()));
     }
@@ -449,23 +477,49 @@ fn find_projection(commands: &[PplCommand]) -> Option<String> {
 }
 
 fn find_renames(commands: &[PplCommand]) -> Vec<RenameExpr> {
-    commands.iter().filter_map(|cmd| {
-        if let PplCommand::Rename(renames) = cmd { Some(renames.clone()) } else { None }
-    }).flatten().collect()
+    commands
+        .iter()
+        .filter_map(|cmd| {
+            if let PplCommand::Rename(renames) = cmd {
+                Some(renames.clone())
+            } else {
+                None
+            }
+        })
+        .flatten()
+        .collect()
 }
 
-struct TopInfo { n: u64, fields: Vec<String> }
-struct RareInfo { fields: Vec<String> }
+struct TopInfo {
+    n: u64,
+    fields: Vec<String>,
+}
+struct RareInfo {
+    fields: Vec<String>,
+}
 
 fn find_top(commands: &[PplCommand]) -> Option<TopInfo> {
     commands.iter().find_map(|cmd| {
-        if let PplCommand::Top { n, fields } = cmd { Some(TopInfo { n: *n, fields: fields.clone() }) } else { None }
+        if let PplCommand::Top { n, fields } = cmd {
+            Some(TopInfo {
+                n: *n,
+                fields: fields.clone(),
+            })
+        } else {
+            None
+        }
     })
 }
 
 fn find_rare(commands: &[PplCommand]) -> Option<RareInfo> {
     commands.iter().find_map(|cmd| {
-        if let PplCommand::Rare { fields } = cmd { Some(RareInfo { fields: fields.clone() }) } else { None }
+        if let PplCommand::Rare { fields } = cmd {
+            Some(RareInfo {
+                fields: fields.clone(),
+            })
+        } else {
+            None
+        }
     })
 }
 

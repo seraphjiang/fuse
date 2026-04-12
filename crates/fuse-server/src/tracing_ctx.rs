@@ -72,7 +72,12 @@ impl TraceContext {
 
 impl fmt::Display for TraceContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "trace={} span={}", &self.trace_id[..8], &self.span_id[..8])
+        write!(
+            f,
+            "trace={} span={}",
+            &self.trace_id[..8],
+            &self.span_id[..8]
+        )
     }
 }
 
@@ -153,7 +158,8 @@ mod tests {
     fn test_roundtrip_traceparent() {
         let ctx = TraceContext::from_traceparent(
             "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
-        ).unwrap();
+        )
+        .unwrap();
         let tp = ctx.to_traceparent();
         assert!(tp.starts_with("00-0af7651916cd43dd8448eb211c80319c-"));
         assert!(tp.ends_with("-01"));

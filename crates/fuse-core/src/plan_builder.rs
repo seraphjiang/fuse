@@ -12,11 +12,26 @@ pub struct LogicalPlan {
 
 #[derive(Debug, Clone, Serialize)]
 pub enum PlanOp {
-    Scan { datasource: String, table: String },
-    Filter { input: Box<PlanOp>, predicate: String },
-    Project { input: Box<PlanOp>, columns: Vec<String> },
-    Sort { input: Box<PlanOp>, keys: Vec<(String, bool)> },
-    Limit { input: Box<PlanOp>, count: u64 },
+    Scan {
+        datasource: String,
+        table: String,
+    },
+    Filter {
+        input: Box<PlanOp>,
+        predicate: String,
+    },
+    Project {
+        input: Box<PlanOp>,
+        columns: Vec<String>,
+    },
+    Sort {
+        input: Box<PlanOp>,
+        keys: Vec<(String, bool)>,
+    },
+    Limit {
+        input: Box<PlanOp>,
+        count: u64,
+    },
 }
 
 /// Fluent builder for logical plans.
@@ -26,23 +41,48 @@ pub struct PlanBuilder {
 
 impl PlanBuilder {
     pub fn scan(datasource: &str, table: &str) -> Self {
-        Self { current: PlanOp::Scan { datasource: datasource.into(), table: table.into() } }
+        Self {
+            current: PlanOp::Scan {
+                datasource: datasource.into(),
+                table: table.into(),
+            },
+        }
     }
 
     pub fn filter(self, pred: &Predicate) -> Self {
-        Self { current: PlanOp::Filter { input: Box::new(self.current), predicate: pred.to_sql() } }
+        Self {
+            current: PlanOp::Filter {
+                input: Box::new(self.current),
+                predicate: pred.to_sql(),
+            },
+        }
     }
 
     pub fn project(self, columns: Vec<&str>) -> Self {
-        Self { current: PlanOp::Project { input: Box::new(self.current), columns: columns.into_iter().map(String::from).collect() } }
+        Self {
+            current: PlanOp::Project {
+                input: Box::new(self.current),
+                columns: columns.into_iter().map(String::from).collect(),
+            },
+        }
     }
 
     pub fn sort(self, key: &str, desc: bool) -> Self {
-        Self { current: PlanOp::Sort { input: Box::new(self.current), keys: vec![(key.into(), desc)] } }
+        Self {
+            current: PlanOp::Sort {
+                input: Box::new(self.current),
+                keys: vec![(key.into(), desc)],
+            },
+        }
     }
 
     pub fn limit(self, count: u64) -> Self {
-        Self { current: PlanOp::Limit { input: Box::new(self.current), count } }
+        Self {
+            current: PlanOp::Limit {
+                input: Box::new(self.current),
+                count,
+            },
+        }
     }
 
     pub fn build(self) -> LogicalPlan {

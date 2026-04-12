@@ -38,7 +38,8 @@ pub fn advise(sql: &str, capabilities: &[(&str, ConnectorCapabilities)]) -> Vec<
         suggestions.push(Suggestion {
             severity: Severity::Warning,
             category: "performance",
-            message: "Query has no LIMIT — may return unbounded rows. Consider adding LIMIT.".into(),
+            message: "Query has no LIMIT — may return unbounded rows. Consider adding LIMIT."
+                .into(),
             suggested_rewrite: Some(format!("{} LIMIT 1000", sql.trim_end_matches(';').trim())),
         });
     }
@@ -48,7 +49,8 @@ pub fn advise(sql: &str, capabilities: &[(&str, ConnectorCapabilities)]) -> Vec<
         suggestions.push(Suggestion {
             severity: Severity::Info,
             category: "pushdown",
-            message: "SELECT * fetches all columns. Specify columns to enable projection pushdown.".into(),
+            message: "SELECT * fetches all columns. Specify columns to enable projection pushdown."
+                .into(),
             suggested_rewrite: None,
         });
     }
@@ -58,7 +60,8 @@ pub fn advise(sql: &str, capabilities: &[(&str, ConnectorCapabilities)]) -> Vec<
         suggestions.push(Suggestion {
             severity: Severity::Critical,
             category: "performance",
-            message: "JOIN without WHERE clause — this is a cross-join that may be very expensive.".into(),
+            message: "JOIN without WHERE clause — this is a cross-join that may be very expensive."
+                .into(),
             suggested_rewrite: None,
         });
     }
@@ -124,8 +127,12 @@ mod tests {
     #[test]
     fn test_missing_limit() {
         let s = advise("SELECT * FROM logs", &[]);
-        assert!(s.iter().any(|s| s.category == "performance" && s.message.contains("LIMIT")));
-        assert!(s.iter().any(|s| s.suggested_rewrite.as_deref() == Some("SELECT * FROM logs LIMIT 1000")));
+        assert!(s
+            .iter()
+            .any(|s| s.category == "performance" && s.message.contains("LIMIT")));
+        assert!(s
+            .iter()
+            .any(|s| s.suggested_rewrite.as_deref() == Some("SELECT * FROM logs LIMIT 1000")));
     }
 
     #[test]
@@ -137,18 +144,25 @@ mod tests {
     #[test]
     fn test_select_star() {
         let s = advise("SELECT * FROM logs LIMIT 10", &[]);
-        assert!(s.iter().any(|s| s.category == "pushdown" && s.message.contains("SELECT *")));
+        assert!(s
+            .iter()
+            .any(|s| s.category == "pushdown" && s.message.contains("SELECT *")));
     }
 
     #[test]
     fn test_join_without_where() {
         let s = advise("SELECT a.id FROM a JOIN b ON a.id = b.id LIMIT 10", &[]);
-        assert!(s.iter().any(|s| s.severity == Severity::Critical && s.message.contains("cross-join")));
+        assert!(s
+            .iter()
+            .any(|s| s.severity == Severity::Critical && s.message.contains("cross-join")));
     }
 
     #[test]
     fn test_join_with_where_ok() {
-        let s = advise("SELECT a.id FROM a JOIN b ON a.id = b.id WHERE a.x = 1 LIMIT 10", &[]);
+        let s = advise(
+            "SELECT a.id FROM a JOIN b ON a.id = b.id WHERE a.x = 1 LIMIT 10",
+            &[],
+        );
         assert!(!s.iter().any(|s| s.message.contains("cross-join")));
     }
 
@@ -161,7 +175,9 @@ mod tests {
     #[test]
     fn test_order_by_without_limit() {
         let s = advise("SELECT id FROM t ORDER BY id", &[]);
-        assert!(s.iter().any(|s| s.message.contains("ORDER BY without LIMIT")));
+        assert!(s
+            .iter()
+            .any(|s| s.message.contains("ORDER BY without LIMIT")));
     }
 
     #[test]
@@ -169,7 +185,9 @@ mod tests {
         let mut caps = ConnectorCapabilities::full();
         caps.supports_filtering = false;
         let s = advise("SELECT id FROM t WHERE x = 1 LIMIT 10", &[("redis", caps)]);
-        assert!(s.iter().any(|s| s.message.contains("redis") && s.message.contains("filter pushdown")));
+        assert!(s
+            .iter()
+            .any(|s| s.message.contains("redis") && s.message.contains("filter pushdown")));
     }
 
     #[test]
@@ -177,7 +195,9 @@ mod tests {
         let mut caps = ConnectorCapabilities::full();
         caps.supports_aggregation = false;
         let s = advise("SELECT count(*) FROM t GROUP BY x", &[("ddb", caps)]);
-        assert!(s.iter().any(|s| s.message.contains("ddb") && s.message.contains("aggregation")));
+        assert!(s
+            .iter()
+            .any(|s| s.message.contains("ddb") && s.message.contains("aggregation")));
     }
 
     #[test]
@@ -194,7 +214,10 @@ mod tests {
 
     #[test]
     fn test_clean_query_minimal_suggestions() {
-        let s = advise("SELECT id, name FROM users WHERE active = true LIMIT 50", &[]);
+        let s = advise(
+            "SELECT id, name FROM users WHERE active = true LIMIT 50",
+            &[],
+        );
         // Should only have no critical suggestions
         assert!(!s.iter().any(|s| s.severity == Severity::Critical));
     }
@@ -206,14 +229,20 @@ mod edge_tests {
 
     #[test]
     fn test_subquery_in_where() {
-        let s = advise("SELECT * FROM t WHERE id IN (SELECT id FROM t2) LIMIT 10", &[]);
+        let s = advise(
+            "SELECT * FROM t WHERE id IN (SELECT id FROM t2) LIMIT 10",
+            &[],
+        );
         // Should not false-positive on JOIN warning
         assert!(!s.iter().any(|s| s.message.contains("cross-join")));
     }
 
     #[test]
     fn test_cte_query() {
-        let s = advise("WITH cte AS (SELECT * FROM t LIMIT 10) SELECT * FROM cte LIMIT 10", &[]);
+        let s = advise(
+            "WITH cte AS (SELECT * FROM t LIMIT 10) SELECT * FROM cte LIMIT 10",
+            &[],
+        );
         assert!(!s.iter().any(|s| s.severity == Severity::Critical));
     }
 
@@ -226,7 +255,9 @@ mod edge_tests {
     #[test]
     fn test_group_by_no_limit_warning() {
         let s = advise("SELECT host, count(*) FROM logs GROUP BY host", &[]);
-        assert!(!s.iter().any(|s| s.message.contains("no LIMIT") && s.category == "performance"));
+        assert!(!s
+            .iter()
+            .any(|s| s.message.contains("no LIMIT") && s.category == "performance"));
     }
 
     #[test]

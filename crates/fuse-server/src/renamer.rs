@@ -5,7 +5,10 @@ use std::collections::HashMap;
 
 /// Rename columns in a result set.
 pub fn rename_columns(columns: &[String], aliases: &HashMap<String, String>) -> Vec<String> {
-    columns.iter().map(|c| aliases.get(c).cloned().unwrap_or_else(|| c.clone())).collect()
+    columns
+        .iter()
+        .map(|c| aliases.get(c).cloned().unwrap_or_else(|| c.clone()))
+        .collect()
 }
 
 /// Parse column aliases from SQL AS clauses.
@@ -25,7 +28,11 @@ pub fn parse_aliases(query: &str) -> HashMap<String, String> {
             let original = trimmed[..as_pos].trim();
             let alias = trimmed[as_pos + 4..].trim().trim_matches('"').to_string();
             if !alias.is_empty() && !original.is_empty() {
-                let col = original.split_whitespace().last().unwrap_or(original).to_string();
+                let col = original
+                    .split_whitespace()
+                    .last()
+                    .unwrap_or(original)
+                    .to_string();
                 aliases.insert(col, alias);
             }
         }

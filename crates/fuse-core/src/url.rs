@@ -14,7 +14,8 @@ pub struct ConnectorUrl {
 impl ConnectorUrl {
     /// Parse a URL string into components.
     pub fn parse(url: &str) -> Result<Self, String> {
-        let (scheme, rest) = url.split_once("://")
+        let (scheme, rest) = url
+            .split_once("://")
             .ok_or_else(|| format!("missing scheme in URL: {}", url))?;
 
         let is_tls = matches!(scheme, "https" | "grpcs" | "rediss" | "amqps");

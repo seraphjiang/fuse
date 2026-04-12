@@ -149,7 +149,8 @@ async fn test_mock_connector_execute() {
         group_by: vec![],
         sort: vec![],
         limit: Some(100),
-        offset: None, passthrough: None,
+        offset: None,
+        passthrough: None,
         having: None,
     };
 
@@ -202,7 +203,8 @@ async fn test_mock_connector_streaming() {
         group_by: vec![],
         sort: vec![],
         limit: None,
-        offset: None, passthrough: None,
+        offset: None,
+        passthrough: None,
         having: None,
     };
 
@@ -314,7 +316,9 @@ impl FederatedConnector for CountingConnector {
         tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
     ) -> Result<(), ConnectorError> {
         for batch in MockOpenSearchConnector::test_batches() {
-            tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+            tx.send(Ok(batch))
+                .await
+                .map_err(|_| ConnectorError::ChannelClosed)?;
         }
         Ok(())
     }
@@ -329,7 +333,8 @@ fn test_subquery() -> SubQuery {
         group_by: vec![],
         sort: vec![],
         limit: Some(100),
-        offset: None, passthrough: None,
+        offset: None,
+        passthrough: None,
         having: None,
     }
 }
@@ -338,7 +343,8 @@ fn test_subquery() -> SubQuery {
 async fn test_caching_wrapper_cache_miss_then_hit() {
     let inner = Arc::new(CountingConnector::new("c1"));
     let cache = Arc::new(QueryCache::new());
-    let wrapper = CachingConnectorWrapper::new(inner.clone(), cache.clone(), Duration::from_secs(60));
+    let wrapper =
+        CachingConnectorWrapper::new(inner.clone(), cache.clone(), Duration::from_secs(60));
 
     let query = test_subquery();
 
@@ -361,7 +367,8 @@ async fn test_caching_wrapper_cache_miss_then_hit() {
 async fn test_caching_wrapper_expired_entry_refetches() {
     let inner = Arc::new(CountingConnector::new("c1"));
     let cache = Arc::new(QueryCache::new());
-    let wrapper = CachingConnectorWrapper::new(inner.clone(), cache.clone(), Duration::from_millis(0));
+    let wrapper =
+        CachingConnectorWrapper::new(inner.clone(), cache.clone(), Duration::from_millis(0));
 
     let query = test_subquery();
 
@@ -394,7 +401,8 @@ async fn test_caching_wrapper_delegates_metadata() {
 async fn test_caching_wrapper_streaming_bypasses_cache() {
     let inner = Arc::new(CountingConnector::new("c1"));
     let cache = Arc::new(QueryCache::new());
-    let wrapper = CachingConnectorWrapper::new(inner.clone(), cache.clone(), Duration::from_secs(60));
+    let wrapper =
+        CachingConnectorWrapper::new(inner.clone(), cache.clone(), Duration::from_secs(60));
 
     let query = test_subquery();
     let (tx, mut rx) = mpsc::channel(10);

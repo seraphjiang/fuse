@@ -19,11 +19,16 @@ impl Default for FactoryRegistry {
 
 impl FactoryRegistry {
     pub fn new() -> Self {
-        Self { factories: Mutex::new(HashMap::new()) }
+        Self {
+            factories: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn register(&self, connector_type: &str, factory: FactoryFn) {
-        self.factories.lock().unwrap().insert(connector_type.to_string(), factory);
+        self.factories
+            .lock()
+            .unwrap()
+            .insert(connector_type.to_string(), factory);
     }
 
     pub fn has(&self, connector_type: &str) -> bool {

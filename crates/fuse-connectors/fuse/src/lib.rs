@@ -28,8 +28,8 @@ use tracing::debug;
 
 use fuse_core::config::ConnectorConfig;
 use fuse_core::connector::{
-    ConnectorCapabilities, ConnectorHealth, FederatedConnector, HealthStatus,
-    SchemaInfo, SchemaType, SubQuery,
+    ConnectorCapabilities, ConnectorHealth, FederatedConnector, HealthStatus, SchemaInfo,
+    SchemaType, SubQuery,
 };
 use fuse_core::error::ConnectorError;
 use fuse_core::registry::ConnectorFactory;
@@ -43,7 +43,11 @@ pub struct FuseConnector {
 
 impl FuseConnector {
     pub fn new(id: String, base_url: String, client: reqwest::Client) -> Self {
-        Self { id, base_url: base_url.trim_end_matches('/').to_string(), client }
+        Self {
+            id,
+            base_url: base_url.trim_end_matches('/').to_string(),
+            client,
+        }
     }
 
     /// Build the query URL for the remote Fuse instance.
@@ -60,7 +64,10 @@ impl FuseConnector {
     }
 
     fn schemas_url(&self, datasource: &str) -> String {
-        format!("{}/api/fuse/datasources/{}/schemas", self.base_url, datasource)
+        format!(
+            "{}/api/fuse/datasources/{}/schemas",
+            self.base_url, datasource
+        )
     }
 
     fn fields_url(&self, datasource: &str, table: &str) -> String {
@@ -77,7 +84,10 @@ impl FuseConnector {
     ) -> Result<Vec<RecordBatch>, ConnectorError> {
         if columns.is_empty() || rows.is_empty() {
             let schema = Arc::new(Schema::new(
-                columns.iter().map(|c| Field::new(c, DataType::Utf8, true)).collect::<Vec<_>>(),
+                columns
+                    .iter()
+                    .map(|c| Field::new(c, DataType::Utf8, true))
+                    .collect::<Vec<_>>(),
             ));
             return Ok(vec![RecordBatch::new_empty(schema)]);
         }
@@ -303,9 +313,17 @@ fn build_remote_sql(query: &SubQuery) -> String {
     }
 
     if !query.sort.is_empty() {
-        let sorts: Vec<String> = query.sort.iter().map(|s| {
-            if s.descending { format!("{} DESC", s.field) } else { s.field.clone() }
-        }).collect();
+        let sorts: Vec<String> = query
+            .sort
+            .iter()
+            .map(|s| {
+                if s.descending {
+                    format!("{} DESC", s.field)
+                } else {
+                    s.field.clone()
+                }
+            })
+            .collect();
         sql.push_str(&format!(" ORDER BY {}", sorts.join(", ")));
     }
 
@@ -375,7 +393,9 @@ impl ConnectorFactory for FuseConnectorFactory {
             .properties
             .get("url")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ConnectorError::Connection("'url' is required for fuse connector".into()))?
+            .ok_or_else(|| {
+                ConnectorError::Connection("'url' is required for fuse connector".into())
+            })?
             .to_string();
 
         let mut headers = reqwest::header::HeaderMap::new();
@@ -395,7 +415,8 @@ impl ConnectorFactory for FuseConnectorFactory {
             ));
 
         if let Some(tls) = config.tls_config() {
-            tls.validate().map_err(|e| ConnectorError::Connection(e.to_string()))?;
+            tls.validate()
+                .map_err(|e| ConnectorError::Connection(e.to_string()))?;
             client_builder = tls
                 .apply_to_reqwest(client_builder)
                 .map_err(|e| ConnectorError::Connection(e.to_string()))?;
@@ -472,7 +493,10 @@ mod tests {
     fn test_build_remote_sql_with_sort_and_offset() {
         use fuse_core::connector::SortExpr;
         let mut sq = sub_query("logs");
-        sq.sort = vec![SortExpr { field: "timestamp".into(), descending: true }];
+        sq.sort = vec![SortExpr {
+            field: "timestamp".into(),
+            descending: true,
+        }];
         sq.limit = Some(20);
         sq.offset = Some(40);
         assert_eq!(
@@ -523,7 +547,11 @@ mod tests {
 
     #[test]
     fn test_capabilities_full() {
-        let c = FuseConnector::new("test".into(), "http://localhost:9400".into(), reqwest::Client::new());
+        let c = FuseConnector::new(
+            "test".into(),
+            "http://localhost:9400".into(),
+            reqwest::Client::new(),
+        );
         let caps = c.capabilities();
         assert!(caps.supports_filtering);
         assert!(caps.supports_projection);
@@ -532,13 +560,21 @@ mod tests {
 
     #[test]
     fn test_query_url() {
-        let c = FuseConnector::new("test".into(), "http://localhost:9400/".into(), reqwest::Client::new());
+        let c = FuseConnector::new(
+            "test".into(),
+            "http://localhost:9400/".into(),
+            reqwest::Client::new(),
+        );
         assert_eq!(c.query_url(), "http://localhost:9400/api/fuse/query");
     }
 
     #[test]
     fn test_url_trailing_slash_stripped() {
-        let c = FuseConnector::new("test".into(), "http://host:9400///".into(), reqwest::Client::new());
+        let c = FuseConnector::new(
+            "test".into(),
+            "http://host:9400///".into(),
+            reqwest::Client::new(),
+        );
         assert_eq!(c.health_url(), "http://host:9400/api/fuse/health");
     }
 }

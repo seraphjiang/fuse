@@ -17,14 +17,22 @@ pub struct TruncatedResult {
 pub fn enforce_limit(rows: Vec<Vec<Value>>, max_rows: usize) -> TruncatedResult {
     let total = rows.len();
     if total <= max_rows {
-        TruncatedResult { rows, total_before_truncation: total, truncated: false, warning: None }
+        TruncatedResult {
+            rows,
+            total_before_truncation: total,
+            truncated: false,
+            warning: None,
+        }
     } else {
         let truncated_rows: Vec<Vec<Value>> = rows.into_iter().take(max_rows).collect();
         TruncatedResult {
             rows: truncated_rows,
             total_before_truncation: total,
             truncated: true,
-            warning: Some(format!("Result truncated: {} rows returned of {} total (limit: {})", max_rows, total, max_rows)),
+            warning: Some(format!(
+                "Result truncated: {} rows returned of {} total (limit: {})",
+                max_rows, total, max_rows
+            )),
         }
     }
 }

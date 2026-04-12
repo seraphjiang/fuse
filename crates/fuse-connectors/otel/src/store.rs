@@ -143,9 +143,16 @@ impl OtelStore {
 
     #[allow(clippy::too_many_arguments)]
     pub fn ingest_span(
-        &self, trace_id: &str, span_id: &str, parent_span_id: Option<&str>,
-        service_name: &str, operation: &str, status: &str,
-        start_time_ns: i64, end_time_ns: i64, attributes: &str,
+        &self,
+        trace_id: &str,
+        span_id: &str,
+        parent_span_id: Option<&str>,
+        service_name: &str,
+        operation: &str,
+        status: &str,
+        start_time_ns: i64,
+        end_time_ns: i64,
+        attributes: &str,
     ) {
         let duration_ns = end_time_ns.saturating_sub(start_time_ns);
         let mut spans = self.spans.lock().unwrap();
@@ -162,15 +169,25 @@ impl OtelStore {
             start_time_ns,
             end_time_ns,
             duration_ns,
-            attributes: if attributes.is_empty() { None } else { Some(attributes.into()) },
+            attributes: if attributes.is_empty() {
+                None
+            } else {
+                Some(attributes.into())
+            },
         });
     }
 
     #[allow(clippy::too_many_arguments)]
     pub fn ingest_metric(
-        &self, name: &str, description: Option<&str>, unit: Option<&str>,
-        metric_type: &str, value: &str, timestamp_ns: i64,
-        labels: Option<&str>, service_name: Option<&str>,
+        &self,
+        name: &str,
+        description: Option<&str>,
+        unit: Option<&str>,
+        metric_type: &str,
+        value: &str,
+        timestamp_ns: i64,
+        labels: Option<&str>,
+        service_name: Option<&str>,
     ) {
         let mut metrics = self.metrics.lock().unwrap();
         if metrics.len() >= self.max_metrics {
@@ -190,9 +207,14 @@ impl OtelStore {
 
     #[allow(clippy::too_many_arguments)]
     pub fn ingest_log(
-        &self, timestamp_ns: i64, severity: &str, body: &str,
-        service_name: Option<&str>, trace_id: Option<&str>,
-        span_id: Option<&str>, attributes: Option<&str>,
+        &self,
+        timestamp_ns: i64,
+        severity: &str,
+        body: &str,
+        service_name: Option<&str>,
+        trace_id: Option<&str>,
+        span_id: Option<&str>,
+        attributes: Option<&str>,
     ) {
         let mut logs = self.logs.lock().unwrap();
         if logs.len() >= self.max_logs {
@@ -215,106 +237,250 @@ impl OtelStore {
         self.query_spans_filtered(limit, &OtelFilter::default())
     }
 
-    pub fn query_spans_filtered(&self, limit: Option<u64>, filter: &OtelFilter) -> Option<RecordBatch> {
+    pub fn query_spans_filtered(
+        &self,
+        limit: Option<u64>,
+        filter: &OtelFilter,
+    ) -> Option<RecordBatch> {
         let spans = self.spans.lock().unwrap();
-        if spans.is_empty() { return None; }
-        let filtered: Vec<&SpanRow> = spans.iter().rev().filter(|r| {
-            if let Some(ref svc) = filter.service_name {
-                if r.service_name != *svc { return false; }
-            }
-            if let Some(min) = filter.min_time_ns {
-                if r.end_time_ns < min { return false; }
-            }
-            if let Some(max) = filter.max_time_ns {
-                if r.start_time_ns > max { return false; }
-            }
-            true
-        }).collect();
-        if filtered.is_empty() { return None; }
-        let n = limit.map(|l| filtered.len().min(l as usize)).unwrap_or(filtered.len());
+        if spans.is_empty() {
+            return None;
+        }
+        let filtered: Vec<&SpanRow> = spans
+            .iter()
+            .rev()
+            .filter(|r| {
+                if let Some(ref svc) = filter.service_name {
+                    if r.service_name != *svc {
+                        return false;
+                    }
+                }
+                if let Some(min) = filter.min_time_ns {
+                    if r.end_time_ns < min {
+                        return false;
+                    }
+                }
+                if let Some(max) = filter.max_time_ns {
+                    if r.start_time_ns > max {
+                        return false;
+                    }
+                }
+                true
+            })
+            .collect();
+        if filtered.is_empty() {
+            return None;
+        }
+        let n = limit
+            .map(|l| filtered.len().min(l as usize))
+            .unwrap_or(filtered.len());
         let rows = &filtered[..n];
         let schema = std::sync::Arc::new(spans_schema());
-        RecordBatch::try_new(schema, vec![
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.trace_id.as_str()).collect::<Vec<_>>())),
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.span_id.as_str()).collect::<Vec<_>>())),
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.parent_span_id.as_deref()).collect::<Vec<_>>())),
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.service_name.as_str()).collect::<Vec<_>>())),
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.operation.as_str()).collect::<Vec<_>>())),
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.status.as_str()).collect::<Vec<_>>())),
-            std::sync::Arc::new(Int64Array::from(rows.iter().map(|r| r.start_time_ns).collect::<Vec<_>>())),
-            std::sync::Arc::new(Int64Array::from(rows.iter().map(|r| r.end_time_ns).collect::<Vec<_>>())),
-            std::sync::Arc::new(Int64Array::from(rows.iter().map(|r| r.duration_ns).collect::<Vec<_>>())),
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.attributes.as_deref()).collect::<Vec<_>>())),
-        ]).ok()
+        RecordBatch::try_new(
+            schema,
+            vec![
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter().map(|r| r.trace_id.as_str()).collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter().map(|r| r.span_id.as_str()).collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.parent_span_id.as_deref())
+                        .collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.service_name.as_str())
+                        .collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.operation.as_str())
+                        .collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter().map(|r| r.status.as_str()).collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(Int64Array::from(
+                    rows.iter().map(|r| r.start_time_ns).collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(Int64Array::from(
+                    rows.iter().map(|r| r.end_time_ns).collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(Int64Array::from(
+                    rows.iter().map(|r| r.duration_ns).collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.attributes.as_deref())
+                        .collect::<Vec<_>>(),
+                )),
+            ],
+        )
+        .ok()
     }
 
     pub fn query_metrics(&self, limit: Option<u64>) -> Option<RecordBatch> {
         self.query_metrics_filtered(limit, &OtelFilter::default())
     }
 
-    pub fn query_metrics_filtered(&self, limit: Option<u64>, filter: &OtelFilter) -> Option<RecordBatch> {
+    pub fn query_metrics_filtered(
+        &self,
+        limit: Option<u64>,
+        filter: &OtelFilter,
+    ) -> Option<RecordBatch> {
         let metrics = self.metrics.lock().unwrap();
-        if metrics.is_empty() { return None; }
-        let filtered: Vec<&MetricRow> = metrics.iter().rev().filter(|r| {
-            if let Some(ref svc) = filter.service_name {
-                if r.service_name.as_deref() != Some(svc.as_str()) { return false; }
-            }
-            if let Some(min) = filter.min_time_ns {
-                if r.timestamp_ns < min { return false; }
-            }
-            if let Some(max) = filter.max_time_ns {
-                if r.timestamp_ns > max { return false; }
-            }
-            true
-        }).collect();
-        if filtered.is_empty() { return None; }
-        let n = limit.map(|l| filtered.len().min(l as usize)).unwrap_or(filtered.len());
+        if metrics.is_empty() {
+            return None;
+        }
+        let filtered: Vec<&MetricRow> = metrics
+            .iter()
+            .rev()
+            .filter(|r| {
+                if let Some(ref svc) = filter.service_name {
+                    if r.service_name.as_deref() != Some(svc.as_str()) {
+                        return false;
+                    }
+                }
+                if let Some(min) = filter.min_time_ns {
+                    if r.timestamp_ns < min {
+                        return false;
+                    }
+                }
+                if let Some(max) = filter.max_time_ns {
+                    if r.timestamp_ns > max {
+                        return false;
+                    }
+                }
+                true
+            })
+            .collect();
+        if filtered.is_empty() {
+            return None;
+        }
+        let n = limit
+            .map(|l| filtered.len().min(l as usize))
+            .unwrap_or(filtered.len());
         let rows = &filtered[..n];
         let schema = std::sync::Arc::new(metrics_schema());
-        RecordBatch::try_new(schema, vec![
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.name.as_str()).collect::<Vec<_>>())),
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.description.as_deref()).collect::<Vec<_>>())),
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.unit.as_deref()).collect::<Vec<_>>())),
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.metric_type.as_str()).collect::<Vec<_>>())),
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.value.as_str()).collect::<Vec<_>>())),
-            std::sync::Arc::new(Int64Array::from(rows.iter().map(|r| r.timestamp_ns).collect::<Vec<_>>())),
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.labels.as_deref()).collect::<Vec<_>>())),
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.service_name.as_deref()).collect::<Vec<_>>())),
-        ]).ok()
+        RecordBatch::try_new(
+            schema,
+            vec![
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.description.as_deref())
+                        .collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter().map(|r| r.unit.as_deref()).collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.metric_type.as_str())
+                        .collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter().map(|r| r.value.as_str()).collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(Int64Array::from(
+                    rows.iter().map(|r| r.timestamp_ns).collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter().map(|r| r.labels.as_deref()).collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.service_name.as_deref())
+                        .collect::<Vec<_>>(),
+                )),
+            ],
+        )
+        .ok()
     }
 
     pub fn query_logs(&self, limit: Option<u64>) -> Option<RecordBatch> {
         self.query_logs_filtered(limit, &OtelFilter::default())
     }
 
-    pub fn query_logs_filtered(&self, limit: Option<u64>, filter: &OtelFilter) -> Option<RecordBatch> {
+    pub fn query_logs_filtered(
+        &self,
+        limit: Option<u64>,
+        filter: &OtelFilter,
+    ) -> Option<RecordBatch> {
         let logs = self.logs.lock().unwrap();
-        if logs.is_empty() { return None; }
-        let filtered: Vec<&LogRow> = logs.iter().rev().filter(|r| {
-            if let Some(ref svc) = filter.service_name {
-                if r.service_name.as_deref() != Some(svc.as_str()) { return false; }
-            }
-            if let Some(min) = filter.min_time_ns {
-                if r.timestamp_ns < min { return false; }
-            }
-            if let Some(max) = filter.max_time_ns {
-                if r.timestamp_ns > max { return false; }
-            }
-            true
-        }).collect();
-        if filtered.is_empty() { return None; }
-        let n = limit.map(|l| filtered.len().min(l as usize)).unwrap_or(filtered.len());
+        if logs.is_empty() {
+            return None;
+        }
+        let filtered: Vec<&LogRow> = logs
+            .iter()
+            .rev()
+            .filter(|r| {
+                if let Some(ref svc) = filter.service_name {
+                    if r.service_name.as_deref() != Some(svc.as_str()) {
+                        return false;
+                    }
+                }
+                if let Some(min) = filter.min_time_ns {
+                    if r.timestamp_ns < min {
+                        return false;
+                    }
+                }
+                if let Some(max) = filter.max_time_ns {
+                    if r.timestamp_ns > max {
+                        return false;
+                    }
+                }
+                true
+            })
+            .collect();
+        if filtered.is_empty() {
+            return None;
+        }
+        let n = limit
+            .map(|l| filtered.len().min(l as usize))
+            .unwrap_or(filtered.len());
         let rows = &filtered[..n];
         let schema = std::sync::Arc::new(logs_schema());
-        RecordBatch::try_new(schema, vec![
-            std::sync::Arc::new(Int64Array::from(rows.iter().map(|r| r.timestamp_ns).collect::<Vec<_>>())),
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.severity.as_str()).collect::<Vec<_>>())),
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.body.as_str()).collect::<Vec<_>>())),
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.service_name.as_deref()).collect::<Vec<_>>())),
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.trace_id.as_deref()).collect::<Vec<_>>())),
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.span_id.as_deref()).collect::<Vec<_>>())),
-            std::sync::Arc::new(StringArray::from(rows.iter().map(|r| r.attributes.as_deref()).collect::<Vec<_>>())),
-        ]).ok()
+        RecordBatch::try_new(
+            schema,
+            vec![
+                std::sync::Arc::new(Int64Array::from(
+                    rows.iter().map(|r| r.timestamp_ns).collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter().map(|r| r.severity.as_str()).collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter().map(|r| r.body.as_str()).collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.service_name.as_deref())
+                        .collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.trace_id.as_deref())
+                        .collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.span_id.as_deref())
+                        .collect::<Vec<_>>(),
+                )),
+                std::sync::Arc::new(StringArray::from(
+                    rows.iter()
+                        .map(|r| r.attributes.as_deref())
+                        .collect::<Vec<_>>(),
+                )),
+            ],
+        )
+        .ok()
     }
 }
 
@@ -344,17 +510,31 @@ mod tests {
     #[test]
     fn test_span_duration_computed() {
         let store = OtelStore::new(100, 100, 100);
-        store.ingest_span("t1", "s1", None, "svc", "op", "OK", 1_000_000, 5_000_000, "");
+        store.ingest_span(
+            "t1", "s1", None, "svc", "op", "OK", 1_000_000, 5_000_000, "",
+        );
         let batch = store.query_spans(None).unwrap();
-        let dur = batch.column(8).as_any().downcast_ref::<Int64Array>().unwrap();
+        let dur = batch
+            .column(8)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .unwrap();
         assert_eq!(dur.value(0), 4_000_000);
     }
 
     #[test]
     fn test_ingest_and_query_metric() {
         let store = OtelStore::new(100, 100, 100);
-        store.ingest_metric("http.duration", Some("Request duration"), Some("ms"),
-            "histogram", "42.5", 1000, Some(r#"{"method":"GET"}"#), Some("svc-a"));
+        store.ingest_metric(
+            "http.duration",
+            Some("Request duration"),
+            Some("ms"),
+            "histogram",
+            "42.5",
+            1000,
+            Some(r#"{"method":"GET"}"#),
+            Some("svc-a"),
+        );
         assert_eq!(store.counts().1, 1);
         let batch = store.query_metrics(None).unwrap();
         assert_eq!(batch.num_rows(), 1);
@@ -363,7 +543,15 @@ mod tests {
     #[test]
     fn test_ingest_and_query_log() {
         let store = OtelStore::new(100, 100, 100);
-        store.ingest_log(1000, "INFO", "Server started", Some("svc-a"), None, None, None);
+        store.ingest_log(
+            1000,
+            "INFO",
+            "Server started",
+            Some("svc-a"),
+            None,
+            None,
+            None,
+        );
         assert_eq!(store.counts().2, 1);
         let batch = store.query_logs(None).unwrap();
         assert_eq!(batch.num_rows(), 1);
@@ -373,8 +561,17 @@ mod tests {
     fn test_ring_buffer_eviction() {
         let store = OtelStore::new(3, 3, 3);
         for i in 0..5 {
-            store.ingest_span(&format!("t{i}"), &format!("s{i}"), None,
-                "svc", "op", "OK", i, i + 1, "");
+            store.ingest_span(
+                &format!("t{i}"),
+                &format!("s{i}"),
+                None,
+                "svc",
+                "op",
+                "OK",
+                i,
+                i + 1,
+                "",
+            );
         }
         assert_eq!(store.counts().0, 3);
         let batch = store.query_spans(None).unwrap();
@@ -404,8 +601,16 @@ mod tests {
     fn test_metric_eviction() {
         let store = OtelStore::new(100, 2, 100);
         for i in 0..5 {
-            store.ingest_metric(&format!("m{i}"), None, None, "gauge",
-                &format!("{i}"), i, None, None);
+            store.ingest_metric(
+                &format!("m{i}"),
+                None,
+                None,
+                "gauge",
+                &format!("{i}"),
+                i,
+                None,
+                None,
+            );
         }
         assert_eq!(store.counts().1, 2);
     }
@@ -440,7 +645,10 @@ mod tests {
         let store = OtelStore::new(100, 100, 100);
         store.ingest_span("t1", "s1", None, "svc-a", "op1", "OK", 100, 200, "");
         store.ingest_span("t2", "s2", None, "svc-b", "op2", "OK", 100, 200, "");
-        let filter = OtelFilter { service_name: Some("svc-a".into()), ..Default::default() };
+        let filter = OtelFilter {
+            service_name: Some("svc-a".into()),
+            ..Default::default()
+        };
         let batch = store.query_spans_filtered(None, &filter).unwrap();
         assert_eq!(batch.num_rows(), 1);
     }
@@ -450,7 +658,10 @@ mod tests {
         let store = OtelStore::new(100, 100, 100);
         store.ingest_span("t1", "s1", None, "svc", "op", "OK", 100, 200, "");
         store.ingest_span("t2", "s2", None, "svc", "op", "OK", 500, 600, "");
-        let filter = OtelFilter { min_time_ns: Some(300), ..Default::default() };
+        let filter = OtelFilter {
+            min_time_ns: Some(300),
+            ..Default::default()
+        };
         let batch = store.query_spans_filtered(None, &filter).unwrap();
         assert_eq!(batch.num_rows(), 1);
     }
@@ -460,7 +671,10 @@ mod tests {
         let store = OtelStore::new(100, 100, 100);
         store.ingest_metric("m1", None, None, "gauge", "1", 100, None, Some("svc-a"));
         store.ingest_metric("m2", None, None, "gauge", "2", 100, None, Some("svc-b"));
-        let filter = OtelFilter { service_name: Some("svc-b".into()), ..Default::default() };
+        let filter = OtelFilter {
+            service_name: Some("svc-b".into()),
+            ..Default::default()
+        };
         let batch = store.query_metrics_filtered(None, &filter).unwrap();
         assert_eq!(batch.num_rows(), 1);
     }
@@ -470,7 +684,10 @@ mod tests {
         let store = OtelStore::new(100, 100, 100);
         store.ingest_log(100, "INFO", "early", None, None, None, None);
         store.ingest_log(500, "WARN", "late", None, None, None, None);
-        let filter = OtelFilter { max_time_ns: Some(300), ..Default::default() };
+        let filter = OtelFilter {
+            max_time_ns: Some(300),
+            ..Default::default()
+        };
         let batch = store.query_logs_filtered(None, &filter).unwrap();
         assert_eq!(batch.num_rows(), 1);
     }
@@ -479,7 +696,10 @@ mod tests {
     fn test_filter_returns_none_when_no_match() {
         let store = OtelStore::new(100, 100, 100);
         store.ingest_span("t1", "s1", None, "svc-a", "op", "OK", 100, 200, "");
-        let filter = OtelFilter { service_name: Some("nonexistent".into()), ..Default::default() };
+        let filter = OtelFilter {
+            service_name: Some("nonexistent".into()),
+            ..Default::default()
+        };
         assert!(store.query_spans_filtered(None, &filter).is_none());
     }
 }

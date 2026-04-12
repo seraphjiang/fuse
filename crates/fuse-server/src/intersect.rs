@@ -6,12 +6,22 @@ use std::collections::HashSet;
 
 /// Return rows that exist in both left and right (INTERSECT).
 pub fn intersect(left: &[Vec<Value>], right: &[Vec<Value>]) -> Vec<Vec<Value>> {
-    let right_keys: HashSet<String> = right.iter()
-        .map(|r| r.iter().map(|v| v.to_string()).collect::<Vec<_>>().join("\x00"))
+    let right_keys: HashSet<String> = right
+        .iter()
+        .map(|r| {
+            r.iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join("\x00")
+        })
         .collect();
     left.iter()
         .filter(|row| {
-            let key = row.iter().map(|v| v.to_string()).collect::<Vec<_>>().join("\x00");
+            let key = row
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join("\x00");
             right_keys.contains(&key)
         })
         .cloned()
@@ -20,12 +30,22 @@ pub fn intersect(left: &[Vec<Value>], right: &[Vec<Value>]) -> Vec<Vec<Value>> {
 
 /// Return rows in left that don't exist in right (EXCEPT/MINUS).
 pub fn except(left: &[Vec<Value>], right: &[Vec<Value>]) -> Vec<Vec<Value>> {
-    let right_keys: HashSet<String> = right.iter()
-        .map(|r| r.iter().map(|v| v.to_string()).collect::<Vec<_>>().join("\x00"))
+    let right_keys: HashSet<String> = right
+        .iter()
+        .map(|r| {
+            r.iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join("\x00")
+        })
         .collect();
     left.iter()
         .filter(|row| {
-            let key = row.iter().map(|v| v.to_string()).collect::<Vec<_>>().join("\x00");
+            let key = row
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join("\x00");
             !right_keys.contains(&key)
         })
         .cloned()

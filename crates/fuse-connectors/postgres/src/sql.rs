@@ -8,19 +8,31 @@ use fuse_core::sql::{quote_ident, quote_table};
 /// Build a SQL SELECT statement from a SubQuery.
 pub fn subquery_to_sql(q: &SubQuery) -> String {
     let select = if !q.aggregations.is_empty() {
-        let aggs: Vec<String> = q.aggregations.iter().map(|a| {
-            let field = a.field.as_deref().map(quote_ident).unwrap_or_else(|| "*".to_string());
-            let expr = match a.function {
-                AggFunction::Count => format!("COUNT({field})"),
-                AggFunction::Sum => format!("SUM({field})"),
-                AggFunction::Avg => format!("AVG({field})"),
-                AggFunction::Min => format!("MIN({field})"),
-                AggFunction::Max => format!("MAX({field})"),
-                AggFunction::CountDistinct | AggFunction::ApproxCountDistinct => format!("COUNT(DISTINCT {field})"),
-                AggFunction::ApproxPercentile(p) => format!("PERCENTILE_CONT({p}) WITHIN GROUP (ORDER BY {field})"),
-            };
-            format!("{expr} AS {}", quote_ident(&a.alias))
-        }).collect();
+        let aggs: Vec<String> = q
+            .aggregations
+            .iter()
+            .map(|a| {
+                let field = a
+                    .field
+                    .as_deref()
+                    .map(quote_ident)
+                    .unwrap_or_else(|| "*".to_string());
+                let expr = match a.function {
+                    AggFunction::Count => format!("COUNT({field})"),
+                    AggFunction::Sum => format!("SUM({field})"),
+                    AggFunction::Avg => format!("AVG({field})"),
+                    AggFunction::Min => format!("MIN({field})"),
+                    AggFunction::Max => format!("MAX({field})"),
+                    AggFunction::CountDistinct | AggFunction::ApproxCountDistinct => {
+                        format!("COUNT(DISTINCT {field})")
+                    }
+                    AggFunction::ApproxPercentile(p) => {
+                        format!("PERCENTILE_CONT({p}) WITHIN GROUP (ORDER BY {field})")
+                    }
+                };
+                format!("{expr} AS {}", quote_ident(&a.alias))
+            })
+            .collect();
         let mut parts = Vec::new();
         if !q.group_by.is_empty() {
             parts.extend(q.group_by.iter().map(|g| quote_ident(g)));
@@ -28,9 +40,17 @@ pub fn subquery_to_sql(q: &SubQuery) -> String {
         parts.extend(aggs);
         parts.join(", ")
     } else if !q.projections.is_empty() {
-        q.projections.iter().map(|p| {
-            if p == "*" { "*".to_string() } else { quote_ident(p) }
-        }).collect::<Vec<_>>().join(", ")
+        q.projections
+            .iter()
+            .map(|p| {
+                if p == "*" {
+                    "*".to_string()
+                } else {
+                    quote_ident(p)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
     } else {
         "*".to_string()
     };
@@ -51,9 +71,17 @@ pub fn subquery_to_sql(q: &SubQuery) -> String {
     }
 
     if !q.sort.is_empty() {
-        let order: Vec<String> = q.sort.iter().map(|s| {
-            if s.descending { format!("{} DESC", quote_ident(&s.field)) } else { quote_ident(&s.field) }
-        }).collect();
+        let order: Vec<String> = q
+            .sort
+            .iter()
+            .map(|s| {
+                if s.descending {
+                    format!("{} DESC", quote_ident(&s.field))
+                } else {
+                    quote_ident(&s.field)
+                }
+            })
+            .collect();
         sql.push_str(&format!(" ORDER BY {}", order.join(", ")));
     }
 
@@ -104,7 +132,9 @@ fn scalar_to_sql(v: &ScalarValue) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fuse_core::connector::{AggFunction, AggregationExpr, FilterExpr, ScalarValue, SortExpr, SubQuery};
+    use fuse_core::connector::{
+        AggFunction, AggregationExpr, FilterExpr, ScalarValue, SortExpr, SubQuery,
+    };
 
     fn base() -> SubQuery {
         SubQuery {
@@ -116,7 +146,8 @@ mod tests {
             having: None,
             sort: vec![],
             limit: None,
-            passthrough: None, offset: None,
+            passthrough: None,
+            offset: None,
         }
     }
 
@@ -127,8 +158,14 @@ mod tests {
 
     #[test]
     fn test_select_projections() {
-        let q = SubQuery { projections: vec!["id".into(), "name".into()], ..base() };
-        assert_eq!(subquery_to_sql(&q), "SELECT \"id\", \"name\" FROM \"users\"");
+        let q = SubQuery {
+            projections: vec!["id".into(), "name".into()],
+            ..base()
+        };
+        assert_eq!(
+            subquery_to_sql(&q),
+            "SELECT \"id\", \"name\" FROM \"users\""
+        );
     }
 
     #[test]
@@ -141,7 +178,10 @@ mod tests {
             }),
             ..base()
         };
-        assert_eq!(subquery_to_sql(&q), "SELECT * FROM \"users\" WHERE \"status\" = 'active'");
+        assert_eq!(
+            subquery_to_sql(&q),
+            "SELECT * FROM \"users\" WHERE \"status\" = 'active'"
+        );
     }
 
     #[test]
@@ -154,50 +194,82 @@ mod tests {
             }),
             ..base()
         };
-        assert_eq!(subquery_to_sql(&q), "SELECT * FROM \"users\" WHERE \"age\" > 18");
+        assert_eq!(
+            subquery_to_sql(&q),
+            "SELECT * FROM \"users\" WHERE \"age\" > 18"
+        );
     }
 
     #[test]
     fn test_limit() {
-        let q = SubQuery { limit: Some(10), ..base() };
+        let q = SubQuery {
+            limit: Some(10),
+            ..base()
+        };
         assert_eq!(subquery_to_sql(&q), "SELECT * FROM \"users\" LIMIT 10");
     }
 
     #[test]
     fn test_order_by() {
         let q = SubQuery {
-            sort: vec![SortExpr { field: "name".into(), descending: false }],
+            sort: vec![SortExpr {
+                field: "name".into(),
+                descending: false,
+            }],
             ..base()
         };
-        assert_eq!(subquery_to_sql(&q), "SELECT * FROM \"users\" ORDER BY \"name\"");
+        assert_eq!(
+            subquery_to_sql(&q),
+            "SELECT * FROM \"users\" ORDER BY \"name\""
+        );
     }
 
     #[test]
     fn test_order_by_desc() {
         let q = SubQuery {
-            sort: vec![SortExpr { field: "created_at".into(), descending: true }],
+            sort: vec![SortExpr {
+                field: "created_at".into(),
+                descending: true,
+            }],
             ..base()
         };
-        assert_eq!(subquery_to_sql(&q), "SELECT * FROM \"users\" ORDER BY \"created_at\" DESC");
+        assert_eq!(
+            subquery_to_sql(&q),
+            "SELECT * FROM \"users\" ORDER BY \"created_at\" DESC"
+        );
     }
 
     #[test]
     fn test_aggregation_count() {
         let q = SubQuery {
-            aggregations: vec![AggregationExpr { function: AggFunction::Count, field: None, alias: "cnt".into() }],
+            aggregations: vec![AggregationExpr {
+                function: AggFunction::Count,
+                field: None,
+                alias: "cnt".into(),
+            }],
             ..base()
         };
-        assert_eq!(subquery_to_sql(&q), "SELECT COUNT(*) AS \"cnt\" FROM \"users\"");
+        assert_eq!(
+            subquery_to_sql(&q),
+            "SELECT COUNT(*) AS \"cnt\" FROM \"users\""
+        );
     }
 
     #[test]
     fn test_aggregation_with_group_by() {
         let q = SubQuery {
-            aggregations: vec![AggregationExpr { function: AggFunction::Sum, field: Some("amount".into()), alias: "total".into() }],
+            aggregations: vec![AggregationExpr {
+                function: AggFunction::Sum,
+                field: Some("amount".into()),
+                alias: "total".into(),
+            }],
             group_by: vec!["region".into()],
             ..base()
         };
-        assert_eq!(subquery_to_sql(&q), "SELECT \"region\", SUM(\"amount\") AS \"total\" FROM \"users\" GROUP BY \"region\"");
+        assert_eq!(
+            subquery_to_sql(&q),
+            "SELECT \"region\", SUM(\"amount\") AS \"total\" FROM \"users\" GROUP BY \"region\""
+        );
     }
 
     #[test]
@@ -206,7 +278,10 @@ mod tests {
             filter: Some(FilterExpr::IsNull("email".into())),
             ..base()
         };
-        assert_eq!(subquery_to_sql(&q), "SELECT * FROM \"users\" WHERE \"email\" IS NULL");
+        assert_eq!(
+            subquery_to_sql(&q),
+            "SELECT * FROM \"users\" WHERE \"email\" IS NULL"
+        );
     }
 
     #[test]
@@ -218,7 +293,10 @@ mod tests {
             }),
             ..base()
         };
-        assert_eq!(subquery_to_sql(&q), "SELECT * FROM \"users\" WHERE \"status\" IN ('a', 'b')");
+        assert_eq!(
+            subquery_to_sql(&q),
+            "SELECT * FROM \"users\" WHERE \"status\" IN ('a', 'b')"
+        );
     }
 
     #[test]
@@ -237,7 +315,11 @@ mod tests {
     #[test]
     fn test_having() {
         let q = SubQuery {
-            aggregations: vec![AggregationExpr { function: AggFunction::Count, field: None, alias: "cnt".into() }],
+            aggregations: vec![AggregationExpr {
+                function: AggFunction::Count,
+                field: None,
+                alias: "cnt".into(),
+            }],
             group_by: vec!["region".into()],
             having: Some(FilterExpr::Comparison {
                 field: "cnt".into(),
@@ -260,7 +342,10 @@ mod tests {
             }),
             ..base()
         };
-        assert_eq!(subquery_to_sql(&q), "SELECT * FROM \"users\" WHERE \"name\" ILIKE '%alice%'");
+        assert_eq!(
+            subquery_to_sql(&q),
+            "SELECT * FROM \"users\" WHERE \"name\" ILIKE '%alice%'"
+        );
     }
 
     #[test]
@@ -273,7 +358,10 @@ mod tests {
             }],
             ..base()
         };
-        assert_eq!(subquery_to_sql(&q), "SELECT COUNT(DISTINCT \"email\") AS \"uniq\" FROM \"users\"");
+        assert_eq!(
+            subquery_to_sql(&q),
+            "SELECT COUNT(DISTINCT \"email\") AS \"uniq\" FROM \"users\""
+        );
     }
 
     #[test]
@@ -286,7 +374,10 @@ mod tests {
             }))),
             ..base()
         };
-        assert_eq!(subquery_to_sql(&q), "SELECT * FROM \"users\" WHERE NOT (\"active\" = true)");
+        assert_eq!(
+            subquery_to_sql(&q),
+            "SELECT * FROM \"users\" WHERE NOT (\"active\" = true)"
+        );
     }
 
     #[test]
@@ -294,10 +385,22 @@ mod tests {
         let q = SubQuery {
             filter: Some(FilterExpr::Or(
                 Box::new(FilterExpr::And(
-                    Box::new(FilterExpr::Comparison { field: "a".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(1) }),
-                    Box::new(FilterExpr::Comparison { field: "b".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(2) }),
+                    Box::new(FilterExpr::Comparison {
+                        field: "a".into(),
+                        op: ComparisonOp::Eq,
+                        value: ScalarValue::Int64(1),
+                    }),
+                    Box::new(FilterExpr::Comparison {
+                        field: "b".into(),
+                        op: ComparisonOp::Eq,
+                        value: ScalarValue::Int64(2),
+                    }),
                 )),
-                Box::new(FilterExpr::Comparison { field: "c".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(3) }),
+                Box::new(FilterExpr::Comparison {
+                    field: "c".into(),
+                    op: ComparisonOp::Eq,
+                    value: ScalarValue::Int64(3),
+                }),
             )),
             ..base()
         };
@@ -310,23 +413,47 @@ mod tests {
     fn test_multi_sort() {
         let q = SubQuery {
             sort: vec![
-                SortExpr { field: "region".into(), descending: false },
-                SortExpr { field: "created_at".into(), descending: true },
+                SortExpr {
+                    field: "region".into(),
+                    descending: false,
+                },
+                SortExpr {
+                    field: "created_at".into(),
+                    descending: true,
+                },
             ],
             ..base()
         };
-        assert_eq!(subquery_to_sql(&q), "SELECT * FROM \"users\" ORDER BY \"region\", \"created_at\" DESC");
+        assert_eq!(
+            subquery_to_sql(&q),
+            "SELECT * FROM \"users\" ORDER BY \"region\", \"created_at\" DESC"
+        );
     }
 
     #[test]
     fn test_full_pushdown_combined() {
         let q = SubQuery {
             projections: vec![],
-            aggregations: vec![AggregationExpr { function: AggFunction::Count, field: None, alias: "cnt".into() }],
+            aggregations: vec![AggregationExpr {
+                function: AggFunction::Count,
+                field: None,
+                alias: "cnt".into(),
+            }],
             group_by: vec!["region".into()],
-            filter: Some(FilterExpr::Comparison { field: "active".into(), op: ComparisonOp::Eq, value: ScalarValue::Boolean(true) }),
-            having: Some(FilterExpr::Comparison { field: "cnt".into(), op: ComparisonOp::Gte, value: ScalarValue::Int64(10) }),
-            sort: vec![SortExpr { field: "cnt".into(), descending: true }],
+            filter: Some(FilterExpr::Comparison {
+                field: "active".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Boolean(true),
+            }),
+            having: Some(FilterExpr::Comparison {
+                field: "cnt".into(),
+                op: ComparisonOp::Gte,
+                value: ScalarValue::Int64(10),
+            }),
+            sort: vec![SortExpr {
+                field: "cnt".into(),
+                descending: true,
+            }],
             limit: Some(5),
             ..base()
         };
@@ -350,7 +477,11 @@ mod tests {
             ..base()
         };
         let sql = subquery_to_sql(&q);
-        assert!(sql.contains("it''s a ''test''"), "multiple quotes should all be escaped: {}", sql);
+        assert!(
+            sql.contains("it''s a ''test''"),
+            "multiple quotes should all be escaped: {}",
+            sql
+        );
     }
 
     #[test]
@@ -359,7 +490,10 @@ mod tests {
             filter: Some(FilterExpr::IsNotNull("email".into())),
             ..base()
         };
-        assert_eq!(subquery_to_sql(&q), "SELECT * FROM \"users\" WHERE \"email\" IS NOT NULL");
+        assert_eq!(
+            subquery_to_sql(&q),
+            "SELECT * FROM \"users\" WHERE \"email\" IS NOT NULL"
+        );
     }
 
     #[test]

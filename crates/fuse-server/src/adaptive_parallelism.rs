@@ -42,12 +42,16 @@ impl Default for AdaptiveParallelism {
 
 impl AdaptiveParallelism {
     pub fn new() -> Self {
-        Self { stats: Mutex::new(HashMap::new()) }
+        Self {
+            stats: Mutex::new(HashMap::new()),
+        }
     }
 
     /// Get the current concurrency limit for a datasource.
     pub fn concurrency_for(&self, datasource: &str) -> usize {
-        self.stats.lock().unwrap()
+        self.stats
+            .lock()
+            .unwrap()
             .get(datasource)
             .map(|s| s.concurrency)
             .unwrap_or(DEFAULT_CONCURRENCY)
@@ -85,8 +89,8 @@ impl AdaptiveParallelism {
             // High error rate — reduce concurrency
             stats.concurrency = (stats.concurrency / 2).max(MIN_CONCURRENCY);
         } else if error_rate < 0.05 && !stats.recent_latencies.is_empty() {
-            let avg_latency: u64 = stats.recent_latencies.iter().sum::<u64>()
-                / stats.recent_latencies.len() as u64;
+            let avg_latency: u64 =
+                stats.recent_latencies.iter().sum::<u64>() / stats.recent_latencies.len() as u64;
             if avg_latency < 500 {
                 // Fast + low errors — increase concurrency
                 stats.concurrency = (stats.concurrency + 1).min(MAX_CONCURRENCY);
@@ -100,7 +104,9 @@ impl AdaptiveParallelism {
 
     /// Get stats for monitoring.
     pub fn stats(&self) -> HashMap<String, (usize, usize)> {
-        self.stats.lock().unwrap()
+        self.stats
+            .lock()
+            .unwrap()
             .iter()
             .map(|(k, v)| (k.clone(), (v.concurrency, v.recent_latencies.len())))
             .collect()

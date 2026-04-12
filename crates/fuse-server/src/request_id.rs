@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Request ID middleware — attaches a unique ID to every HTTP response.
 
+use axum::body::Body;
 use axum::http::{HeaderValue, Request};
 use axum::middleware::Next;
 use axum::response::Response;
-use axum::body::Body;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -21,7 +21,8 @@ fn generate_request_id() -> String {
 /// Middleware that adds `X-Request-Id` header to responses.
 /// If the request already has one, it's passed through.
 pub async fn request_id_middleware(req: Request<Body>, next: Next) -> Response {
-    let id = req.headers()
+    let id = req
+        .headers()
         .get("x-request-id")
         .and_then(|v| v.to_str().ok())
         .map(String::from)
@@ -31,7 +32,10 @@ pub async fn request_id_middleware(req: Request<Body>, next: Next) -> Response {
     if let Ok(val) = HeaderValue::from_str(&id) {
         resp.headers_mut().insert("x-request-id", val);
     }
-    resp.headers_mut().insert("x-fuse-version", HeaderValue::from_static(env!("CARGO_PKG_VERSION")));
+    resp.headers_mut().insert(
+        "x-fuse-version",
+        HeaderValue::from_static(env!("CARGO_PKG_VERSION")),
+    );
     resp
 }
 

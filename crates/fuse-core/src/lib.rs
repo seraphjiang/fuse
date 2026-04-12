@@ -11,10 +11,10 @@ pub mod error;
 pub mod expr;
 pub mod factory;
 pub mod health_history;
-pub mod materialized_view;
+mod integration_tests;
 pub mod limit_pushdown;
+pub mod materialized_view;
 pub mod metadata_cache;
-pub mod registry;
 pub mod optimizer;
 pub mod plan_builder;
 pub mod plan_compare;
@@ -29,6 +29,7 @@ pub mod planner;
 pub mod predicate;
 pub mod pushdown;
 pub mod query_stats;
+pub mod registry;
 pub mod scalar_expr;
 pub mod schema_compat;
 pub mod secrets;
@@ -36,10 +37,9 @@ pub mod security;
 pub mod size_estimator;
 pub mod sql;
 pub mod tls;
-pub mod url;
 pub mod type_map;
+pub mod url;
 pub mod version;
-mod integration_tests;
 // Re-export commonly used types at crate root for convenience
 pub use connector::{
     ConnectorCapabilities, ConnectorHealth, ConnectorType, FederatedConnector, HealthStatus,

@@ -49,7 +49,9 @@ impl SqlConnector {
             .properties
             .get("url")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ConnectorError::Connection("missing 'url' in connector config".into()))?;
+            .ok_or_else(|| {
+                ConnectorError::Connection("missing 'url' in connector config".into())
+            })?;
 
         let max_conns = config.max_connections(10);
 
@@ -76,14 +78,22 @@ impl SqlConnector {
             (Pool::Mysql(p), "mysql")
         };
 
-        Ok(Self { id: config.id.clone(), pool, db_type })
+        Ok(Self {
+            id: config.id.clone(),
+            pool,
+            db_type,
+        })
     }
 }
 
 #[async_trait]
 impl FederatedConnector for SqlConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { self.db_type }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        self.db_type
+    }
 
     fn capabilities(&self) -> ConnectorCapabilities {
         ConnectorCapabilities {
@@ -107,9 +117,17 @@ impl FederatedConnector for SqlConnector {
             Pool::Sqlite(p) => sqlx::query("SELECT 1").execute(p).await.is_ok(),
         };
         if ok {
-            ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(start.elapsed().as_millis() as u64), message: None }
+            ConnectorHealth {
+                status: HealthStatus::Healthy,
+                latency_ms: Some(start.elapsed().as_millis() as u64),
+                message: None,
+            }
         } else {
-            ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some("ping failed".into()) }
+            ConnectorHealth {
+                status: HealthStatus::Unhealthy,
+                latency_ms: None,
+                message: Some("ping failed".into()),
+            }
         }
     }
 
@@ -117,45 +135,71 @@ impl FederatedConnector for SqlConnector {
         let names: Vec<String> = match &self.pool {
             Pool::Postgres(p) => {
                 let sql = "SELECT table_name FROM information_schema.tables WHERE table_schema NOT IN ('information_schema','pg_catalog') ORDER BY table_name";
-                sqlx::query_scalar(sql).fetch_all(p).await.map_err(ConnectorError::schema)?
+                sqlx::query_scalar(sql)
+                    .fetch_all(p)
+                    .await
+                    .map_err(ConnectorError::schema)?
             }
             Pool::Mysql(p) => {
                 let sql = "SELECT table_name FROM information_schema.tables WHERE table_schema NOT IN ('information_schema','performance_schema','sys') ORDER BY table_name";
-                sqlx::query_scalar(sql).fetch_all(p).await.map_err(ConnectorError::schema)?
+                sqlx::query_scalar(sql)
+                    .fetch_all(p)
+                    .await
+                    .map_err(ConnectorError::schema)?
             }
             Pool::Sqlite(p) => {
                 let sql = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name";
-                sqlx::query_scalar(sql).fetch_all(p).await.map_err(ConnectorError::schema)?
+                sqlx::query_scalar(sql)
+                    .fetch_all(p)
+                    .await
+                    .map_err(ConnectorError::schema)?
             }
         };
-        Ok(names.into_iter().map(|name| SchemaInfo {
-            name,
-            schema_type: SchemaType::Table,
-            estimated_row_count: None,
-        }).collect())
+        Ok(names
+            .into_iter()
+            .map(|name| SchemaInfo {
+                name,
+                schema_type: SchemaType::Table,
+                estimated_row_count: None,
+            })
+            .collect())
     }
 
     async fn get_schema(&self, table: &str) -> Result<Schema, ConnectorError> {
         let rows: Vec<(String, String)> = match &self.pool {
             Pool::Postgres(p) => {
                 let sql = "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = $1 ORDER BY ordinal_position";
-                sqlx::query_as(sql).bind(table).fetch_all(p).await.map_err(ConnectorError::schema)?
+                sqlx::query_as(sql)
+                    .bind(table)
+                    .fetch_all(p)
+                    .await
+                    .map_err(ConnectorError::schema)?
             }
             Pool::Mysql(p) => {
                 let sql = "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = ? ORDER BY ordinal_position";
-                sqlx::query_as(sql).bind(table).fetch_all(p).await.map_err(ConnectorError::schema)?
+                sqlx::query_as(sql)
+                    .bind(table)
+                    .fetch_all(p)
+                    .await
+                    .map_err(ConnectorError::schema)?
             }
             Pool::Sqlite(p) => {
                 // SQLite PRAGMA returns (cid, name, type, notnull, dflt_value, pk)
                 let sql = format!("PRAGMA table_info({table})");
                 let rows: Vec<(i64, String, String, i64, Option<String>, i64)> =
-                    sqlx::query_as(&sql).fetch_all(p).await.map_err(ConnectorError::schema)?;
-                rows.into_iter().map(|(_, name, typ, _, _, _)| (name, typ)).collect()
+                    sqlx::query_as(&sql)
+                        .fetch_all(p)
+                        .await
+                        .map_err(ConnectorError::schema)?;
+                rows.into_iter()
+                    .map(|(_, name, typ, _, _, _)| (name, typ))
+                    .collect()
             }
         };
-        let fields: Vec<Field> = rows.iter().map(|(col, dt)| {
-            Field::new(col, sql_type_to_arrow(dt), true)
-        }).collect();
+        let fields: Vec<Field> = rows
+            .iter()
+            .map(|(col, dt)| Field::new(col, sql_type_to_arrow(dt), true))
+            .collect();
         if fields.is_empty() {
             return Err(ConnectorError::schema(format!("table '{table}' not found")));
         }
@@ -178,7 +222,9 @@ impl FederatedConnector for SqlConnector {
         tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
     ) -> Result<(), ConnectorError> {
         for batch in self.execute(query).await? {
-            tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+            tx.send(Ok(batch))
+                .await
+                .map_err(|_| ConnectorError::ChannelClosed)?;
         }
         Ok(())
     }
@@ -190,10 +236,16 @@ impl FederatedConnector for SqlConnector {
     ) -> Result<u64, ConnectorError> {
         let mut total = 0u64;
         for batch in &batches {
-            if batch.num_rows() == 0 { continue; }
+            if batch.num_rows() == 0 {
+                continue;
+            }
             let schema = batch.schema();
             let cols: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
-            let col_list = cols.iter().map(|c| format!("\"{}\"", c)).collect::<Vec<_>>().join(", ");
+            let col_list = cols
+                .iter()
+                .map(|c| format!("\"{}\"", c))
+                .collect::<Vec<_>>()
+                .join(", ");
 
             match &self.pool {
                 Pool::Postgres(pool) => {
@@ -214,27 +266,44 @@ impl FederatedConnector for SqlConnector {
 // ── Query execution ───────────────────────────────────────────────────────────
 
 async fn execute_pg(pool: &sqlx::PgPool, sql: &str) -> Result<Vec<RecordBatch>, ConnectorError> {
-    let rows = sqlx::query(sql).fetch_all(pool).await
+    let rows = sqlx::query(sql)
+        .fetch_all(pool)
+        .await
         .map_err(ConnectorError::query)?;
-    if rows.is_empty() { return Ok(vec![]); }
+    if rows.is_empty() {
+        return Ok(vec![]);
+    }
     pg_rows_to_batch(&rows)
 }
 
 async fn execute_my(pool: &sqlx::MySqlPool, sql: &str) -> Result<Vec<RecordBatch>, ConnectorError> {
-    let rows = sqlx::query(sql).fetch_all(pool).await
+    let rows = sqlx::query(sql)
+        .fetch_all(pool)
+        .await
         .map_err(ConnectorError::query)?;
-    if rows.is_empty() { return Ok(vec![]); }
+    if rows.is_empty() {
+        return Ok(vec![]);
+    }
     my_rows_to_batch(&rows)
 }
 
-async fn execute_sqlite(pool: &sqlx::SqlitePool, sql: &str) -> Result<Vec<RecordBatch>, ConnectorError> {
-    let rows = sqlx::query(sql).fetch_all(pool).await
+async fn execute_sqlite(
+    pool: &sqlx::SqlitePool,
+    sql: &str,
+) -> Result<Vec<RecordBatch>, ConnectorError> {
+    let rows = sqlx::query(sql)
+        .fetch_all(pool)
+        .await
         .map_err(ConnectorError::query)?;
-    if rows.is_empty() { return Ok(vec![]); }
+    if rows.is_empty() {
+        return Ok(vec![]);
+    }
     sqlite_rows_to_batch(&rows)
 }
 
-fn sqlite_rows_to_batch(rows: &[sqlx::sqlite::SqliteRow]) -> Result<Vec<RecordBatch>, ConnectorError> {
+fn sqlite_rows_to_batch(
+    rows: &[sqlx::sqlite::SqliteRow],
+) -> Result<Vec<RecordBatch>, ConnectorError> {
     use sqlx::Column;
     use sqlx::Row;
     let cols: Vec<&str> = rows[0].columns().iter().map(|c| c.name()).collect();
@@ -254,7 +323,10 @@ fn sqlite_rows_to_batch(rows: &[sqlx::sqlite::SqliteRow]) -> Result<Vec<RecordBa
             arrays.push(Arc::new(Float64Array::from(as_f64)) as ArrayRef);
             continue;
         }
-        let as_str: Vec<Option<String>> = rows.iter().map(|r| r.try_get::<String, _>(i).ok()).collect();
+        let as_str: Vec<Option<String>> = rows
+            .iter()
+            .map(|r| r.try_get::<String, _>(i).ok())
+            .collect();
         fields.push(Field::new(*col, DataType::Utf8, true));
         arrays.push(Arc::new(StringArray::from(as_str)) as ArrayRef);
     }
@@ -283,13 +355,17 @@ fn pg_rows_to_batch(rows: &[sqlx::postgres::PgRow]) -> Result<Vec<RecordBatch>, 
             arrays.push(Arc::new(Float64Array::from(as_f64)) as ArrayRef);
             continue;
         }
-        let as_bool: Vec<Option<bool>> = rows.iter().map(|r| r.try_get::<bool, _>(i).ok()).collect();
+        let as_bool: Vec<Option<bool>> =
+            rows.iter().map(|r| r.try_get::<bool, _>(i).ok()).collect();
         if as_bool.iter().any(|v| v.is_some()) {
             fields.push(Field::new(*col, DataType::Boolean, true));
             arrays.push(Arc::new(BooleanArray::from(as_bool)) as ArrayRef);
             continue;
         }
-        let as_str: Vec<Option<String>> = rows.iter().map(|r| r.try_get::<String, _>(i).ok()).collect();
+        let as_str: Vec<Option<String>> = rows
+            .iter()
+            .map(|r| r.try_get::<String, _>(i).ok())
+            .collect();
         fields.push(Field::new(*col, DataType::Utf8, true));
         arrays.push(Arc::new(StringArray::from(as_str)) as ArrayRef);
     }
@@ -317,7 +393,10 @@ fn my_rows_to_batch(rows: &[sqlx::mysql::MySqlRow]) -> Result<Vec<RecordBatch>, 
             arrays.push(Arc::new(Float64Array::from(as_f64)) as ArrayRef);
             continue;
         }
-        let as_str: Vec<Option<String>> = rows.iter().map(|r| r.try_get::<String, _>(i).ok()).collect();
+        let as_str: Vec<Option<String>> = rows
+            .iter()
+            .map(|r| r.try_get::<String, _>(i).ok())
+            .collect();
         fields.push(Field::new(*col, DataType::Utf8, true));
         arrays.push(Arc::new(StringArray::from(as_str)) as ArrayRef);
     }
@@ -330,7 +409,9 @@ fn my_rows_to_batch(rows: &[sqlx::mysql::MySqlRow]) -> Result<Vec<RecordBatch>, 
 fn sql_type_to_arrow(sql_type: &str) -> DataType {
     match sql_type.to_lowercase().as_str() {
         "integer" | "int" | "int4" | "int8" | "bigint" | "smallint" | "tinyint" => DataType::Int64,
-        "float" | "double" | "real" | "numeric" | "decimal" | "float4" | "float8" => DataType::Float64,
+        "float" | "double" | "real" | "numeric" | "decimal" | "float4" | "float8" => {
+            DataType::Float64
+        }
         "boolean" | "bool" | "tinyint(1)" => DataType::Boolean,
         _ => DataType::Utf8,
     }
@@ -342,15 +423,39 @@ fn sql_type_to_arrow(sql_type: &str) -> DataType {
 fn cell_to_sql_literal(batch: &RecordBatch, col: usize, row: usize) -> String {
     use arrow::array::{self as aa};
     let arr = batch.column(col);
-    if arr.is_null(row) { return "NULL".into(); }
+    if arr.is_null(row) {
+        return "NULL".into();
+    }
     match arr.data_type() {
-        DataType::Int64 => arr.as_any().downcast_ref::<aa::Int64Array>().map(|a| a.value(row).to_string()).unwrap_or_else(|| "NULL".into()),
-        DataType::Int32 => arr.as_any().downcast_ref::<aa::Int32Array>().map(|a| a.value(row).to_string()).unwrap_or_else(|| "NULL".into()),
-        DataType::Float64 => arr.as_any().downcast_ref::<aa::Float64Array>().map(|a| a.value(row).to_string()).unwrap_or_else(|| "NULL".into()),
-        DataType::Float32 => arr.as_any().downcast_ref::<aa::Float32Array>().map(|a| a.value(row).to_string()).unwrap_or_else(|| "NULL".into()),
-        DataType::Boolean => arr.as_any().downcast_ref::<aa::BooleanArray>().map(|a| a.value(row).to_string()).unwrap_or_else(|| "NULL".into()),
+        DataType::Int64 => arr
+            .as_any()
+            .downcast_ref::<aa::Int64Array>()
+            .map(|a| a.value(row).to_string())
+            .unwrap_or_else(|| "NULL".into()),
+        DataType::Int32 => arr
+            .as_any()
+            .downcast_ref::<aa::Int32Array>()
+            .map(|a| a.value(row).to_string())
+            .unwrap_or_else(|| "NULL".into()),
+        DataType::Float64 => arr
+            .as_any()
+            .downcast_ref::<aa::Float64Array>()
+            .map(|a| a.value(row).to_string())
+            .unwrap_or_else(|| "NULL".into()),
+        DataType::Float32 => arr
+            .as_any()
+            .downcast_ref::<aa::Float32Array>()
+            .map(|a| a.value(row).to_string())
+            .unwrap_or_else(|| "NULL".into()),
+        DataType::Boolean => arr
+            .as_any()
+            .downcast_ref::<aa::BooleanArray>()
+            .map(|a| a.value(row).to_string())
+            .unwrap_or_else(|| "NULL".into()),
         _ => {
-            let s = arr.as_any().downcast_ref::<aa::StringArray>()
+            let s = arr
+                .as_any()
+                .downcast_ref::<aa::StringArray>()
                 .map(|a| a.value(row).to_string())
                 .unwrap_or_else(|| format!("{:?}", arr));
             format!("'{}'", s.replace('\'', "''"))
@@ -358,42 +463,84 @@ fn cell_to_sql_literal(batch: &RecordBatch, col: usize, row: usize) -> String {
     }
 }
 
-async fn write_pg(pool: &sqlx::PgPool, table: &str, col_list: &str, batch: &RecordBatch) -> Result<u64, ConnectorError> {
+async fn write_pg(
+    pool: &sqlx::PgPool,
+    table: &str,
+    col_list: &str,
+    batch: &RecordBatch,
+) -> Result<u64, ConnectorError> {
     let num_cols = batch.num_columns();
     // Build batch INSERT: INSERT INTO table (cols) VALUES (row1), (row2), ...
     // Use literal values (safe for internal use; table/col names already quoted)
     let mut values_clauses = Vec::with_capacity(batch.num_rows());
     for row in 0..batch.num_rows() {
-        let vals: Vec<String> = (0..num_cols).map(|c| cell_to_sql_literal(batch, c, row)).collect();
+        let vals: Vec<String> = (0..num_cols)
+            .map(|c| cell_to_sql_literal(batch, c, row))
+            .collect();
         values_clauses.push(format!("({})", vals.join(", ")));
     }
-    let sql = format!("INSERT INTO {} ({}) VALUES {}", table, col_list, values_clauses.join(", "));
-    let result = sqlx::query(&sql).execute(pool).await
+    let sql = format!(
+        "INSERT INTO {} ({}) VALUES {}",
+        table,
+        col_list,
+        values_clauses.join(", ")
+    );
+    let result = sqlx::query(&sql)
+        .execute(pool)
+        .await
         .map_err(|e| ConnectorError::query(e.to_string()))?;
     Ok(result.rows_affected())
 }
 
-async fn write_my(pool: &sqlx::MySqlPool, table: &str, col_list: &str, batch: &RecordBatch) -> Result<u64, ConnectorError> {
+async fn write_my(
+    pool: &sqlx::MySqlPool,
+    table: &str,
+    col_list: &str,
+    batch: &RecordBatch,
+) -> Result<u64, ConnectorError> {
     let num_cols = batch.num_columns();
     let mut values_clauses = Vec::with_capacity(batch.num_rows());
     for row in 0..batch.num_rows() {
-        let vals: Vec<String> = (0..num_cols).map(|c| cell_to_sql_literal(batch, c, row)).collect();
+        let vals: Vec<String> = (0..num_cols)
+            .map(|c| cell_to_sql_literal(batch, c, row))
+            .collect();
         values_clauses.push(format!("({})", vals.join(", ")));
     }
-    let sql = format!("INSERT INTO {} ({}) VALUES {}", table, col_list, values_clauses.join(", "));
-    let result = sqlx::query(&sql).execute(pool).await
+    let sql = format!(
+        "INSERT INTO {} ({}) VALUES {}",
+        table,
+        col_list,
+        values_clauses.join(", ")
+    );
+    let result = sqlx::query(&sql)
+        .execute(pool)
+        .await
         .map_err(|e| ConnectorError::query(e.to_string()))?;
     Ok(result.rows_affected())
 }
 
-async fn write_sqlite(pool: &sqlx::SqlitePool, table: &str, col_list: &str, batch: &RecordBatch) -> Result<u64, ConnectorError> {
+async fn write_sqlite(
+    pool: &sqlx::SqlitePool,
+    table: &str,
+    col_list: &str,
+    batch: &RecordBatch,
+) -> Result<u64, ConnectorError> {
     let num_cols = batch.num_columns();
     let mut total = 0u64;
     // SQLite has a limit on compound INSERT size, so insert row-by-row
     for row in 0..batch.num_rows() {
-        let vals: Vec<String> = (0..num_cols).map(|c| cell_to_sql_literal(batch, c, row)).collect();
-        let sql = format!("INSERT INTO {} ({}) VALUES ({})", table, col_list, vals.join(", "));
-        let result = sqlx::query(&sql).execute(pool).await
+        let vals: Vec<String> = (0..num_cols)
+            .map(|c| cell_to_sql_literal(batch, c, row))
+            .collect();
+        let sql = format!(
+            "INSERT INTO {} ({}) VALUES ({})",
+            table,
+            col_list,
+            vals.join(", ")
+        );
+        let result = sqlx::query(&sql)
+            .execute(pool)
+            .await
             .map_err(|e| ConnectorError::query(e.to_string()))?;
         total += result.rows_affected();
     }
@@ -405,8 +552,13 @@ pub struct PostgresConnectorFactory;
 
 #[async_trait]
 impl ConnectorFactory for PostgresConnectorFactory {
-    fn connector_type(&self) -> &str { "postgres" }
-    async fn create(&self, config: &ConnectorConfig) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
+    fn connector_type(&self) -> &str {
+        "postgres"
+    }
+    async fn create(
+        &self,
+        config: &ConnectorConfig,
+    ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
         Ok(Arc::new(SqlConnector::from_config(config).await?))
     }
 }
@@ -416,8 +568,13 @@ pub struct MysqlConnectorFactory;
 
 #[async_trait]
 impl ConnectorFactory for MysqlConnectorFactory {
-    fn connector_type(&self) -> &str { "mysql" }
-    async fn create(&self, config: &ConnectorConfig) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
+    fn connector_type(&self) -> &str {
+        "mysql"
+    }
+    async fn create(
+        &self,
+        config: &ConnectorConfig,
+    ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
         Ok(Arc::new(SqlConnector::from_config(config).await?))
     }
 }
@@ -443,13 +600,30 @@ pub struct RedshiftConnectorFactory;
 
 #[async_trait]
 impl ConnectorFactory for RedshiftConnectorFactory {
-    fn connector_type(&self) -> &str { "redshift" }
-    async fn create(&self, config: &ConnectorConfig) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
+    fn connector_type(&self) -> &str {
+        "redshift"
+    }
+    async fn create(
+        &self,
+        config: &ConnectorConfig,
+    ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
         // If cluster_id is set, use IAM auth to get temporary credentials
         if let Some(cluster_id) = config.properties.get("cluster_id").and_then(|v| v.as_str()) {
-            let db_name = config.properties.get("db_name").and_then(|v| v.as_str()).unwrap_or("dev");
-            let db_user = config.properties.get("db_user").and_then(|v| v.as_str()).unwrap_or("admin");
-            let region = config.properties.get("region").and_then(|v| v.as_str()).unwrap_or("us-east-1");
+            let db_name = config
+                .properties
+                .get("db_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("dev");
+            let db_user = config
+                .properties
+                .get("db_user")
+                .and_then(|v| v.as_str())
+                .unwrap_or("admin");
+            let region = config
+                .properties
+                .get("region")
+                .and_then(|v| v.as_str())
+                .unwrap_or("us-east-1");
 
             let url = get_redshift_iam_url(cluster_id, db_name, db_user, region).await?;
             let mut props = config.properties.clone();
@@ -479,7 +653,8 @@ async fn get_redshift_iam_url(
         .await;
     let client = aws_sdk_redshift::Client::new(&aws_config);
 
-    let resp = client.get_cluster_credentials()
+    let resp = client
+        .get_cluster_credentials()
         .cluster_identifier(cluster_id)
         .db_name(db_name)
         .db_user(db_user)
@@ -491,29 +666,39 @@ async fn get_redshift_iam_url(
     let temp_pass = resp.db_password().unwrap_or_default();
 
     // Describe cluster to get endpoint
-    let desc = client.describe_clusters()
+    let desc = client
+        .describe_clusters()
         .cluster_identifier(cluster_id)
         .send()
         .await
         .map_err(|e| ConnectorError::Connection(format!("Redshift describe failed: {e}")))?;
 
-    let cluster = desc.clusters().first()
+    let cluster = desc
+        .clusters()
+        .first()
         .ok_or_else(|| ConnectorError::Connection(format!("cluster '{}' not found", cluster_id)))?;
-    let endpoint = cluster.endpoint()
+    let endpoint = cluster
+        .endpoint()
         .ok_or_else(|| ConnectorError::Connection("cluster has no endpoint".into()))?;
     let host = endpoint.address().unwrap_or("localhost");
     let port = endpoint.port().unwrap_or(5439);
 
     // URL-encode password
-    let encoded_pass: String = temp_pass.bytes().map(|b| {
-        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' {
-            format!("{}", b as char)
-        } else {
-            format!("%{:02X}", b)
-        }
-    }).collect();
+    let encoded_pass: String = temp_pass
+        .bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' {
+                format!("{}", b as char)
+            } else {
+                format!("%{:02X}", b)
+            }
+        })
+        .collect();
 
-    Ok(format!("postgres://{}:{}@{}:{}/{}", temp_user, encoded_pass, host, port, db_name))
+    Ok(format!(
+        "postgres://{}:{}@{}:{}/{}",
+        temp_user, encoded_pass, host, port, db_name
+    ))
 }
 
 #[derive(Debug, Default)]
@@ -521,8 +706,13 @@ pub struct SqliteConnectorFactory;
 
 #[async_trait]
 impl ConnectorFactory for SqliteConnectorFactory {
-    fn connector_type(&self) -> &str { "sqlite" }
-    async fn create(&self, config: &ConnectorConfig) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
+    fn connector_type(&self) -> &str {
+        "sqlite"
+    }
+    async fn create(
+        &self,
+        config: &ConnectorConfig,
+    ) -> Result<Arc<dyn FederatedConnector>, ConnectorError> {
         Ok(Arc::new(SqlConnector::from_config(config).await?))
     }
 }
@@ -560,7 +750,11 @@ mod tests {
     #[test]
     fn test_cell_to_sql_literal_int() {
         let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, true)]));
-        let batch = RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(vec![Some(42), None]))]).unwrap();
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![Arc::new(Int64Array::from(vec![Some(42), None]))],
+        )
+        .unwrap();
         assert_eq!(cell_to_sql_literal(&batch, 0, 0), "42");
         assert_eq!(cell_to_sql_literal(&batch, 0, 1), "NULL");
     }
@@ -568,28 +762,32 @@ mod tests {
     #[test]
     fn test_cell_to_sql_literal_float() {
         let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Float64, true)]));
-        let batch = RecordBatch::try_new(schema, vec![Arc::new(Float64Array::from(vec![2.72]))]).unwrap();
+        let batch =
+            RecordBatch::try_new(schema, vec![Arc::new(Float64Array::from(vec![2.72]))]).unwrap();
         assert_eq!(cell_to_sql_literal(&batch, 0, 0), "2.72");
     }
 
     #[test]
     fn test_cell_to_sql_literal_string() {
         let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Utf8, true)]));
-        let batch = RecordBatch::try_new(schema, vec![Arc::new(StringArray::from(vec!["hello"]))]).unwrap();
+        let batch =
+            RecordBatch::try_new(schema, vec![Arc::new(StringArray::from(vec!["hello"]))]).unwrap();
         assert_eq!(cell_to_sql_literal(&batch, 0, 0), "'hello'");
     }
 
     #[test]
     fn test_cell_to_sql_literal_string_escapes_quotes() {
         let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Utf8, true)]));
-        let batch = RecordBatch::try_new(schema, vec![Arc::new(StringArray::from(vec!["it's"]))]).unwrap();
+        let batch =
+            RecordBatch::try_new(schema, vec![Arc::new(StringArray::from(vec!["it's"]))]).unwrap();
         assert_eq!(cell_to_sql_literal(&batch, 0, 0), "'it''s'");
     }
 
     #[test]
     fn test_cell_to_sql_literal_bool() {
         let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Boolean, true)]));
-        let batch = RecordBatch::try_new(schema, vec![Arc::new(BooleanArray::from(vec![true]))]).unwrap();
+        let batch =
+            RecordBatch::try_new(schema, vec![Arc::new(BooleanArray::from(vec![true]))]).unwrap();
         assert_eq!(cell_to_sql_literal(&batch, 0, 0), "true");
     }
 
@@ -598,9 +796,11 @@ mod tests {
         use arrow::array::Int64Array;
         use arrow::datatypes::Field;
         let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, true)]));
-        let batch = RecordBatch::try_new(schema, vec![
-            Arc::new(Int64Array::from(vec![None, Some(5), None])) as ArrayRef,
-        ]).unwrap();
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![Arc::new(Int64Array::from(vec![None, Some(5), None])) as ArrayRef],
+        )
+        .unwrap();
         assert_eq!(cell_to_sql_literal(&batch, 0, 0), "NULL");
         assert_eq!(cell_to_sql_literal(&batch, 0, 1), "5");
         assert_eq!(cell_to_sql_literal(&batch, 0, 2), "NULL");
@@ -608,7 +808,7 @@ mod tests {
 
     #[test]
     fn test_cell_to_sql_literal_mixed_types() {
-        use arrow::array::{Int64Array, Float64Array, StringArray, BooleanArray};
+        use arrow::array::{BooleanArray, Float64Array, Int64Array, StringArray};
         use arrow::datatypes::Field;
 
         // Multi-column batch
@@ -618,12 +818,16 @@ mod tests {
             Field::new("name", DataType::Utf8, true),
             Field::new("active", DataType::Boolean, false),
         ]));
-        let batch = RecordBatch::try_new(schema, vec![
-            Arc::new(Int64Array::from(vec![42])) as ArrayRef,
-            Arc::new(Float64Array::from(vec![9.99])) as ArrayRef,
-            Arc::new(StringArray::from(vec!["test"])) as ArrayRef,
-            Arc::new(BooleanArray::from(vec![false])) as ArrayRef,
-        ]).unwrap();
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(Int64Array::from(vec![42])) as ArrayRef,
+                Arc::new(Float64Array::from(vec![9.99])) as ArrayRef,
+                Arc::new(StringArray::from(vec!["test"])) as ArrayRef,
+                Arc::new(BooleanArray::from(vec![false])) as ArrayRef,
+            ],
+        )
+        .unwrap();
         assert_eq!(cell_to_sql_literal(&batch, 0, 0), "42");
         assert_eq!(cell_to_sql_literal(&batch, 1, 0), "9.99");
         assert_eq!(cell_to_sql_literal(&batch, 2, 0), "'test'");

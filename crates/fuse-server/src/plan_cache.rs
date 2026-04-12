@@ -107,7 +107,11 @@ impl PlanCache {
     pub fn hit_rate(&self) -> f64 {
         let h = self.hits() as f64;
         let total = h + self.misses() as f64;
-        if total == 0.0 { 0.0 } else { h / total * 100.0 }
+        if total == 0.0 {
+            0.0
+        } else {
+            h / total * 100.0
+        }
     }
 }
 
@@ -152,7 +156,15 @@ mod tests {
     #[test]
     fn test_cache_hit() {
         let cache = PlanCache::new(60, 100);
-        let plan = CachedPlan::new(vec![("ds".into(), "t".into())], false, false, false, None, 0, vec![]);
+        let plan = CachedPlan::new(
+            vec![("ds".into(), "t".into())],
+            false,
+            false,
+            false,
+            None,
+            0,
+            vec![],
+        );
         cache.insert("SELECT * FROM ds.t".into(), plan);
         assert!(cache.get("SELECT * FROM ds.t").is_some());
     }
@@ -195,7 +207,15 @@ mod tests {
     #[test]
     fn test_normalize_whitespace() {
         let cache = PlanCache::new(60, 100);
-        let plan = CachedPlan::new(vec![("ds".into(), "t".into())], false, false, false, None, 0, vec![]);
+        let plan = CachedPlan::new(
+            vec![("ds".into(), "t".into())],
+            false,
+            false,
+            false,
+            None,
+            0,
+            vec![],
+        );
         cache.insert("SELECT  *  FROM  ds.t".into(), plan);
         assert!(cache.get("SELECT * FROM ds.t").is_some());
     }
@@ -203,7 +223,15 @@ mod tests {
     #[test]
     fn test_normalize_case() {
         let cache = PlanCache::new(60, 100);
-        let plan = CachedPlan::new(vec![("ds".into(), "t".into())], false, false, false, None, 0, vec![]);
+        let plan = CachedPlan::new(
+            vec![("ds".into(), "t".into())],
+            false,
+            false,
+            false,
+            None,
+            0,
+            vec![],
+        );
         cache.insert("SELECT * FROM ds.t".into(), plan);
         assert!(cache.get("select * from ds.t").is_some());
     }
@@ -273,7 +301,8 @@ impl ResultCache {
             let ttl = self.ttl;
             entries.retain(|_, v| v.created.elapsed() < ttl);
             if entries.len() >= self.max_size {
-                if let Some(oldest_key) = entries.iter()
+                if let Some(oldest_key) = entries
+                    .iter()
                     .min_by_key(|(_, v)| v.created)
                     .map(|(k, _)| k.clone())
                 {
@@ -281,10 +310,13 @@ impl ResultCache {
                 }
             }
         }
-        entries.insert(key, CachedResult {
-            response_json,
-            created: std::time::Instant::now(),
-        });
+        entries.insert(
+            key,
+            CachedResult {
+                response_json,
+                created: std::time::Instant::now(),
+            },
+        );
     }
 
     /// Invalidate all cached results that reference a specific datasource.
@@ -328,8 +360,14 @@ mod result_cache_tests {
     #[test]
     fn test_invalidate_by_datasource() {
         let cache = ResultCache::new(60, 10);
-        cache.insert("sql:SELECT * FROM cluster_a.logs".into(), serde_json::json!({}));
-        cache.insert("sql:SELECT * FROM dynamodb.users".into(), serde_json::json!({}));
+        cache.insert(
+            "sql:SELECT * FROM cluster_a.logs".into(),
+            serde_json::json!({}),
+        );
+        cache.insert(
+            "sql:SELECT * FROM dynamodb.users".into(),
+            serde_json::json!({}),
+        );
         assert_eq!(cache.len(), 2);
         cache.invalidate_by_datasource("cluster_a");
         assert_eq!(cache.len(), 1);

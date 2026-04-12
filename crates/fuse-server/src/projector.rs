@@ -4,14 +4,25 @@
 use serde_json::Value;
 
 /// Project (select) specific columns from rows.
-pub fn project(rows: &[Vec<Value>], columns: &[String], selected: &[String]) -> (Vec<String>, Vec<Vec<Value>>) {
-    let indices: Vec<usize> = selected.iter()
+pub fn project(
+    rows: &[Vec<Value>],
+    columns: &[String],
+    selected: &[String],
+) -> (Vec<String>, Vec<Vec<Value>>) {
+    let indices: Vec<usize> = selected
+        .iter()
         .filter_map(|s| columns.iter().position(|c| c == s))
         .collect();
     let new_cols: Vec<String> = indices.iter().map(|&i| columns[i].clone()).collect();
-    let new_rows: Vec<Vec<Value>> = rows.iter().map(|row| {
-        indices.iter().map(|&i| row.get(i).cloned().unwrap_or(Value::Null)).collect()
-    }).collect();
+    let new_rows: Vec<Vec<Value>> = rows
+        .iter()
+        .map(|row| {
+            indices
+                .iter()
+                .map(|&i| row.get(i).cloned().unwrap_or(Value::Null))
+                .collect()
+        })
+        .collect();
     (new_cols, new_rows)
 }
 

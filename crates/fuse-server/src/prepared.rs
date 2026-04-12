@@ -229,9 +229,15 @@ mod tests {
         let result = bind_positional(
             "SELECT $1, $10",
             &[
-                serde_json::json!("a"), serde_json::json!("b"), serde_json::json!("c"),
-                serde_json::json!("d"), serde_json::json!("e"), serde_json::json!("f"),
-                serde_json::json!("g"), serde_json::json!("h"), serde_json::json!("i"),
+                serde_json::json!("a"),
+                serde_json::json!("b"),
+                serde_json::json!("c"),
+                serde_json::json!("d"),
+                serde_json::json!("e"),
+                serde_json::json!("f"),
+                serde_json::json!("g"),
+                serde_json::json!("h"),
+                serde_json::json!("i"),
                 serde_json::json!("j"),
             ],
         );

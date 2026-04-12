@@ -1,4 +1,6 @@
-use fuse_core::connector::{FilterExpr, ComparisonOp, ScalarValue, AggregationExpr, AggFunction, SortExpr, SubQuery};
+use fuse_core::connector::{
+    AggFunction, AggregationExpr, ComparisonOp, FilterExpr, ScalarValue, SortExpr, SubQuery,
+};
 
 /// Translate a SubQuery into an OpenSearch JSON query body.
 pub fn translate_to_query_dsl(query: &SubQuery) -> serde_json::Value {
@@ -18,7 +20,10 @@ pub fn translate_to_query_dsl(query: &SubQuery) -> serde_json::Value {
 
     // Aggregations
     if !query.aggregations.is_empty() {
-        body.insert("aggs".into(), translate_aggregations(&query.aggregations, &query.group_by));
+        body.insert(
+            "aggs".into(),
+            translate_aggregations(&query.aggregations, &query.group_by),
+        );
         body.insert("size".into(), serde_json::json!(0));
     } else {
         // Sort (only when not aggregating)
@@ -155,11 +160,21 @@ fn translate_single_agg(agg: &AggregationExpr) -> serde_json::Value {
         AggFunction::CountDistinct | AggFunction::ApproxCountDistinct => {
             serde_json::json!({"cardinality": {"field": agg.field.as_deref().unwrap_or("_id")}})
         }
-        AggFunction::Sum => serde_json::json!({"sum": {"field": agg.field.as_deref().unwrap_or("_id")}}),
-        AggFunction::Avg => serde_json::json!({"avg": {"field": agg.field.as_deref().unwrap_or("_id")}}),
-        AggFunction::Min => serde_json::json!({"min": {"field": agg.field.as_deref().unwrap_or("_id")}}),
-        AggFunction::Max => serde_json::json!({"max": {"field": agg.field.as_deref().unwrap_or("_id")}}),
-        AggFunction::ApproxPercentile(p) => serde_json::json!({"percentiles": {"field": agg.field.as_deref().unwrap_or("_id"), "percents": [p]}}),
+        AggFunction::Sum => {
+            serde_json::json!({"sum": {"field": agg.field.as_deref().unwrap_or("_id")}})
+        }
+        AggFunction::Avg => {
+            serde_json::json!({"avg": {"field": agg.field.as_deref().unwrap_or("_id")}})
+        }
+        AggFunction::Min => {
+            serde_json::json!({"min": {"field": agg.field.as_deref().unwrap_or("_id")}})
+        }
+        AggFunction::Max => {
+            serde_json::json!({"max": {"field": agg.field.as_deref().unwrap_or("_id")}})
+        }
+        AggFunction::ApproxPercentile(p) => {
+            serde_json::json!({"percentiles": {"field": agg.field.as_deref().unwrap_or("_id"), "percents": [p]}})
+        }
     }
 }
 
@@ -184,7 +199,6 @@ fn scalar_to_json(value: &ScalarValue) -> serde_json::Value {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,7 +212,9 @@ mod tests {
             group_by: vec![],
             sort: vec![],
             limit: None,
-            having: None, passthrough: None, offset: None,
+            having: None,
+            passthrough: None,
+            offset: None,
         }
     }
 
@@ -233,7 +249,10 @@ mod tests {
             value: ScalarValue::Utf8("api-gateway".into()),
         });
         let dsl = translate_to_query_dsl(&q);
-        assert_eq!(dsl["query"], serde_json::json!({"term": {"service": "api-gateway"}}));
+        assert_eq!(
+            dsl["query"],
+            serde_json::json!({"term": {"service": "api-gateway"}})
+        );
     }
 
     #[test]
@@ -245,15 +264,26 @@ mod tests {
             value: ScalarValue::Int64(500),
         });
         let dsl = translate_to_query_dsl(&q);
-        assert_eq!(dsl["query"], serde_json::json!({"range": {"status": {"gte": 500}}}));
+        assert_eq!(
+            dsl["query"],
+            serde_json::json!({"range": {"status": {"gte": 500}}})
+        );
     }
 
     #[test]
     fn test_and_filter() {
         let mut q = make_query();
         q.filter = Some(FilterExpr::And(
-            Box::new(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Gte, value: ScalarValue::Int64(500) }),
-            Box::new(FilterExpr::Comparison { field: "service".into(), op: ComparisonOp::Eq, value: ScalarValue::Utf8("auth".into()) }),
+            Box::new(FilterExpr::Comparison {
+                field: "status".into(),
+                op: ComparisonOp::Gte,
+                value: ScalarValue::Int64(500),
+            }),
+            Box::new(FilterExpr::Comparison {
+                field: "service".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Utf8("auth".into()),
+            }),
         ));
         let dsl = translate_to_query_dsl(&q);
         let must = &dsl["query"]["bool"]["must"];
@@ -265,8 +295,16 @@ mod tests {
     fn test_or_filter() {
         let mut q = make_query();
         q.filter = Some(FilterExpr::Or(
-            Box::new(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(500) }),
-            Box::new(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(503) }),
+            Box::new(FilterExpr::Comparison {
+                field: "status".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Int64(500),
+            }),
+            Box::new(FilterExpr::Comparison {
+                field: "status".into(),
+                op: ComparisonOp::Eq,
+                value: ScalarValue::Int64(503),
+            }),
         ));
         let dsl = translate_to_query_dsl(&q);
         assert_eq!(dsl["query"]["bool"]["minimum_should_match"], 1);
@@ -275,9 +313,11 @@ mod tests {
     #[test]
     fn test_not_filter() {
         let mut q = make_query();
-        q.filter = Some(FilterExpr::Not(
-            Box::new(FilterExpr::Comparison { field: "status".into(), op: ComparisonOp::Eq, value: ScalarValue::Int64(200) }),
-        ));
+        q.filter = Some(FilterExpr::Not(Box::new(FilterExpr::Comparison {
+            field: "status".into(),
+            op: ComparisonOp::Eq,
+            value: ScalarValue::Int64(200),
+        })));
         let dsl = translate_to_query_dsl(&q);
         assert!(dsl["query"]["bool"]["must_not"].is_array());
     }
@@ -290,7 +330,10 @@ mod tests {
             values: vec![ScalarValue::Int64(500), ScalarValue::Int64(502)],
         });
         let dsl = translate_to_query_dsl(&q);
-        assert_eq!(dsl["query"]["terms"]["status"], serde_json::json!([500, 502]));
+        assert_eq!(
+            dsl["query"]["terms"]["status"],
+            serde_json::json!([500, 502])
+        );
     }
 
     #[test]
@@ -325,8 +368,14 @@ mod tests {
     fn test_sort() {
         let mut q = make_query();
         q.sort = vec![
-            SortExpr { field: "timestamp".into(), descending: true },
-            SortExpr { field: "status".into(), descending: false },
+            SortExpr {
+                field: "timestamp".into(),
+                descending: true,
+            },
+            SortExpr {
+                field: "status".into(),
+                descending: false,
+            },
         ];
         let dsl = translate_to_query_dsl(&q);
         let sort = dsl["sort"].as_array().unwrap();
@@ -337,7 +386,11 @@ mod tests {
     #[test]
     fn test_count_aggregation_with_group_by() {
         let mut q = make_query();
-        q.aggregations = vec![AggregationExpr { function: AggFunction::Count, field: None, alias: "cnt".into() }];
+        q.aggregations = vec![AggregationExpr {
+            function: AggFunction::Count,
+            field: None,
+            alias: "cnt".into(),
+        }];
         q.group_by = vec!["service".into()];
         let dsl = translate_to_query_dsl(&q);
         assert_eq!(dsl["size"], 0);
@@ -347,7 +400,11 @@ mod tests {
     #[test]
     fn test_avg_aggregation_no_group() {
         let mut q = make_query();
-        q.aggregations = vec![AggregationExpr { function: AggFunction::Avg, field: Some("duration_ms".into()), alias: "avg_dur".into() }];
+        q.aggregations = vec![AggregationExpr {
+            function: AggFunction::Avg,
+            field: Some("duration_ms".into()),
+            alias: "avg_dur".into(),
+        }];
         let dsl = translate_to_query_dsl(&q);
         assert_eq!(dsl["size"], 0);
         assert_eq!(dsl["aggs"]["avg_dur"]["avg"]["field"], "duration_ms");
@@ -375,7 +432,10 @@ mod tests {
         }];
         let dsl = translate_to_query_dsl(&q);
         assert_eq!(dsl["size"], 0);
-        assert_eq!(dsl["aggs"]["unique_users"]["cardinality"]["field"], "user_id");
+        assert_eq!(
+            dsl["aggs"]["unique_users"]["cardinality"]["field"],
+            "user_id"
+        );
     }
 
     // ── COUNT DISTINCT verification (tester) ──
@@ -411,8 +471,16 @@ mod tests {
     fn test_count_distinct_and_regular_count_together() {
         let mut q = make_query();
         q.aggregations = vec![
-            AggregationExpr { function: AggFunction::Count, field: None, alias: "total".into() },
-            AggregationExpr { function: AggFunction::CountDistinct, field: Some("host".into()), alias: "unique_hosts".into() },
+            AggregationExpr {
+                function: AggFunction::Count,
+                field: None,
+                alias: "total".into(),
+            },
+            AggregationExpr {
+                function: AggFunction::CountDistinct,
+                field: Some("host".into()),
+                alias: "unique_hosts".into(),
+            },
         ];
         let dsl = translate_to_query_dsl(&q);
         assert_eq!(dsl["size"], 0);
@@ -433,8 +501,11 @@ mod tests {
             ..make_query()
         };
         let dsl = translate_to_query_dsl(&q);
-        assert!(dsl["query"]["match"]["message"].is_object(),
-            "Contains should use native match query: {:?}", dsl["query"]);
+        assert!(
+            dsl["query"]["match"]["message"].is_object(),
+            "Contains should use native match query: {:?}",
+            dsl["query"]
+        );
         assert_eq!(dsl["query"]["match"]["message"]["query"], "OutOfMemory");
     }
 }

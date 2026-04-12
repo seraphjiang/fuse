@@ -6,7 +6,9 @@ use crate::plan_builder::PlanOp;
 /// Visit each node in a plan tree, returning collected results.
 pub fn visit<T>(op: &PlanOp, f: &dyn Fn(&PlanOp) -> Option<T>) -> Vec<T> {
     let mut results = Vec::new();
-    if let Some(v) = f(op) { results.push(v); }
+    if let Some(v) = f(op) {
+        results.push(v);
+    }
     match op {
         PlanOp::Filter { input, .. }
         | PlanOp::Project { input, .. }
@@ -35,14 +37,15 @@ pub fn has_filter(op: &PlanOp) -> bool {
     !visit(op, &|node| match node {
         PlanOp::Filter { .. } => Some(()),
         _ => None,
-    }).is_empty()
+    })
+    .is_empty()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::predicate::Predicate;
     use crate::plan_builder::PlanBuilder;
+    use crate::predicate::Predicate;
 
     #[test]
     fn test_node_count() {

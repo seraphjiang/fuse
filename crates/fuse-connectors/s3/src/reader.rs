@@ -12,8 +12,8 @@ use fuse_core::error::ConnectorError;
 
 /// Read the Arrow schema from Parquet file bytes (footer only).
 pub fn read_schema(data: &Bytes) -> Result<Schema, ConnectorError> {
-    let builder = ParquetRecordBatchReaderBuilder::try_new(data.clone())
-        .map_err(ConnectorError::schema)?;
+    let builder =
+        ParquetRecordBatchReaderBuilder::try_new(data.clone()).map_err(ConnectorError::schema)?;
     Ok(builder.schema().as_ref().clone())
 }
 
@@ -23,8 +23,8 @@ pub fn read_batches(
     projections: &[String],
     batch_size: usize,
 ) -> Result<Vec<RecordBatch>, ConnectorError> {
-    let mut builder = ParquetRecordBatchReaderBuilder::try_new(data.clone())
-        .map_err(ConnectorError::query)?;
+    let mut builder =
+        ParquetRecordBatchReaderBuilder::try_new(data.clone()).map_err(ConnectorError::query)?;
 
     // Apply projection if specified
     if !projections.is_empty() {
@@ -57,8 +57,8 @@ pub fn read_batches(
 
 /// Returns the number of row groups in a Parquet file.
 pub fn row_group_count(data: &Bytes) -> Result<usize, ConnectorError> {
-    let builder = ParquetRecordBatchReaderBuilder::try_new(data.clone())
-        .map_err(ConnectorError::query)?;
+    let builder =
+        ParquetRecordBatchReaderBuilder::try_new(data.clone()).map_err(ConnectorError::query)?;
     Ok(builder.metadata().num_row_groups())
 }
 
@@ -70,8 +70,8 @@ pub fn read_row_group(
     projections: &[String],
     batch_size: usize,
 ) -> Result<Vec<RecordBatch>, ConnectorError> {
-    let mut builder = ParquetRecordBatchReaderBuilder::try_new(data.clone())
-        .map_err(ConnectorError::query)?;
+    let mut builder =
+        ParquetRecordBatchReaderBuilder::try_new(data.clone()).map_err(ConnectorError::query)?;
 
     let total = builder.metadata().num_row_groups();
     if row_group >= total {
@@ -84,7 +84,12 @@ pub fn read_row_group(
         let parquet_schema = builder.parquet_schema().clone();
         let indices: Vec<usize> = projections
             .iter()
-            .filter_map(|name| parquet_schema.columns().iter().position(|c| c.name() == name))
+            .filter_map(|name| {
+                parquet_schema
+                    .columns()
+                    .iter()
+                    .position(|c| c.name() == name)
+            })
             .collect();
         if !indices.is_empty() {
             builder = builder.with_projection(ProjectionMask::leaves(&parquet_schema, indices));
@@ -97,18 +102,20 @@ pub fn read_row_group(
         .build()
         .map_err(ConnectorError::query)?;
 
-    reader.collect::<Result<Vec<_>, _>>().map_err(ConnectorError::query)
+    reader
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(ConnectorError::query)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use arrow::array::{Int64Array, StringArray};
     use arrow::datatypes::{DataType, Field, Schema};
     use arrow::record_batch::RecordBatch;
     use bytes::Bytes;
     use parquet::arrow::ArrowWriter;
+    use std::sync::Arc;
 
     /// Write a RecordBatch to in-memory Parquet bytes.
     fn to_parquet_bytes(batch: RecordBatch) -> Bytes {

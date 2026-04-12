@@ -194,8 +194,7 @@ impl FederatedConnector for MockConnector {
             })
             .collect();
 
-        let mut batch =
-            RecordBatch::try_new(schema, arrays).map_err(ConnectorError::query)?;
+        let mut batch = RecordBatch::try_new(schema, arrays).map_err(ConnectorError::query)?;
 
         // Apply limit
         if let Some(limit) = query.limit {
@@ -228,11 +227,7 @@ impl FederatedConnector for MockConnector {
 /// Assert that a RecordBatch has the expected column names.
 pub fn assert_batch_columns(batch: &RecordBatch, expected: &[&str]) {
     let schema = batch.schema();
-    let actual: Vec<&str> = schema
-        .fields()
-        .iter()
-        .map(|f| f.name().as_str())
-        .collect();
+    let actual: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
     assert_eq!(
         actual, expected,
         "column mismatch: got {actual:?}, expected {expected:?}"
@@ -297,7 +292,9 @@ pub async fn smoke_test(connector: &dyn FederatedConnector) -> Result<(), Connec
         group_by: vec![],
         sort: vec![],
         limit: Some(10),
-        having: None, offset: None, passthrough: None,
+        having: None,
+        offset: None,
+        passthrough: None,
     };
     let _batches = connector.execute(&query).await?;
 
@@ -311,10 +308,13 @@ mod tests {
     fn mock() -> MockConnector {
         MockConnector::new("test_ds")
             .with_table("logs", vec!["message", "level"])
-            .with_rows("logs", vec![
-                vec!["hello world", "INFO"],
-                vec!["something broke", "ERROR"],
-            ])
+            .with_rows(
+                "logs",
+                vec![
+                    vec!["hello world", "INFO"],
+                    vec!["something broke", "ERROR"],
+                ],
+            )
     }
 
     #[tokio::test]
@@ -352,7 +352,9 @@ mod tests {
             group_by: vec![],
             sort: vec![],
             limit: None,
-            having: None, offset: None, passthrough: None,
+            having: None,
+            offset: None,
+            passthrough: None,
         };
         let batches = m.execute(&q).await.unwrap();
         let total: usize = batches.iter().map(|b| b.num_rows()).sum();
@@ -371,7 +373,9 @@ mod tests {
             group_by: vec![],
             sort: vec![],
             limit: None,
-            having: None, offset: None, passthrough: None,
+            having: None,
+            offset: None,
+            passthrough: None,
         };
         assert!(m.execute(&q).await.is_err());
     }
@@ -394,7 +398,8 @@ mod tests {
                 Arc::new(StringArray::from(vec!["x"])),
                 Arc::new(StringArray::from(vec!["y"])),
             ],
-        ).unwrap();
+        )
+        .unwrap();
         assert_batch_columns(&batch, &["a", "b"]);
         assert_batch_row_count(&batch, 1);
         assert_batches_non_empty(&[batch]);

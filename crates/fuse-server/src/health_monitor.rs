@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Background connector health monitor — periodically checks all connectors.
 
+use fuse_core::registry::ConnectorRegistry;
 use std::sync::Arc;
 use std::time::Duration;
-use fuse_core::registry::ConnectorRegistry;
 
 /// Spawn a background task that checks connector health periodically.
 pub fn spawn_health_monitor(
