@@ -4549,31 +4549,18 @@ pub async fn similarity_handler(
     .into_response()
 }
 
-/// GET /api/fuse/routing/stats — smart routing stats based on query history.
+/// GET /api/fuse/routing/stats — smart routing stats from live latency tracking.
 pub async fn routing_stats_handler(
     axum::extract::State(state): axum::extract::State<Arc<AppState>>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
-    let router = crate::smart_routing::SmartRouter::new();
-
-    // Populate from query history
-    let history = state.history.recent(500);
-    for entry in &history {
-        if let Ok(refs) = parse_sql_sources(&entry.query) {
-            for (ds_id, _) in refs {
-                router.record(&ds_id, entry.latency_ms);
-            }
-        }
-    }
-
-    let stats = router.all_stats();
+    let stats = state.smart_router.all_stats();
     let connector_ids: Vec<&str> = stats.iter().map(|s| s.connector_id.as_str()).collect();
-    let fastest = router.fastest(&connector_ids);
+    let fastest = state.smart_router.fastest(&connector_ids);
 
     axum::Json(serde_json::json!({
         "stats": stats,
         "fastest_connector": fastest,
-        "analyzed_queries": history.len(),
     }))
     .into_response()
 }
@@ -4582,13 +4569,12 @@ pub async fn routing_stats_handler(
 
 /// GET /api/fuse/connectors/health-history — connector uptime/latency history.
 pub async fn connector_health_history_handler(
-    axum::extract::State(_state): axum::extract::State<Arc<AppState>>,
+    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
     let limit: usize = params.get("limit").and_then(|v| v.parse().ok()).unwrap_or(50);
-    let history = crate::connector_health_history::HealthHistory::new();
-    let summaries = history.all_summaries(limit);
+    let summaries = state.health_history.all_summaries(limit);
     axum::Json(serde_json::json!({
         "connectors": summaries,
     }))
@@ -4839,4 +4825,22 @@ pub async fn query_diff_handler(
         (Err(e), _) => error_json(StatusCode::BAD_REQUEST, format!("query_a failed: {}", e)).into_response(),
         (_, Err(e)) => error_json(StatusCode::BAD_REQUEST, format!("query_b failed: {}", e)).into_response(),
     }
+}
+
+/// GET /api/fuse/chaos — get current chaos testing configuration.
+pub async fn chaos_config_handler() -> axum::response::Response {
+    use axum::response::IntoResponse;
+    Json(crate::chaos::config()).into_response()
+}
+
+/// POST /api/fuse/chaos — enable/disable chaos testing with configuration.
+pub async fn chaos_enable_handler(
+    Json(cfg): Json<crate::chaos::ChaosConfig>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    crate::chaos::enable_with_config(&cfg);
+    Json(serde_json::json!({
+        "status": if cfg.enabled { "enabled" } else { "disabled" },
+        "config": crate::chaos::config(),
+    })).into_response()
 }
