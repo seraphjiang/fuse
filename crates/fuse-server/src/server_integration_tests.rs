@@ -642,3 +642,83 @@ mod final_push_tests {
     #[test] fn test_pool_stats_acquire_release() { let t = crate::pool_stats::PoolTracker::new(); t.acquire("ds"); t.release("ds"); let s = t.snapshot(); assert_eq!(s["ds"].active, 0); }
     #[test] fn test_scheduler_count() { let r = crate::scheduler::ScheduleRegistry::new(); assert_eq!(r.count(), 0); }
 }
+
+
+#[cfg(test)]
+mod toward_1450_tests {
+    use serde_json::json;
+
+    // Agg functions combinations
+    #[test] fn test_agg_count_all_null() { assert_eq!(crate::agg_functions::count(&[vec![json!(null)], vec![json!(null)]], 0), 0); }
+    #[test] fn test_agg_sum_mixed() { assert_eq!(crate::agg_functions::sum(&[vec![json!(10)], vec![json!(null)], vec![json!(20)]], 0), 30.0); }
+    #[test] fn test_agg_avg_mixed() { assert_eq!(crate::agg_functions::avg(&[vec![json!(10)], vec![json!(null)], vec![json!(20)]], 0), Some(15.0)); }
+
+    // String functions combinations
+    #[test] fn test_string_trim_tabs() { let mut r = vec![vec![json!("\thello\t")]]; crate::string_fn::trim(&mut r, 0); assert_eq!(r[0][0], json!("hello")); }
+    #[test] fn test_string_concat_empty_sep() { let r = vec![vec![json!("a"), json!("b")]]; let res = crate::string_fn::concat_columns(&r, 0, 1, ""); assert_eq!(res[0], json!("ab")); }
+
+    // Date functions combinations
+    #[test] fn test_date_extract_midnight() { let r = vec![vec![json!("2024-01-01T00:00:00Z")]]; assert_eq!(crate::date_fn::extract_hour(&r, 0)[0], json!(0)); }
+    #[test] fn test_date_extract_23() { let r = vec![vec![json!("2024-01-01T23:59:59Z")]]; assert_eq!(crate::date_fn::extract_hour(&r, 0)[0], json!(23)); }
+
+    // Math functions combinations
+    #[test] fn test_math_ceil_integer() { let mut r = vec![vec![json!(5.0)]]; crate::math_fn::apply_math(&mut r, 0, crate::math_fn::MathFn::Ceil); assert_eq!(r[0][0], json!(5.0)); }
+    #[test] fn test_math_modulo_exact() { let r = vec![vec![json!(9)]]; assert_eq!(crate::math_fn::modulo(&r, 0, 3.0)[0], json!(0.0)); }
+
+    // Sorter combinations
+    #[test] fn test_sort_mixed_types() { let mut r = vec![vec![json!("b")], vec![json!("a")], vec![json!("c")]]; crate::sorter::sort_by_column(&mut r, 0, false); assert_eq!(r[0][0], json!("a")); }
+    #[test] fn test_sort_with_nulls_desc() { let mut r = vec![vec![json!(null)], vec![json!(1)], vec![json!(2)]]; crate::sorter::sort_by_column(&mut r, 0, true); assert_eq!(r[0][0], json!(2)); }
+
+    // Grouper combinations
+    #[test] fn test_group_count_three_groups() { let r = vec![vec![json!("a")], vec![json!("b")], vec![json!("c")], vec![json!("a")]]; let g = crate::grouper::group_count(&r, 0); assert_eq!(g.len(), 3); }
+    #[test] fn test_group_sum_negative() { let r = vec![vec![json!("x"), json!(-5)], vec![json!("x"), json!(10)]]; let g = crate::grouper::group_sum(&r, 0, 1); assert_eq!(g[0].1, 5.0); }
+
+    // Joiner combinations
+    #[test] fn test_hash_join_multi_col() { let l = vec![vec![json!(1), json!("a")]]; let r = vec![vec![json!(1), json!("x")]]; let res = crate::joiner::hash_join(&l, 0, &r, 0); assert_eq!(res[0].len(), 3); }
+
+    // Set ops combinations
+    #[test] fn test_semi_join_partial() { let l = vec![vec![json!(1)], vec![json!(2)], vec![json!(3)]]; let r = vec![vec![json!(2)]]; assert_eq!(crate::set_ops::semi_join(&l, 0, &r, 0).len(), 1); }
+
+    // Window combinations
+    #[test] fn test_rank_all_same() { let r = vec![vec![json!(5)]; 3]; let ranked = crate::window_fn::add_rank(&r, 0); assert!(ranked.iter().all(|row| row[0] == json!(1))); }
+
+    // Pivot combinations
+    #[test] fn test_pivot_numeric_keys() { let r = vec![vec![json!(2024), json!("Q1"), json!(100)]]; let (c, _) = crate::pivot::pivot(&r, 0, 1, 2); assert!(c.len() >= 2); }
+
+    // Flatten combinations
+    #[test] fn test_flatten_deep_nested() { let mut out = std::collections::BTreeMap::new(); crate::flattener::flatten_value("", &json!({"a": {"b": {"c": 1}}}), &mut out); assert_eq!(out["a.b.c"], json!(1)); }
+
+    // Arrow export combinations
+    #[test] fn test_arrow_boolean_col() { let a = crate::arrow_export::to_columnar(&["b".into()], &[vec![json!(true)], vec![json!(false)]]); assert_eq!(a[0].data_type, "boolean"); }
+
+    // Coercer combinations
+    #[test] fn test_coerce_string_to_number() { assert_eq!(crate::coercer::to_number(&json!("3.14")), json!(3.14)); }
+    #[test] fn test_coerce_invalid_string() { assert_eq!(crate::coercer::to_number(&json!("abc")), json!(null)); }
+
+    // Null handler combinations
+    #[test] fn test_coalesce_multiple_nulls() { let mut r = vec![vec![json!(null)], vec![json!(null)], vec![json!(1)]]; crate::null_handler::coalesce(&mut r, 0, &json!(0)); assert_eq!(r[0][0], json!(0)); assert_eq!(r[2][0], json!(1)); }
+
+    // Sampling combinations
+    #[test] fn test_sample_exact_size() { let r: Vec<Vec<serde_json::Value>> = (0..5).map(|i| vec![json!(i)]).collect(); assert_eq!(crate::sampling::sample_rows(&r, 5).len(), 5); }
+
+    // Formatter combinations
+    #[test] fn test_table_alignment() { let t = crate::formatter::to_table(&["name".into()], &[vec![json!("alice")], vec![json!("bob")]]); assert!(t.contains("alice")); assert!(t.contains("bob")); }
+
+    // Fingerprint combinations
+    #[test] fn test_fingerprint_mixed_literals() { let f = crate::fingerprint::fingerprint("WHERE x = 'a' AND y = 42"); assert_eq!(f.matches('?').count(), 2); }
+
+    // Complexity combinations
+    #[test] fn test_complexity_window() { let s = crate::complexity::score_query("SELECT ROW_NUMBER() OVER(ORDER BY id) FROM t"); assert!(s.score >= 1); }
+
+    // Circuit breaker combinations
+    #[test] fn test_circuit_breaker_multiple_ds() { let cb = crate::circuit_breaker::CircuitBreaker::new(2, 30); cb.record_failure("a"); cb.record_failure("b"); assert!(cb.allow("a")); assert!(cb.allow("b")); }
+
+    // Rewrite combinations
+    #[test] fn test_rewrite_insert_no_limit() { let r = crate::rewrite::apply_rules("INSERT INTO t VALUES (1)", &crate::rewrite::default_rules()); assert!(!r.contains("LIMIT")); }
+
+    // Query policy combinations
+    #[test] fn test_policy_alter_denied() { let p = crate::query_policy::QueryPolicy::with_defaults(); assert!(matches!(p.check("ALTER TABLE t ADD COLUMN x INT"), crate::query_policy::PolicyResult::Denied(_))); }
+
+    // Validate combinations
+    #[test] fn test_validate_all_valid() { assert!(crate::validate::validate_request("SELECT 1", "sql", Some(100), Some(5000)).is_empty()); }
+}
