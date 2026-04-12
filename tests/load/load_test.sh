@@ -7,7 +7,7 @@
 set -euo pipefail
 
 BASE="${1:-https://fuse-playground-alb-556139505.us-west-2.elb.amazonaws.com}"
-CONCURRENCY="${2:-50}"
+CONCURRENCY="${2:-100}"
 TMPDIR=$(mktemp -d)
 trap "rm -rf $TMPDIR" EXIT
 
