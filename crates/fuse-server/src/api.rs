@@ -363,7 +363,11 @@ pub struct ErrorResponse {
 /// Map a connector/engine error string to an appropriate HTTP status code.
 fn connector_error_status(msg: &str) -> StatusCode {
     let lower = msg.to_lowercase();
-    if lower.contains("not found") || lower.contains("does not exist") {
+    if lower.contains("credential") || lower.contains("authentication") || lower.contains("security token") || lower.contains("signing") {
+        StatusCode::BAD_GATEWAY
+    } else if lower.contains("connection refused") || lower.contains("connect error") || lower.contains("unreachable") {
+        StatusCode::BAD_GATEWAY
+    } else if lower.contains("not found") || lower.contains("does not exist") {
         StatusCode::NOT_FOUND
     } else if lower.contains("timed out") || lower.contains("timeout") {
         StatusCode::REQUEST_TIMEOUT
@@ -1365,7 +1369,7 @@ pub async fn query_handler(
             let status = if e.contains("timed out") || e.contains("cancelled") {
                 StatusCode::GATEWAY_TIMEOUT
             } else {
-                StatusCode::INTERNAL_SERVER_ERROR
+                connector_error_status(&e)
             };
             error_json(status, e).into_response()
         }
@@ -4469,6 +4473,40 @@ mod tests {
     fn test_parse_on_keys_different_columns() {
         let q = "SELECT * FROM a.t1 JOIN b.t2 ON a.id = b.other_id";
         assert_eq!(super::parse_on_keys(q), Some(("id".to_string(), "other_id".to_string())));
+    }
+
+    #[test]
+    fn test_connector_error_status_not_found() {
+        assert_eq!(connector_error_status("table 'users' not found in DynamoDB"), StatusCode::NOT_FOUND);
+        assert_eq!(connector_error_status("index does not exist"), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_connector_error_status_timeout() {
+        assert_eq!(connector_error_status("connector 'ddb' timed out"), StatusCode::REQUEST_TIMEOUT);
+    }
+
+    #[test]
+    fn test_connector_error_status_auth() {
+        assert_eq!(connector_error_status("access denied for table"), StatusCode::FORBIDDEN);
+        assert_eq!(connector_error_status("unauthorized"), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn test_connector_error_status_credential() {
+        assert_eq!(connector_error_status("credential not found"), StatusCode::BAD_GATEWAY);
+        assert_eq!(connector_error_status("security token expired"), StatusCode::BAD_GATEWAY);
+    }
+
+    #[test]
+    fn test_connector_error_status_connection() {
+        assert_eq!(connector_error_status("connection refused"), StatusCode::BAD_GATEWAY);
+        assert_eq!(connector_error_status("host unreachable"), StatusCode::BAD_GATEWAY);
+    }
+
+    #[test]
+    fn test_connector_error_status_fallback() {
+        assert_eq!(connector_error_status("something unexpected"), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }
 
