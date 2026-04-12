@@ -53,6 +53,13 @@ connectors: []
 #   url: "https://opensearch:9200"
 #   tls:
 #     ca_cert: ""
+#
+# OTel Collector Mode (#1850) — ingest OTLP traces/metrics/logs on :9400/v1/*
+# - id: otel
+#   type: otel
+#   max_spans: 1000000
+#   max_metrics: 1000000
+#   max_logs: 1000000
 
 redis:
   enabled: false
@@ -62,14 +69,11 @@ tenants:
   enabled: false
 
 networkPolicy:
-  enabled: true
+  enabled: false
   allowFrom: []
   # - podSelector:
   #     matchLabels:
   #       app: my-client
-  # - namespaceSelector:
-  #     matchLabels:
-  #       name: ingress
 
 serviceAccount:
   create: true
@@ -80,10 +84,3 @@ podAnnotations: {}
 nodeSelector: {}
 tolerations: []
 affinity: {}
-
-networkPolicy:
-  enabled: false
-  allowFrom: []
-  # - podSelector:
-  #     matchLabels:
-  #       app: my-client
