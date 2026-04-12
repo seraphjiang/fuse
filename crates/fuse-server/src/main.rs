@@ -19,6 +19,8 @@ use fuse_connector_csv_json::CsvJsonConnectorFactory;
 use fuse_connector_redis::RedisConnectorFactory;
 use fuse_connector_duckdb::DuckDbConnectorFactory;
 use fuse_connector_otel::OtelConnectorFactory;
+use fuse_connector_delta_lake::DeltaLakeConnectorFactory;
+use fuse_connector_iceberg::IcebergConnectorFactory;
 
 use fuse_server::api::AppState;
 
@@ -53,6 +55,7 @@ async fn main() -> anyhow::Result<()> {
                 rate_limit_per_ip: 100,
                 cors_origins: vec![],
                 max_result_bytes: 104_857_600,
+                cache: Default::default(),
             },
             connector: vec![],
         }
@@ -64,6 +67,8 @@ async fn main() -> anyhow::Result<()> {
         "s3", "s3-o11y", "prometheus", "cloudwatch", "redis", "csv-json",
         "mongodb", "influxdb", "clickhouse", "kafka", "redshift", "duckdb", "sqlite",
         "otel",
+        "delta-lake",
+        "iceberg",
     ];
     if let Err(e) = config.validate(&known_types) {
         tracing::error!("{e}");
@@ -89,6 +94,8 @@ async fn main() -> anyhow::Result<()> {
         Box::new(RedisConnectorFactory),
         Box::new(DuckDbConnectorFactory),
         Box::new(OtelConnectorFactory),
+        Box::new(DeltaLakeConnectorFactory),
+        Box::new(IcebergConnectorFactory),
     ];
 
     let mut otel_store: Option<Arc<fuse_connector_otel::store::OtelStore>> = None;
@@ -147,8 +154,8 @@ async fn main() -> anyhow::Result<()> {
         history: Arc::new(fuse_server::history::QueryHistory::new()),
         running_queries: Arc::new(fuse_server::api::RunningQueries::new()),
         saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
-        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
-        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(config.engine.cache.plan_cache_ttl_secs, config.engine.cache.plan_cache_max_entries)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(config.engine.cache.result_cache_ttl_secs, config.engine.cache.result_cache_max_entries)),
         tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
         audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
         adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
@@ -174,6 +181,7 @@ async fn main() -> anyhow::Result<()> {
         webhook_registry: Arc::new(fuse_server::webhook::WebhookRegistry::new()),
         compilation_cache: Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)),
         cdc_tracker: Arc::new(fuse_server::cdc::CdcTracker::new(10000)),
+        adaptive_cache: Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)),
     });
 
     // Security: warn if tenants enabled without auth

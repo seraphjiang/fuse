@@ -30,7 +30,53 @@ pub struct EngineConfig {
     /// Maximum result size in bytes. 0 = unlimited. Default: 100MB.
     #[serde(default = "default_max_result_bytes")]
     pub max_result_bytes: u64,
+    /// Cache configuration.
+    #[serde(default)]
+    pub cache: CacheConfig,
 }
+
+/// Cache tuning parameters, configurable via `[engine.cache]` in fuse.toml.
+#[derive(Debug, Deserialize)]
+pub struct CacheConfig {
+    /// Max entries in the query result cache. Default: 1024.
+    #[serde(default = "default_cache_max_entries")]
+    pub max_entries: usize,
+    /// Max memory budget for query result cache in bytes. Default: 256MB.
+    #[serde(default = "default_cache_max_bytes")]
+    pub max_bytes: usize,
+    /// Plan cache TTL in seconds. Default: 300.
+    #[serde(default = "default_plan_cache_ttl")]
+    pub plan_cache_ttl_secs: u64,
+    /// Plan cache max entries. Default: 1000.
+    #[serde(default = "default_plan_cache_max_entries")]
+    pub plan_cache_max_entries: usize,
+    /// Result cache TTL in seconds. Default: 60.
+    #[serde(default = "default_result_cache_ttl")]
+    pub result_cache_ttl_secs: u64,
+    /// Result cache max entries. Default: 500.
+    #[serde(default = "default_result_cache_max_entries")]
+    pub result_cache_max_entries: usize,
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self {
+            max_entries: default_cache_max_entries(),
+            max_bytes: default_cache_max_bytes(),
+            plan_cache_ttl_secs: default_plan_cache_ttl(),
+            plan_cache_max_entries: default_plan_cache_max_entries(),
+            result_cache_ttl_secs: default_result_cache_ttl(),
+            result_cache_max_entries: default_result_cache_max_entries(),
+        }
+    }
+}
+
+fn default_cache_max_entries() -> usize { 1024 }
+fn default_cache_max_bytes() -> usize { 256 * 1024 * 1024 }
+fn default_plan_cache_ttl() -> u64 { 300 }
+fn default_plan_cache_max_entries() -> usize { 1000 }
+fn default_result_cache_ttl() -> u64 { 60 }
+fn default_result_cache_max_entries() -> usize { 500 }
 
 fn default_bind() -> String {
     "0.0.0.0:9400".to_string()
@@ -468,5 +514,54 @@ url = "secret://fuse/prod/pg-url"
 "#;
         let cfg: FuseConfig = toml::from_str(toml).unwrap();
         assert!(cfg.validate(KNOWN).is_ok());
+    }
+
+    #[test]
+    fn test_cache_config_defaults() {
+        let toml = r#"[engine]"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.engine.cache.max_entries, 1024);
+        assert_eq!(cfg.engine.cache.max_bytes, 256 * 1024 * 1024);
+        assert_eq!(cfg.engine.cache.plan_cache_ttl_secs, 300);
+        assert_eq!(cfg.engine.cache.plan_cache_max_entries, 1000);
+        assert_eq!(cfg.engine.cache.result_cache_ttl_secs, 60);
+        assert_eq!(cfg.engine.cache.result_cache_max_entries, 500);
+    }
+
+    #[test]
+    fn test_cache_config_custom() {
+        let toml = r#"
+[engine]
+
+[engine.cache]
+max_entries = 2048
+max_bytes = 536870912
+plan_cache_ttl_secs = 600
+plan_cache_max_entries = 5000
+result_cache_ttl_secs = 120
+result_cache_max_entries = 1000
+"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.engine.cache.max_entries, 2048);
+        assert_eq!(cfg.engine.cache.max_bytes, 536_870_912);
+        assert_eq!(cfg.engine.cache.plan_cache_ttl_secs, 600);
+        assert_eq!(cfg.engine.cache.plan_cache_max_entries, 5000);
+        assert_eq!(cfg.engine.cache.result_cache_ttl_secs, 120);
+        assert_eq!(cfg.engine.cache.result_cache_max_entries, 1000);
+    }
+
+    #[test]
+    fn test_cache_config_partial_override() {
+        let toml = r#"
+[engine]
+
+[engine.cache]
+max_entries = 512
+"#;
+        let cfg: FuseConfig = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.engine.cache.max_entries, 512);
+        // Rest should be defaults
+        assert_eq!(cfg.engine.cache.plan_cache_ttl_secs, 300);
+        assert_eq!(cfg.engine.cache.result_cache_max_entries, 500);
     }
 }

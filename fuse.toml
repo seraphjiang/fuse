@@ -13,6 +13,15 @@ cors_origins = []
 # Max result size in bytes. 0 = unlimited. Default: 100MB.
 max_result_bytes = 104857600
 
+# ── Cache tuning ──
+# [engine.cache]
+# max_entries = 1024              # Query result cache max entries
+# max_bytes = 268435456           # Query result cache memory budget (256MB)
+# plan_cache_ttl_secs = 300       # Plan cache TTL
+# plan_cache_max_entries = 1000   # Plan cache max entries
+# result_cache_ttl_secs = 60      # Result cache TTL
+# result_cache_max_entries = 500  # Result cache max entries
+
 # ── Telemetry (OpenTelemetry OTLP export) ──
 # [engine.telemetry]
 # enabled = false
