@@ -101,6 +101,7 @@ pub mod sanitize;
 pub mod sampling;
 pub mod scheduler;
 pub mod schema_discovery;
+pub mod security_headers;
 pub mod shared_state;
 pub mod sse_stream;
 pub mod streaming;
@@ -327,5 +328,6 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .layer(TraceLayer::new_for_http()
             .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(Level::INFO))
             .on_response(tower_http::trace::DefaultOnResponse::new().level(Level::INFO)))
+        .layer(middleware::from_fn(security_headers::security_headers_middleware))
         .with_state(state)
 }

@@ -156,6 +156,13 @@ test_tenant_unknown_ds_no_leak() {
 
 # ── Security Edge Cases ──
 
+test_security_headers_present() {
+    local hdrs
+    hdrs=$(curl -sk --max-time 10 -o /dev/null -D - "$BASE/api/fuse/health" 2>/dev/null)
+    echo "$hdrs" | grep -qi "x-content-type-options: nosniff" &&
+    echo "$hdrs" | grep -qi "x-frame-options: DENY"
+}
+
 test_sql_injection_multi_stmt() {
     [ "$(http_post_status "/api/fuse/query" '{"query":"SELECT 1; DROP TABLE users; --","format":"sql"}')" = "400" ]
 }
@@ -193,6 +200,7 @@ run_test "Query accessible (editor)"          test_rbac_query_accessible
 run_test "All datasources visible (no tenant)" test_tenant_all_ds_visible
 run_test "Cross-DS query no 403"              test_tenant_cross_ds_no_403
 run_test "Unknown DS no tenant leak"          test_tenant_unknown_ds_no_leak
+run_test "Security headers on responses"      test_security_headers_present
 run_test "SQL injection multi-stmt → 400"     test_sql_injection_multi_stmt
 run_test "Oversized payload handled"          test_oversized_payload
 run_test "Empty body → 400/422"               test_empty_body_rejected
