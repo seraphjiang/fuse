@@ -299,3 +299,61 @@ func (c *Client) Predict(query string) (map[string]interface{}, error) {
 	var out map[string]interface{}
 	return out, json.Unmarshal(data, &out)
 }
+
+// ── Scheduled Queries ──
+
+type Schedule struct {
+	ID string `json:"id"`; Query string `json:"query"`; Cron string `json:"cron"`; Format string `json:"format"`
+}
+
+func (c *Client) Schedules() ([]Schedule, error) {
+	data, err := c.do("GET", "/api/fuse/schedules", nil); if err != nil { return nil, err }
+	var out []Schedule; return out, json.Unmarshal(data, &out)
+}
+func (c *Client) CreateSchedule(s Schedule) (*Schedule, error) {
+	data, err := c.do("POST", "/api/fuse/schedules", s); if err != nil { return nil, err }
+	var out Schedule; return &out, json.Unmarshal(data, &out)
+}
+func (c *Client) DeleteSchedule(id string) error { _, err := c.do("DELETE", "/api/fuse/schedules/"+id, nil); return err }
+
+// ── Data Quality Rules ──
+
+type QualityRule struct {
+	ID string `json:"id"`; Datasource string `json:"datasource"`; Table string `json:"table"`
+	RuleType string `json:"rule_type"`; Column string `json:"column,omitempty"`; Threshold float64 `json:"threshold,omitempty"`
+}
+
+func (c *Client) QualityRules() ([]QualityRule, error) {
+	data, err := c.do("GET", "/api/fuse/quality/rules", nil); if err != nil { return nil, err }
+	var out []QualityRule; return out, json.Unmarshal(data, &out)
+}
+func (c *Client) CreateQualityRule(r QualityRule) (*QualityRule, error) {
+	data, err := c.do("POST", "/api/fuse/quality/rules", r); if err != nil { return nil, err }
+	var out QualityRule; return &out, json.Unmarshal(data, &out)
+}
+func (c *Client) DeleteQualityRule(id string) error { _, err := c.do("DELETE", "/api/fuse/quality/rules/"+id, nil); return err }
+
+// ── Query Lineage ──
+
+type LineageNode struct { ID string `json:"id"`; Label string `json:"label"`; NodeType string `json:"node_type"` }
+type LineageEdge struct { Source string `json:"source"`; Target string `json:"target"` }
+type LineageResult struct { Nodes []LineageNode `json:"nodes"`; Edges []LineageEdge `json:"edges"` }
+
+func (c *Client) Lineage(query, format string) (*LineageResult, error) {
+	data, err := c.do("POST", "/api/fuse/lineage", map[string]string{"query": query, "format": format}); if err != nil { return nil, err }
+	var out LineageResult; return &out, json.Unmarshal(data, &out)
+}
+
+// ── Query Replay ──
+
+type Recording struct { ID string `json:"id"`; Query string `json:"query"` }
+
+func (c *Client) Recordings() ([]Recording, error) {
+	data, err := c.do("GET", "/api/fuse/replay/recordings", nil); if err != nil { return nil, err }
+	var out []Recording; return out, json.Unmarshal(data, &out)
+}
+func (c *Client) RecordQuery(query, format string) (*Recording, error) {
+	data, err := c.do("POST", "/api/fuse/replay/record", map[string]string{"query": query, "format": format}); if err != nil { return nil, err }
+	var out Recording; return &out, json.Unmarshal(data, &out)
+}
+func (c *Client) ClearRecordings() error { _, err := c.do("DELETE", "/api/fuse/replay/recordings", nil); return err }

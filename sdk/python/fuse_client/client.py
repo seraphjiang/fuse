@@ -247,9 +247,36 @@ class FuseClient:
         return self._request("GET", f"/api/fuse/predict?query={query}")
 
 
+        super().__init__(f"HTTP {status_code}: {body}")
+
+    # ── Scheduled Queries ──
+
+    def schedules(self) -> list: return self._request("GET", "/api/fuse/schedules")
+    def create_schedule(self, id: str, query: str, cron: str, format: str = "sql") -> dict:
+        return self._request("POST", "/api/fuse/schedules", {"id": id, "query": query, "cron": cron, "format": format})
+    def delete_schedule(self, id: str) -> None: self._request("DELETE", f"/api/fuse/schedules/{id}")
+
+    # ── Data Quality Rules ──
+
+    def quality_rules(self) -> list: return self._request("GET", "/api/fuse/quality/rules")
+    def create_quality_rule(self, id: str, datasource: str, table: str, rule_type: str, **kwargs) -> dict:
+        return self._request("POST", "/api/fuse/quality/rules", {"id": id, "datasource": datasource, "table": table, "rule_type": rule_type, **kwargs})
+    def delete_quality_rule(self, id: str) -> None: self._request("DELETE", f"/api/fuse/quality/rules/{id}")
+
+    # ── Query Lineage ──
+
+    def lineage(self, query: str, format: str = "sql") -> dict:
+        return self._request("POST", "/api/fuse/lineage", {"query": query, "format": format})
+
+    # ── Query Replay ──
+
+    def recordings(self) -> list: return self._request("GET", "/api/fuse/replay/recordings")
+    def record_query(self, query: str, format: str = "sql") -> dict:
+        return self._request("POST", "/api/fuse/replay/record", {"query": query, "format": format})
+    def clear_recordings(self) -> None: self._request("DELETE", "/api/fuse/replay/recordings")
+
 class FuseError(Exception):
     """Error from the Fuse API."""
     def __init__(self, status_code: int, body: str):
         self.status_code = status_code
         self.body = body
-        super().__init__(f"HTTP {status_code}: {body}")

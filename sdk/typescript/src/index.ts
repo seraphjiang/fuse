@@ -246,6 +246,32 @@ export class FuseClient {
   async predict(query: string): Promise<{ estimated_ms: number; confidence: string }> {
     return this.request('GET', `/api/fuse/predict?query=${encodeURIComponent(query)}`);
   }
+
+  // ── Scheduled Queries ──
+  async schedules(): Promise<unknown[]> { return this.request('GET', '/api/fuse/schedules'); }
+  async createSchedule(id: string, query: string, cron: string, format = 'sql'): Promise<unknown> {
+    return this.request('POST', '/api/fuse/schedules', { id, query, cron, format });
+  }
+  async deleteSchedule(id: string): Promise<unknown> { return this.request('DELETE', `/api/fuse/schedules/${id}`); }
+
+  // ── Data Quality Rules ──
+  async qualityRules(): Promise<unknown[]> { return this.request('GET', '/api/fuse/quality/rules'); }
+  async createQualityRule(rule: { id: string; datasource: string; table: string; rule_type: string; column?: string; threshold?: number }): Promise<unknown> {
+    return this.request('POST', '/api/fuse/quality/rules', rule);
+  }
+  async deleteQualityRule(id: string): Promise<unknown> { return this.request('DELETE', `/api/fuse/quality/rules/${id}`); }
+
+  // ── Query Lineage ──
+  async lineage(query: string, format = 'sql'): Promise<{ nodes: unknown[]; edges: unknown[] }> {
+    return this.request('POST', '/api/fuse/lineage', { query, format });
+  }
+
+  // ── Query Replay ──
+  async recordings(): Promise<unknown[]> { return this.request('GET', '/api/fuse/replay/recordings'); }
+  async recordQuery(query: string, format = 'sql'): Promise<unknown> {
+    return this.request('POST', '/api/fuse/replay/record', { query, format });
+  }
+  async clearRecordings(): Promise<unknown> { return this.request('DELETE', '/api/fuse/replay/recordings'); }
 }
 
 export default FuseClient;
