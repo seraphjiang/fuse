@@ -304,3 +304,102 @@ async fn test_replay_respects_max_capacity() {
     let json = json_body(resp).await;
     assert_eq!(json.as_array().unwrap().len(), 5);
 }
+
+// ── Info endpoint ──
+
+#[tokio::test]
+async fn test_info_returns_200() {
+    let app = build_app();
+    let resp = app.oneshot(
+        Request::builder().uri("/api/fuse/info").body(Body::empty()).unwrap()
+    ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = json_body(resp).await;
+    assert!(json.is_object());
+}
+
+// ── Cache clear endpoint ──
+
+#[tokio::test]
+async fn test_cache_clear_returns_ok() {
+    let app = build_app();
+    let resp = app.oneshot(
+        Request::builder()
+            .method("DELETE").uri("/api/fuse/cache")
+            .body(Body::empty()).unwrap()
+    ).await.unwrap();
+    assert!(resp.status().is_success());
+}
+
+// ── Federation status endpoint ──
+
+#[tokio::test]
+async fn test_federation_status_returns_200() {
+    let app = build_app();
+    let resp = app.oneshot(
+        Request::builder().uri("/api/fuse/federation").body(Body::empty()).unwrap()
+    ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+// ── Multi-query endpoint ──
+
+#[tokio::test]
+async fn test_multi_query_single_statement() {
+    let app = build_app();
+    // Multi-query with a single statement delegates to normal handler
+    // With no connectors, it should return an error about unknown datasource
+    let body = serde_json::json!({ "query": "SELECT 1", "format": "sql" });
+    let resp = app.oneshot(
+        Request::builder()
+            .method("POST").uri("/api/fuse/multi")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap())).unwrap()
+    ).await.unwrap();
+    // Returns some response (may be error since no datasources, but endpoint works)
+    assert!(resp.status().as_u16() < 500);
+}
+
+// ── Advisor endpoint ──
+
+#[tokio::test]
+async fn test_advisor_no_history_returns_200() {
+    let app = build_app();
+    let resp = app.oneshot(
+        Request::builder().uri("/api/fuse/advisor").body(Body::empty()).unwrap()
+    ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+// ── Webhook CRUD ──
+
+#[tokio::test]
+async fn test_webhook_create_and_list() {
+    let app = build_app();
+    let webhook = serde_json::json!({
+        "name": "error-alert",
+        "query": "SELECT count(*) FROM ds.logs WHERE status >= 500",
+        "format": "sql",
+        "condition": { "type": "rows_returned" },
+        "callback_url": "https://hook.example.com/alert"
+    });
+
+    // Create
+    let resp = app.clone().oneshot(
+        Request::builder()
+            .method("POST").uri("/api/fuse/webhooks")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&webhook).unwrap())).unwrap()
+    ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let created = json_body(resp).await;
+    assert!(created["id"].as_str().is_some());
+
+    // List
+    let resp = app.oneshot(
+        Request::builder().uri("/api/fuse/webhooks").body(Body::empty()).unwrap()
+    ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = json_body(resp).await;
+    assert_eq!(json.as_array().unwrap().len(), 1);
+}
