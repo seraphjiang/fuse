@@ -33,6 +33,9 @@ autoscaling:
   minReplicas: 2
   maxReplicas: 10
   targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  scaleUpStabilization: 60
+  scaleDownStabilization: 300
 
 config:
   bind: "0.0.0.0:9400"
