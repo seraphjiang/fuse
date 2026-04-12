@@ -109,6 +109,10 @@ pub struct AppState {
     pub column_rbac: Option<Arc<fuse_core::security::ResultFilter>>,
     /// API key rotation manager with grace period support.
     pub key_rotation: Arc<crate::auth::KeyRotationManager>,
+    /// Smart query routing — picks fastest connector by historical latency.
+    pub smart_router: Arc<crate::smart_routing::SmartRouter>,
+    /// Connector health history — tracks uptime and latency over time.
+    pub health_history: Arc<crate::connector_health_history::HealthHistory>,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.
@@ -4438,6 +4442,35 @@ pub async fn similarity_handler(
         "groups": groups,
         "total_groups": groups.len(),
         "analyzed_queries": entries.len(),
+    }))
+    .into_response()
+}
+
+/// GET /api/fuse/routing/stats — smart routing stats based on query history.
+pub async fn routing_stats_handler(
+    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let router = crate::smart_routing::SmartRouter::new();
+
+    // Populate from query history
+    let history = state.history.recent(500);
+    for entry in &history {
+        if let Ok(refs) = parse_sql_sources(&entry.query) {
+            for (ds_id, _) in refs {
+                router.record(&ds_id, entry.latency_ms);
+            }
+        }
+    }
+
+    let stats = router.all_stats();
+    let connector_ids: Vec<&str> = stats.iter().map(|s| s.connector_id.as_str()).collect();
+    let fastest = router.fastest(&connector_ids);
+
+    axum::Json(serde_json::json!({
+        "stats": stats,
+        "fastest_connector": fastest,
+        "analyzed_queries": history.len(),
     }))
     .into_response()
 }

@@ -333,6 +333,7 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/api/fuse/advisor", get(api::query_advisor_handler))
         .route("/api/fuse/autotune", get(api::autotune_handler))
         .route("/api/fuse/similarity", get(api::similarity_handler))
+        .route("/api/fuse/routing/stats", get(api::routing_stats_handler))
         .route("/api/fuse/views/{name}", get(api::get_view).delete(api::delete_view))
         .route("/api/fuse/views/{name}/refresh", post(api::refresh_view))
         .route("/api/fuse/trace/{trace_id}", get(api::trace_handler))
