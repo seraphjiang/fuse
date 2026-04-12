@@ -318,6 +318,8 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .nest("/api/fuse/alert-rules", build_alert_routes(state.clone()))
         // Webhook subscriptions — event-driven query monitoring
         .nest("/api/fuse/webhooks", webhook::webhook_routes())
+        // CDC — change data capture for materialized view refresh
+        .nest("/api/fuse/cdc", cdc::cdc_routes())
         .layer(middleware::from_fn(rate_limit::rate_limit_middleware))
         .layer(axum::Extension(rl))
         .layer(middleware::from_fn(auth::auth_middleware))

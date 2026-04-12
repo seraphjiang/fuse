@@ -211,6 +211,74 @@ async fn test_relationships_endpoint_returns_200() {
     assert!(json.is_array() || json.is_object());
 }
 
+// ── CDC (#1852) ──
+
+#[tokio::test]
+async fn test_cdc_status_returns_200() {
+    let app = build_app();
+    let resp = app.oneshot(
+        Request::builder().uri("/api/fuse/cdc/status").body(Body::empty()).unwrap()
+    ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = json_body(resp).await;
+    assert!(json["stats"].is_object() || json["stats"].is_null() || json.is_object());
+}
+
+#[tokio::test]
+async fn test_cdc_ingest_event() {
+    let app = build_app();
+    let event = serde_json::json!({
+        "datasource": "ds1", "table": "users",
+        "change_type": "insert", "timestamp": 1700000000
+    });
+    let resp = app.oneshot(
+        Request::builder()
+            .method("POST").uri("/api/fuse/cdc/events")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&event).unwrap())).unwrap()
+    ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = json_body(resp).await;
+    assert_eq!(json["accepted"], true);
+}
+
+// ── Predict (#1850) ──
+
+#[tokio::test]
+async fn test_predict_empty_history() {
+    let app = build_app();
+    let resp = app.oneshot(
+        Request::builder()
+            .uri("/api/fuse/predict?query=SELECT%20*%20FROM%20ds.logs")
+            .body(Body::empty()).unwrap()
+    ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = json_body(resp).await;
+    assert_eq!(json["confidence"], "none");
+}
+
+#[tokio::test]
+async fn test_predict_missing_query_param() {
+    let app = build_app();
+    let resp = app.oneshot(
+        Request::builder().uri("/api/fuse/predict").body(Body::empty()).unwrap()
+    ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+// ── Webhooks (#1811) ──
+
+#[tokio::test]
+async fn test_webhooks_list_empty() {
+    let app = build_app();
+    let resp = app.oneshot(
+        Request::builder().uri("/api/fuse/webhooks").body(Body::empty()).unwrap()
+    ).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = json_body(resp).await;
+    assert!(json.as_array().unwrap().is_empty());
+}
+
 // ── Replay multiple recordings respect max capacity ──
 
 #[tokio::test]
