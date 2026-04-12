@@ -11,3 +11,9 @@ tests/
 LICENSE
 .gitignore
 docker-compose*.yml
+grafana-plugin/
+vscode-extension/
+sdk/
+docs-site/
+coverage/
+deploy/
