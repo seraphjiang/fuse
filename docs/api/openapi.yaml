@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Fuse — Federated Query Engine API
   description: REST API for the Fuse cross-datasource federated query engine.
-  version: 0.4.0
+  version: 2.0.0
   license:
     name: Apache-2.0
     url: https://www.apache.org/licenses/LICENSE-2.0
@@ -944,6 +944,54 @@ components:
         stale:
           type: boolean
 
+    WebhookSubscription:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        query: { type: string }
+        format: { type: string }
+        condition:
+          $ref: "#/components/schemas/WebhookCondition"
+        callback_url: { type: string, format: uri }
+        enabled: { type: boolean }
+        fire_count: { type: integer }
+        last_evaluated: { type: integer, nullable: true }
+        last_error: { type: string, nullable: true }
+
+    WebhookCondition:
+      oneOf:
+        - type: object
+          properties:
+            type: { type: string, enum: [rows_returned] }
+        - type: object
+          properties:
+            type: { type: string, enum: [threshold] }
+            column: { type: string }
+            operator: { type: string, enum: [gt, gte, lt, lte, eq] }
+            value: { type: number }
+
+    Relationship:
+      type: object
+      properties:
+        left_datasource: { type: string }
+        left_table: { type: string }
+        left_column: { type: string }
+        right_datasource: { type: string }
+        right_table: { type: string }
+        right_column: { type: string }
+        method: { type: string, enum: [name_match, naming_convention] }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+
+    ChangeEvent:
+      type: object
+      required: [datasource, table, change_type, timestamp]
+      properties:
+        datasource: { type: string }
+        table: { type: string }
+        change_type: { type: string, enum: [insert, update, delete, schema_change] }
+        timestamp: { type: integer }
+
   responses:
     BadRequest:
       description: Invalid request
@@ -996,3 +1044,226 @@ components:
                 type: object
                 properties:
                   cleared: { type: boolean }
+
+  # ── Sprint 18: GraphQL (#1810) ──
+
+  /api/fuse/graphql:
+    get:
+      summary: GraphiQL playground
+      description: Interactive GraphQL IDE for exploring the Fuse schema.
+      operationId: graphiql
+      tags: [GraphQL]
+      responses:
+        "200":
+          description: GraphiQL HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+    post:
+      summary: Execute GraphQL query
+      description: |
+        Full GraphQL API. Query types: datasources, schemas, fields, savedQueries,
+        history, views, health. Mutations: executeQuery, saveQuery, deleteSavedQuery,
+        createView, deleteView.
+      operationId: graphql
+      tags: [GraphQL]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string, description: GraphQL query string }
+                variables: { type: object }
+                operationName: { type: string }
+      responses:
+        "200":
+          description: GraphQL response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object }
+                  errors: { type: array, items: { type: object } }
+
+  # ── Sprint 18: Webhooks (#1811) ──
+
+  /api/fuse/webhooks:
+    get:
+      summary: List webhook subscriptions
+      operationId: listWebhooks
+      tags: [Webhooks]
+      responses:
+        "200":
+          description: List of webhook subscriptions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WebhookSubscription"
+    post:
+      summary: Create webhook subscription
+      operationId: createWebhook
+      tags: [Webhooks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, query, condition, callback_url]
+              properties:
+                name: { type: string }
+                query: { type: string }
+                format: { type: string, default: sql }
+                condition:
+                  $ref: "#/components/schemas/WebhookCondition"
+                callback_url: { type: string, format: uri }
+      responses:
+        "201":
+          description: Webhook created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+
+  /api/fuse/webhooks/{id}:
+    get:
+      summary: Get webhook subscription
+      operationId: getWebhook
+      tags: [Webhooks]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Webhook details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSubscription"
+        "404":
+          description: Not found
+    delete:
+      summary: Delete webhook subscription
+      operationId: deleteWebhook
+      tags: [Webhooks]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deleted
+        "404":
+          description: Not found
+
+  /api/fuse/webhooks/{id}/test:
+    post:
+      summary: Test-fire a webhook
+      description: Execute the query, evaluate condition, deliver if met.
+      operationId: testWebhook
+      tags: [Webhooks]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Test result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fired: { type: boolean }
+                  row_count: { type: integer }
+                  delivery_error: { type: string, nullable: true }
+
+  # ── Sprint 18: Schema Relationships (#1831) ──
+
+  /api/fuse/relationships:
+    get:
+      summary: Discover cross-datasource relationships
+      description: Auto-detect foreign key relationships by column name patterns and type compatibility.
+      operationId: discoverRelationships
+      tags: [Schema]
+      responses:
+        "200":
+          description: Discovered relationships
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Relationship"
+
+  # ── Sprint 18: CDC (#1852) ──
+
+  /api/fuse/cdc/events:
+    post:
+      summary: Ingest a change event
+      description: Record a datasource change and mark affected materialized views for refresh.
+      operationId: ingestCdcEvent
+      tags: [CDC]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeEvent"
+      responses:
+        "200":
+          description: Event accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted: { type: boolean }
+                  affected_views: { type: array, items: { type: string } }
+
+  /api/fuse/cdc/status:
+    get:
+      summary: CDC tracker status
+      operationId: cdcStatus
+      tags: [CDC]
+      responses:
+        "200":
+          description: CDC stats and pending views
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stats:
+                    type: object
+                    properties:
+                      tracked_views: { type: integer }
+                      pending_refreshes: { type: integer }
+                      total_events: { type: integer }
+                  pending_views: { type: array, items: { type: string } }
+                  recent_events:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ChangeEvent"
+
+    ChangeEvent:
+      type: object
+      required: [datasource, table, change_type, timestamp]
+      properties:
+        datasource: { type: string }
+        table: { type: string }
+        change_type: { type: string, enum: [insert, update, delete, schema_change] }
+        timestamp: { type: integer }
