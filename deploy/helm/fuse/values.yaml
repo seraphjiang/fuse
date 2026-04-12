@@ -110,3 +110,12 @@ metrics:
 
 configValidation:
   enabled: false
+
+resourceQuota:
+  enabled: false
+  hard:
+    requests.cpu: "8"
+    requests.memory: 8Gi
+    limits.cpu: "16"
+    limits.memory: 16Gi
+    pods: "20"
