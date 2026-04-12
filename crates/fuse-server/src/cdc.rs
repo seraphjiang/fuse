@@ -442,11 +442,10 @@ pub async fn list_dependencies(
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
     let deps = state.cdc_tracker.dependencies.read().unwrap();
-    let result: HashMap<&String, Vec<(&String, &String)>> = deps
+    let result: HashMap<String, Vec<(String, String)>> = deps
         .iter()
         .map(|(name, sources)| {
-            let src_list: Vec<(&String, &String)> = sources.iter().map(|(d, t)| (d, t)).collect();
-            (name, src_list)
+            (name.clone(), sources.iter().map(|(d, t)| (d.clone(), t.clone())).collect())
         })
         .collect();
     axum::Json(serde_json::json!(result)).into_response()
