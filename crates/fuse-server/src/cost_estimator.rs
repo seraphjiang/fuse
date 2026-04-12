@@ -27,9 +27,9 @@ pub struct QueryCostEstimate {
 pub fn estimate_cost(connector_type: &str, datasource: &str, estimated_rows: u64, estimated_bytes: u64) -> CostEstimate {
     let (cost, breakdown) = match connector_type {
         "athena" => {
-            let gb = estimated_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
-            let cost = gb * 0.005; // $5/TB = $0.005/GB
-            (cost, format!("{:.2} GB scanned × $5/TB", gb))
+            let tb = estimated_bytes as f64 / (1024.0 * 1024.0 * 1024.0 * 1024.0);
+            let cost = tb * 5.0; // $5/TB
+            (cost, format!("{:.4} TB scanned × $5/TB", tb))
         }
         "bigquery" => {
             let tb = estimated_bytes as f64 / (1024.0 * 1024.0 * 1024.0 * 1024.0);

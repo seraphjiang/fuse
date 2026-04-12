@@ -86,13 +86,15 @@ impl CompilationCache {
 
     pub fn get(&self, fingerprint: &str) -> Option<CompiledQuery> {
         let entries = self.entries.lock().unwrap();
-        let entry = entries.get(fingerprint)?;
-        if entry.compiled_at.elapsed() < self.ttl {
-            self.hits.fetch_add(1, Ordering::Relaxed);
-            Some(entry.clone())
-        } else {
-            self.misses.fetch_add(1, Ordering::Relaxed);
-            None
+        match entries.get(fingerprint) {
+            Some(entry) if entry.compiled_at.elapsed() < self.ttl => {
+                self.hits.fetch_add(1, Ordering::Relaxed);
+                Some(entry.clone())
+            }
+            _ => {
+                self.misses.fetch_add(1, Ordering::Relaxed);
+                None
+            }
         }
     }
 

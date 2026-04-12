@@ -28,6 +28,7 @@ members = [
     "crates/fuse-connectors/delta-lake",
     "crates/fuse-connectors/iceberg",
     "crates/fuse-connectors/duckdb",
+    "crates/fuse-connectors/otel",
     "crates/fuse-connector-sdk",
     "crates/fuse-server",
     "crates/fuse-cli",

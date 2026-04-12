@@ -58,8 +58,8 @@ mod tests {
         let batch = sample_batch();
         let bytes = batches_to_ipc(&[batch]).unwrap();
         assert!(!bytes.is_empty());
-        // Arrow IPC magic: "ARROW1"
-        assert_eq!(&bytes[..6], b"ARROW1");
+        // Arrow IPC stream format starts with schema message (0xFFFFFFFF continuation marker)
+        assert_eq!(&bytes[..4], &[255, 255, 255, 255]);
     }
 
     #[test]

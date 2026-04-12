@@ -639,7 +639,7 @@ mod final_push_tests {
     #[test] fn test_cost_tracker_all_empty() { let t = crate::cost_tracker::CostTracker::new(); assert!(t.all().is_empty()); }
     #[test] fn test_rate_monitor_count() { let m = crate::rate_monitor::RateMonitor::new(60); m.record(); assert_eq!(m.count(), 1); }
     #[test] fn test_pool_stats_acquire_release() { let t = crate::pool_stats::PoolTracker::new(); t.acquire("ds"); t.release("ds"); let s = t.snapshot(); assert_eq!(s["ds"].active, 0); }
-    #[test] fn test_scheduler_count() { let r = crate::scheduler::ScheduleRegistry::new(100); assert_eq!(r.count(), 0); }
+    #[test] fn test_scheduler_count() { let r = crate::scheduler::ScheduleRegistry::new(100); assert_eq!(r.len(), 0); }
 }
 
 

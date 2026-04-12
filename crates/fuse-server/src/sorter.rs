@@ -3,14 +3,25 @@
 
 use serde_json::Value;
 
-/// Sort rows by a column index.
+/// Sort rows by a column index. Nulls always sort last.
 pub fn sort_by_column(rows: &mut [Vec<Value>], col_idx: usize, descending: bool) {
     rows.sort_by(|a, b| {
         let va = a.get(col_idx);
         let vb = b.get(col_idx);
-        let cmp = compare_values(va, vb);
-        if descending { cmp.reverse() } else { cmp }
+        match (is_null(va), is_null(vb)) {
+            (true, true) => std::cmp::Ordering::Equal,
+            (true, false) => std::cmp::Ordering::Greater,
+            (false, true) => std::cmp::Ordering::Less,
+            (false, false) => {
+                let cmp = compare_values(va, vb);
+                if descending { cmp.reverse() } else { cmp }
+            }
+        }
     });
+}
+
+fn is_null(v: Option<&Value>) -> bool {
+    matches!(v, None | Some(Value::Null))
 }
 
 fn compare_values(a: Option<&Value>, b: Option<&Value>) -> std::cmp::Ordering {

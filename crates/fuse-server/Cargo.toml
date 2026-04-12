@@ -13,6 +13,7 @@ fuse-connector-s3-o11y = { path = "../fuse-connectors/s3-o11y" }
 fuse-connector-dynamodb = { path = "../fuse-connectors/dynamodb" }
 fuse-connector-postgres = { path = "../fuse-connectors/postgres" }
 fuse-connector-duckdb = { path = "../fuse-connectors/duckdb" }
+fuse-connector-otel = { path = "../fuse-connectors/otel" }
 fuse-connector-elasticsearch = { path = "../fuse-connectors/elasticsearch" }
 fuse-connector-mongodb = { path = "../fuse-connectors/mongodb" }
 fuse-connector-influxdb = { path = "../fuse-connectors/influxdb" }
@@ -42,6 +43,8 @@ tracing-opentelemetry = { workspace = true }
 tower-http = { version = "0.6", features = ["trace", "cors"] }
 tower = { version = "0.5", features = ["util", "limit"] }
 governor = { version = "0.6", features = ["std", "dashmap"] }
+async-graphql = "7"
+async-graphql-axum = "7"
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 toml = { workspace = true }
