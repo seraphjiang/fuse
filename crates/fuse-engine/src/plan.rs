@@ -67,6 +67,39 @@ impl PlanNode {
         }
         lines.join("\n")
     }
+
+    /// Render as a tree with box-drawing characters.
+    pub fn to_tree(&self) -> String {
+        fn render(node: &PlanNode, prefix: &str, is_last: bool, out: &mut String) {
+            let connector = if prefix.is_empty() { "" } else if is_last { "└── " } else { "├── " };
+            out.push_str(prefix);
+            out.push_str(connector);
+            out.push_str(&node.op);
+            if let Some(d) = &node.detail {
+                out.push_str(&format!(" [{}]", d));
+            }
+            if let Some(r) = node.estimated_rows {
+                out.push_str(&format!(" (est. {} rows)", r));
+            }
+            if let Some(c) = node.estimated_cost {
+                out.push_str(&format!(" (cost: {:.1})", c));
+            }
+            out.push('\n');
+            let child_prefix = if prefix.is_empty() {
+                String::new()
+            } else if is_last {
+                format!("{}    ", prefix)
+            } else {
+                format!("{}│   ", prefix)
+            };
+            for (i, child) in node.children.iter().enumerate() {
+                render(child, &child_prefix, i == node.children.len() - 1, out);
+            }
+        }
+        let mut out = String::new();
+        render(self, "", true, &mut out);
+        out
+    }
 }
 
 /// Build a plan for a single-source query.

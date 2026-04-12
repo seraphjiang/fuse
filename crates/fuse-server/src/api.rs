@@ -107,6 +107,8 @@ pub struct AppState {
     pub adaptive_cache: Arc<crate::adaptive_cache::AdaptiveCache>,
     /// Column-level RBAC — deny or mask sensitive fields per role.
     pub column_rbac: Option<Arc<fuse_core::security::ResultFilter>>,
+    /// API key rotation manager with grace period support.
+    pub key_rotation: Arc<crate::auth::KeyRotationManager>,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.
@@ -291,6 +293,9 @@ pub struct DatasourceInfo {
 #[derive(Serialize)]
 pub struct ExplainResponse {
     pub plan: String,
+    /// Tree-formatted plan with box-drawing characters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_display: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan_tree: Option<fuse_engine::plan::PlanNode>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1851,11 +1856,8 @@ pub async fn explain_handler(
                 None
             };
 
-            let plan_text = if req.query.to_lowercase().contains("tree") {
-                plan_tree.to_tree()
-            } else {
-                plan_tree.to_text(0)
-            };
+            let plan_text = plan_tree.to_text(0);
+            let plan_tree_text = plan_tree.to_tree();
             let complexity = crate::complexity::score_query(&req.query);
 
             // Compute dollar cost estimate from connector types + estimated bytes
@@ -1891,6 +1893,7 @@ pub async fn explain_handler(
             }).await;
             Json(ExplainResponse {
                 plan: plan_text,
+                plan_display: Some(plan_tree_text),
                 plan_tree: Some(plan_tree),
                 execution_profile,
                 complexity: Some(complexity),
@@ -2911,6 +2914,40 @@ pub async fn history_handler(State(state): State<Arc<AppState>>) -> impl IntoRes
 }
 
 /// GET /api/fuse/stats — aggregated query statistics.
+/// POST /api/fuse/keys/rotate — rotate an API key with grace period.
+///
+/// Body: `{"identity": "alice", "grace_period_secs": 3600}`
+/// Returns the new key. Old key remains valid during grace period.
+pub async fn rotate_key_handler(
+    State(state): State<Arc<AppState>>,
+    auth_identity: Option<Extension<crate::auth::AuthIdentity>>,
+    Json(req): Json<RotateKeyRequest>,
+) -> impl IntoResponse {
+    // Only admins can rotate keys
+    if let Err(resp) = crate::auth::require_role(
+        auth_identity.as_ref().map(|e| &e.0),
+        crate::auth::Role::Admin,
+        true,
+    ) {
+        return resp.into_response();
+    }
+
+    let grace = req.grace_period_secs.unwrap_or(3600);
+    match state.key_rotation.rotate(&req.identity, grace) {
+        Some(result) => Json(result).into_response(),
+        None => error_json(
+            StatusCode::NOT_FOUND,
+            format!("no API key found for identity '{}'", req.identity),
+        ).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct RotateKeyRequest {
+    pub identity: String,
+    pub grace_period_secs: Option<u64>,
+}
+
 /// GET /api/fuse/audit — query audit log entries.
 ///
 /// Query params: `limit` (default 50), `identity` (filter by tenant/user),
