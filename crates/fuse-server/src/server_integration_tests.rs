@@ -926,3 +926,21 @@ mod push_1600 {
     // Validate
     #[test] fn test_validate_timeout_ok() { assert!(crate::validate::validate_request("SELECT 1", "sql", None, Some(60000)).is_empty()); }
 }
+
+
+#[cfg(test)]
+mod milestone_1600 {
+    use serde_json::json;
+    #[test] fn test_merge_four_sources() { let r: Vec<_> = (0..4).map(|i| (vec!["x".into()], vec![vec![json!(i)]])).collect(); let (_, rows) = crate::aggregator::merge_results(r); assert_eq!(rows.len(), 4); }
+    #[test] fn test_distinct_three_dupes() { let r = vec![vec![json!(1)], vec![json!(1)], vec![json!(1)]]; assert_eq!(crate::distinct::distinct(r).len(), 1); }
+    #[test] fn test_group_sum_three() { let r = vec![vec![json!("a"), json!(1)], vec![json!("a"), json!(2)], vec![json!("a"), json!(3)]]; assert_eq!(crate::grouper::group_sum(&r, 0, 1)[0].1, 6.0); }
+    #[test] fn test_left_join_all_null() { let r = crate::joiner::left_join(&[vec![json!(1)], vec![json!(2)]], 0, &[], 0, 2); assert_eq!(r.len(), 2); assert_eq!(r[0][1], json!(null)); }
+    #[test] fn test_intersect_partial() { let l = vec![vec![json!(1)], vec![json!(2)], vec![json!(3)]]; let r = vec![vec![json!(2)], vec![json!(4)]]; assert_eq!(crate::intersect::intersect(&l, &r).len(), 1); }
+    #[test] fn test_except_partial() { let l = vec![vec![json!(1)], vec![json!(2)]]; let r = vec![vec![json!(1)]]; assert_eq!(crate::intersect::except(&l, &r).len(), 1); }
+    #[test] fn test_window_row_number_three() { let (_, r) = crate::window_fn::add_row_number(&[vec![json!("a")], vec![json!("b")], vec![json!("c")]], "rn"); assert_eq!(r[2][0], json!(3)); }
+    #[test] fn test_coerce_number_to_string() { let mut r = vec![vec![json!(42)]]; crate::coercer::coerce_column(&mut r, 0, "string"); assert_eq!(r[0][0], json!("42")); }
+    #[test] fn test_null_fill_mixed() { let mut r = vec![vec![json!(1), json!(null)], vec![json!(null), json!(2)]]; crate::null_handler::fill_nulls(&mut r, &json!(0)); assert_eq!(r[0][1], json!(0)); assert_eq!(r[1][0], json!(0)); }
+    #[test] fn test_sample_large() { let r: Vec<Vec<serde_json::Value>> = (0..1000).map(|i| vec![json!(i)]).collect(); assert_eq!(crate::sampling::sample_rows(&r, 10).len(), 10); }
+    #[test] fn test_flatten_mixed() { let rows = vec![json!({"a": 1}), json!({"a": 2, "b": 3})]; let (c, r) = crate::flattener::flatten_rows(&rows); assert!(c.contains(&"b".to_string())); assert_eq!(r[0][c.iter().position(|x| x == "b").unwrap()], json!(null)); }
+    #[test] fn test_arrow_string_col() { let a = crate::arrow_export::to_columnar(&["s".into()], &[vec![json!("hello")]]); assert_eq!(a[0].data_type, "utf8"); }
+}
