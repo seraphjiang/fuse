@@ -31,6 +31,36 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Playground: line numbers, column sorting, run selection, keyboard shortcuts modal
 - Playground: OTel collector widget and adaptive cache stats on Status page
 - CORS configuration support (`cors_origins` in `[engine]`)
+- Cost Explorer playground page with per-connector breakdown
+- GraphQL Playground page with snippets, variables, prettify
+- Webhooks management page with DLQ viewer
+- Arrow IPC download button on query results
+- Mobile responsive layout (480px phone breakpoint)
+- Side-by-side diff viewer on Replay page
+- 21 playground pages total
+- 197 UI regression checks
+- 7 E2E test scripts in CI
+- Smart query routing — latency-based connector selection
+- Connection pooling stats per connector
+- Chaos testing module for connector failure simulation
+- RBAC role hierarchy (Admin ⊃ Editor ⊃ Viewer)
+- Column-level RBAC for sensitive data
+- Audit logging for all query paths
+- NL-to-SQL prompt injection defenses
+- HMAC request signing
+- Security headers (CSP, HSTS, X-Frame-Options)
+- GraphQL subscriptions for real-time streaming
+- Webhook retry with exponential backoff + dead letter queue
+- SDK async support (Python, TypeScript, Go)
+- REST API versioning (/v1/, /v2/)
+- Query result compression (gzip/zstd)
+- Connector health history tracking
+- 10 docs-site pages for new features
+
+### Fixed
+- 5 security vulnerabilities in webhook/GraphQL code
+- CSV injection in export
+- Prompt injection in NL-to-SQL
 - Max result size limit (`max_result_bytes`) for OOM prevention
 - Connector retry with exponential backoff
 - Federation health aggregated into `/api/fuse/health`
