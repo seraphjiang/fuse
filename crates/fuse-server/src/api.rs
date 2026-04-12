@@ -363,9 +363,7 @@ pub struct ErrorResponse {
 /// Map a connector/engine error string to an appropriate HTTP status code.
 fn connector_error_status(msg: &str) -> StatusCode {
     let lower = msg.to_lowercase();
-    if lower.contains("credential") || lower.contains("authentication") || lower.contains("security token") || lower.contains("signing") {
-        StatusCode::BAD_GATEWAY
-    } else if lower.contains("connection refused") || lower.contains("connect error") || lower.contains("unreachable") {
+    if lower.contains("credential") || lower.contains("authentication") || lower.contains("security token") || lower.contains("signing") || lower.contains("connection refused") || lower.contains("connect error") || lower.contains("unreachable") {
         StatusCode::BAD_GATEWAY
     } else if lower.contains("not found") || lower.contains("does not exist") {
         StatusCode::NOT_FOUND
@@ -4924,7 +4922,12 @@ pub async fn query_diff_handler(
             let connector = state.registry.get(ds_id)
                 .ok_or_else(|| format!("datasource '{}' not found", ds_id))?;
             let sq = build_sub_query(&query, format, table).map_err(|e| e.to_string())?;
-            let batches = connector.execute(&sq).await.map_err(|e| e.to_string())?;
+            let mut batches = connector.execute(&sq).await.map_err(|e| e.to_string())?;
+            // Apply column-level RBAC
+            if let Some(ref rbac) = state.column_rbac {
+                let user_ctx = fuse_core::security::UserContext::default();
+                batches = rbac.filter_batches(batches, ds_id, table, &user_ctx).unwrap_or_default();
+            }
             all_batches.extend(batches);
         }
         Ok(batches_to_json(&all_batches))
@@ -4964,10 +4967,17 @@ pub async fn chaos_config_handler() -> axum::response::Response {
 }
 
 /// POST /api/fuse/chaos — enable/disable chaos testing with configuration.
+/// Requires Admin role — chaos injection affects all queries system-wide.
 pub async fn chaos_enable_handler(
+    auth_identity: Option<Extension<crate::auth::AuthIdentity>>,
     Json(cfg): Json<crate::chaos::ChaosConfig>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
+    if let Err(resp) = crate::auth::require_role(
+        auth_identity.as_ref().map(|e| &e.0),
+        crate::auth::Role::Admin,
+        auth_identity.is_some(),
+    ) { return resp.into_response(); }
     crate::chaos::enable_with_config(&cfg);
     Json(serde_json::json!({
         "status": if cfg.enabled { "enabled" } else { "disabled" },
