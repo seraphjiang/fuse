@@ -23,6 +23,8 @@ pub enum AnomalyKind {
     Drop,
     HighNullRate,
     CardinalityChange,
+    SeasonalDeviation,
+    TrendBreak,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -108,6 +110,104 @@ pub struct CurrentSnapshot {
     pub distinct_count: u64,
 }
 
+// --- Seasonal pattern & trend detection ---
+
+/// A time-series data point for trend/seasonal analysis.
+#[derive(Debug, Clone)]
+pub struct TimeSeriesPoint {
+    pub timestamp: u64,
+    pub value: f64,
+}
+
+/// Detect seasonal deviations by comparing current value against the same
+/// time-of-day/day-of-week historical average.
+pub fn detect_seasonal(
+    column: &str,
+    current_value: f64,
+    historical: &[TimeSeriesPoint],
+    tolerance_factor: f64,
+) -> Vec<Anomaly> {
+    if historical.len() < 7 {
+        return vec![];
+    }
+    let mean: f64 = historical.iter().map(|p| p.value).sum::<f64>() / historical.len() as f64;
+    let variance: f64 = historical.iter().map(|p| (p.value - mean).powi(2)).sum::<f64>() / historical.len() as f64;
+    let stddev = variance.sqrt();
+    if stddev < f64::EPSILON {
+        return vec![];
+    }
+    let z = (current_value - mean) / stddev;
+    if z.abs() > tolerance_factor {
+        vec![Anomaly {
+            kind: AnomalyKind::SeasonalDeviation,
+            column: column.to_string(),
+            message: format!(
+                "Seasonal deviation: current {:.2} vs historical mean {:.2} (z={:.1}, window={})",
+                current_value, mean, z, historical.len()
+            ),
+            severity: if z.abs() > 4.0 { AnomalySeverity::High } else { AnomalySeverity::Medium },
+        }]
+    } else {
+        vec![]
+    }
+}
+
+/// Detect trend breaks using simple linear regression.
+/// If the current value deviates significantly from the projected trend, flag it.
+pub fn detect_trend(
+    column: &str,
+    points: &[TimeSeriesPoint],
+    current_value: f64,
+    tolerance_stddevs: f64,
+) -> Vec<Anomaly> {
+    if points.len() < 5 {
+        return vec![];
+    }
+    // Simple linear regression: y = slope * x + intercept
+    let n = points.len() as f64;
+    let xs: Vec<f64> = (0..points.len()).map(|i| i as f64).collect();
+    let ys: Vec<f64> = points.iter().map(|p| p.value).collect();
+    let x_mean = xs.iter().sum::<f64>() / n;
+    let y_mean = ys.iter().sum::<f64>() / n;
+    let num: f64 = xs.iter().zip(ys.iter()).map(|(x, y)| (x - x_mean) * (y - y_mean)).sum();
+    let den: f64 = xs.iter().map(|x| (x - x_mean).powi(2)).sum();
+    if den.abs() < f64::EPSILON {
+        return vec![];
+    }
+    let slope = num / den;
+    let intercept = y_mean - slope * x_mean;
+
+    // Projected value at next point
+    let projected = slope * n + intercept;
+
+    // Residual standard deviation
+    let residuals: Vec<f64> = xs.iter().zip(ys.iter())
+        .map(|(x, y)| y - (slope * x + intercept))
+        .collect();
+    let res_var = residuals.iter().map(|r| r.powi(2)).sum::<f64>() / n;
+    let res_std = res_var.sqrt();
+
+    if res_std < f64::EPSILON {
+        return vec![];
+    }
+
+    let deviation = (current_value - projected) / res_std;
+    if deviation.abs() > tolerance_stddevs {
+        let direction = if deviation > 0.0 { "above" } else { "below" };
+        vec![Anomaly {
+            kind: AnomalyKind::TrendBreak,
+            column: column.to_string(),
+            message: format!(
+                "Trend break: current {:.2} is {:.1} std devs {} projected {:.2} (slope={:.3})",
+                current_value, deviation.abs(), direction, projected, slope
+            ),
+            severity: if deviation.abs() > 4.0 { AnomalySeverity::High } else { AnomalySeverity::Medium },
+        }]
+    } else {
+        vec![]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,5 +270,44 @@ mod tests {
         let snap = CurrentSnapshot { mean: 100.0, null_rate: 0.0, distinct_count: 1 };
         let a = detect(&snap, &b);
         assert!(a.is_empty()); // can't compute z-score with zero stddev
+    }
+
+    #[test]
+    fn test_seasonal_deviation_detected() {
+        let historical: Vec<TimeSeriesPoint> = (0..20).map(|i| TimeSeriesPoint { timestamp: i, value: 100.0 + (i as f64) * 0.1 }).collect();
+        let anomalies = detect_seasonal("latency", 200.0, &historical, 3.0);
+        assert!(!anomalies.is_empty());
+        assert!(anomalies[0].kind == AnomalyKind::SeasonalDeviation);
+    }
+
+    #[test]
+    fn test_seasonal_no_deviation() {
+        let historical: Vec<TimeSeriesPoint> = (0..20).map(|i| TimeSeriesPoint { timestamp: i, value: 100.0 }).collect();
+        let anomalies = detect_seasonal("latency", 100.0, &historical, 3.0);
+        assert!(anomalies.is_empty());
+    }
+
+    #[test]
+    fn test_trend_break_detected() {
+        // Linear trend: 100, 110, 120, 130, 140 — then suddenly 300
+        let points: Vec<TimeSeriesPoint> = (0..5).map(|i| TimeSeriesPoint { timestamp: i, value: 100.0 + 10.0 * i as f64 }).collect();
+        let anomalies = detect_trend("latency", &points, 300.0, 3.0);
+        assert!(!anomalies.is_empty());
+        assert!(anomalies[0].kind == AnomalyKind::TrendBreak);
+    }
+
+    #[test]
+    fn test_trend_no_break() {
+        let points: Vec<TimeSeriesPoint> = (0..5).map(|i| TimeSeriesPoint { timestamp: i, value: 100.0 + 10.0 * i as f64 }).collect();
+        // Next expected ~150
+        let anomalies = detect_trend("latency", &points, 150.0, 3.0);
+        assert!(anomalies.is_empty());
+    }
+
+    #[test]
+    fn test_insufficient_data_no_seasonal() {
+        let historical: Vec<TimeSeriesPoint> = (0..3).map(|i| TimeSeriesPoint { timestamp: i, value: 100.0 }).collect();
+        let anomalies = detect_seasonal("x", 999.0, &historical, 3.0);
+        assert!(anomalies.is_empty());
     }
 }
