@@ -3096,7 +3096,7 @@ pub async fn stats_handler(State(state): State<Arc<AppState>>) -> impl IntoRespo
 
 /// GET /api/fuse/pool-stats — connection pool utilization per connector.
 pub async fn pool_stats_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    Json(serde_json::json!({ "pool_stats": [] }))
+    Json(serde_json::json!({ "pool_stats": state.pool_tracker.snapshot() }))
 }
 
 /// DELETE /api/fuse/cache — flush result and plan caches.
@@ -4680,4 +4680,15 @@ pub async fn routing_handler(
         "connectors": stats,
         "fastest": fastest,
     })).into_response()
+}
+
+/// GET /api/fuse/load-scenarios — list available load test scenario presets.
+pub async fn load_scenarios_handler() -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let scenarios = vec![
+        crate::load_scenarios::preset_spike(),
+        crate::load_scenarios::preset_soak(),
+        crate::load_scenarios::preset_stress(),
+    ];
+    axum::Json(serde_json::json!({ "scenarios": scenarios })).into_response()
 }
