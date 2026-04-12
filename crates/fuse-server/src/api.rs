@@ -4457,18 +4457,18 @@ mod tests {
     #[test]
     fn test_parse_on_key_explicit() {
         let q = "SELECT l.service, u.name FROM cluster_a.logs l JOIN dynamodb.user_profiles u ON l.user_id = u.user_id";
-        assert_eq!(super::parse_on_key(q), Some("user_id".to_string()));
+        assert_eq!(super::parse_on_keys(q), Some(("user_id".to_string(), "user_id".to_string())));
     }
 
     #[test]
     fn test_parse_on_key_missing() {
-        assert_eq!(super::parse_on_key("SELECT * FROM a.t1 JOIN b.t2"), None);
+        assert_eq!(super::parse_on_keys("SELECT * FROM a.t1 JOIN b.t2"), None);
     }
 
     #[test]
-    fn test_parse_on_key_different_columns() {
+    fn test_parse_on_keys_different_columns() {
         let q = "SELECT * FROM a.t1 JOIN b.t2 ON a.id = b.other_id";
-        assert_eq!(super::parse_on_key(q), None);
+        assert_eq!(super::parse_on_keys(q), Some(("id".to_string(), "other_id".to_string())));
     }
 }
 

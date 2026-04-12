@@ -16,6 +16,9 @@ use fuse_core::error::ConnectorError;
 use fuse_core::registry::ConnectorRegistry;
 use fuse_server::api::{AppState, RunningQueries};
 
+/// Serialize chaos tests — they share global state in chaos.rs (TARGETS set).
+static CHAOS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 // ── Chaos connectors ──
 
 fn mock_batch() -> Vec<RecordBatch> {
@@ -143,6 +146,7 @@ async fn query(app: axum::Router, sql: &str) -> (StatusCode, serde_json::Value) 
 
 #[tokio::test]
 async fn test_single_source_connection_refused() {
+    let _lock = CHAOS_LOCK.lock().unwrap();
     let app = build_app(vec![Arc::new(ConnectionRefusedConnector("broken".into()))]);
     let (status, json) = query(app, "SELECT * FROM broken.logs").await;
     assert_ne!(status, StatusCode::OK);
@@ -152,6 +156,7 @@ async fn test_single_source_connection_refused() {
 
 #[tokio::test]
 async fn test_union_one_healthy_one_refused() {
+    let _lock = CHAOS_LOCK.lock().unwrap();
     let app = build_app(vec![
         Arc::new(HealthyConnector("good".into())),
         Arc::new(ConnectionRefusedConnector("bad".into())),
@@ -165,6 +170,7 @@ async fn test_union_one_healthy_one_refused() {
 
 #[tokio::test]
 async fn test_union_all_sources_refused() {
+    let _lock = CHAOS_LOCK.lock().unwrap();
     let app = build_app(vec![
         Arc::new(ConnectionRefusedConnector("bad1".into())),
         Arc::new(ConnectionRefusedConnector("bad2".into())),
@@ -175,6 +181,7 @@ async fn test_union_all_sources_refused() {
 
 #[tokio::test]
 async fn test_join_one_side_refused() {
+    let _lock = CHAOS_LOCK.lock().unwrap();
     let app = build_app(vec![
         Arc::new(HealthyConnector("good".into())),
         Arc::new(ConnectionRefusedConnector("bad".into())),
@@ -186,6 +193,7 @@ async fn test_join_one_side_refused() {
 
 #[tokio::test]
 async fn test_hanging_connector_times_out() {
+    let _lock = CHAOS_LOCK.lock().unwrap();
     let app = build_app(vec![Arc::new(HangingConnector("slow".into()))]);
     let body = serde_json::json!({"query": "SELECT * FROM slow.logs", "format": "sql", "timeout_ms": 2000});
     let req = Request::builder()
@@ -204,6 +212,7 @@ async fn test_hanging_connector_times_out() {
 
 #[tokio::test]
 async fn test_healthy_source_unaffected_by_other_failures() {
+    let _lock = CHAOS_LOCK.lock().unwrap();
     // Query only the healthy source — should work fine regardless of broken connectors registered
     let app = build_app(vec![
         Arc::new(HealthyConnector("good".into())),
@@ -216,6 +225,7 @@ async fn test_healthy_source_unaffected_by_other_failures() {
 
 #[tokio::test]
 async fn test_health_endpoint_reports_unhealthy_connector() {
+    let _lock = CHAOS_LOCK.lock().unwrap();
     let app = build_app(vec![
         Arc::new(HealthyConnector("good".into())),
         Arc::new(ConnectionRefusedConnector("bad".into())),
