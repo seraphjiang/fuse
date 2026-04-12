@@ -3967,6 +3967,7 @@ dependencies = [
  "futures-util",
  "governor",
  "hex",
+ "hmac",
  "metrics",
  "metrics-exporter-prometheus",
  "opentelemetry",
@@ -3986,6 +3987,7 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
+ "url",
  "wasmtime",
 ]
 

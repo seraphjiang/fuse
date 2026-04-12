@@ -72,6 +72,8 @@ impl PoolStatsTracker {
         })
     }
 
+    pub fn snapshot(&self) -> Vec<PoolStats> { self.all() }
+
     pub fn all(&self) -> Vec<PoolStats> {
         let ids: Vec<String> = self.stats.lock().unwrap().keys().cloned().collect();
         ids.iter().filter_map(|id| self.get(id)).collect()

@@ -140,6 +140,10 @@ pub struct AppState {
     pub key_rotation: Arc<crate::auth::KeyRotationManager>,
     /// Smart query routing — route to fastest connector based on historical latency.
     pub smart_router: Arc<crate::smart_routing::SmartRouter>,
+    /// Connector health history — tracks uptime and latency over time.
+    pub health_history: Arc<crate::connector_health_history::HealthHistory>,
+    /// Connection pool utilization tracker per connector.
+    pub pool_tracker: Arc<crate::pool_stats::PoolStatsTracker>,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.
@@ -1220,6 +1224,7 @@ pub async fn query_handler(
             // Record per-datasource latency for adaptive timeout
             for ds in &fed.datasources {
                 state.adaptive_timeout.record(ds, elapsed_ms);
+                state.smart_router.record(ds, elapsed_ms);
             }
             state.audit_log.record(crate::audit::AuditEntry {
                 timestamp: crate::history::now_secs(),
@@ -1369,7 +1374,10 @@ async fn execute_single(
         }
     }
     let start = std::time::Instant::now();
-    let batches = connector.execute(&sub_query).await.map_err(|e| e.to_string())?;
+    state.pool_tracker.acquire(ds_id);
+    let result = connector.execute(&sub_query).await;
+    state.pool_tracker.release(ds_id);
+    let batches = result.map_err(|e| { state.pool_tracker.timeout(ds_id); e.to_string() })?;
     let elapsed = start.elapsed().as_millis() as u64;
     let row_count: u64 = batches.iter().map(|b| b.num_rows() as u64).sum();
     let data_bytes: u64 = batches.iter().map(|b| b.get_array_memory_size() as u64).sum();
@@ -1436,19 +1444,25 @@ async fn execute_union(
         let ds = ds_id.clone();
         let sem = semaphore.clone();
         let ap = ap.clone();
+        let pt = state.pool_tracker.clone();
         handles.push(tokio::spawn(async move {
             let _permit = sem.acquire().await.expect("semaphore closed");
             let start = std::time::Instant::now();
+            pt.acquire(&ds);
             let result = tokio::time::timeout(
                 std::time::Duration::from_secs(25), // per-connector timeout (< global 30s)
                 conn.execute(&sub_query),
             ).await;
+            pt.release(&ds);
             let latency_ms = start.elapsed().as_millis() as u64;
             let result = match result {
                 Ok(r) => r,
-                Err(_) => Err(fuse_core::error::ConnectorError::QueryFailed(
-                    format!("connector '{}' timed out", ds),
-                )),
+                Err(_) => {
+                    pt.timeout(&ds);
+                    Err(fuse_core::error::ConnectorError::QueryFailed(
+                        format!("connector '{}' timed out", ds),
+                    ))
+                }
             };
             // #1820: Record success/failure for adaptive concurrency tuning
             match &result {
@@ -1544,15 +1558,19 @@ async fn execute_join(
     let start_a = std::time::Instant::now();
     let start_b = start_a;
     let per_conn_timeout = std::time::Duration::from_secs(25);
+    state.pool_tracker.acquire(ds_a);
+    state.pool_tracker.acquire(ds_b);
     let (res_a, res_b) = tokio::join!(
         tokio::time::timeout(per_conn_timeout, conn_a.execute(&sq_a)),
         tokio::time::timeout(per_conn_timeout, conn_b.execute(&sq_b)),
     );
+    state.pool_tracker.release(ds_a);
+    state.pool_tracker.release(ds_b);
     let latency_a = start_a.elapsed().as_millis() as u64;
     let latency_b = start_b.elapsed().as_millis() as u64;
 
-    let res_a = res_a.map_err(|_| format!("connector '{}' timed out", ds_a))?.map_err(|e| e.to_string());
-    let res_b = res_b.map_err(|_| format!("connector '{}' timed out", ds_b))?.map_err(|e| e.to_string());
+    let res_a = res_a.map_err(|_| { state.pool_tracker.timeout(ds_a); format!("connector '{}' timed out", ds_a) })?.map_err(|e| e.to_string());
+    let res_b = res_b.map_err(|_| { state.pool_tracker.timeout(ds_b); format!("connector '{}' timed out", ds_b) })?.map_err(|e| e.to_string());
 
     // #1820: Record success/failure for adaptive concurrency tuning
     match &res_a {
@@ -3072,7 +3090,13 @@ pub async fn stats_handler(State(state): State<Arc<AppState>>) -> impl IntoRespo
         "audit_entries": audit_count,
         "adaptive_parallelism": adaptive_stats,
         "compilation_cache": compilation_stats,
+        "pool_stats": state.pool_tracker.snapshot(),
     }))
+}
+
+/// GET /api/fuse/pool-stats — connection pool utilization per connector.
+pub async fn pool_stats_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    Json(serde_json::json!({ "pool_stats": [] }))
 }
 
 /// DELETE /api/fuse/cache — flush result and plan caches.
@@ -4527,20 +4551,7 @@ pub async fn routing_stats_handler(
     .into_response()
 }
 
-/// GET /api/fuse/pool/stats — connection pool utilization per connector.
-pub async fn pool_stats_handler(
-    axum::extract::State(_state): axum::extract::State<Arc<AppState>>,
-) -> axum::response::Response {
-    use axum::response::IntoResponse;
-    // Pool stats tracker is a global singleton for now
-    let tracker = crate::pool_stats::PoolStatsTracker::new();
-    let stats = tracker.all();
-    axum::Json(serde_json::json!({
-        "pools": stats,
-        "total_connectors": stats.len(),
-    }))
-    .into_response()
-}
+
 
 /// GET /api/fuse/connectors/health-history — connector uptime/latency history.
 pub async fn connector_health_history_handler(
@@ -4655,4 +4666,18 @@ pub async fn export_json_handler(
         ],
         body,
     ).into_response()
+}
+
+/// GET /api/fuse/routing — smart routing stats and fastest connector recommendations.
+pub async fn routing_handler(
+    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let stats = state.smart_router.all_stats();
+    let connector_ids: Vec<&str> = stats.iter().map(|s| s.connector_id.as_str()).collect();
+    let fastest = state.smart_router.fastest(&connector_ids);
+    Json(serde_json::json!({
+        "connectors": stats,
+        "fastest": fastest,
+    })).into_response()
 }
