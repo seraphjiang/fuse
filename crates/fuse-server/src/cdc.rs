@@ -150,9 +150,13 @@ pub struct CdcStats {
 /// POST /api/fuse/cdc/events — ingest a change event (from connectors or external).
 pub async fn ingest_event(
     axum::extract::State(state): axum::extract::State<Arc<crate::api::AppState>>,
+    auth_identity: Option<axum::extract::Extension<crate::auth::AuthIdentity>>,
     axum::Json(event): axum::Json<ChangeEvent>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
+    if let Err(resp) = crate::auth::require_role(
+        auth_identity.as_ref().map(|e| &e.0), crate::auth::Role::Editor, true,
+    ) { return resp.into_response(); }
     let affected = state.cdc_tracker.record_change(event);
     axum::Json(serde_json::json!({
         "accepted": true,
@@ -378,9 +382,13 @@ mod tests {
 /// Batch ingest multiple change events at once.
 pub async fn ingest_events_batch(
     axum::extract::State(state): axum::extract::State<Arc<crate::api::AppState>>,
+    auth_identity: Option<axum::extract::Extension<crate::auth::AuthIdentity>>,
     axum::Json(events): axum::Json<Vec<ChangeEvent>>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
+    if let Err(resp) = crate::auth::require_role(
+        auth_identity.as_ref().map(|e| &e.0), crate::auth::Role::Editor, true,
+    ) { return resp.into_response(); }
     let mut all_affected: HashSet<String> = HashSet::new();
     for event in events {
         let affected = state.cdc_tracker.record_change(event);
@@ -418,8 +426,12 @@ pub async fn register_view(
 /// Trigger refresh for all pending views and return which were refreshed.
 pub async fn trigger_refresh(
     axum::extract::State(state): axum::extract::State<Arc<crate::api::AppState>>,
+    auth_identity: Option<axum::extract::Extension<crate::auth::AuthIdentity>>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
+    if let Err(resp) = crate::auth::require_role(
+        auth_identity.as_ref().map(|e| &e.0), crate::auth::Role::Editor, true,
+    ) { return resp.into_response(); }
     let pending = state.cdc_tracker.take_pending();
     let mut refreshed = Vec::new();
     for view_name in &pending {
