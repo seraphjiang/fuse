@@ -616,6 +616,7 @@ button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #58a
     <span id="meta-time"></span>
     <button id="csv-btn" onclick="downloadCSV()" style="display:none;margin-left:auto;padding:3px 10px;font-size:12px">⬇ CSV</button>
     <button id="json-btn" onclick="downloadJSON()" style="display:none;padding:3px 10px;font-size:12px">⬇ JSON</button>
+    <button id="arrow-btn" onclick="downloadArrow()" style="display:none;padding:3px 10px;font-size:12px">⬇ Arrow</button>
     <button id="copy-btn" onclick="copyResults()" style="display:none;padding:3px 10px;font-size:12px">📋 Copy</button>
     <div class="view-toggle" id="view-toggle" style="display:none">
       <button class="active" onclick="setView('table')">Table</button>
@@ -876,6 +877,7 @@ function clearOutput() {
   $('meta').style.display = 'none';
   $('csv-btn').style.display = 'none';
   $('json-btn').style.display = 'none';
+  $('arrow-btn').style.display = 'none';
   $('copy-btn').style.display = 'none';
   $('provenance').classList.remove('visible');
   $('plan-tree').classList.remove('visible');
@@ -947,6 +949,7 @@ function renderTable(columns, rows) {
   lastRows = rows;
   $('csv-btn').style.display = columns.length ? 'inline-block' : 'none';
   $('json-btn').style.display = columns.length ? 'inline-block' : 'none';
+  $('arrow-btn').style.display = columns.length ? 'inline-block' : 'none';
   $('copy-btn').style.display = columns.length ? 'inline-block' : 'none';
   if (!columns.length) {
     $('results').innerHTML = '<div class="empty">No results</div>';
@@ -1025,6 +1028,20 @@ function downloadJSON() {
   a.download = 'fuse-results.json';
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+async function downloadArrow() {
+  var q = getEditorQuery();
+  if (!q.trim()) return;
+  try {
+    var resp = await fetch('/api/fuse/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, format: $('format-select').value, format_result: 'arrow' }) });
+    var blob = await resp.blob();
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'fuse-results.arrow';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) { alert('Arrow download failed: ' + e.message); }
 }
 
 function copyResults() {
