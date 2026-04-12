@@ -5,7 +5,7 @@
 SESSION="${KIRO_HIVE_SESSION:-xds}"
 INTERVAL=120
 LEAD="pm"
-MAX_RESTARTS=3
+MAX_RESTARTS=15
 RESTART_WINDOW=3600  # 1 hour in seconds
 RESTART_LOG="/tmp/watchdog-restarts.log"
 

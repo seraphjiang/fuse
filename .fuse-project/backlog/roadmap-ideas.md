@@ -1,53 +1,50 @@
-# Fuse Roadmap — v2.0+
+# Roadmap Ideas — Pick Any Unassigned Item
 
-## 🔥 High Impact — Differentiation
+## AI/ML (ai-lead owns)
+- [ ] Query auto-tuning: analyze slow queries and suggest index/partition changes
+- [ ] NL-to-SQL improvements: support multi-table JOINs in natural language
+- [ ] Query similarity detection: find duplicate/similar queries across tenants
+- [ ] Smart query routing: route to fastest connector based on historical latency
+- [ ] Anomaly detection improvements: seasonal patterns, trend detection
 
-- **Query Lineage & Data Catalog** ✅ Done (Sprint 18) — Track data flow across 25 connectors. "Show me every query that touched this table in 7 days." Compliance/governance.
-- **Federated Materialized Views with CDC** ✅ Done (Sprint 18) — Auto-refresh materialized views when source data changes. Cross-datasource views that stay fresh.
-- **Query Replay & Regression Testing** ✅ Done (Sprint 18) — Record production queries, replay against staging. Catch breaking changes before deploy.
-- **Data Quality Rules Engine** ✅ Done (Sprint 18) — Define expectations (nulls < 5%, cardinality stable, freshness < 1hr). Alert on violations. Builds on anomaly detection.
-- **Query Cost Estimation with $$$** ✅ Done (Sprint 18) — "This query will scan ~2GB on Athena ($0.01) + 500K rows on DynamoDB ($0.05)." Real dollar estimates before execution.
+## Ecosystem (sde owns)
+- [ ] GraphQL subscriptions: real-time query result streaming
+- [ ] SDK async support: async/await for Python, TypeScript, Go SDKs
+- [ ] Webhook retry logic: exponential backoff, dead letter queue
+- [ ] CDC improvements: multi-table materialized views
+- [ ] REST API versioning: /v1/ and /v2/ prefix support
 
-## ⚡ Performance — 10x
+## Data Layer (dba owns)
+- [ ] Query result compression: gzip/zstd for large result sets
+- [ ] Connection pooling stats: expose pool utilization per connector
+- [ ] Materialized view refresh optimization: incremental refresh
+- [ ] Query plan visualization: tree/graph format for EXPLAIN output
+- [ ] Connector health history: track uptime/latency over time
 
-- **Adaptive Query Caching** ✅ Done (Sprint 18) — Learn which queries repeat, auto-cache results with smart TTL per datasource freshness.
-- **Columnar Result Format (Arrow IPC)** ✅ Done (Sprint 18) — Return Arrow IPC instead of JSON for programmatic clients. Zero-copy for Python/Rust consumers.
-- **Parallel Fan-out with Backpressure** ✅ Done (Sprint 18) — Smart concurrency: fast connectors don't wait for slow ones. Stream partial results as they arrive.
-- **Query Compilation** ✅ Done (Sprint 18) — Compile hot query patterns to native code. Skip parsing/planning for repeated patterns.
+## Security (security owns)
+- [ ] Audit logging: log all queries with tenant, timestamp, duration
+- [ ] Column-level RBAC: restrict access to sensitive columns per role
+- [ ] API key rotation: automated key rotation with grace period
+- [ ] Request signing: HMAC-based request authentication
+- [ ] Security headers: CSP, HSTS, X-Frame-Options for playground
 
-## 🌐 Ecosystem — Adoption
+## Infrastructure (devops owns)
+- [ ] Blue-green deployment support in Helm
+- [ ] Prometheus ServiceMonitor for auto-discovery
+- [ ] Init container for config validation
+- [ ] Resource quotas per namespace
+- [ ] Backup/restore for query history and saved queries
 
-- **GraphQL API** ✅ Done (Sprint 18) — Alternative to REST for frontend devs. Schema introspection maps naturally to datasource schemas.
-- **Webhook Subscriptions** ✅ Done (Sprint 18) — "Notify me when this query returns > 100 rows." Event-driven data monitoring.
-- **Scheduled Queries (Cron)** ✅ Done (Sprint 18) — Run queries on schedule, store results, alert on changes. Lightweight ETL.
-- **Multi-tenant SaaS Mode** ✅ Done (Sprint 18) — Isolated tenants with usage metering, billing integration. Path to hosted Fuse.
-- **OpenTelemetry Collector Mode** ✅ Done (Sprint 18) — Fuse as an OTel backend — ingest traces/metrics/logs, query with SQL.
-- **Plugin system for custom connectors (WASM dynamic loading)**
-- **REST API SDK improvements (Python, Go, TypeScript)**
-- **Grafana datasource plugin**
-- **VS Code extension for Fuse queries**
-- **Jupyter notebook integration**
+## Test (test owns)
+- [ ] Chaos testing: random connector failures during queries
+- [ ] Performance regression detection: compare benchmark runs
+- [ ] Fuzz testing: random SQL/PPL input generation
+- [ ] Contract testing: verify API response schemas
+- [ ] Load test scenarios: spike, soak, stress patterns
 
-## 🤖 AI/ML — Next Gen
-
-- **Query Explanation in Plain English** ✅ Done (Sprint 18) — "This query joins error logs with user profiles to find premium users hitting 500 errors."
-- **Schema Relationship Discovery** ✅ Done (Sprint 18) — Auto-detect foreign keys across datasources by analyzing column names and value overlap.
-- **Predictive Query Performance** ✅ Done (Sprint 18 bonus) — "This query will take ~45s based on similar past queries." ML-based latency prediction.
-- **Natural language to SQL (LLM-powered)** ✅ Done
-- **Auto-suggest queries based on schema** ✅ Done
-- **Intelligent query optimization (learn from past queries)** ✅ Done (query advisor)
-- **Anomaly detection alerts (continuous monitoring)** ✅ Done
-
-## ✅ Completed (Sprints 12-17)
-
-- 25 connectors (OpenSearch, ES, PG, MySQL, DDB, S3, Prometheus, CloudWatch, Redis, CSV/JSON, MongoDB, InfluxDB, ClickHouse, Kafka, Athena, Timestream, Snowflake, BigQuery, DuckDB, Arrow Flight, Fuse-to-Fuse, Cassandra, Spark, Delta Lake, Iceberg)
-- Multi-tenancy, query governor, RBAC
-- EXPLAIN ANALYZE, prepared statements, cursor pagination
-- Fuse-to-Fuse federation, cross-cluster routing, cost-based routing
-- Arrow Flight zero-copy streaming
-- NL-to-SQL, query advisor, anomaly detection + alerting
-- Async query API, SSE streaming, result export
-- Autocomplete, plan cache normalization, per-datasource rate limiting
-- OpenTelemetry distributed tracing
-- Stateless server mode (Redis-backed)
-- 1100+ tests, 0 clippy warnings
+## Frontend (fee owns)
+- [ ] Query diff viewer: side-by-side result comparison
+- [ ] Dashboard builder: drag-and-drop query result widgets
+- [ ] Export results: CSV, JSON, Parquet download buttons
+- [ ] Query history search: filter by date, status, datasource
+- [ ] Mobile responsive: playground works on tablets
