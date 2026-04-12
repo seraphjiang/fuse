@@ -26,6 +26,8 @@
 - [Query Lineage](./query-lineage.md)
 - [Query Replay](./query-replay.md)
 - [Adaptive Caching](./adaptive-caching.md)
+- [Webhook Subscriptions](./webhooks.md)
+- [Cost Estimation](./cost-estimation.md)
 - [Migration from OpenSearch](./migration-guide.md)
 - [Troubleshooting](./troubleshooting.md)
 - [Troubleshooting FAQ](./troubleshooting-faq.md)
@@ -49,6 +51,7 @@
 
 - [Async Query API](./async-query-api.md)
 - [Natural Language Queries](./nl-to-sql.md)
+- [GraphQL API](./graphql-api.md)
 
 # Administration
 
