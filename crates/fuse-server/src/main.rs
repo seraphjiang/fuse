@@ -171,6 +171,7 @@ async fn main() -> anyhow::Result<()> {
         otel_store,
         query_recorder: Arc::new(fuse_server::query_replay::QueryRecorder::new(10000)),
         adaptive_parallelism: Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()),
+        webhook_registry: Arc::new(fuse_server::webhook::WebhookRegistry::new()),
         compilation_cache: Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)),
     });
 

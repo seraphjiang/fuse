@@ -97,6 +97,8 @@ pub struct AppState {
     pub query_recorder: Arc<crate::query_replay::QueryRecorder>,
     /// #1820 Adaptive fan-out concurrency — auto-tunes per datasource.
     pub adaptive_parallelism: Arc<crate::adaptive_parallelism::AdaptiveParallelism>,
+    /// #1811 Webhook subscriptions — event-driven query monitoring.
+    pub webhook_registry: Arc<crate::webhook::WebhookRegistry>,
     /// #1851 Query compilation cache — skip re-parsing for repeated query patterns.
     pub compilation_cache: Arc<crate::query_compilation::CompilationCache>,
 }
