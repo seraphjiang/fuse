@@ -4413,3 +4413,31 @@ fn guess_join_column(q: &str) -> Option<String> {
     }
     None
 }
+
+/// GET /api/fuse/similarity — find duplicate/similar query patterns.
+pub async fn similarity_handler(
+    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let limit: usize = params.get("limit").and_then(|v| v.parse().ok()).unwrap_or(500);
+    let min_group: usize = params.get("min_group").and_then(|v| v.parse().ok()).unwrap_or(2);
+
+    let history = state.history.recent(limit);
+    let entries: Vec<crate::query_similarity::QueryEntry> = history
+        .into_iter()
+        .map(|h| crate::query_similarity::QueryEntry {
+            query: h.query,
+            latency_ms: h.latency_ms,
+            tenant: None,
+        })
+        .collect();
+
+    let groups = crate::query_similarity::find_similar(&entries, min_group);
+    axum::Json(serde_json::json!({
+        "groups": groups,
+        "total_groups": groups.len(),
+        "analyzed_queries": entries.len(),
+    }))
+    .into_response()
+}

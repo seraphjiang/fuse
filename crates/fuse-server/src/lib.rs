@@ -84,6 +84,7 @@ pub mod rate_monitor;pub mod redis_cache;
 pub mod refresh_scheduler;
 pub mod request_id;
 pub mod request_signing;
+pub mod url_validator;
 pub mod renamer;
 pub mod reorder;
 pub mod response_builder;
@@ -120,7 +121,6 @@ pub mod validate;
 pub mod tracing_ctx;
 pub mod api_versioning;
 pub mod query_autotuner;
-pub mod query_similarity;
 pub mod query_similarity;
 
 use std::sync::Arc;
@@ -332,6 +332,7 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/api/fuse/nl", post(api::nl_to_sql_handler))
         .route("/api/fuse/advisor", get(api::query_advisor_handler))
         .route("/api/fuse/autotune", get(api::autotune_handler))
+        .route("/api/fuse/similarity", get(api::similarity_handler))
         .route("/api/fuse/views/{name}", get(api::get_view).delete(api::delete_view))
         .route("/api/fuse/views/{name}/refresh", post(api::refresh_view))
         .route("/api/fuse/trace/{trace_id}", get(api::trace_handler))
