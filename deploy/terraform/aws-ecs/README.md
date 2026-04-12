@@ -10,6 +10,9 @@ module "fuse" {
   vpc_id     = "vpc-abc123"
   subnet_ids = ["subnet-a", "subnet-b"]
   image      = "ghcr.io/seraphjiang/fuse-server:1.4.0"
+
+  # Restrict ALB to VPN CIDRs (default: open)
+  allowed_cidrs = ["10.0.0.0/8"]
 }
 ```
 
@@ -36,9 +39,16 @@ module "fuse" {
 | `max_count` | 10 | Max auto-scale tasks |
 | `redis_enabled` | true | Enable ElastiCache |
 | `redis_node_type` | cache.t4g.micro | Redis instance type |
+| `allowed_cidrs` | `["0.0.0.0/0"]` | CIDRs allowed to reach ALB |
 
 ## Outputs
 
-- `alb_dns` — ALB DNS name
-- `fuse_url` — Full Fuse URL
-- `redis_endpoint` — Redis address
+| Name | Description |
+|------|-------------|
+| `alb_dns` | ALB DNS name |
+| `fuse_url` | Full Fuse URL |
+| `redis_endpoint` | Redis address (or "disabled") |
+| `ecs_cluster` | ECS cluster name |
+| `ecs_service` | ECS service name |
+| `log_group` | CloudWatch log group name |
+| `task_role_arn` | Task IAM role ARN (attach policies here) |
