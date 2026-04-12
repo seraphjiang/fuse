@@ -32,6 +32,24 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      {{- if .Values.configValidation.enabled }}
+      initContainers:
+        - name: config-validator
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          command: ["/usr/local/bin/fuse-server", "--validate-config"]
+          env:
+            - name: FUSE_CONFIG
+              value: /etc/fuse/fuse.toml
+          volumeMounts:
+            - name: config
+              mountPath: /etc/fuse
+              readOnly: true
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+      {{- end }}
       containers:
         - name: fuse-server
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"

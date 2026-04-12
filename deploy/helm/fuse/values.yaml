@@ -107,3 +107,6 @@ metrics:
     path: "/metrics"
     labels: {}
     # release: prometheus  # match your Prometheus operator selector
+
+configValidation:
+  enabled: false
