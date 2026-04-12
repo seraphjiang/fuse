@@ -69,3 +69,36 @@ jobs:
 
       - name: Template render (dry-run)
         run: helm template fuse deploy/helm/fuse/ --debug > /dev/null
+
+  sdk-tests:
+    name: SDK Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: TypeScript SDK tests
+        run: node sdk/typescript/tests/test_client.mjs
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Python SDK tests
+        run: |
+          cd sdk/python
+          pip install -e ".[dev]" 2>/dev/null || pip install -e .
+          python -m pytest tests/test_client.py -v
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Go SDK tests
+        run: cd sdk/go && go test -v ./...
