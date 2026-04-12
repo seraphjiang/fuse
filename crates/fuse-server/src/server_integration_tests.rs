@@ -722,3 +722,14 @@ mod toward_1450_tests {
     // Validate combinations
     #[test] fn test_validate_all_valid() { assert!(crate::validate::validate_request("SELECT 1", "sql", Some(100), Some(5000)).is_empty()); }
 }
+
+
+#[cfg(test)]
+mod milestone_1450 {
+    use serde_json::json;
+    #[test] fn test_intersect_empty_right() { assert!(crate::intersect::intersect(&[vec![json!(1)]], &[]).is_empty()); }
+    #[test] fn test_except_empty_right() { assert_eq!(crate::intersect::except(&[vec![json!(1)]], &[]).len(), 1); }
+    #[test] fn test_having_lt_boundary() { let r = vec![vec![json!(5)]]; assert_eq!(crate::having::having_lt(&r, 0, 5.0).len(), 0); }
+    #[test] fn test_having_gte_boundary() { let r = vec![vec![json!(5)]]; assert_eq!(crate::having::having_gte(&r, 0, 5.0).len(), 1); }
+    #[test] fn test_top_n_extract_large() { assert_eq!(crate::top_n::extract_top("SELECT TOP 99999 * FROM t"), Some(99999)); }
+}
