@@ -77,6 +77,11 @@ get  "GET /queries/running"     "/api/fuse/queries/running"
 
 echo ""
 echo "── Advanced query ──"
+post "POST /query/export/csv"   "/api/fuse/query/export/csv" \
+  '{"query":"SELECT service FROM cluster_a.application_logs LIMIT 1","format":"sql"}'
+post "POST /query/export/json"  "/api/fuse/query/export/json" \
+  '{"query":"SELECT service FROM cluster_a.application_logs LIMIT 1","format":"sql"}'
+get  "GET /anomaly"             "/api/fuse/anomaly"
 post "POST /nl"                 "/api/fuse/nl" \
   '{"question":"show me error logs","execute":false}'
 get  "GET /predict"             "/api/fuse/predict?query=SELECT+1"
