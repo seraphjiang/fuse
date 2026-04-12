@@ -22,7 +22,7 @@ echo ""
 
 # 1. All expected pages exist
 echo "── Page existence ──"
-PAGES=(index dashboard explore settings status help admin alerts views plugins changelog terminal federation schedules quality lineage replay feedback-widget)
+PAGES=(index dashboard explore settings status help admin alerts views plugins changelog terminal federation schedules quality lineage replay feedback-widget cost)
 for p in "${PAGES[@]}"; do
   [ -f "$DIR/$p.html" ] && check "$p.html exists" "ok" || check "$p.html exists" "missing"
 done
@@ -152,6 +152,13 @@ grep -q 'snippet' "$DIR/index.html" && check "Query snippets dropdown" "ok" || c
 grep -q 'shareQuery\|location\.hash' "$DIR/index.html" && check "Query sharing via URL" "ok" || check "Query sharing via URL" "missing"
 grep -q 'demoTour\|demo-bar' "$DIR/index.html" && check "Demo tour" "ok" || check "Demo tour" "missing"
 grep -q 'sortTable\|sortCol' "$DIR/index.html" && check "Column sorting in results" "ok" || check "Column sorting in results" "missing"
+grep -q 'downloadArrow\|arrow-btn' "$DIR/index.html" && check "Arrow IPC download button" "ok" || check "Arrow IPC download button" "missing"
+
+# UX: Cost Explorer page
+echo "── Cost Explorer UX ──"
+grep -q 'estimate\|Estimate Cost' "$DIR/cost.html" && check "Cost: estimate button" "ok" || check "Cost: estimate button" "missing"
+grep -q 'breakdown\|connector' "$DIR/cost.html" && check "Cost: connector breakdown" "ok" || check "Cost: connector breakdown" "missing"
+grep -q 'matchMedia.*prefers-color-scheme' "$DIR/cost.html" && check "Cost: system theme detection" "ok" || check "Cost: system theme detection" "missing"
 
 # UX: Autocomplete
 echo "── Autocomplete UX ──"
