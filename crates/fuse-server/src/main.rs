@@ -183,6 +183,7 @@ async fn main() -> anyhow::Result<()> {
         compilation_cache: Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)),
         cdc_tracker: Arc::new(fuse_server::cdc::CdcTracker::new(10000)),
         adaptive_cache: Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)),
+        schema_cache: Arc::new(fuse_server::api::SchemaCache::new(300)),
         column_rbac: if config.security.enabled {
             Some(Arc::new(fuse_core::security::ResultFilter::new(
                 fuse_core::security::PolicyEngine::new(&config.security),

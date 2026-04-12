@@ -66,6 +66,33 @@ impl RunningQueries {
     }
 }
 
+
+/// Cached schema discovery results with TTL.
+pub struct SchemaCache {
+    entries: std::sync::RwLock<std::collections::HashMap<String, SchemaCacheEntry>>,
+    ttl_secs: u64,
+}
+struct SchemaCacheEntry {
+    data: serde_json::Value,
+    cached_at: u64,
+}
+impl SchemaCache {
+    pub fn new(ttl_secs: u64) -> Self {
+        Self { entries: std::sync::RwLock::new(std::collections::HashMap::new()), ttl_secs }
+    }
+    pub fn get(&self, key: &str) -> Option<serde_json::Value> {
+        let entries = self.entries.read().unwrap();
+        let entry = entries.get(key)?;
+        if crate::history::now_secs() - entry.cached_at > self.ttl_secs { return None; }
+        Some(entry.data.clone())
+    }
+    pub fn set(&self, key: &str, data: serde_json::Value) {
+        self.entries.write().unwrap().insert(key.to_string(), SchemaCacheEntry {
+            data, cached_at: crate::history::now_secs(),
+        });
+    }
+}
+
 /// Shared application state passed to all handlers.
 pub struct AppState {
     pub registry: Arc<ConnectorRegistry>,
@@ -105,6 +132,8 @@ pub struct AppState {
     pub cdc_tracker: Arc<crate::cdc::CdcTracker>,
     /// #1821 Adaptive cache — auto-promote hot queries with per-datasource TTL.
     pub adaptive_cache: Arc<crate::adaptive_cache::AdaptiveCache>,
+    /// Schema discovery cache — TTL-based caching for connector schema lookups.
+    pub schema_cache: Arc<SchemaCache>,
     /// Column-level RBAC — deny or mask sensitive fields per role.
     pub column_rbac: Option<Arc<fuse_core::security::ResultFilter>>,
     /// API key rotation manager with grace period support.
@@ -1750,6 +1779,11 @@ pub async fn get_schemas(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
+    let cache_key = format!("schemas:{}", id);
+    if let Some(cached) = state.schema_cache.get(&cache_key) {
+        return Json(cached).into_response();
+    }
+
     let connector = match state.registry.get(&id) {
         Some(c) => c,
         None => {
@@ -1759,7 +1793,14 @@ pub async fn get_schemas(
     };
 
     match connector.discover_schemas().await {
-        Ok(schemas) => Json(schemas).into_response(),
+        Ok(schemas) => {
+            if let Ok(val) = serde_json::to_value(&schemas) {
+                state.schema_cache.set(&cache_key, val.clone());
+                Json(val).into_response()
+            } else {
+                Json(schemas).into_response()
+            }
+        }
         Err(e) => error_json(StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
 }
@@ -1769,6 +1810,11 @@ pub async fn get_fields(
     State(state): State<Arc<AppState>>,
     Path((id, table)): Path<(String, String)>,
 ) -> impl IntoResponse {
+    let cache_key = format!("fields:{}:{}", id, table);
+    if let Some(cached) = state.schema_cache.get(&cache_key) {
+        return Json(cached).into_response();
+    }
+
     let connector = match state.registry.get(&id) {
         Some(c) => c,
         None => {
@@ -1788,7 +1834,12 @@ pub async fn get_fields(
                     nullable: f.is_nullable(),
                 })
                 .collect();
-            Json(fields).into_response()
+            if let Ok(val) = serde_json::to_value(&fields) {
+                state.schema_cache.set(&cache_key, val.clone());
+                Json(val).into_response()
+            } else {
+                Json(fields).into_response()
+            }
         }
         Err(e) => error_json(StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
@@ -4471,6 +4522,21 @@ pub async fn routing_stats_handler(
         "stats": stats,
         "fastest_connector": fastest,
         "analyzed_queries": history.len(),
+    }))
+    .into_response()
+}
+
+/// GET /api/fuse/pool/stats — connection pool utilization per connector.
+pub async fn pool_stats_handler(
+    axum::extract::State(_state): axum::extract::State<Arc<AppState>>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    // Pool stats tracker is a global singleton for now
+    let tracker = crate::pool_stats::PoolStatsTracker::new();
+    let stats = tracker.all();
+    axum::Json(serde_json::json!({
+        "pools": stats,
+        "total_connectors": stats.len(),
     }))
     .into_response()
 }
