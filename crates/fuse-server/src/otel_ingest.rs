@@ -265,8 +265,11 @@ fn extract_service_name(resource: Option<&Value>) -> String {
         .to_string()
 }
 
+/// A single data point: (value, timestamp_ns, labels).
+type DataPoint = (String, i64, Option<String>);
+
 /// Extract data points from a metric (gauge, sum, or histogram).
-fn extract_data_points(metric: &Value) -> (&str, Vec<(String, i64, Option<String>)>) {
+fn extract_data_points(metric: &Value) -> (&str, Vec<DataPoint>) {
     let (metric_type, dp_key) = if metric.get("gauge").is_some() {
         ("gauge", "gauge")
     } else if metric.get("sum").is_some() {

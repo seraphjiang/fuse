@@ -153,8 +153,8 @@ mod tests {
 
     #[test]
     fn test_enable_disable() {
-        allow_chaos();
         let _lock = TEST_LOCK.lock().unwrap();
+        allow_chaos();
         disable(); // reset state
         enable(50);
         assert!(is_enabled());
@@ -165,8 +165,8 @@ mod tests {
 
     #[test]
     fn test_100_pct_always_fails() {
-        allow_chaos();
         let _lock = TEST_LOCK.lock().unwrap();
+        allow_chaos();
         disable(); // reset state
         enable(100);
         let result = maybe_fail("test_connector");
@@ -177,8 +177,8 @@ mod tests {
 
     #[test]
     fn test_0_pct_never_fails() {
-        allow_chaos();
         let _lock = TEST_LOCK.lock().unwrap();
+        allow_chaos();
         disable(); // reset state
         enable(0);
         for _ in 0..100 {
@@ -190,8 +190,8 @@ mod tests {
 
     #[test]
     fn test_targeted_connector() {
-        allow_chaos();
         let _lock = TEST_LOCK.lock().unwrap();
+        allow_chaos();
         disable(); // reset state
         enable_with_config(&ChaosConfig {
             enabled: true,
@@ -208,8 +208,8 @@ mod tests {
 
     #[test]
     fn test_empty_targets_affects_all() {
-        allow_chaos();
         let _lock = TEST_LOCK.lock().unwrap();
+        allow_chaos();
         disable(); // reset state
         enable_with_config(&ChaosConfig {
             enabled: true,
@@ -223,8 +223,8 @@ mod tests {
 
     #[test]
     fn test_config_includes_latency() {
-        allow_chaos();
         let _lock = TEST_LOCK.lock().unwrap();
+        allow_chaos();
         disable(); // reset state
         enable_with_config(&ChaosConfig {
             enabled: true,
@@ -239,8 +239,8 @@ mod tests {
     }
     #[test]
     fn test_rate_capped_at_100() {
-        allow_chaos();
         let _lock = TEST_LOCK.lock().unwrap();
+        allow_chaos();
         disable(); // reset state
         enable(200);
         assert_eq!(config().failure_rate_pct, 100);
@@ -256,9 +256,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_maybe_delay_with_latency() {
-        allow_chaos();
         {
             let _lock = TEST_LOCK.lock().unwrap();
+            allow_chaos();
             enable_with_config(&ChaosConfig {
                 enabled: true,
                 failure_rate_pct: 0,
@@ -274,8 +274,8 @@ mod tests {
 
     #[test]
     fn test_config_roundtrip() {
-        allow_chaos();
         let _lock = TEST_LOCK.lock().unwrap();
+        allow_chaos();
         let cfg = ChaosConfig {
             enabled: true,
             failure_rate_pct: 77,
@@ -294,8 +294,8 @@ mod tests {
 
     #[test]
     fn test_disable_clears_all() {
-        allow_chaos();
         let _lock = TEST_LOCK.lock().unwrap();
+        allow_chaos();
         enable_with_config(&ChaosConfig {
             enabled: true,
             failure_rate_pct: 50,

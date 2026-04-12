@@ -33,6 +33,7 @@ pub struct CompiledQuery {
 }
 
 impl CompiledQuery {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         sources: Vec<(String, String)>,
         is_union: bool,

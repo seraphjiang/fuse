@@ -43,6 +43,7 @@ impl Role {
 
 /// Check if the request has at least the required role.
 /// Returns Ok(()) if auth is disabled or role is sufficient, Err(Response) otherwise.
+#[allow(clippy::result_large_err)]
 pub fn require_role(
     identity: Option<&AuthIdentity>,
     required: Role,

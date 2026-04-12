@@ -166,6 +166,7 @@ impl OtelStore {
         });
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn ingest_metric(
         &self, name: &str, description: Option<&str>, unit: Option<&str>,
         metric_type: &str, value: &str, timestamp_ns: i64,
@@ -187,6 +188,7 @@ impl OtelStore {
         });
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn ingest_log(
         &self, timestamp_ns: i64, severity: &str, body: &str,
         service_name: Option<&str>, trace_id: Option<&str>,

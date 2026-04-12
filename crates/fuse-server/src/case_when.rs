@@ -3,9 +3,12 @@
 
 use serde_json::Value;
 
+/// A predicate function for CASE WHEN branches.
+type ConditionFn = Box<dyn Fn(&Value) -> bool + Send + Sync>;
+
 /// A CASE WHEN condition.
 pub struct CaseWhen {
-    pub conditions: Vec<(Box<dyn Fn(&Value) -> bool + Send + Sync>, Value)>,
+    pub conditions: Vec<(ConditionFn, Value)>,
     pub default: Value,
 }
 

@@ -24,6 +24,7 @@ impl Predicate {
     pub fn in_list(field: &str, values: Vec<&str>) -> Self { Self::In { field: field.into(), values: values.into_iter().map(String::from).collect() } }
     pub fn and(preds: Vec<Predicate>) -> Self { Self::And(preds) }
     pub fn or(preds: Vec<Predicate>) -> Self { Self::Or(preds) }
+    #[allow(clippy::should_implement_trait)]
     pub fn not(pred: Predicate) -> Self { Self::Not(Box::new(pred)) }
 
     /// Convert to SQL WHERE clause fragment.
