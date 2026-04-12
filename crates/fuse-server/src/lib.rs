@@ -306,6 +306,7 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/api/fuse/trace/{trace_id}", get(api::trace_handler))
         .route("/api/fuse/federation", get(api::federation_handler))
         .route("/api/fuse/relationships", get(schema_discovery::relationships_handler))
+        .route("/api/fuse/predict", get(query_predictor::predict_handler))
         .route("/api/fuse/lineage", post(api::lineage_handler))
         .route("/api/fuse/replay/recordings", get(api::list_recordings).delete(api::clear_recordings))
         .route("/api/fuse/replay/record", post(api::record_query))
