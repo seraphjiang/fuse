@@ -123,3 +123,9 @@ resourceQuota:
 blueGreen:
   enabled: false
   activeSlot: "blue"  # "blue" or "green" — toggle to switch traffic
+
+backup:
+  enabled: false
+  schedule: "0 2 * * *"  # daily at 2am
+  historyLimit: 3
+  persistentVolumeClaim: ""  # set to PVC name for persistent backups

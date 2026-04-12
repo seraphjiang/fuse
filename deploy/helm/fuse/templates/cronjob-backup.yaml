@@ -1,0 +1,41 @@
+{{- if .Values.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "fuse.fullname" . }}-backup
+  labels: {{- include "fuse.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ .Values.backup.historyLimit | default 3 }}
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: curlimages/curl:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  BASE="{{ include "fuse.fullname" . }}:{{ .Values.service.port }}"
+                  curl -sf "http://${BASE}/api/fuse/saved" -o /backup/saved-queries-${TIMESTAMP}.json
+                  curl -sf "http://${BASE}/api/fuse/history?limit=1000" -o /backup/history-${TIMESTAMP}.json
+                  echo "Backup complete: ${TIMESTAMP}"
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backup
+          volumes:
+            - name: backup-storage
+              {{- if .Values.backup.persistentVolumeClaim }}
+              persistentVolumeClaim:
+                claimName: {{ .Values.backup.persistentVolumeClaim }}
+              {{- else }}
+              emptyDir: {}
+              {{- end }}
+{{- end }}
