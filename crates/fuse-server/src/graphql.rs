@@ -270,6 +270,18 @@ impl MutationRoot {
             all_batches.extend(batches);
         }
 
+        // Apply column-level RBAC if configured
+        let all_batches = if let Some(ref rbac) = state.column_rbac {
+            let user_ctx = fuse_core::security::UserContext {
+                username: String::new(),
+                roles: vec![],
+            };
+            let ds_id = refs.first().map(|(d, _)| d.as_str()).unwrap_or("");
+            let table = refs.first().map(|(_, t)| t.as_str()).unwrap_or("");
+            rbac.filter_batches(all_batches, ds_id, table, &user_ctx).unwrap_or_default()
+        } else {
+            all_batches
+        };
         let (columns, rows) = crate::api::batches_to_json(&all_batches);
         let row_count = rows.len() as u64;
         let latency_ms = t0.elapsed().as_millis() as u64;
@@ -441,15 +453,18 @@ pub type FuseSchema = Schema<QueryRoot, MutationRoot, SubscriptionRoot>;
 pub fn build_schema(state: Arc<AppState>) -> FuseSchema {
     Schema::build(QueryRoot, MutationRoot, SubscriptionRoot)
         .data(state)
+        .limit_depth(10)
+        .limit_complexity(200)
         .finish()
 }
 
 /// POST /api/fuse/graphql
 pub async fn graphql_handler(
     axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+    schema: axum::extract::Extension<FuseSchema>,
     req: async_graphql_axum::GraphQLRequest,
 ) -> impl IntoResponse {
-    let schema = build_schema(state);
+    let _ = state; // schema is pre-built via Extension
     async_graphql_axum::GraphQLResponse::from(schema.execute(req.into_inner()).await)
 }
 
@@ -466,11 +481,12 @@ pub async fn graphiql_handler() -> impl IntoResponse {
 
 /// WebSocket handler for GraphQL subscriptions.
 pub async fn graphql_ws_handler(
-    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+    axum::extract::State(_state): axum::extract::State<Arc<AppState>>,
+    schema: axum::extract::Extension<FuseSchema>,
     protocol: async_graphql_axum::GraphQLProtocol,
     ws: axum::extract::WebSocketUpgrade,
 ) -> impl IntoResponse {
-    let schema = build_schema(state);
+    let schema = schema.0.clone();
     ws.protocols(async_graphql::http::ALL_WEBSOCKET_PROTOCOLS)
         .on_upgrade(move |stream| {
             let stream = async_graphql_axum::GraphQLWebSocket::new(stream, schema, protocol);

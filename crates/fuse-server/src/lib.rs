@@ -369,5 +369,6 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .layer(middleware::from_fn(security_headers::security_headers_middleware))
         .layer(middleware::from_fn(api_versioning::version_header_middleware))
         .layer(DefaultBodyLimit::max(10 * 1024 * 1024)) // 10MB request body limit
+        .layer(axum::Extension(graphql::build_schema(state.clone())))
         .with_state(state)
 }
