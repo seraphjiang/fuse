@@ -105,6 +105,7 @@ jobs:
       - run: bash tests/e2e/playground_test.sh http://localhost:9400
       - run: bash tests/e2e/sprint18_pages_test.sh http://localhost:9400
       - run: bash tests/e2e/admin_ops_pages_test.sh http://localhost:9400
+      - run: bash tests/e2e/ops_api_smoke_test.sh http://localhost:9400
       - name: Stop server
         if: always()
         run: kill ${{ env.SERVER_PID }} 2>/dev/null || true
