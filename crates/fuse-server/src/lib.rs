@@ -40,6 +40,7 @@ pub mod federation;
 pub mod fingerprint;
 pub mod flattener;
 pub mod formatter;
+pub mod graphql;
 pub mod grouper;
 pub mod having;
 pub mod health;
@@ -53,6 +54,7 @@ pub mod math_fn;
 pub mod metrics;
 pub mod nl_query;
 pub mod notifications;
+pub mod otel_ingest;
 pub mod pagination;
 pub mod null_handler;
 pub mod offset_pagination;
@@ -220,6 +222,20 @@ fn build_alert_routes(_state: Arc<api::AppState>) -> Router<Arc<api::AppState>> 
         .with_state(monitor)
 }
 
+fn build_otel_routes(state: Arc<api::AppState>) -> Router<Arc<api::AppState>> {
+    match &state.otel_store {
+        Some(store) => {
+            let otel_state = otel_ingest::OtelIngestState { store: store.clone() };
+            Router::new()
+                .route("/traces", post(otel_ingest::ingest_traces))
+                .route("/metrics", post(otel_ingest::ingest_metrics))
+                .route("/logs", post(otel_ingest::ingest_logs))
+                .with_state(otel_state)
+        }
+        None => Router::new(),
+    }
+}
+
 pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitState) -> Router {
     Router::new()
         .route("/", get(playground))
@@ -272,7 +288,10 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/api/fuse/views/{name}/refresh", post(api::refresh_view))
         .route("/api/fuse/trace/{trace_id}", get(api::trace_handler))
         .route("/api/fuse/federation", get(api::federation_handler))
+        .route("/api/fuse/graphql", get(graphql::graphiql_handler).post(graphql::graphql_handler))
         .route("/metrics", get(metrics::metrics_handler))
+        // OTLP ingestion routes — active when otel connector is configured
+        .nest("/v1", build_otel_routes(state.clone()))
         // Alert rules CRUD — nested with AlertMonitor state
         .nest("/api/fuse/alert-rules", build_alert_routes(state.clone()))
         .layer(middleware::from_fn(rate_limit::rate_limit_middleware))
