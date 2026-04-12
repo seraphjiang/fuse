@@ -28,6 +28,7 @@ pub mod capability_summary;
 pub mod case_when;
 pub mod circuit_breaker;
 pub mod config_watch;
+pub mod cost_estimator;
 pub mod cors;
 pub mod data_quality;
 pub mod cost_tracker;
