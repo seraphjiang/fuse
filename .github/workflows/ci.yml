@@ -133,6 +133,26 @@ jobs:
       - name: Go SDK tests
         run: cd sdk/go && go test -v ./...
 
+  grafana-plugin:
+    name: Grafana Plugin Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: cd grafana-plugin/fuse-datasource && npm install
+
+      - name: Type check and build
+        run: cd grafana-plugin/fuse-datasource && npm run build
+
+      - name: Verify dist output
+        run: test -f grafana-plugin/fuse-datasource/dist/plugin.json
+
   coverage:
     name: Test Coverage
     runs-on: ubuntu-latest
