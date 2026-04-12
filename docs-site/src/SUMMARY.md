@@ -21,6 +21,11 @@
 - [Performance Tuning](./performance-tuning.md)
 - [Query Optimization](./query-optimization.md)
 - [Cookbook (20 Recipes)](./cookbook.md)
+- [Scheduled Queries](./scheduled-queries.md)
+- [Data Quality Rules](./data-quality.md)
+- [Query Lineage](./query-lineage.md)
+- [Query Replay](./query-replay.md)
+- [Adaptive Caching](./adaptive-caching.md)
 - [Migration from OpenSearch](./migration-guide.md)
 - [Troubleshooting](./troubleshooting.md)
 - [Troubleshooting FAQ](./troubleshooting-faq.md)
@@ -48,6 +53,8 @@
 # Administration
 
 - [Admin Guide](./admin-guide.md)
+- [Multi-Tenant SaaS Mode](./multi-tenant.md)
+- [OpenTelemetry Collector](./otel-collector.md)
 - [Horizontal Scaling](./horizontal-scaling.md)
 - [Security Hardening](./security-hardening.md)
 - [Federation Architecture](./federation-architecture.md)
