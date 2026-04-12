@@ -26,11 +26,48 @@ pub struct ApiKeyEntry {
 }
 
 /// Role for RBAC. Viewer can read, Editor can write, Admin can manage.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Hierarchy: Admin > Editor > Viewer (higher roles inherit lower permissions).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Role {
-    Viewer,
-    Editor,
-    Admin,
+    Viewer = 0,
+    Editor = 1,
+    Admin = 2,
+}
+
+impl Role {
+    /// Check if this role has at least the given permission level.
+    pub fn has(self, required: Role) -> bool {
+        self >= required
+    }
+}
+
+/// Check if the request has at least the required role.
+/// Returns Ok(()) if auth is disabled or role is sufficient, Err(Response) otherwise.
+pub fn require_role(
+    identity: Option<&AuthIdentity>,
+    required: Role,
+    auth_enabled: bool,
+) -> Result<(), Response<Body>> {
+    if !auth_enabled {
+        return Ok(());
+    }
+    match identity {
+        Some(id) if id.role.has(required) => Ok(()),
+        Some(id) => {
+            let body = serde_json::json!({
+                "error": format!(
+                    "insufficient permissions: role {:?} required, you have {:?}",
+                    required, id.role
+                )
+            }).to_string();
+            Err(Response::builder()
+                .status(StatusCode::FORBIDDEN)
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .unwrap())
+        }
+        None => Err(unauthorized("authentication required")),
+    }
 }
 
 /// Auth state shared via axum Extension.
@@ -233,6 +270,50 @@ mod tests {
     fn test_role_equality() {
         assert_eq!(Role::Admin, Role::Admin);
         assert_ne!(Role::Viewer, Role::Editor);
+    }
+
+    #[test]
+    fn test_role_hierarchy() {
+        assert!(Role::Admin.has(Role::Admin));
+        assert!(Role::Admin.has(Role::Editor));
+        assert!(Role::Admin.has(Role::Viewer));
+        assert!(Role::Editor.has(Role::Editor));
+        assert!(Role::Editor.has(Role::Viewer));
+        assert!(!Role::Editor.has(Role::Admin));
+        assert!(Role::Viewer.has(Role::Viewer));
+        assert!(!Role::Viewer.has(Role::Editor));
+        assert!(!Role::Viewer.has(Role::Admin));
+    }
+
+    #[test]
+    fn test_role_ordering() {
+        assert!(Role::Admin > Role::Editor);
+        assert!(Role::Editor > Role::Viewer);
+        assert!(Role::Admin > Role::Viewer);
+    }
+
+    #[test]
+    fn test_require_role_auth_disabled() {
+        assert!(require_role(None, Role::Admin, false).is_ok());
+    }
+
+    #[test]
+    fn test_require_role_sufficient() {
+        let id = AuthIdentity { identity: "alice".into(), role: Role::Admin };
+        assert!(require_role(Some(&id), Role::Editor, true).is_ok());
+    }
+
+    #[test]
+    fn test_require_role_insufficient() {
+        let id = AuthIdentity { identity: "bob".into(), role: Role::Viewer };
+        let result = require_role(Some(&id), Role::Editor, true);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_require_role_no_identity() {
+        let result = require_role(None, Role::Viewer, true);
+        assert!(result.is_err());
     }
 
     #[test]
