@@ -1471,6 +1471,7 @@ async fn execute_union(
         let ap = ap.clone();
         let pt = state.pool_tracker.clone();
         let hh = state.health_history.clone();
+        let sr = state.smart_router.clone();
         handles.push(tokio::spawn(async move {
             let _permit = sem.acquire().await.expect("semaphore closed");
             crate::chaos::maybe_delay(&ds).await;
@@ -1496,7 +1497,7 @@ async fn execute_union(
             };
             // #1820: Record success/failure for adaptive concurrency tuning
             match &result {
-                Ok(_) => { ap.record_success(&ds, latency_ms); hh.record(&ds, true, latency_ms, None); },
+                Ok(_) => { ap.record_success(&ds, latency_ms); hh.record(&ds, true, latency_ms, None); sr.record(&ds, latency_ms); },
                 Err(e) => { ap.record_failure(&ds); hh.record(&ds, false, latency_ms, Some(e.to_string())); },
             }
             (ds, result, latency_ms)
