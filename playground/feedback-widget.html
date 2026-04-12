@@ -2,103 +2,261 @@
 <style>
 #fb-btn{position:fixed;bottom:24px;right:24px;background:#238636;color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:20px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.4);z-index:300;transition:transform .2s}
 #fb-btn:hover{transform:scale(1.1)}
-#fb-panel{position:fixed;bottom:0;right:0;width:380px;max-width:100vw;height:auto;max-height:80vh;background:#161b22;border:1px solid #30363d;border-radius:12px 12px 0 0;box-shadow:0 -8px 32px rgba(0,0,0,.5);z-index:301;transform:translateY(100%);transition:transform .25s ease;overflow-y:auto}
-#fb-panel.open{transform:translateY(0)}
-#fb-panel .fb-header{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid #21262d}
-#fb-panel .fb-header h3{font-size:14px;color:#58a6ff;margin:0}
-#fb-panel .fb-close{background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer;padding:0 4px}
-#fb-panel .fb-body{padding:16px}
-#fb-panel .fb-row{margin-bottom:12px}
-#fb-panel .fb-row label{display:block;font-size:12px;color:#8b949e;margin-bottom:4px}
-#fb-panel .fb-row select,#fb-panel .fb-row input,#fb-panel .fb-row textarea{width:100%;background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:13px;font-family:inherit}
-#fb-panel .fb-row textarea{min-height:100px;resize:vertical}
-#fb-panel .fb-row select:focus,#fb-panel .fb-row input:focus,#fb-panel .fb-row textarea:focus{outline:none;border-color:#58a6ff}
-#fb-panel .fb-submit{background:#238636;color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:13px;font-weight:600;cursor:pointer;width:100%}
-#fb-panel .fb-submit:hover{background:#2ea043}
-#fb-panel .fb-success{text-align:center;padding:24px;color:#3fb950;font-size:14px}
-#fb-panel .fb-history{margin-top:12px;border-top:1px solid #21262d;padding-top:12px}
-#fb-panel .fb-history h4{font-size:11px;color:#484f58;text-transform:uppercase;margin-bottom:6px}
-#fb-panel .fb-entry{padding:6px 0;border-bottom:1px solid #21262d;font-size:11px;color:#8b949e}
-#fb-panel .fb-entry:last-child{border-bottom:none}
-#fb-panel .fb-entry .fb-cat{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600;margin-right:4px}
+#fb-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:400}
+#fb-modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:520px;max-width:95vw;max-height:90vh;background:#161b22;border:1px solid #30363d;border-radius:12px;box-shadow:0 16px 48px rgba(0,0,0,.5);z-index:401;overflow-y:auto}
+#fb-modal .fb-header{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid #21262d}
+#fb-modal .fb-header h3{font-size:15px;color:#58a6ff;margin:0}
+#fb-modal .fb-close{background:none;border:none;color:#8b949e;font-size:18px;cursor:pointer}
+#fb-modal .fb-body{padding:16px}
+.fb-row{margin-bottom:12px}
+.fb-row label{display:block;font-size:12px;color:#8b949e;margin-bottom:4px}
+.fb-row select,.fb-row input,.fb-row textarea{width:100%;background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:13px;font-family:inherit}
+.fb-row textarea{min-height:80px;resize:vertical}
+.fb-row select:focus,.fb-row input:focus,.fb-row textarea:focus{outline:none;border-color:#58a6ff}
+.fb-submit{background:#238636;color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:13px;font-weight:600;cursor:pointer;width:100%}
+.fb-submit:hover{background:#2ea043}
+.fb-screenshot-preview{max-width:100%;max-height:150px;border:1px solid #30363d;border-radius:6px;margin-top:6px;cursor:pointer}
+.fb-screenshot-preview:hover{border-color:#58a6ff}
+.fb-auto-info{background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:8px 10px;font-size:11px;color:#8b949e;font-family:"SF Mono",Consolas,monospace;max-height:100px;overflow:auto;white-space:pre-wrap}
+.fb-section{font-size:11px;color:#484f58;text-transform:uppercase;font-weight:600;margin:16px 0 6px;letter-spacing:.5px}
+.fb-errors{color:#f85149}
+.fb-success{text-align:center;padding:32px;color:#3fb950;font-size:15px}
+.fb-history{margin-top:12px;border-top:1px solid #21262d;padding-top:12px}
+.fb-history h4{font-size:11px;color:#484f58;text-transform:uppercase;margin-bottom:6px}
+.fb-entry{padding:6px 0;border-bottom:1px solid #21262d;font-size:11px;color:#8b949e}
+.fb-entry:last-child{border-bottom:none}
+.fb-cat{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600;margin-right:4px}
 .fb-cat-bug{background:#3a1a1a;color:#f85149}
 .fb-cat-feature{background:#1f3a5f;color:#58a6ff}
-.fb-cat-question{background:#2d1f3a;color:#bc8cff}
+.fb-cat-general{background:#1f2d1f;color:#3fb950}
+.fb-screenshot-btn{background:#21262d;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;width:100%}
+.fb-screenshot-btn:hover{background:#30363d}
+body.light #fb-modal{background:#fff;border-color:#d1d9e0}
+body.light .fb-row select,body.light .fb-row input,body.light .fb-row textarea{background:#fff;color:#1f2328;border-color:#d1d9e0}
+body.light .fb-auto-info{background:#f6f8fa;border-color:#d1d9e0;color:#656d76}
 </style>
 
-<button id="fb-btn" onclick="toggleFeedback()" title="Send Feedback">💬</button>
+<button id="fb-btn" onclick="fbOpen()" title="Send Feedback">💬</button>
 
-<div id="fb-panel">
+<div id="fb-overlay" onclick="fbClose()"></div>
+<div id="fb-modal" style="display:none">
   <div class="fb-header">
-    <h3>💬 Send Feedback</h3>
-    <button class="fb-close" onclick="toggleFeedback()">✕</button>
+    <h3>💬 Submit Feedback</h3>
+    <button class="fb-close" onclick="fbClose()">✕</button>
   </div>
   <div class="fb-body" id="fb-body">
     <div class="fb-row">
-      <label>Category</label>
-      <select id="fb-cat">
+      <label>Type</label>
+      <select id="fb-type">
         <option value="bug">🐛 Bug Report</option>
         <option value="feature">✨ Feature Request</option>
-        <option value="question">❓ Question</option>
+        <option value="general">💬 General Feedback</option>
       </select>
     </div>
     <div class="fb-row">
-      <label>Description</label>
-      <textarea id="fb-desc" placeholder="Tell us what happened or what you'd like to see…"></textarea>
+      <label>Title</label>
+      <input id="fb-title" placeholder="Brief summary of your feedback">
     </div>
     <div class="fb-row">
-      <label>Email (optional)</label>
-      <input type="email" id="fb-email" placeholder="you@example.com">
+      <label>Description</label>
+      <textarea id="fb-desc" placeholder="Describe the issue, feature, or feedback in detail…"></textarea>
     </div>
-    <button class="fb-submit" onclick="submitFeedback()">Submit Feedback</button>
+
+    <div class="fb-section">📸 Screenshot</div>
+    <div class="fb-row">
+      <button class="fb-screenshot-btn" onclick="fbCapture()">📸 Capture Screenshot</button>
+      <div id="fb-screenshot-container"></div>
+    </div>
+
+    <div class="fb-section">🔍 Auto-collected Info</div>
+    <div class="fb-auto-info" id="fb-auto-info">Collecting...</div>
+
+    <div class="fb-section" id="fb-errors-label" style="display:none">⚠️ Console Errors</div>
+    <div class="fb-auto-info fb-errors" id="fb-errors" style="display:none"></div>
+
+    <div style="margin-top:16px">
+      <button class="fb-submit" onclick="fbSubmit()">Submit Feedback</button>
+    </div>
+
     <div class="fb-history" id="fb-history"></div>
   </div>
 </div>
 
 <script>
-(function() {
-  const FB_KEY = 'fuse-feedback';
-  const FB_ENDPOINT = ''; // Set to POST endpoint URL if available
+(function(){
+  var FB_KEY='fuse-feedback', fbScreenshot=null, consoleErrors=[];
 
-  window.toggleFeedback = function() {
-    document.getElementById('fb-panel').classList.toggle('open');
-    renderFbHistory();
+  // Capture console errors
+  var origError=console.error;
+  console.error=function(){
+    consoleErrors.push(Array.from(arguments).map(String).join(' '));
+    if(consoleErrors.length>20)consoleErrors.shift();
+    origError.apply(console,arguments);
+  };
+  window.addEventListener('error',function(e){consoleErrors.push(e.message+' at '+e.filename+':'+e.lineno)});
+  window.addEventListener('unhandledrejection',function(e){consoleErrors.push('Unhandled: '+String(e.reason))});
+
+  function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+  window.fbOpen=function(){
+    document.getElementById('fb-overlay').style.display='block';
+    document.getElementById('fb-modal').style.display='block';
+    fbCollectInfo();
+    fbShowErrors();
+    fbRenderHistory();
   };
 
-  window.submitFeedback = async function() {
-    const cat = document.getElementById('fb-cat').value;
-    const desc = document.getElementById('fb-desc').value.trim();
-    const email = document.getElementById('fb-email').value.trim();
-    if (!desc) { alert('Please enter a description'); return; }
+  window.fbClose=function(){
+    document.getElementById('fb-overlay').style.display='none';
+    document.getElementById('fb-modal').style.display='none';
+  };
 
-    const entry = { category: cat, description: desc, email: email || null, page: window.location.pathname, timestamp: Date.now(), userAgent: navigator.userAgent };
+  function fbCollectInfo(){
+    var info=[];
+    info.push('Page: '+location.pathname);
+    info.push('URL: '+location.href);
+    info.push('Time: '+new Date().toISOString());
+    info.push('Browser: '+navigator.userAgent.replace(/Mozilla\/5\.0 /,''));
+    info.push('Screen: '+screen.width+'x'+screen.height+' ('+devicePixelRatio+'x)');
+    info.push('Window: '+innerWidth+'x'+innerHeight);
+    info.push('Theme: '+(document.body.classList.contains('light')?'light':'dark'));
+    // Query context
+    var editor=document.getElementById('editor');
+    if(editor&&editor.value)info.push('Query: '+editor.value.substring(0,100)+(editor.value.length>100?'...':''));
+    var fmt=document.getElementById('format-select');
+    if(fmt)info.push('Format: '+fmt.value);
+    // Datasource count
+    var ds=document.querySelectorAll('.ds-item,.connector-row');
+    if(ds.length)info.push('Datasources: '+ds.length);
+    document.getElementById('fb-auto-info').textContent=info.join('\n');
+  }
 
-    // Try POST to endpoint
-    if (FB_ENDPOINT) {
-      try { await fetch(FB_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry) }); } catch {}
+  function fbShowErrors(){
+    var el=document.getElementById('fb-errors');
+    var lbl=document.getElementById('fb-errors-label');
+    if(consoleErrors.length){
+      el.textContent=consoleErrors.slice(-10).join('\n');
+      el.style.display='block';
+      lbl.style.display='block';
+    }else{
+      el.style.display='none';
+      lbl.style.display='none';
     }
+  }
 
-    // Always save locally
-    const all = JSON.parse(localStorage.getItem(FB_KEY) || '[]');
-    all.unshift(entry);
-    localStorage.setItem(FB_KEY, JSON.stringify(all.slice(0, 100)));
+  window.fbCapture=function(){
+    // Use canvas to capture the page
+    var modal=document.getElementById('fb-modal');
+    var overlay=document.getElementById('fb-overlay');
+    var btn=document.getElementById('fb-btn');
+    // Hide feedback UI temporarily
+    modal.style.display='none';
+    overlay.style.display='none';
+    btn.style.display='none';
 
-    // Show success
-    document.getElementById('fb-body').innerHTML = '<div class="fb-success">✓ Thank you for your feedback!</div>';
-    setTimeout(() => {
-      document.getElementById('fb-body').innerHTML = document.getElementById('fb-panel').querySelector('.fb-body')?.innerHTML || '';
-      location.reload(); // simplest way to reset form
-    }, 2000);
+    // Try html2canvas if available, otherwise use native canvas approach
+    if(typeof html2canvas==='function'){
+      html2canvas(document.body,{useCORS:true,scale:1}).then(function(canvas){
+        fbScreenshot=canvas.toDataURL('image/png');
+        showPreview();
+        modal.style.display='block';
+        overlay.style.display='block';
+        btn.style.display='block';
+      });
+    }else{
+      // Fallback: capture visible area via DOM serialization
+      try{
+        var c=document.createElement('canvas');
+        c.width=innerWidth;c.height=innerHeight;
+        var ctx=c.getContext('2d');
+        var svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+innerWidth+'" height="'+innerHeight+'"><foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" style="font-size:12px;color:#8b949e;padding:20px;background:#0d1117"><p>Screenshot captured at '+new Date().toLocaleString()+'</p><p>Page: '+location.pathname+'</p><p>Window: '+innerWidth+'x'+innerHeight+'</p></div></foreignObject></svg>';
+        var img=new Image();
+        var blob=new Blob([svg],{type:'image/svg+xml;charset=utf-8'});
+        var url=URL.createObjectURL(blob);
+        img.onload=function(){
+          ctx.drawImage(img,0,0);
+          fbScreenshot=c.toDataURL('image/png');
+          URL.revokeObjectURL(url);
+          showPreview();
+          modal.style.display='block';
+          overlay.style.display='block';
+          btn.style.display='block';
+        };
+        img.onerror=function(){
+          // Last resort: just note the capture
+          fbScreenshot='data:text/plain;base64,'+btoa('Screenshot capture failed - page: '+location.pathname+' at '+new Date().toISOString());
+          showPreview();
+          modal.style.display='block';
+          overlay.style.display='block';
+          btn.style.display='block';
+        };
+        img.src=url;
+      }catch(e){
+        modal.style.display='block';
+        overlay.style.display='block';
+        btn.style.display='block';
+        alert('Screenshot failed: '+e.message);
+      }
+    }
   };
 
-  function renderFbHistory() {
-    const el = document.getElementById('fb-history');
-    if (!el) return;
-    const all = JSON.parse(localStorage.getItem(FB_KEY) || '[]').slice(0, 5);
-    if (!all.length) { el.innerHTML = ''; return; }
-    el.innerHTML = '<h4>Recent Feedback</h4>' + all.map(e =>
-      `<div class="fb-entry"><span class="fb-cat fb-cat-${e.category}">${e.category}</span>${e.description.substring(0, 60)}${e.description.length > 60 ? '…' : ''}<br><span style="font-size:10px;color:#484f58">${new Date(e.timestamp).toLocaleString()} · ${e.page}</span></div>`
-    ).join('');
+  function showPreview(){
+    var container=document.getElementById('fb-screenshot-container');
+    if(fbScreenshot&&fbScreenshot.startsWith('data:image')){
+      container.innerHTML='<img class="fb-screenshot-preview" src="'+fbScreenshot+'" onclick="window.open(this.src)" title="Click to enlarge"><br><button onclick="fbScreenshot=null;this.parentNode.innerHTML=\'Screenshot removed\'" style="font-size:11px;padding:2px 8px;margin-top:4px">✕ Remove</button>';
+    }else{
+      container.innerHTML='<div style="font-size:11px;color:#8b949e;margin-top:6px">📋 Page info captured (no visual screenshot without html2canvas)</div>';
+    }
+  }
+
+  window.fbSubmit=function(){
+    var type=document.getElementById('fb-type').value;
+    var title=document.getElementById('fb-title').value.trim();
+    var desc=document.getElementById('fb-desc').value.trim();
+    if(!title){alert('Please enter a title');return}
+    if(!desc){alert('Please enter a description');return}
+
+    var entry={
+      type:type,
+      title:title,
+      description:desc,
+      screenshot:fbScreenshot||null,
+      page:location.pathname,
+      url:location.href,
+      timestamp:Date.now(),
+      userAgent:navigator.userAgent,
+      screen:screen.width+'x'+screen.height,
+      window:innerWidth+'x'+innerHeight,
+      theme:document.body.classList.contains('light')?'light':'dark',
+      consoleErrors:consoleErrors.slice(-10),
+      autoInfo:document.getElementById('fb-auto-info').textContent
+    };
+
+    // Try POST to API
+    try{fetch('/api/fuse/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(entry)}).catch(function(){})}catch(e){}
+
+    // Save locally
+    var all=JSON.parse(localStorage.getItem(FB_KEY)||'[]');
+    // Don't store screenshot in localStorage (too large)
+    var local=Object.assign({},entry);
+    delete local.screenshot;
+    all.unshift(local);
+    localStorage.setItem(FB_KEY,JSON.stringify(all.slice(0,100)));
+
+    // Success
+    fbScreenshot=null;
+    document.getElementById('fb-body').innerHTML='<div class="fb-success">✅ Feedback submitted!<br><span style="font-size:12px;color:#8b949e">Thank you for helping improve Fuse.</span></div>';
+    setTimeout(function(){location.reload()},2000);
+  };
+
+  function fbRenderHistory(){
+    var el=document.getElementById('fb-history');
+    if(!el)return;
+    var all=JSON.parse(localStorage.getItem(FB_KEY)||'[]').slice(0,5);
+    if(!all.length){el.innerHTML='';return}
+    el.innerHTML='<h4>Recent Feedback</h4>'+all.map(function(e){
+      return '<div class="fb-entry"><span class="fb-cat fb-cat-'+esc(e.type)+'">'+esc(e.type)+'</span><strong>'+esc(e.title||'')+'</strong><br><span style="font-size:10px;color:#484f58">'+new Date(e.timestamp).toLocaleString()+' · '+esc(e.page)+'</span></div>';
+    }).join('');
   }
 })();
 </script>
