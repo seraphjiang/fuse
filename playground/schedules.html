@@ -100,7 +100,7 @@ body.light .form-row input,body.light .form-row select,body.light .form-row text
 const $ = id => document.getElementById(id);
 const API = '/api/fuse/schedules';
 
-if (localStorage.getItem('fuse-theme') === 'light') document.body.classList.add('light');
+(function(){var t=localStorage.getItem('fuse-theme');if(t==='light'||(!t&&window.matchMedia('(prefers-color-scheme:light)').matches))document.body.classList.add('light');})();
 
 async function api(url, opts) {
   const r = await fetch(url, opts);

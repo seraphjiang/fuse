@@ -85,7 +85,7 @@ body.light input,body.light textarea{background:#f6f8fa;color:#1f2328;border-col
 const $ = id => document.getElementById(id);
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-if (localStorage.getItem('fuse-theme') === 'light') document.body.classList.add('light');
+(function(){var t=localStorage.getItem('fuse-theme');if(t==='light'||(!t&&window.matchMedia('(prefers-color-scheme:light)').matches))document.body.classList.add('light');})();
 
 async function traceLineage() {
   const q = $('query').value.trim();

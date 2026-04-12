@@ -845,11 +845,17 @@ const DS_COLORS = [
 ];
 const dsColorMap = {};
 let dsColorIdx = 0;
+function sortTable(col) {
+  if (sortCol === col) sortAsc = !sortAsc;
+  else { sortCol = col; sortAsc = true; }
+  renderTable(lastColumns, lastRows);
+}
 function dsColor(name) {
   if (!dsColorMap[name]) dsColorMap[name] = DS_COLORS[dsColorIdx++ % DS_COLORS.length];
   return dsColorMap[name];
 }
 
+let sortCol = -1, sortAsc = true;
 function renderTable(columns, rows) {
   lastColumns = columns;
   lastRows = rows;
@@ -860,11 +866,24 @@ function renderTable(columns, rows) {
     $('results').innerHTML = '<div class="empty">No results</div>';
     return;
   }
+  // Sort rows if a column is selected
+  let sorted = rows;
+  if (sortCol >= 0 && sortCol < columns.length) {
+    sorted = [...rows].sort((a, b) => {
+      const va = a[sortCol], vb = b[sortCol];
+      const na = Number(va), nb = Number(vb);
+      const cmp = (!isNaN(na) && !isNaN(nb)) ? na - nb : String(va).localeCompare(String(vb));
+      return sortAsc ? cmp : -cmp;
+    });
+  }
   const dsIdx = columns.indexOf('_datasource');
   let html = '<table><thead><tr>';
-  columns.forEach(c => html += '<th>' + esc(c) + '</th>');
+  columns.forEach((c, i) => {
+    const arrow = i === sortCol ? (sortAsc ? ' ▲' : ' ▼') : '';
+    html += '<th style="cursor:pointer;user-select:none" onclick="sortTable('+i+')">' + esc(c) + arrow + '</th>';
+  });
   html += '</tr></thead><tbody>';
-  rows.forEach(row => {
+  sorted.forEach(row => {
     html += '<tr>';
     row.forEach((v, i) => {
       const s = String(v);

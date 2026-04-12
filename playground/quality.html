@@ -115,7 +115,7 @@ const $ = id => document.getElementById(id);
 const API = '/api/fuse/quality';
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-if (localStorage.getItem('fuse-theme') === 'light') document.body.classList.add('light');
+(function(){var t=localStorage.getItem('fuse-theme');if(t==='light'||(!t&&window.matchMedia('(prefers-color-scheme:light)').matches))document.body.classList.add('light');})();
 
 async function api(url, opts) {
   const r = await fetch(url, opts);
