@@ -529,7 +529,7 @@ mod tests {
             adaptive_cache: Arc::new(crate::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), schema_cache: Arc::new(crate::api::SchemaCache::new(300)), column_rbac: None, key_rotation: std::sync::Arc::new(crate::auth::KeyRotationManager::new(vec![])),
             smart_router: Arc::new(crate::smart_routing::SmartRouter::new()),
             health_history: Arc::new(crate::connector_health_history::HealthHistory::new()),
-            pool_tracker: Arc::new(crate::pool_stats::PoolTracker::new()),
+            pool_tracker: Arc::new(crate::pool_stats::PoolStatsTracker::new()),
         })
     }
 
@@ -694,6 +694,9 @@ mod subscription_tests {
             schema_cache: Arc::new(crate::api::SchemaCache::new(300)),
             column_rbac: None,
             key_rotation: Arc::new(crate::auth::KeyRotationManager::new(vec![])),
+            smart_router: Arc::new(crate::smart_routing::SmartRouter::new()),
+            health_history: Arc::new(crate::connector_health_history::HealthHistory::new()),
+            pool_tracker: Arc::new(crate::pool_stats::PoolStatsTracker::new()),
         })
     }
 
