@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
-//! Query result cache with per-connector TTL expiry.
+//! Query result cache with per-connector TTL expiry and LRU eviction.
 
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
 use arrow::record_batch::RecordBatch;
 use serde::Serialize;
+
+/// Default maximum number of cache entries.
+const DEFAULT_MAX_ENTRIES: usize = 1024;
 
 /// Cached query result with TTL.
 struct CachedResult {
@@ -31,14 +34,29 @@ pub struct CacheStats {
     pub hits: u64,
     pub misses: u64,
     pub evictions: u64,
+    pub max_entries: usize,
 }
 
 /// Default TTLs by connector type.
 pub fn default_ttl(connector_type: &str) -> Duration {
     match connector_type {
-        "opensearch" => Duration::from_secs(30),
-        "s3" => Duration::from_secs(300),
-        "prometheus" => Duration::from_secs(60),
+        // Real-time / streaming — short TTL
+        "opensearch" | "elasticsearch" => Duration::from_secs(30),
+        "prometheus" | "influxdb" | "timestream" => Duration::from_secs(60),
+        "cloudwatch" => Duration::from_secs(60),
+        "kafka" => Duration::from_secs(10),
+        "redis" => Duration::from_secs(15),
+        // Databases — moderate TTL
+        "postgres" | "mysql" | "clickhouse" | "cassandra" => Duration::from_secs(60),
+        "dynamodb" | "mongodb" => Duration::from_secs(30),
+        "duckdb" => Duration::from_secs(120),
+        // Object storage / warehouses — longer TTL
+        "s3" | "s3-o11y" | "csv-json" => Duration::from_secs(300),
+        "athena" | "bigquery" | "snowflake" | "spark" => Duration::from_secs(300),
+        "delta-lake" | "iceberg" => Duration::from_secs(300),
+        // Network protocols
+        "arrow-flight" => Duration::from_secs(60),
+        "fuse" => Duration::from_secs(30),
         _ => Duration::from_secs(30),
     }
 }
@@ -51,23 +69,51 @@ pub fn cache_key(connector_id: &str, query: &str) -> u64 {
     h.finish()
 }
 
-/// Thread-safe query result cache.
+/// Thread-safe query result cache with LRU eviction.
 pub struct QueryCache {
     inner: RwLock<CacheInner>,
 }
 
 struct CacheInner {
     entries: HashMap<u64, CachedResult>,
+    /// LRU order: front = oldest access, back = most recent.
+    lru: VecDeque<u64>,
+    max_entries: usize,
     hits: u64,
     misses: u64,
     evictions: u64,
 }
 
+impl CacheInner {
+    fn touch(&mut self, key: u64) {
+        self.lru.retain(|k| *k != key);
+        self.lru.push_back(key);
+    }
+
+    fn evict_lru(&mut self) {
+        while self.entries.len() >= self.max_entries {
+            if let Some(oldest) = self.lru.pop_front() {
+                if self.entries.remove(&oldest).is_some() {
+                    self.evictions += 1;
+                }
+            } else {
+                break;
+            }
+        }
+    }
+}
+
 impl QueryCache {
     pub fn new() -> Self {
+        Self::with_capacity(DEFAULT_MAX_ENTRIES)
+    }
+
+    pub fn with_capacity(max_entries: usize) -> Self {
         Self {
             inner: RwLock::new(CacheInner {
                 entries: HashMap::new(),
+                lru: VecDeque::new(),
+                max_entries: max_entries.max(1),
                 hits: 0,
                 misses: 0,
                 evictions: 0,
@@ -82,11 +128,12 @@ impl QueryCache {
             Some(entry) if !entry.is_expired() => {
                 let batches = entry.batches.clone();
                 inner.hits += 1;
+                inner.touch(key);
                 Some(batches)
             }
             Some(_) => {
-                // Expired
                 inner.entries.remove(&key);
+                inner.lru.retain(|k| *k != key);
                 inner.evictions += 1;
                 inner.misses += 1;
                 None
@@ -98,9 +145,12 @@ impl QueryCache {
         }
     }
 
-    /// Store result with given TTL.
+    /// Store result with given TTL. Evicts LRU entries if at capacity.
     pub fn put(&self, key: u64, batches: Vec<RecordBatch>, ttl: Duration) {
         let mut inner = self.inner.write().unwrap();
+        if !inner.entries.contains_key(&key) {
+            inner.evict_lru();
+        }
         inner.entries.insert(
             key,
             CachedResult {
@@ -109,13 +159,23 @@ impl QueryCache {
                 ttl,
             },
         );
+        inner.touch(key);
     }
 
     /// Remove all expired entries.
     pub fn evict_expired(&self) -> usize {
         let mut inner = self.inner.write().unwrap();
         let before = inner.entries.len();
-        inner.entries.retain(|_, v| !v.is_expired());
+        let expired_keys: Vec<u64> = inner
+            .entries
+            .iter()
+            .filter(|(_, v)| v.is_expired())
+            .map(|(k, _)| *k)
+            .collect();
+        for k in &expired_keys {
+            inner.entries.remove(k);
+        }
+        inner.lru.retain(|k| !expired_keys.contains(k));
         let removed = before - inner.entries.len();
         inner.evictions += removed as u64;
         removed
@@ -125,6 +185,7 @@ impl QueryCache {
     pub fn clear(&self) {
         let mut inner = self.inner.write().unwrap();
         inner.entries.clear();
+        inner.lru.clear();
     }
 
     /// Return cache statistics.
@@ -135,6 +196,7 @@ impl QueryCache {
             hits: inner.hits,
             misses: inner.misses,
             evictions: inner.evictions,
+            max_entries: inner.max_entries,
         }
     }
 }
@@ -168,8 +230,24 @@ mod tests {
     }
 
     #[test]
+    fn test_default_ttl_all_connectors() {
+        // Verify every connector has a specific TTL (not just the fallback)
+        let connectors = [
+            "opensearch", "elasticsearch", "postgres", "mysql", "dynamodb",
+            "s3", "s3-o11y", "prometheus", "cloudwatch", "redis", "csv-json",
+            "mongodb", "influxdb", "clickhouse", "kafka", "athena", "timestream",
+            "snowflake", "bigquery", "cassandra", "duckdb", "arrow-flight",
+            "fuse", "delta-lake", "iceberg",
+        ];
+        for c in connectors {
+            let ttl = default_ttl(c);
+            assert!(ttl.as_secs() > 0, "connector {c} should have a positive TTL");
+        }
+    }
+
+    #[test]
     fn test_default_ttl_unknown_type() {
-        assert_eq!(default_ttl("postgres"), Duration::from_secs(30));
+        assert_eq!(default_ttl("unknown_db"), Duration::from_secs(30));
     }
 
     #[test]
@@ -214,7 +292,6 @@ mod tests {
     fn test_get_expired_entry() {
         let cache = QueryCache::new();
         cache.put(1, test_batch(1), Duration::from_millis(0));
-        // TTL of 0ms means it's already expired
         std::thread::sleep(Duration::from_millis(1));
         assert!(cache.get(1).is_none());
     }
@@ -227,6 +304,7 @@ mod tests {
         assert_eq!(s.hits, 0);
         assert_eq!(s.misses, 0);
         assert_eq!(s.evictions, 0);
+        assert_eq!(s.max_entries, DEFAULT_MAX_ENTRIES);
     }
 
     #[test]
@@ -317,5 +395,68 @@ mod tests {
 
         assert_eq!(cache.stats().entries, 10);
         assert_eq!(cache.stats().hits, 10);
+    }
+
+    #[test]
+    fn test_lru_eviction_at_capacity() {
+        let cache = QueryCache::with_capacity(3);
+        cache.put(1, test_batch(1), Duration::from_secs(60));
+        cache.put(2, test_batch(2), Duration::from_secs(60));
+        cache.put(3, test_batch(3), Duration::from_secs(60));
+
+        // Cache full — inserting 4 should evict key 1 (oldest)
+        cache.put(4, test_batch(4), Duration::from_secs(60));
+
+        assert!(cache.get(1).is_none(), "key 1 should be evicted");
+        assert!(cache.get(2).is_some());
+        assert!(cache.get(3).is_some());
+        assert!(cache.get(4).is_some());
+        assert_eq!(cache.stats().entries, 3);
+        assert_eq!(cache.stats().evictions, 1);
+    }
+
+    #[test]
+    fn test_lru_access_refreshes_order() {
+        let cache = QueryCache::with_capacity(3);
+        cache.put(1, test_batch(1), Duration::from_secs(60));
+        cache.put(2, test_batch(2), Duration::from_secs(60));
+        cache.put(3, test_batch(3), Duration::from_secs(60));
+
+        // Access key 1 — moves it to most-recent
+        cache.get(1);
+
+        // Insert key 4 — should evict key 2 (now oldest)
+        cache.put(4, test_batch(4), Duration::from_secs(60));
+
+        assert!(cache.get(1).is_some(), "key 1 was accessed, should survive");
+        assert!(cache.get(2).is_none(), "key 2 should be evicted");
+        assert!(cache.get(3).is_some());
+        assert!(cache.get(4).is_some());
+    }
+
+    #[test]
+    fn test_lru_overwrite_does_not_evict() {
+        let cache = QueryCache::with_capacity(2);
+        cache.put(1, test_batch(1), Duration::from_secs(60));
+        cache.put(2, test_batch(2), Duration::from_secs(60));
+
+        // Overwrite key 1 — should NOT evict anything
+        cache.put(1, test_batch(10), Duration::from_secs(60));
+
+        assert_eq!(cache.stats().entries, 2);
+        assert_eq!(cache.stats().evictions, 0);
+        let batches = cache.get(1).unwrap();
+        let col = batches[0]
+            .column(0)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .unwrap();
+        assert_eq!(col.value(0), 10);
+    }
+
+    #[test]
+    fn test_with_capacity_minimum_one() {
+        let cache = QueryCache::with_capacity(0);
+        assert_eq!(cache.stats().max_entries, 1);
     }
 }
