@@ -32,6 +32,7 @@ pub mod scalar_expr;
 pub mod schema_compat;
 pub mod secrets;
 pub mod security;
+pub mod size_estimator;
 pub mod sql;
 pub mod tls;
 pub mod url;
