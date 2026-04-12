@@ -21,14 +21,14 @@
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
 | 1710 | Run server benchmarks baseline | pm | ✅ done | Record plan_cache, autocomplete, anomaly, advisor benchmarks |
-| 1711 | Load test: 100 concurrent queries | pm | todo | Stress test with mixed query types |
+| 1711 | Load test: 100 concurrent queries | devops | in-progress | Upgraded loadtest.sh: 100 concurrency, 13 mixed query types, per-type breakdown |
 
 ## P1: Integration
 
 | ID | Item | Owner | Status | Notes |
 |----|------|-------|--------|-------|
-| 1720 | Wire Parquet reader into Delta Lake execute() | sde | todo | Complete the read path |
-| 1721 | Wire Parquet reader into Iceberg execute() | sde | todo | Complete the read path |
+| 1720 | Wire Parquet reader into Delta Lake execute() | sde | ✅ done | 9696957 — Parquet read path wired |
+| 1721 | Wire Parquet reader into Iceberg execute() | sde | ✅ done | 9696957 — Parquet read path wired |
 
 ## P2: Docs & Cleanup
 
