@@ -52,6 +52,8 @@ pub mod health_monitor;
 pub mod history;
 pub mod history_analytics;
 pub mod lineage;
+pub mod adaptive_cache;
+pub mod usage_metering;
 pub mod math_fn;
 pub mod metrics;
 pub mod nl_query;
@@ -71,6 +73,7 @@ pub mod projector;
 pub mod registry_snapshot;pub mod query_context;
 pub mod prepared;
 pub mod query_advisor;
+pub mod query_compilation;
 pub mod query_diff;
 pub mod query_explain;
 pub mod rate_limit;
@@ -233,6 +236,7 @@ fn build_otel_routes(state: Arc<api::AppState>) -> Router<Arc<api::AppState>> {
                 .route("/traces", post(otel_ingest::ingest_traces))
                 .route("/metrics", post(otel_ingest::ingest_metrics))
                 .route("/logs", post(otel_ingest::ingest_logs))
+                .route("/health", get(otel_ingest::otel_health))
                 .with_state(otel_state)
         }
         None => Router::new(),
@@ -291,6 +295,9 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/api/fuse/views/{name}/refresh", post(api::refresh_view))
         .route("/api/fuse/trace/{trace_id}", get(api::trace_handler))
         .route("/api/fuse/federation", get(api::federation_handler))
+        .route("/api/fuse/lineage", post(api::lineage_handler))
+        .route("/api/fuse/replay/recordings", get(api::list_recordings).delete(api::clear_recordings))
+        .route("/api/fuse/replay/record", post(api::record_query))
         .route("/api/fuse/graphql", get(graphql::graphiql_handler).post(graphql::graphql_handler))
         .route("/metrics", get(metrics::metrics_handler))
         // OTLP ingestion routes — active when otel connector is configured

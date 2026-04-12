@@ -91,6 +91,14 @@ pub struct AppState {
     pub max_result_bytes: u64,
     /// Per-datasource concurrency limiter. Limits concurrent queries per connector.
     pub datasource_limiter: Arc<crate::rate_limit::DatasourceLimiter>,
+    /// OTel collector store — present when an `otel` connector is configured.
+    pub otel_store: Option<Arc<fuse_connector_otel::store::OtelStore>>,
+    /// Query recorder for replay & regression testing (#1812).
+    pub query_recorder: Arc<crate::query_replay::QueryRecorder>,
+    /// #1820 Adaptive fan-out concurrency — auto-tunes per datasource.
+    pub adaptive_parallelism: Arc<crate::adaptive_parallelism::AdaptiveParallelism>,
+    /// #1851 Query compilation cache — skip re-parsing for repeated query patterns.
+    pub compilation_cache: Arc<crate::query_compilation::CompilationCache>,
 }
 
 /// Result from multi-datasource execution, carrying batches + per-source stats.
@@ -98,6 +106,8 @@ struct FederatedResult {
     batches: Vec<arrow::record_batch::RecordBatch>,
     stats: Option<std::collections::HashMap<String, DatasourceStat>>,
     datasources: Vec<String>,
+    /// Maps datasource_id → connector_type for cost estimation.
+    connector_types: std::collections::HashMap<String, String>,
     profile_nodes: Vec<ProfileNode>,
     /// Per-datasource errors for partial failure reporting.
     partial_errors: Vec<PartialError>,
@@ -170,6 +180,8 @@ pub struct QueryMetadata {
     pub datasources_queried: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub datasource_stats: Option<std::collections::HashMap<String, DatasourceStat>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_estimate: Option<crate::cost_estimator::QueryCostEstimate>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -277,6 +289,8 @@ pub struct ExplainResponse {
     pub execution_profile: Option<ExecutionProfile>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub complexity: Option<crate::complexity::ComplexityScore>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_estimate: Option<crate::cost_estimator::QueryCostEstimate>,
 }
 
 #[derive(Serialize)]
@@ -1082,6 +1096,22 @@ pub async fn query_handler(
             let result_bytes: u64 = batches.iter().map(|b| b.get_array_memory_size() as u64).sum();
             let elapsed_ms = t0.elapsed().as_millis() as u64;
 
+            // Compute dollar cost estimate from connector types + data bytes
+            let cost_estimate = {
+                let ds_inputs: Vec<(&str, &str, u64, u64)> = fed.datasources.iter()
+                    .map(|ds| {
+                        let ct = fed.connector_types.get(ds).map(|s| s.as_str()).unwrap_or("unknown");
+                        let (rows, bytes) = fed.stats.as_ref()
+                            .and_then(|s| s.get(ds))
+                            .map(|s| (s.rows, result_bytes))
+                            .unwrap_or((total_rows, result_bytes));
+                        (ds.as_str(), ct, rows, bytes)
+                    })
+                    .collect();
+                let est = crate::cost_estimator::estimate_query_cost(&ds_inputs);
+                if est.total_cost_usd > 0.0 { Some(est) } else { None }
+            };
+
             // Global result size limit
             if state.max_result_bytes > 0 && result_bytes > state.max_result_bytes {
                 return (
@@ -1162,6 +1192,7 @@ pub async fn query_handler(
                             None
                         },
                         datasource_stats: fed.stats,
+                        cost_estimate,
                     },
                     execution_profile: if req.analyze {
                         Some(ExecutionProfile {
@@ -1238,6 +1269,7 @@ async fn execute_single(
         batches,
         stats: None,
         datasources: vec![ds_id.clone()],
+        connector_types: [(ds_id.clone(), connector.connector_type().to_string())].into_iter().collect(),
         profile_nodes: vec![ProfileNode::scan(ds_id, row_count, elapsed, data_bytes, describe_pushdown(&sub_query))],
         partial_errors: vec![],
     })
@@ -1278,6 +1310,14 @@ async fn execute_union(
     fuse_engine::rewrite::push_down_to_sources(&base_sq, &mut per_source);
 
     let mut handles = Vec::new();
+    // #1820: Use adaptive parallelism to limit concurrent fan-out per datasource
+    let max_concurrency: usize = refs.iter()
+        .filter_map(|(ds_id, _)| state.registry.get(ds_id).map(|_| state.adaptive_parallelism.concurrency_for(ds_id)))
+        .max()
+        .unwrap_or(4);
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrency));
+    let ap = state.adaptive_parallelism.clone();
+
     for (i, (ds_id, _)) in refs.iter().enumerate() {
         let connector = match state.registry.get(ds_id) {
             Some(c) => c,
@@ -1286,7 +1326,10 @@ async fn execute_union(
         let sub_query = per_source[i].clone();
         let conn = connector.clone();
         let ds = ds_id.clone();
+        let sem = semaphore.clone();
+        let ap = ap.clone();
         handles.push(tokio::spawn(async move {
+            let _permit = sem.acquire().await.expect("semaphore closed");
             let start = std::time::Instant::now();
             let result = tokio::time::timeout(
                 std::time::Duration::from_secs(25), // per-connector timeout (< global 30s)
@@ -1299,6 +1342,11 @@ async fn execute_union(
                     format!("connector '{}' timed out", ds),
                 )),
             };
+            // #1820: Record success/failure for adaptive concurrency tuning
+            match &result {
+                Ok(_) => ap.record_success(&ds, latency_ms),
+                Err(_) => ap.record_failure(&ds),
+            }
             (ds, result, latency_ms)
         }));
     }
@@ -1308,6 +1356,11 @@ async fn execute_union(
     let mut datasources = Vec::new();
     let mut scan_nodes = Vec::new();
     let mut partial_errors = Vec::new();
+    let mut conn_types: std::collections::HashMap<String, String> = refs.iter()
+        .filter_map(|(ds_id, _)| {
+            state.registry.get(ds_id).map(|c| (ds_id.clone(), c.connector_type().to_string()))
+        })
+        .collect();
 
     for handle in handles {
         let (ds_id, result, latency_ms) = handle.await.map_err(|e| format!("task join error: {e}"))?;
@@ -1343,6 +1396,7 @@ async fn execute_union(
         batches: merged,
         stats: Some(ds_stats),
         datasources,
+        connector_types: conn_types,
         profile_nodes: vec![ProfileNode::parent("UnionAll", total_rows, 0, scan_nodes)],
         partial_errors,
     })
@@ -1392,6 +1446,16 @@ async fn execute_join(
     let res_a = res_a.map_err(|_| format!("connector '{}' timed out", ds_a))?.map_err(|e| e.to_string());
     let res_b = res_b.map_err(|_| format!("connector '{}' timed out", ds_b))?.map_err(|e| e.to_string());
 
+    // #1820: Record success/failure for adaptive concurrency tuning
+    match &res_a {
+        Ok(_) => state.adaptive_parallelism.record_success(ds_a, latency_a),
+        Err(_) => state.adaptive_parallelism.record_failure(ds_a),
+    }
+    match &res_b {
+        Ok(_) => state.adaptive_parallelism.record_success(ds_b, latency_b),
+        Err(_) => state.adaptive_parallelism.record_failure(ds_b),
+    }
+
     let batches_a = res_a?;
     let batches_b = res_b?;
 
@@ -1407,6 +1471,10 @@ async fn execute_join(
             batches: vec![],
             stats: Some(ds_stats),
             datasources: vec![ds_a.clone(), ds_b.clone()],
+            connector_types: [
+                (ds_a.clone(), conn_a.connector_type().to_string()),
+                (ds_b.clone(), conn_b.connector_type().to_string()),
+            ].into_iter().collect(),
             profile_nodes: vec![],
             partial_errors: vec![],
         });
@@ -1458,6 +1526,10 @@ async fn execute_join(
         batches: joined,
         stats: Some(ds_stats),
         datasources: vec![ds_a.clone(), ds_b.clone()],
+        connector_types: [
+            (ds_a.clone(), conn_a.connector_type().to_string()),
+            (ds_b.clone(), conn_b.connector_type().to_string()),
+        ].into_iter().collect(),
         profile_nodes: vec![ProfileNode::parent("HashJoin", join_rows, join_ms, vec![scan_left, scan_right])],
         partial_errors: vec![],
     })
@@ -1707,11 +1779,32 @@ pub async fn explain_handler(
 
             let plan_text = plan_tree.to_text(0);
             let complexity = crate::complexity::score_query(&req.query);
+
+            // Compute dollar cost estimate from connector types + estimated bytes
+            let cost_estimate = {
+                let owned: Vec<(String, String, u64, u64)> = refs.iter()
+                    .map(|(ds, _)| {
+                        let ct = state.registry.get(ds)
+                            .map(|c| c.connector_type().to_string())
+                            .unwrap_or_default();
+                        let est_rows = plan_tree.estimated_rows.unwrap_or(10_000);
+                        let est_bytes = est_rows * 1024; // ~1KB per row estimate
+                        (ds.clone(), ct, est_rows, est_bytes)
+                    })
+                    .collect();
+                let input_refs: Vec<(&str, &str, u64, u64)> = owned.iter()
+                    .map(|(ds, ct, r, b)| (ds.as_str(), ct.as_str(), *r, *b))
+                    .collect();
+                let est = crate::cost_estimator::estimate_query_cost(&input_refs);
+                if est.total_cost_usd > 0.0 { Some(est) } else { None }
+            };
+
             Json(ExplainResponse {
                 plan: plan_text,
                 plan_tree: Some(plan_tree),
                 execution_profile,
                 complexity: Some(complexity),
+                cost_estimate,
             })
             .into_response()
         }
@@ -1799,7 +1892,7 @@ pub async fn info_handler(State(state): State<Arc<AppState>>) -> impl IntoRespon
 
 /// Parse all datasource.table references from a PPL query.
 /// PPL: `source = ds1.table1, ds2.table2 | ...`
-fn parse_ppl_sources(query: &str) -> Result<Vec<(String, String)>, String> {
+pub fn parse_ppl_sources(query: &str) -> Result<Vec<(String, String)>, String> {
     let rest = query
         .trim()
         .strip_prefix("source")
@@ -1817,7 +1910,7 @@ fn parse_ppl_sources(query: &str) -> Result<Vec<(String, String)>, String> {
 
 /// Parse all datasource.table references from a SQL query.
 /// Finds all `datasource.table` patterns after FROM, JOIN, and in UNION ALL subqueries.
-fn parse_sql_sources(query: &str) -> Result<Vec<(String, String)>, String> {
+pub fn parse_sql_sources(query: &str) -> Result<Vec<(String, String)>, String> {
     let mut refs = Vec::new();
     let lower = query.to_lowercase();
 
@@ -2597,7 +2690,7 @@ fn check_result_size(batches: &[arrow::record_batch::RecordBatch], max_bytes: u6
     }
 }
 
-fn batches_to_json(
+pub fn batches_to_json(
     batches: &[arrow::record_batch::RecordBatch],
 ) -> (Vec<String>, Vec<Vec<serde_json::Value>>) {
     if batches.is_empty() {
@@ -2690,12 +2783,17 @@ pub async fn stats_handler(State(state): State<Arc<AppState>>) -> impl IntoRespo
     let running = state.running_queries.count();
     let audit_count = state.audit_log.count().await;
 
+    let adaptive_stats = state.adaptive_parallelism.stats();
+    let compilation_stats = state.compilation_cache.stats();
+
     Json(serde_json::json!({
         "history": history_stats,
         "cache_size": cache_size,
         "connectors": connector_count,
         "running_queries": running,
         "audit_entries": audit_count,
+        "adaptive_parallelism": adaptive_stats,
+        "compilation_cache": compilation_stats,
     }))
 }
 
@@ -2722,6 +2820,38 @@ pub async fn federation_handler(State(state): State<Arc<AppState>>) -> impl Into
         }
     }
     Json(registry.topology())
+}
+
+// ── Lineage handler (#1840) ──
+
+/// POST /api/fuse/lineage — extract lineage graph from a query.
+pub async fn lineage_handler(
+    Json(req): Json<crate::lineage::LineageRequest>,
+) -> impl IntoResponse {
+    let graph = crate::lineage::extract_lineage(&req.query, &req.format);
+
+// ── Query Replay handlers (#1812) ──
+
+/// GET /api/fuse/replay/recordings — list recorded queries.
+pub async fn list_recordings(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    Json(state.query_recorder.recordings())
+}
+
+/// POST /api/fuse/replay/record — record a query for later replay.
+pub async fn record_query(
+    State(state): State<Arc<AppState>>,
+    Json(rec): Json<crate::query_replay::RecordedQuery>,
+) -> impl IntoResponse {
+    state.query_recorder.record(rec);
+    StatusCode::CREATED
+}
+
+/// DELETE /api/fuse/replay/recordings — clear all recordings.
+pub async fn clear_recordings(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    state.query_recorder.clear();
+    StatusCode::NO_CONTENT
+}
+    Json(graph)
 }
 
 // ── Saved query handlers ──
@@ -3144,7 +3274,7 @@ pub async fn get_view(
             Json(QueryResponse {
                 columns,
                 rows: rows.clone(),
-                metadata: QueryMetadata { total_rows: rows.len() as u64, format: "view".into(), trace_id: format!("v-{:x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()), datasources_queried: None, datasource_stats: None },
+                metadata: QueryMetadata { total_rows: rows.len() as u64, format: "view".into(), trace_id: format!("v-{:x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()), datasources_queried: None, datasource_stats: None, cost_estimate: None },
                 execution_profile: None,
                 partial_errors: vec![],
                 next_cursor: None,

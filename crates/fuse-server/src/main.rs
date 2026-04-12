@@ -18,6 +18,7 @@ use fuse_connector_cloudwatch::CloudWatchConnectorFactory;
 use fuse_connector_csv_json::CsvJsonConnectorFactory;
 use fuse_connector_redis::RedisConnectorFactory;
 use fuse_connector_duckdb::DuckDbConnectorFactory;
+use fuse_connector_otel::OtelConnectorFactory;
 
 use fuse_server::api::AppState;
 
@@ -62,6 +63,7 @@ async fn main() -> anyhow::Result<()> {
         "opensearch", "elasticsearch", "postgres", "mysql", "dynamodb",
         "s3", "s3-o11y", "prometheus", "cloudwatch", "redis", "csv-json",
         "mongodb", "influxdb", "clickhouse", "kafka", "redshift", "duckdb", "sqlite",
+        "otel",
     ];
     if let Err(e) = config.validate(&known_types) {
         tracing::error!("{e}");
@@ -86,7 +88,10 @@ async fn main() -> anyhow::Result<()> {
         Box::new(CsvJsonConnectorFactory),
         Box::new(RedisConnectorFactory),
         Box::new(DuckDbConnectorFactory),
+        Box::new(OtelConnectorFactory),
     ];
+
+    let mut otel_store: Option<Arc<fuse_connector_otel::store::OtelStore>> = None;
 
     for cc in &mut config.connector {
         // Resolve secret:// references before creating connector
@@ -94,6 +99,23 @@ async fn main() -> anyhow::Result<()> {
             tracing::warn!(id = %cc.id, error = %e, "Failed to resolve secrets, skipping");
             continue;
         }
+
+        // Special handling for otel connector — capture store for ingestion routes
+        if cc.connector_type == "otel" {
+            let max_spans = cc.properties.get("max_spans")
+                .and_then(|v| v.as_integer()).unwrap_or(100_000) as usize;
+            let max_metrics = cc.properties.get("max_metrics")
+                .and_then(|v| v.as_integer()).unwrap_or(100_000) as usize;
+            let max_logs = cc.properties.get("max_logs")
+                .and_then(|v| v.as_integer()).unwrap_or(100_000) as usize;
+            let store = Arc::new(fuse_connector_otel::store::OtelStore::new(max_spans, max_metrics, max_logs));
+            let connector = Arc::new(fuse_connector_otel::OtelConnector::new(&cc.id, store.clone()));
+            registry.register(connector)?;
+            otel_store = Some(store);
+            info!(id = %cc.id, r#type = %cc.connector_type, "Registered connector");
+            continue;
+        }
+
         let factory = factories
             .iter()
             .find(|f| f.connector_type() == cc.connector_type);
@@ -146,6 +168,10 @@ async fn main() -> anyhow::Result<()> {
             }
             limiter
         },
+        otel_store,
+        query_recorder: Arc::new(fuse_server::query_replay::QueryRecorder::new(10000)),
+        adaptive_parallelism: Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()),
+        compilation_cache: Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)),
     });
 
     // Security: warn if tenants enabled without auth
