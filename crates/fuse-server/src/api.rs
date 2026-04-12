@@ -4540,3 +4540,18 @@ pub async fn pool_stats_handler(
     }))
     .into_response()
 }
+
+/// GET /api/fuse/connectors/health-history — connector uptime/latency history.
+pub async fn connector_health_history_handler(
+    axum::extract::State(_state): axum::extract::State<Arc<AppState>>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let limit: usize = params.get("limit").and_then(|v| v.parse().ok()).unwrap_or(50);
+    let history = crate::connector_health_history::HealthHistory::new();
+    let summaries = history.all_summaries(limit);
+    axum::Json(serde_json::json!({
+        "connectors": summaries,
+    }))
+    .into_response()
+}
