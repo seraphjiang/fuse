@@ -119,6 +119,9 @@ body.light .ac-item .ac-label{color:#1f2328}
 .suggestions .sg-query{font-family:"SF Mono",Consolas,monospace;color:#79c0ff;font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .suggestions .sg-desc{color:#8b949e;font-size:11px}
 .ac-wrap{position:relative}
+.snip{padding:6px 12px;font-size:12px;cursor:pointer;color:#e1e4e8}.snip:hover{background:#21262d}
+body.light .snip{color:#1f2328}body.light .snip:hover{background:#f6f8fa}
+body.light #snippet-menu{background:#fff;border-color:#d0d7de}
 .ac-dropdown{display:none;position:absolute;z-index:60;background:#161b22;border:1px solid #30363d;border-radius:6px;max-height:200px;overflow-y:auto;min-width:220px;box-shadow:0 8px 24px rgba(0,0,0,.4);font-size:12px}
 .ac-dropdown.open{display:block}
 .ac-item{padding:5px 10px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
@@ -352,6 +355,22 @@ button:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid #58a
     <label class="analyze-label"><input type="checkbox" id="analyze-cb"> Analyze</label>
     <label class="analyze-label"><input type="checkbox" id="anomaly-cb" onchange="if(currentView==='chart')renderChart()"> 🔴 Anomalies</label>
     <button class="lucky" id="lucky-btn" onclick="feelingLucky()">🎲 Feeling Lucky</button>
+    <div style="position:relative;display:inline-block">
+      <button onclick="toggleSnippets()">📋 Snippets ▾</button>
+      <div id="snippet-menu" style="display:none;position:absolute;top:100%;left:0;z-index:200;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:4px 0;min-width:320px;max-height:300px;overflow:auto;box-shadow:0 4px 12px rgba(0,0,0,.4)">
+        <div style="padding:4px 12px;font-size:11px;color:#8b949e;text-transform:uppercase">SQL Patterns</div>
+        <div class="snip" onclick="insertSnippet('SELECT * FROM {datasource}.{table} LIMIT 20')">Basic SELECT</div>
+        <div class="snip" onclick="insertSnippet('SELECT a.*, b.* FROM {ds1}.{table1} a JOIN {ds2}.{table2} b ON a.id = b.id')">Cross-source JOIN</div>
+        <div class="snip" onclick="insertSnippet('SELECT source, count(*) FROM {datasource}.{table} GROUP BY source ORDER BY count(*) DESC')">GROUP BY + count</div>
+        <div class="snip" onclick="insertSnippet('SELECT * FROM {ds1}.{t1} UNION ALL SELECT * FROM {ds2}.{t2}')">UNION ALL</div>
+        <div class="snip" onclick="insertSnippet('SELECT *, ROW_NUMBER() OVER (PARTITION BY {col} ORDER BY {sort_col} DESC) as rn FROM {datasource}.{table}')">Window function</div>
+        <div class="snip" onclick="insertSnippet('EXPLAIN SELECT * FROM {datasource}.{table} WHERE {col} = {value}')">EXPLAIN plan</div>
+        <div class="snip" onclick="insertSnippet('PREPARE q AS SELECT * FROM {datasource}.{table} WHERE {col} >= $1 LIMIT $2;\nEXECUTE q({val1}, {val2})')">Prepared statement</div>
+        <div style="padding:4px 12px;font-size:11px;color:#8b949e;text-transform:uppercase;margin-top:4px">PPL Patterns</div>
+        <div class="snip" onclick="insertSnippet('source = {datasource}.{table} | where status >= 500 | stats count() by service')">PPL filter + stats</div>
+        <div class="snip" onclick="insertSnippet('source = {ds1}.{t1} | lookup {ds2}.{t2} {key} AS {key} REPLACE {field}')">PPL lookup</div>
+      </div>
+    </div>
     <div class="demo-dropdown">
       <button class="demo-btn" onclick="toggleDemos()">🎬 Demos ▾</button>
       <div class="demo-menu" id="demo-menu">
@@ -850,6 +869,21 @@ function sortTable(col) {
   else { sortCol = col; sortAsc = true; }
   renderTable(lastColumns, lastRows);
 }
+function toggleSnippets() {
+  const m = $('snippet-menu');
+  m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+function insertSnippet(s) {
+  $('editor').value = s;
+  $('snippet-menu').style.display = 'none';
+  if (typeof highlightEditor === 'function') highlightEditor();
+  updateLineNumbers();
+  $('editor').focus();
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#snippet-menu') && !e.target.closest('[onclick*="toggleSnippets"]'))
+    $('snippet-menu').style.display = 'none';
+});
 function dsColor(name) {
   if (!dsColorMap[name]) dsColorMap[name] = DS_COLORS[dsColorIdx++ % DS_COLORS.length];
   return dsColorMap[name];
