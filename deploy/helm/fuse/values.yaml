@@ -119,3 +119,7 @@ resourceQuota:
     limits.cpu: "16"
     limits.memory: 16Gi
     pods: "20"
+
+blueGreen:
+  enabled: false
+  activeSlot: "blue"  # "blue" or "green" — toggle to switch traffic
