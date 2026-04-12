@@ -8,6 +8,8 @@ description = "Apache Iceberg connector for Fuse — read Iceberg tables via RES
 [dependencies]
 fuse-core = { path = "../../fuse-core" }
 arrow = { workspace = true }
+parquet = { workspace = true }
+bytes = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }

@@ -22,6 +22,9 @@ use std::sync::Arc;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use async_trait::async_trait;
+use bytes::Bytes;
+use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+use parquet::arrow::ProjectionMask;
 use tokio::sync::mpsc;
 use tracing::debug;
 
@@ -49,6 +52,78 @@ impl IcebergConnector {
 
     fn table_url(&self, table: &str) -> String {
         format!("{}/{}", self.tables_url(), table)
+    }
+
+    /// Read Parquet bytes into RecordBatches with optional column projection.
+    fn read_parquet(data: &Bytes, projections: &[String], batch_size: usize) -> Result<Vec<RecordBatch>, ConnectorError> {
+        let mut builder = ParquetRecordBatchReaderBuilder::try_new(data.clone())
+            .map_err(ConnectorError::query)?;
+        if !projections.is_empty() {
+            let pq_schema = builder.parquet_schema().clone();
+            let indices: Vec<usize> = projections.iter()
+                .filter_map(|name| pq_schema.columns().iter().position(|c| c.name() == name))
+                .collect();
+            if !indices.is_empty() {
+                builder = builder.with_projection(ProjectionMask::leaves(&pq_schema, indices));
+            }
+        }
+        builder.with_batch_size(batch_size).build()
+            .map_err(ConnectorError::query)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(ConnectorError::query)
+    }
+
+    /// Fetch table metadata from the REST catalog and extract data file paths
+    /// from the current snapshot's manifests.
+    async fn resolve_data_files(&self, table: &str) -> Result<Vec<String>, ConnectorError> {
+        let resp = self.client.get(&self.table_url(table)).send().await
+            .map_err(|e| ConnectorError::Connection(e.to_string()))?;
+        let meta: serde_json::Value = resp.json().await
+            .map_err(|e| ConnectorError::query(e.to_string()))?;
+
+        // Get current snapshot
+        let snapshots = meta["metadata"]["snapshots"].as_array()
+            .ok_or_else(|| ConnectorError::query("no snapshots in table metadata"))?;
+        let snapshot = snapshots.last()
+            .ok_or_else(|| ConnectorError::query("empty snapshots array"))?;
+
+        // Extract manifest-list URL and fetch it
+        let manifest_list = snapshot["manifest-list"].as_str()
+            .ok_or_else(|| ConnectorError::query("no manifest-list in snapshot"))?;
+
+        let manifest_resp = self.client.get(manifest_list).send().await
+            .map_err(|e| ConnectorError::query(format!("failed to fetch manifest list: {e}")))?;
+        let manifest_json: serde_json::Value = manifest_resp.json().await
+            .unwrap_or_else(|_| serde_json::json!({"manifests": []}));
+
+        let manifests = extract_manifest_paths(&manifest_json);
+
+        // For each manifest, extract data file paths
+        let mut data_files = Vec::new();
+        for manifest_path in &manifests {
+            let mresp = self.client.get(manifest_path).send().await
+                .map_err(|e| ConnectorError::query(format!("failed to fetch manifest: {e}")))?;
+            let mdata: serde_json::Value = mresp.json().await
+                .unwrap_or_else(|_| serde_json::json!({"entries": []}));
+            let empty = vec![];
+            let entries = mdata["entries"].as_array().unwrap_or(&empty);
+            for entry in entries {
+                if let Some(path) = entry["data_file"]["file_path"].as_str() {
+                    data_files.push(path.to_string());
+                }
+            }
+        }
+
+        if data_files.is_empty() {
+            // Fallback: check if snapshot has direct data_files array
+            let empty = vec![];
+            let direct = snapshot["data_files"].as_array().unwrap_or(&empty);
+            for f in direct {
+                if let Some(p) = f.as_str() { data_files.push(p.to_string()); }
+            }
+        }
+
+        Ok(data_files)
     }
 }
 
@@ -135,13 +210,68 @@ impl FederatedConnector for IcebergConnector {
         parse_iceberg_schema(&json["metadata"]["current-schema"])
     }
 
-    async fn execute(&self, _query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
-        Err(ConnectorError::query("Iceberg execute requires Parquet reader integration"))
+    async fn execute(&self, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
+        let data_files = self.resolve_data_files(&query.table).await?;
+        debug!(files = data_files.len(), table = %query.table, "executing Iceberg query");
+
+        let mut all_batches = Vec::new();
+        let limit = query.limit.map(|n| n as usize);
+        let mut total_rows = 0usize;
+
+        for file_path in &data_files {
+            let resp = self.client.get(file_path).send().await
+                .map_err(|e| ConnectorError::query(format!("failed to fetch {file_path}: {e}")))?;
+            let data = resp.bytes().await
+                .map_err(|e| ConnectorError::query(format!("bytes error: {e}")))?;
+            let batches = Self::read_parquet(&data, &query.projections, 8192)?;
+            for batch in batches {
+                total_rows += batch.num_rows();
+                all_batches.push(batch);
+                if let Some(lim) = limit {
+                    if total_rows >= lim { break; }
+                }
+            }
+            if limit.map_or(false, |lim| total_rows >= lim) { break; }
+        }
+
+        // Trim last batch if over limit
+        if let Some(lim) = limit {
+            if total_rows > lim {
+                if let Some(last) = all_batches.last() {
+                    let excess = total_rows - lim;
+                    let trimmed = last.slice(0, last.num_rows() - excess);
+                    let len = all_batches.len();
+                    all_batches[len - 1] = trimmed;
+                }
+            }
+        }
+
+        Ok(all_batches)
     }
 
     async fn execute_streaming(&self, query: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>) -> Result<(), ConnectorError> {
-        for batch in self.execute(query).await? {
-            tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+        let data_files = self.resolve_data_files(&query.table).await?;
+        let limit = query.limit.map(|n| n as usize);
+        let mut sent = 0usize;
+
+        for file_path in &data_files {
+            let resp = self.client.get(file_path).send().await
+                .map_err(|e| ConnectorError::query(format!("failed to fetch {file_path}: {e}")))?;
+            let data = resp.bytes().await
+                .map_err(|e| ConnectorError::query(format!("bytes error: {e}")))?;
+            let batches = Self::read_parquet(&data, &query.projections, 8192)?;
+            for batch in batches {
+                let batch = if let Some(lim) = limit {
+                    if sent >= lim { return Ok(()); }
+                    let remaining = lim - sent;
+                    let b = if batch.num_rows() > remaining { batch.slice(0, remaining) } else { batch };
+                    sent += b.num_rows();
+                    b
+                } else {
+                    batch
+                };
+                tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+            }
         }
         Ok(())
     }

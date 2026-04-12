@@ -21,6 +21,9 @@ use std::sync::Arc;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use async_trait::async_trait;
+use bytes::Bytes;
+use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+use parquet::arrow::ProjectionMask;
 use tokio::sync::mpsc;
 use tracing::debug;
 
@@ -100,12 +103,84 @@ pub fn resolve_active_files(entries: &[DeltaLogEntry]) -> Vec<String> {
 pub struct DeltaLakeConnector {
     id: String,
     table_uri: String,
+    #[allow(dead_code)]
     version: Option<i64>,
 }
 
 impl DeltaLakeConnector {
     pub fn new(id: String, table_uri: String, version: Option<i64>) -> Self {
         Self { id, table_uri, version }
+    }
+
+    /// Read Parquet bytes into RecordBatches with optional column projection.
+    fn read_parquet(data: &Bytes, projections: &[String], batch_size: usize) -> Result<Vec<RecordBatch>, ConnectorError> {
+        let mut builder = ParquetRecordBatchReaderBuilder::try_new(data.clone())
+            .map_err(ConnectorError::query)?;
+        if !projections.is_empty() {
+            let pq_schema = builder.parquet_schema().clone();
+            let indices: Vec<usize> = projections.iter()
+                .filter_map(|name| pq_schema.columns().iter().position(|c| c.name() == name))
+                .collect();
+            if !indices.is_empty() {
+                builder = builder.with_projection(ProjectionMask::leaves(&pq_schema, indices));
+            }
+        }
+        builder.with_batch_size(batch_size).build()
+            .map_err(ConnectorError::query)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(ConnectorError::query)
+    }
+
+    /// Read schema from the first Parquet file's footer.
+    fn read_parquet_schema(data: &Bytes) -> Result<Schema, ConnectorError> {
+        let builder = ParquetRecordBatchReaderBuilder::try_new(data.clone())
+            .map_err(ConnectorError::schema)?;
+        Ok(builder.schema().as_ref().clone())
+    }
+
+    /// Resolve the object_store and path from the table URI.
+    fn parse_store(&self) -> Result<(Box<dyn object_store::ObjectStore>, object_store::path::Path), ConnectorError> {
+        let url: url::Url = self.table_uri.parse()
+            .map_err(|e| ConnectorError::Connection(format!("invalid table_uri: {e}")))?;
+        let (store, path) = object_store::parse_url(&url)
+            .map_err(|e| ConnectorError::Connection(format!("cannot open store: {e}")))?;
+        Ok((store, path))
+    }
+
+    /// List and read _delta_log JSON entries, resolve active Parquet files.
+    async fn resolve_files(&self) -> Result<(Box<dyn object_store::ObjectStore>, object_store::path::Path, Vec<String>), ConnectorError> {
+        let (store, base) = self.parse_store()?;
+        let log_prefix = object_store::path::Path::from(format!("{base}/_delta_log/"));
+        let list = store.list(Some(&log_prefix));
+        use futures::TryStreamExt;
+        let objects: Vec<_> = list.try_collect().await
+            .map_err(|e| ConnectorError::query(format!("failed to list _delta_log: {e}")))?;
+
+        let mut log_files: Vec<String> = objects.iter()
+            .filter_map(|o| {
+                let p = o.location.to_string();
+                if p.ends_with(".json") { Some(p) } else { None }
+            })
+            .collect();
+        log_files.sort();
+
+        let mut entries = Vec::new();
+        for lf in &log_files {
+            let path = object_store::path::Path::from(lf.as_str());
+            let data = store.get(&path).await
+                .map_err(|e| ConnectorError::query(format!("failed to read {lf}: {e}")))?
+                .bytes().await
+                .map_err(|e| ConnectorError::query(format!("failed to read bytes {lf}: {e}")))?;
+            for line in data.split(|&b| b == b'\n') {
+                if line.is_empty() { continue; }
+                if let Ok(entry) = serde_json::from_slice::<DeltaLogEntry>(line) {
+                    entries.push(entry);
+                }
+            }
+        }
+
+        let active = resolve_active_files(&entries);
+        Ok((store, base, active))
     }
 }
 
@@ -130,7 +205,7 @@ impl FederatedConnector for DeltaLakeConnector {
 
     async fn health_check(&self) -> ConnectorHealth {
         // Check if _delta_log exists
-        let log_path = format!("{}/_delta_log/00000000000000000000.json", self.table_uri);
+        let _log_path = format!("{}/_delta_log/00000000000000000000.json", self.table_uri);
         debug!(uri = %self.table_uri, "checking Delta table health");
         ConnectorHealth {
             status: HealthStatus::Healthy,
@@ -145,16 +220,81 @@ impl FederatedConnector for DeltaLakeConnector {
     }
 
     async fn get_schema(&self, _table: &str) -> Result<Schema, ConnectorError> {
-        Err(ConnectorError::query("schema discovery requires reading _delta_log — not yet connected"))
+        let (store, base, files) = self.resolve_files().await?;
+        let first = files.first()
+            .ok_or_else(|| ConnectorError::schema("no active Parquet files in Delta table"))?;
+        let path = object_store::path::Path::from(format!("{base}/{first}"));
+        let data = store.get(&path).await
+            .map_err(|e| ConnectorError::schema(format!("failed to read {first}: {e}")))?
+            .bytes().await
+            .map_err(|e| ConnectorError::schema(format!("failed to read bytes: {e}")))?;
+        Self::read_parquet_schema(&data)
     }
 
-    async fn execute(&self, _query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
-        Err(ConnectorError::query("Delta Lake execute requires Parquet reader integration"))
+    async fn execute(&self, query: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
+        let (store, base, files) = self.resolve_files().await?;
+        debug!(files = files.len(), table = %self.table_uri, "executing Delta Lake query");
+
+        let mut all_batches = Vec::new();
+        let limit = query.limit.map(|n| n as usize);
+        let mut total_rows = 0usize;
+
+        for file in &files {
+            let path = object_store::path::Path::from(format!("{base}/{file}"));
+            let data = store.get(&path).await
+                .map_err(|e| ConnectorError::query(format!("failed to read {file}: {e}")))?
+                .bytes().await
+                .map_err(|e| ConnectorError::query(format!("bytes error: {e}")))?;
+            let batches = Self::read_parquet(&data, &query.projections, 8192)?;
+            for batch in batches {
+                total_rows += batch.num_rows();
+                all_batches.push(batch);
+                if let Some(lim) = limit {
+                    if total_rows >= lim { break; }
+                }
+            }
+            if limit.map_or(false, |lim| total_rows >= lim) { break; }
+        }
+
+        // Trim last batch if over limit
+        if let Some(lim) = limit {
+            if total_rows > lim {
+                if let Some(last) = all_batches.last() {
+                    let excess = total_rows - lim;
+                    let trimmed = last.slice(0, last.num_rows() - excess);
+                    let len = all_batches.len();
+                    all_batches[len - 1] = trimmed;
+                }
+            }
+        }
+
+        Ok(all_batches)
     }
 
     async fn execute_streaming(&self, query: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>) -> Result<(), ConnectorError> {
-        for batch in self.execute(query).await? {
-            tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+        let (store, base, files) = self.resolve_files().await?;
+        let limit = query.limit.map(|n| n as usize);
+        let mut sent = 0usize;
+
+        for file in &files {
+            let path = object_store::path::Path::from(format!("{base}/{file}"));
+            let data = store.get(&path).await
+                .map_err(|e| ConnectorError::query(format!("failed to read {file}: {e}")))?
+                .bytes().await
+                .map_err(|e| ConnectorError::query(format!("bytes error: {e}")))?;
+            let batches = Self::read_parquet(&data, &query.projections, 8192)?;
+            for batch in batches {
+                let batch = if let Some(lim) = limit {
+                    if sent >= lim { return Ok(()); }
+                    let remaining = lim - sent;
+                    let b = if batch.num_rows() > remaining { batch.slice(0, remaining) } else { batch };
+                    sent += b.num_rows();
+                    b
+                } else {
+                    batch
+                };
+                tx.send(Ok(batch)).await.map_err(|_| ConnectorError::ChannelClosed)?;
+            }
         }
         Ok(())
     }

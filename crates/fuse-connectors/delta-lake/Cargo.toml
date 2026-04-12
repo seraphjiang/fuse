@@ -8,6 +8,11 @@ description = "Delta Lake connector for Fuse — read Delta tables via transacti
 [dependencies]
 fuse-core = { path = "../../fuse-core" }
 arrow = { workspace = true }
+parquet = { workspace = true }
+bytes = { workspace = true }
+object_store = { workspace = true }
+futures = { workspace = true }
+url = "2"
 async-trait = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
