@@ -112,6 +112,90 @@ pub fn annotate_batch(
     RecordBatch::try_new(Arc::new(Schema::new(fields)), columns)
 }
 
+// ── Trend detection ──────────────────────────────────────────────────
+
+/// Linear regression slope over a sliding window.
+/// Positive = upward trend, negative = downward trend.
+pub fn trend_slope(values: &[f64], window: usize) -> Vec<Option<f64>> {
+    if window < 2 { return vec![None; values.len()]; }
+    values.iter().enumerate().map(|(i, _)| {
+        if i + 1 < window { return None; }
+        let start = i + 1 - window;
+        let n = window as f64;
+        let x_mean = (n - 1.0) / 2.0;
+        let y_mean: f64 = values[start..=i].iter().sum::<f64>() / n;
+        let mut num = 0.0;
+        let mut den = 0.0;
+        for (j, &v) in values[start..=i].iter().enumerate() {
+            let xd = j as f64 - x_mean;
+            num += xd * (v - y_mean);
+            den += xd * xd;
+        }
+        if den.abs() < f64::EPSILON { Some(0.0) } else { Some(num / den) }
+    }).collect()
+}
+
+/// Detect trend direction: "rising", "falling", or "stable".
+pub fn trend_direction(slope: f64, threshold: f64) -> &'static str {
+    if slope > threshold { "rising" }
+    else if slope < -threshold { "falling" }
+    else { "stable" }
+}
+
+// ── Seasonal pattern detection ───────────────────────────────────────
+
+/// Detect seasonal (periodic) patterns by computing autocorrelation at
+/// candidate periods. Returns (best_period, correlation) or None if no
+/// significant periodicity found.
+pub fn detect_seasonality(
+    values: &[f64],
+    min_period: usize,
+    max_period: usize,
+    min_correlation: f64,
+) -> Option<(usize, f64)> {
+    if values.len() < max_period * 2 { return None; }
+    let mean = values.iter().sum::<f64>() / values.len() as f64;
+    let variance: f64 = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>();
+    if variance.abs() < f64::EPSILON { return None; }
+
+    let mut best = None;
+    for period in min_period..=max_period {
+        let mut corr = 0.0;
+        let n = values.len() - period;
+        for i in 0..n {
+            corr += (values[i] - mean) * (values[i + period] - mean);
+        }
+        corr /= variance;
+        if corr >= min_correlation {
+            match best {
+                None => best = Some((period, corr)),
+                Some((_, bc)) if corr > bc => best = Some((period, corr)),
+                _ => {}
+            }
+        }
+    }
+    best
+}
+
+/// Remove seasonal component: subtract the average value at each position
+/// within the detected period. Returns deseasonalized values.
+pub fn deseasonalize(values: &[f64], period: usize) -> Vec<f64> {
+    if period == 0 { return values.to_vec(); }
+    // Compute seasonal averages per position
+    let mut sums = vec![0.0; period];
+    let mut counts = vec![0usize; period];
+    for (i, &v) in values.iter().enumerate() {
+        sums[i % period] += v;
+        counts[i % period] += 1;
+    }
+    let seasonal: Vec<f64> = sums.iter().zip(&counts)
+        .map(|(s, &c)| if c > 0 { s / c as f64 } else { 0.0 })
+        .collect();
+    values.iter().enumerate()
+        .map(|(i, &v)| v - seasonal[i % period])
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -222,4 +306,80 @@ mod tests {
         ]).unwrap();
         assert!(annotate_batch(&batch, "nonexistent", 3, 2.0).is_err());
     }
+
+    // ── Trend detection tests ──
+
+    #[test]
+    fn test_trend_slope_rising() {
+        let vals: Vec<f64> = (0..10).map(|i| i as f64 * 2.0).collect();
+        let slopes = trend_slope(&vals, 5);
+        // Linear increase of 2.0 per step
+        assert!((slopes[4].unwrap() - 2.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_trend_slope_falling() {
+        let vals: Vec<f64> = (0..10).map(|i| 100.0 - i as f64 * 3.0).collect();
+        let slopes = trend_slope(&vals, 5);
+        assert!(slopes[4].unwrap() < -2.0);
+    }
+
+    #[test]
+    fn test_trend_slope_flat() {
+        let vals = vec![5.0; 10];
+        let slopes = trend_slope(&vals, 5);
+        assert!((slopes[4].unwrap()).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_trend_direction() {
+        assert_eq!(trend_direction(5.0, 1.0), "rising");
+        assert_eq!(trend_direction(-5.0, 1.0), "falling");
+        assert_eq!(trend_direction(0.5, 1.0), "stable");
+    }
+
+    // ── Seasonal detection tests ──
+
+    #[test]
+    fn test_detect_seasonality_periodic() {
+        // Create a signal with period 7 (weekly pattern)
+        let vals: Vec<f64> = (0..70).map(|i| {
+            let base = 100.0;
+            let seasonal = [10.0, 5.0, 3.0, 2.0, 3.0, 5.0, 15.0]; // weekly
+            base + seasonal[i % 7]
+        }).collect();
+        let result = detect_seasonality(&vals, 2, 14, 0.5);
+        assert!(result.is_some());
+        let (period, corr) = result.unwrap();
+        assert_eq!(period, 7);
+        assert!(corr > 0.5);
+    }
+
+    #[test]
+    fn test_detect_seasonality_none() {
+        // Random-ish data with no periodicity
+        let vals: Vec<f64> = (0..100).map(|i| (i as f64 * 1.7).sin() * 10.0 + (i as f64 * 0.3).cos() * 5.0).collect();
+        let result = detect_seasonality(&vals, 2, 20, 0.9);
+        // High threshold should reject weak correlations
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_deseasonalize() {
+        let vals: Vec<f64> = (0..12).map(|i| {
+            100.0 + [10.0, -5.0, 0.0][i % 3]
+        }).collect();
+        let deseasoned = deseasonalize(&vals, 3);
+        // After removing seasonal component, values should be near 0
+        for v in &deseasoned {
+            assert!(v.abs() < 0.01, "expected ~0, got {}", v);
+        }
+    }
+
+    #[test]
+    fn test_deseasonalize_period_zero() {
+        let vals = vec![1.0, 2.0, 3.0];
+        assert_eq!(deseasonalize(&vals, 0), vals);
+    }
+
 }
