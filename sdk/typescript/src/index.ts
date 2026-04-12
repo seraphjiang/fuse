@@ -82,11 +82,12 @@ export class FuseClient {
     return h;
   }
 
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private async request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
     const resp = await this._fetch(`${this.baseUrl}${path}`, {
       method,
       headers: this.headers(),
       body: body ? JSON.stringify(body) : undefined,
+      signal,
     });
     if (!resp.ok) {
       const text = await resp.text();

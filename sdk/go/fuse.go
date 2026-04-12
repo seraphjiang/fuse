@@ -5,6 +5,7 @@ package fuse
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -357,3 +358,77 @@ func (c *Client) RecordQuery(query, format string) (*Recording, error) {
 	var out Recording; return &out, json.Unmarshal(data, &out)
 }
 func (c *Client) ClearRecordings() error { _, err := c.do("DELETE", "/api/fuse/replay/recordings", nil); return err }
+
+// --- Context-aware methods ---
+
+func (c *Client) doCtx(ctx context.Context, method, path string, body interface{}) ([]byte, error) {
+	var reqBody io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("marshal: %w", err)
+		}
+		reqBody = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, reqBody)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.APIKey != "" {
+		req.Header.Set("x-api-key", c.APIKey)
+	}
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(data))
+	}
+	return data, nil
+}
+
+// QueryCtx executes a SQL or PPL query with context for cancellation/timeout.
+func (c *Client) QueryCtx(ctx context.Context, sql, format string) (*QueryResult, error) {
+	body := map[string]interface{}{"query": sql, "format": format}
+	data, err := c.doCtx(ctx, "POST", "/api/fuse/query", body)
+	if err != nil {
+		return nil, err
+	}
+	var result QueryResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("unmarshal: %w", err)
+	}
+	return &result, nil
+}
+
+// HealthCtx checks server health with context.
+func (c *Client) HealthCtx(ctx context.Context) (*HealthResult, error) {
+	data, err := c.doCtx(ctx, "GET", "/api/fuse/health", nil)
+	if err != nil {
+		return nil, err
+	}
+	var result HealthResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("unmarshal: %w", err)
+	}
+	return &result, nil
+}
+
+// DatasourcesCtx lists datasources with context.
+func (c *Client) DatasourcesCtx(ctx context.Context) ([]Datasource, error) {
+	data, err := c.doCtx(ctx, "GET", "/api/fuse/datasources", nil)
+	if err != nil {
+		return nil, err
+	}
+	var result []Datasource
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("unmarshal: %w", err)
+	}
+	return result, nil
+}
