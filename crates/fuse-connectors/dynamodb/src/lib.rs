@@ -85,6 +85,13 @@ impl DynamoDbConnector {
     }
 }
 
+
+/// Check if an AWS SDK error is a ResourceNotFoundException (table not found).
+fn is_resource_not_found<E: std::fmt::Display>(err: &aws_sdk_dynamodb::error::SdkError<E>) -> bool {
+    let msg = err.to_string();
+    msg.contains("ResourceNotFoundException") || msg.contains("resource not found")
+}
+
 #[async_trait]
 impl FederatedConnector for DynamoDbConnector {
     fn id(&self) -> &str { &self.id }
@@ -129,7 +136,9 @@ impl FederatedConnector for DynamoDbConnector {
             if let Some(ref k) = last_key {
                 req = req.exclusive_start_table_name(k);
             }
-            let resp = req.send().await.map_err(ConnectorError::schema)?;
+            let resp = req.send().await.map_err(|e| {
+                ConnectorError::schema(format!("failed to list DynamoDB tables: {}", e))
+            })?;
             for name in resp.table_names() {
                 let fuse_name = if self.table_prefix.is_empty() {
                     name.to_string()
@@ -156,7 +165,13 @@ impl FederatedConnector for DynamoDbConnector {
             .table_name(&ddb_table)
             .send()
             .await
-            .map_err(ConnectorError::schema)?;
+            .map_err(|e| {
+                if is_resource_not_found(&e) {
+                    ConnectorError::schema(format!("table '{}' not found in DynamoDB", ddb_table))
+                } else {
+                    ConnectorError::schema(e)
+                }
+            })?;
 
         let table_desc = resp.table()
             .ok_or_else(|| ConnectorError::schema("DescribeTable returned no table"))?;
@@ -215,7 +230,13 @@ impl FederatedConnector for DynamoDbConnector {
                 for (k, v) in pnames { req = req.expression_attribute_names(k, v); }
             }
 
-            req.send().await.map_err(ConnectorError::query)?.items().to_vec()
+            req.send().await.map_err(|e| {
+                if is_resource_not_found(&e) {
+                    ConnectorError::query(format!("table '{}' not found in DynamoDB", ddb_table))
+                } else {
+                    ConnectorError::query(e)
+                }
+            })?.items().to_vec()
         } else {
             // Use Scan API
             let mut req = self.client.scan().table_name(&ddb_table);
@@ -235,7 +256,13 @@ impl FederatedConnector for DynamoDbConnector {
                 for (k, v) in pnames { req = req.expression_attribute_names(k, v); }
             }
 
-            req.send().await.map_err(ConnectorError::query)?.items().to_vec()
+            req.send().await.map_err(|e| {
+                if is_resource_not_found(&e) {
+                    ConnectorError::query(format!("table '{}' not found in DynamoDB", ddb_table))
+                } else {
+                    ConnectorError::query(e)
+                }
+            })?.items().to_vec()
         };
 
         if items.is_empty() {

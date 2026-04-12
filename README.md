@@ -211,7 +211,7 @@ service = "aoss"
 id = "my_ddb"
 type = "dynamodb"
 region = "us-west-2"
-table_names = ["users", "orders"]
+table_names = ["user_profiles", "orders"]
 
 [[connector]]
 id = "my_pg"
