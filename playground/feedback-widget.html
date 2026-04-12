@@ -1,5 +1,12 @@
 <!-- Fuse Feedback Widget — draggable button, auto-screenshot, console capture -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+<script>
+(function(){
+  if(typeof html2canvas==='function') return;
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+  document.head.appendChild(s);
+})();
+</script>
 <style>
 #fb-btn{position:fixed;bottom:24px;right:24px;background:#238636;color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:20px;cursor:grab;box-shadow:0 4px 12px rgba(0,0,0,.4);z-index:9000;transition:box-shadow .2s;user-select:none;touch-action:none}
 #fb-btn:hover{box-shadow:0 6px 20px rgba(0,0,0,.6)}
