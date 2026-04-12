@@ -10,7 +10,7 @@ Fuse federates queries across 25 connectors from a single SQL or PPL query. Join
 
 ## Highlights
 
-- **25 connectors** — OpenSearch, Elasticsearch, PostgreSQL, MySQL, DynamoDB, S3 (Parquet), S3 O11y (NDJSON), Prometheus, CloudWatch, Redis, CSV/JSON, MongoDB, InfluxDB, ClickHouse, Kafka, Athena, Timestream, Snowflake, BigQuery, Cassandra, DuckDB, Arrow Flight
+- **25 connectors** — OpenSearch, Elasticsearch, PostgreSQL, MySQL, DynamoDB, S3 (Parquet), S3 O11y (NDJSON), Prometheus, CloudWatch, Redis, CSV/JSON, MongoDB, InfluxDB, ClickHouse, Kafka, Athena, Timestream, Snowflake, BigQuery, Cassandra, DuckDB, Arrow Flight, Spark, Delta Lake, Iceberg
 - **Cross-datasource JOINs** — hash join with build-side selection, semi-join, anti-join, correlated subqueries
 - **Federated UNION / UNION ALL** — combine results from any mix of sources, with deduplication
 - **Window functions** — ROW_NUMBER, RANK, LAG, LEAD over federated results
@@ -187,6 +187,9 @@ curl http://localhost:9400/api/fuse/datasources/cluster_a/schemas/application_lo
 | Fuse | `fuse` | Bearer token | Full query forwarding (federation) |
 | DuckDB | `duckdb` | None (local file) | Full SQL pushdown (native SQL) |
 | Arrow Flight | `arrow-flight` | Bearer token (optional) | Flight SQL pushdown, ticket-based streaming |
+| Spark | `spark` | Bearer token / Kerberos | Spark SQL pushdown, Thrift/HTTP |
+| Delta Lake | `delta-lake` | SigV4 (S3) / None (local) | Predicate pushdown, time travel, partition pruning |
+| Iceberg | `iceberg` | SigV4 (S3) / None (local) | Predicate pushdown, snapshot queries, partition pruning |
 
 ### Configuration (fuse.toml)
 

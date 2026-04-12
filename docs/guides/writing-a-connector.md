@@ -346,3 +346,57 @@ Key considerations:
 - Handle NULL values explicitly
 - For large batches, consider chunking to avoid statement size limits
 - Return the total number of rows written
+
+## Lakehouse Connectors
+
+Fuse includes three lakehouse connectors for open table formats. These share common patterns:
+
+### Delta Lake
+
+```toml
+[[connector]]
+id = "my_delta"
+type = "delta-lake"
+table_uri = "s3://my-bucket/delta-tables/"
+[connector.auth]
+type = "sigv4"
+region = "us-west-2"
+```
+
+Features: predicate pushdown, time travel (`VERSION AS OF`), partition pruning, schema evolution.
+
+### Iceberg
+
+```toml
+[[connector]]
+id = "my_iceberg"
+type = "iceberg"
+catalog_uri = "s3://my-bucket/iceberg/"
+[connector.auth]
+type = "sigv4"
+region = "us-west-2"
+```
+
+Features: predicate pushdown, snapshot queries (`SNAPSHOT AS OF`), partition pruning, hidden partitioning.
+
+### Spark
+
+```toml
+[[connector]]
+id = "my_spark"
+type = "spark"
+url = "http://spark-thrift:10000"
+[connector.auth]
+type = "bearer"
+token = "secret://spark-token"
+```
+
+Features: full Spark SQL pushdown via Thrift/HTTP, supports Kerberos auth for secure clusters.
+
+### Common Patterns
+
+All three support:
+- **Predicate pushdown** — filters pushed to the storage layer
+- **Column pruning** — only requested columns are read
+- **Schema discovery** — automatic table/field detection via `get_schema()`
+- **Partition awareness** — partition columns used for scan optimization
