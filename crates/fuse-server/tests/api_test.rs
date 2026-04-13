@@ -206,6 +206,7 @@ fn build_test_app() -> axum::Router {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     fuse_server::build_router(state)
@@ -585,6 +586,7 @@ fn build_capturing_app() -> (axum::Router, Arc<CapturingConnector>) {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     (fuse_server::build_router(state), connector)
@@ -688,6 +690,7 @@ fn build_federation_app() -> axum::Router {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     fuse_server::build_router(state)
@@ -967,6 +970,7 @@ async fn test_view_lifecycle() {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let app = fuse_server::build_router(state);
@@ -1353,6 +1357,7 @@ async fn test_history_records_query() {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let app = fuse_server::build_router(state);
@@ -1442,6 +1447,7 @@ fn build_rate_limited_app(global_rpm: u32, per_ip_rpm: u32) -> axum::Router {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     fuse_server::build_router_with_limits(
@@ -1749,6 +1755,7 @@ async fn test_timeout_zero_ms_times_out() {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let app = fuse_server::build_router(state);
@@ -1858,6 +1865,7 @@ async fn test_cancel_slow_query() {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let running = state.running_queries.clone();
@@ -2194,6 +2202,7 @@ async fn test_union_partial_failure_returns_partial_results() {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let app = fuse_server::build_router(state);
@@ -2266,6 +2275,7 @@ async fn test_union_all_fail_returns_error() {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let app = fuse_server::build_router(state);
@@ -3108,6 +3118,7 @@ fn build_three_source_app() -> axum::Router {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     fuse_server::build_router(state)
@@ -3850,6 +3861,7 @@ fn build_asymmetric_app() -> axum::Router {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     fuse_server::build_router(state)
@@ -4265,6 +4277,7 @@ fn build_cross_ds_app() -> axum::Router {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     fuse_server::build_router(state)
@@ -4664,6 +4677,7 @@ fn build_empty_source_app() -> axum::Router {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     fuse_server::build_router(state)
@@ -4766,6 +4780,7 @@ async fn test_connector_error_single_source_returns_error() {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let (status, json) = post_query(
@@ -4830,6 +4845,7 @@ async fn test_connector_error_union_partial_graceful() {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let (_status, json) = post_query(
@@ -5443,6 +5459,7 @@ async fn test_partial_failure_returns_good_source_data() {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let (status, json) = post_query(
@@ -5520,6 +5537,7 @@ async fn test_all_sources_fail_returns_error() {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     let (status, json) = post_query(
@@ -5953,6 +5971,7 @@ fn build_enterprise_app() -> axum::Router {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     fuse_server::build_router(state)
@@ -6490,6 +6509,7 @@ async fn test_pool_stats_with_registered_connector() {
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
         pool_tracker: pool_tracker.clone(),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
     });
     let app = fuse_server::build_router(state);
     let resp = app
