@@ -91,7 +91,7 @@ impl RedisConnector {
             .map_err(|e| ConnectorError::QueryFailed(format!("SCAN: {e}")))?;
 
         while let Some(key) = iter.next_item().await {
-            keys.push(key);
+            keys.push(key.map_err(|e| ConnectorError::QueryFailed(format!("SCAN key: {e}")))?);
             if keys.len() >= max {
                 break;
             }
