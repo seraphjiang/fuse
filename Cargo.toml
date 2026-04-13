@@ -83,7 +83,7 @@ mongodb = { version = "3", features = ["default"] }
 duckdb = { version = "1", features = ["bundled"] }
 metrics = "0.24"
 metrics-exporter-prometheus = "0.16"
-redis = { version = "0.27", features = ["tokio-comp", "aio", "connection-manager"] }
+redis = { version = "1.2", features = ["tokio-comp", "aio", "connection-manager"] }
 wasmtime = "43"
 bb8-redis = "0.17"
 bb8 = "0.8"
