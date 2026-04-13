@@ -154,6 +154,15 @@ grep -q 'demoTour\|demo-bar' "$DIR/index.html" && check "Demo tour" "ok" || chec
 grep -q 'sortTable\|sortCol' "$DIR/index.html" && check "Column sorting in results" "ok" || check "Column sorting in results" "missing"
 grep -q 'downloadArrow\|arrow-btn' "$DIR/index.html" && check "Arrow IPC download button" "ok" || check "Arrow IPC download button" "missing"
 
+# UX: Error handling & URL encoding
+echo "── Error Handling ──"
+grep -q 'encodeURIComponent.*schemas' "$DIR/index.html" && check "URL-encoded datasource fetches" "ok" || check "URL-encoded datasource fetches" "missing"
+grep -q 'catch.*Fields fetch failed\|catch.*console.warn' "$DIR/index.html" && check "Graceful fields API error handling" "ok" || check "Graceful fields API error handling" "missing"
+grep -q 'feedback-widget' "$DIR/index.html" && check "Feedback widget loaded" "ok" || check "Feedback widget loaded" "missing"
+grep -q 'html2canvas' "$DIR/feedback-widget.html" && check "Screenshot capture library" "ok" || check "Screenshot capture library" "missing"
+grep -q 'console.error' "$DIR/feedback-widget.html" && check "Console error capture" "ok" || check "Console error capture" "missing"
+grep -q 'pointerdown\|pointermove' "$DIR/feedback-widget.html" && check "Draggable feedback button" "ok" || check "Draggable feedback button" "missing"
+
 # UX: Cost Explorer page
 echo "── Cost Explorer UX ──"
 grep -q 'estimate\|Estimate Cost' "$DIR/cost.html" && check "Cost: estimate button" "ok" || check "Cost: estimate button" "missing"

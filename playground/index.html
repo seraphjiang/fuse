@@ -839,7 +839,7 @@ async function onDatasourceChange(dsId) {
   const sg = $('suggestions');
   if (!dsId) { sg.classList.remove('open'); return; }
   try {
-    const schemas = await api(`/api/fuse/datasources/${dsId}/schemas`);
+    const schemas = await api(`/api/fuse/datasources/${encodeURIComponent(dsId)}/schemas`);
     if (!schemas.length) { sg.classList.remove('open'); return; }
     const table = schemas[0].name;
     let fields = [];
@@ -1657,7 +1657,7 @@ async function loadSchema() {
     for (const d of ds) {
       acSchema[d.id] = {};
       try {
-        const schemas = await api(`/api/fuse/datasources/${d.id}/schemas`);
+        const schemas = await api(`/api/fuse/datasources/${encodeURIComponent(d.id)}/schemas`);
         for (const s of schemas) {
           try {
             const fields = await api(`/api/fuse/datasources/${encodeURIComponent(d.id)}/schemas/${encodeURIComponent(s.name)}/fields`);
