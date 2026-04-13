@@ -171,6 +171,7 @@ const REPLAY_HTML: &str = include_str!("../../../playground/replay.html");
 const COST_HTML: &str = include_str!("../../../playground/cost.html");
 const GRAPHQL_HTML: &str = include_str!("../../../playground/graphql.html");
 const WEBHOOKS_HTML: &str = include_str!("../../../playground/webhooks.html");
+const HTML2CANVAS_JS: &str = include_str!("../../../playground/html2canvas.min.js");
 
 async fn playground() -> impl IntoResponse {
     ([(header::CACHE_CONTROL, "no-cache")], Html(PLAYGROUND_HTML))
@@ -259,6 +260,10 @@ async fn webhooks_page() -> impl IntoResponse {
     ([(header::CACHE_CONTROL, "no-cache")], Html(WEBHOOKS_HTML))
 }
 
+async fn html2canvas_js() -> impl IntoResponse {
+    ([(header::CONTENT_TYPE, "application/javascript"), (header::CACHE_CONTROL, "public, max-age=86400")], HTML2CANVAS_JS)
+}
+
 /// Build the Fuse API router with the given shared state.
 /// Build the Fuse API router with the given shared state and default rate limits.
 pub fn build_router(state: Arc<AppState>) -> Router {
@@ -324,6 +329,7 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/cost", get(cost_page))
         .route("/graphql", get(graphql_page))
         .route("/webhooks", get(webhooks_page))
+        .route("/html2canvas.min.js", get(html2canvas_js))
         .route("/api/fuse/query", post(api::query_handler))
         .route("/api/fuse/query/stream", post(streaming::stream_handler))
         .route("/api/fuse/datasources", get(api::list_datasources))

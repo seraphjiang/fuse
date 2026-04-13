@@ -75,20 +75,20 @@ btn.addEventListener('pointerdown',function(e){
   btn.addEventListener('pointerup',onU);
 });
 
-// ===== SCREENSHOT via html2canvas (loaded on demand) =====
-var h2cLoaded=false,h2cLoading=false;
+// ===== SCREENSHOT via html2canvas (served locally from /html2canvas.min.js) =====
+var h2cLoading=false;
 function ensureH2C(cb){
   if(typeof html2canvas==='function'){cb(true);return}
   if(h2cLoading){var w=setInterval(function(){if(typeof html2canvas==='function'){clearInterval(w);cb(true)}},100);setTimeout(function(){clearInterval(w);cb(typeof html2canvas==='function')},5000);return}
   h2cLoading=true;
   var s=document.createElement('script');
-  s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-  s.onload=function(){h2cLoaded=true;cb(true)};
+  s.src='/html2canvas.min.js';
+  s.onload=function(){cb(true)};
   s.onerror=function(){
-    // Try alternate CDN
+    // Fallback: try CDN
     var s2=document.createElement('script');
-    s2.src='https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js';
-    s2.onload=function(){h2cLoaded=true;cb(true)};
+    s2.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s2.onload=function(){cb(true)};
     s2.onerror=function(){cb(false)};
     document.head.appendChild(s2);
   };
@@ -107,7 +107,9 @@ function takeScreenshot(cb){
         useCORS:true,allowTaint:true,logging:false,
         scale:Math.min(window.devicePixelRatio,2),
         width:document.documentElement.scrollWidth,
-        height:Math.min(document.documentElement.scrollHeight,8000)
+        height:Math.min(document.documentElement.scrollHeight,8000),
+        backgroundColor:getComputedStyle(document.body).backgroundColor,
+        ignoreElements:function(el){return el.id==='fb-btn'||el.id==='fb-modal'||el.id==='fb-overlay'}
       }).then(function(canvas){
         ss=canvas.toDataURL('image/jpeg',0.7);
         btn.style.display='block';
