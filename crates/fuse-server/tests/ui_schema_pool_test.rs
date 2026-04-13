@@ -18,9 +18,9 @@ use fuse_core::registry::ConnectorRegistry;
 use fuse_server::api::{AppState, RunningQueries, SchemaCache};
 use fuse_server::history::QueryHistory;
 
+use arrow::array::StringArray;
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use arrow::array::StringArray;
 use async_trait::async_trait;
 
 // ── Mock connector ──
@@ -33,22 +33,41 @@ struct SchemaMockConnector {
 
 impl SchemaMockConnector {
     fn new(id: &str, tables: Vec<&str>) -> Self {
-        Self { id: id.into(), tables: tables.into_iter().map(String::from).collect() }
+        Self {
+            id: id.into(),
+            tables: tables.into_iter().map(String::from).collect(),
+        }
     }
 }
 
 #[async_trait]
 impl FederatedConnector for SchemaMockConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "mock" }
-    fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "mock"
+    }
+    fn capabilities(&self) -> ConnectorCapabilities {
+        ConnectorCapabilities::full()
+    }
     async fn health_check(&self) -> ConnectorHealth {
-        ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(1), message: None }
+        ConnectorHealth {
+            status: HealthStatus::Healthy,
+            latency_ms: Some(1),
+            message: None,
+        }
     }
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
-        Ok(self.tables.iter().map(|t| SchemaInfo {
-            name: t.clone(), schema_type: SchemaType::Table, estimated_row_count: Some(100),
-        }).collect())
+        Ok(self
+            .tables
+            .iter()
+            .map(|t| SchemaInfo {
+                name: t.clone(),
+                schema_type: SchemaType::Table,
+                estimated_row_count: Some(100),
+            })
+            .collect())
     }
     async fn get_schema(&self, table: &str) -> Result<Schema, ConnectorError> {
         if self.tables.contains(&table.to_string()) {
@@ -58,15 +77,30 @@ impl FederatedConnector for SchemaMockConnector {
                 Field::new("value", DataType::Float64, true),
             ]))
         } else {
-            Err(ConnectorError::schema(format!("table '{}' not found", table)))
+            Err(ConnectorError::schema(format!(
+                "table '{}' not found",
+                table
+            )))
         }
     }
     async fn execute(&self, _q: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
         let schema = Arc::new(Schema::new(vec![Field::new("id", DataType::Utf8, false)]));
-        Ok(vec![RecordBatch::try_new(schema, vec![Arc::new(StringArray::from(vec!["1"]))]).unwrap()])
+        Ok(vec![RecordBatch::try_new(
+            schema,
+            vec![Arc::new(StringArray::from(vec!["1"]))],
+        )
+        .unwrap()])
     }
-    async fn execute_streaming(&self, q: &SubQuery, tx: tokio::sync::mpsc::Sender<Result<RecordBatch, ConnectorError>>) -> Result<(), ConnectorError> {
-        for b in self.execute(q).await? { tx.send(Ok(b)).await.map_err(|_| ConnectorError::ChannelClosed)?; }
+    async fn execute_streaming(
+        &self,
+        q: &SubQuery,
+        tx: tokio::sync::mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+    ) -> Result<(), ConnectorError> {
+        for b in self.execute(q).await? {
+            tx.send(Ok(b))
+                .await
+                .map_err(|_| ConnectorError::ChannelClosed)?;
+        }
         Ok(())
     }
 }
@@ -75,8 +109,18 @@ impl FederatedConnector for SchemaMockConnector {
 
 fn build_schema_test_app() -> (axum::Router, Arc<fuse_server::pool_stats::PoolStatsTracker>) {
     let registry = ConnectorRegistry::new();
-    registry.register(Arc::new(SchemaMockConnector::new("cluster_a", vec!["logs", "metrics"]))).unwrap();
-    registry.register(Arc::new(SchemaMockConnector::new("my_ddb", vec!["users", "orders"]))).unwrap();
+    registry
+        .register(Arc::new(SchemaMockConnector::new(
+            "cluster_a",
+            vec!["logs", "metrics"],
+        )))
+        .unwrap();
+    registry
+        .register(Arc::new(SchemaMockConnector::new(
+            "my_ddb",
+            vec!["users", "orders"],
+        )))
+        .unwrap();
 
     let pool_tracker = Arc::new(fuse_server::pool_stats::PoolStatsTracker::new());
     pool_tracker.register("cluster_a", 16);
@@ -88,15 +132,53 @@ fn build_schema_test_app() -> (axum::Router, Arc<fuse_server::pool_stats::PoolSt
         view_registry: Arc::new(fuse_engine::materialized::MaterializedViewRegistry::new()),
         history: Arc::new(QueryHistory::new()),
         running_queries: Arc::new(RunningQueries::new()),
-        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()), plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)), result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)), tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()), audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)), adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()), prepared_statements: fuse_server::prepared::new_store(), shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(), shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(), shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(), transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()), max_result_bytes: 0, datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()), adaptive_parallelism: std::sync::Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()), otel_store: None, query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)), webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()), compilation_cache: std::sync::Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)), cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)), adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)), column_rbac: None, key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])), schema_cache: std::sync::Arc::new(SchemaCache::new(300)), smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()), health_history: std::sync::Arc::new(fuse_server::connector_health_history::HealthHistory::new()), pool_tracker: pool_tracker.clone(),
+        saved_queries: Arc::new(fuse_server::saved_queries::SavedQueryRegistry::new()),
+        plan_cache: Arc::new(fuse_server::plan_cache::PlanCache::new(300, 1000)),
+        result_cache: Arc::new(fuse_server::plan_cache::ResultCache::new(60, 500)),
+        tenant_registry: Arc::new(fuse_server::tenant::TenantRegistry::disabled()),
+        audit_log: Arc::new(fuse_server::audit::AuditLog::new(10000)),
+        adaptive_timeout: Arc::new(fuse_server::adaptive_timeout::AdaptiveTimeout::new()),
+        prepared_statements: fuse_server::prepared::new_store(),
+        shared_saved_queries: fuse_server::shared_state::SharedSavedQueries::from_env(),
+        shared_history: fuse_server::shared_state::SharedQueryHistory::from_env(),
+        shared_audit_log: fuse_server::shared_state::SharedAuditLog::from_env(),
+        transactions: std::sync::Arc::new(fuse_server::transaction::TransactionStore::new()),
+        max_result_bytes: 0,
+        datasource_limiter: std::sync::Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
+        adaptive_parallelism: std::sync::Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
+        otel_store: None,
+        query_recorder: std::sync::Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
+        webhook_registry: std::sync::Arc::new(fuse_server::webhook::WebhookRegistry::new()),
+        compilation_cache: std::sync::Arc::new(
+            fuse_server::query_compilation::CompilationCache::new(300, 5000),
+        ),
+        cdc_tracker: std::sync::Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
+        adaptive_cache: std::sync::Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
+        column_rbac: None,
+        key_rotation: std::sync::Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
+        schema_cache: std::sync::Arc::new(SchemaCache::new(300)),
+        smart_router: std::sync::Arc::new(fuse_server::smart_routing::SmartRouter::new()),
+        health_history: std::sync::Arc::new(
+            fuse_server::connector_health_history::HealthHistory::new(),
+        ),
+        pool_tracker: pool_tracker.clone(),
     });
     (fuse_server::build_router(state), pool_tracker)
 }
 
 async fn get_json(app: axum::Router, uri: &str) -> (StatusCode, serde_json::Value) {
-    let resp = app.oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap()).await.unwrap();
+    let resp = app
+        .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
     let status = resp.status();
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap_or(serde_json::json!(null));
     (status, json)
 }
@@ -155,7 +237,11 @@ async fn test_ui_fields_returns_columns() {
 #[tokio::test]
 async fn test_ui_fields_table_not_found() {
     let (app, _) = build_schema_test_app();
-    let (status, json) = get_json(app, "/api/fuse/datasources/cluster_a/schemas/nonexistent/fields").await;
+    let (status, json) = get_json(
+        app,
+        "/api/fuse/datasources/cluster_a/schemas/nonexistent/fields",
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert!(json["error"].as_str().unwrap().contains("not found"));
 }
@@ -171,7 +257,11 @@ async fn test_ui_fields_datasource_not_found() {
 async fn test_ui_fields_cached_on_second_call() {
     let (app, _) = build_schema_test_app();
     // First call populates cache
-    let (s1, j1) = get_json(app.clone(), "/api/fuse/datasources/my_ddb/schemas/users/fields").await;
+    let (s1, j1) = get_json(
+        app.clone(),
+        "/api/fuse/datasources/my_ddb/schemas/users/fields",
+    )
+    .await;
     assert_eq!(s1, StatusCode::OK);
     // Second call should hit cache and return same result
     let (s2, j2) = get_json(app, "/api/fuse/datasources/my_ddb/schemas/users/fields").await;
@@ -221,7 +311,10 @@ async fn test_ui_pool_stats_after_activity() {
     let (status, json) = get_json(app, "/api/fuse/pool-stats").await;
     assert_eq!(status, StatusCode::OK);
     let pool = json["pool_stats"].as_array().unwrap();
-    let ca = pool.iter().find(|p| p["connector_id"] == "cluster_a").unwrap();
+    let ca = pool
+        .iter()
+        .find(|p| p["connector_id"] == "cluster_a")
+        .unwrap();
     assert_eq!(ca["active"], 2);
     assert_eq!(ca["max_size"], 16);
     let ddb = pool.iter().find(|p| p["connector_id"] == "my_ddb").unwrap();
@@ -233,9 +326,19 @@ async fn test_ui_pool_stats_after_activity() {
 #[tokio::test]
 async fn test_ui_explore_page_loads() {
     let (app, _) = build_schema_test_app();
-    let resp = app.oneshot(Request::builder().uri("/explore").body(Body::empty()).unwrap()).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/explore")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let html = String::from_utf8_lossy(&body);
     assert!(html.contains("html"), "explore page should return HTML");
 }
@@ -243,9 +346,19 @@ async fn test_ui_explore_page_loads() {
 #[tokio::test]
 async fn test_ui_status_page_loads() {
     let (app, _) = build_schema_test_app();
-    let resp = app.oneshot(Request::builder().uri("/status").body(Body::empty()).unwrap()).await.unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/status")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let html = String::from_utf8_lossy(&body);
     assert!(html.contains("html"), "status page should return HTML");
 }

@@ -19,33 +19,68 @@ use fuse_core::registry::ConnectorRegistry;
 use fuse_server::api::{AppState, RunningQueries};
 
 #[derive(Debug)]
-struct DeepTestConnector { id: String, healthy: bool }
+struct DeepTestConnector {
+    id: String,
+    healthy: bool,
+}
 
 #[async_trait]
 impl FederatedConnector for DeepTestConnector {
-    fn id(&self) -> &str { &self.id }
-    fn connector_type(&self) -> &str { "mock-deep" }
-    fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn connector_type(&self) -> &str {
+        "mock-deep"
+    }
+    fn capabilities(&self) -> ConnectorCapabilities {
+        ConnectorCapabilities::full()
+    }
     async fn health_check(&self) -> ConnectorHealth {
         if self.healthy {
-            ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(3), message: None }
+            ConnectorHealth {
+                status: HealthStatus::Healthy,
+                latency_ms: Some(3),
+                message: None,
+            }
         } else {
-            ConnectorHealth { status: HealthStatus::Unhealthy, latency_ms: None, message: Some("down".into()) }
+            ConnectorHealth {
+                status: HealthStatus::Unhealthy,
+                latency_ms: None,
+                message: Some("down".into()),
+            }
         }
     }
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
-        Ok(vec![SchemaInfo { name: "events".into(), schema_type: SchemaType::Table, estimated_row_count: Some(50) }])
+        Ok(vec![SchemaInfo {
+            name: "events".into(),
+            schema_type: SchemaType::Table,
+            estimated_row_count: Some(50),
+        }])
     }
     async fn get_schema(&self, _: &str) -> Result<Schema, ConnectorError> {
         Ok(Schema::new(vec![Field::new("msg", DataType::Utf8, false)]))
     }
     async fn execute(&self, _: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
-        if !self.healthy { return Err(ConnectorError::query("down")); }
+        if !self.healthy {
+            return Err(ConnectorError::query("down"));
+        }
         let schema = Arc::new(Schema::new(vec![Field::new("msg", DataType::Utf8, false)]));
-        Ok(vec![RecordBatch::try_new(schema, vec![Arc::new(StringArray::from(vec!["ok"]))]).unwrap()])
+        Ok(vec![RecordBatch::try_new(
+            schema,
+            vec![Arc::new(StringArray::from(vec!["ok"]))],
+        )
+        .unwrap()])
     }
-    async fn execute_streaming(&self, q: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>) -> Result<(), ConnectorError> {
-        for b in self.execute(q).await? { tx.send(Ok(b)).await.map_err(|_| ConnectorError::ChannelClosed)?; }
+    async fn execute_streaming(
+        &self,
+        q: &SubQuery,
+        tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+    ) -> Result<(), ConnectorError> {
+        for b in self.execute(q).await? {
+            tx.send(Ok(b))
+                .await
+                .map_err(|_| ConnectorError::ChannelClosed)?;
+        }
         Ok(())
     }
 }
@@ -53,7 +88,9 @@ impl FederatedConnector for DeepTestConnector {
 fn build_app_with(connectors: Vec<(String, bool)>) -> axum::Router {
     let registry = ConnectorRegistry::new();
     for (id, healthy) in connectors {
-        registry.register(Arc::new(DeepTestConnector { id, healthy })).unwrap();
+        registry
+            .register(Arc::new(DeepTestConnector { id, healthy }))
+            .unwrap();
     }
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
@@ -74,13 +111,19 @@ fn build_app_with(connectors: Vec<(String, bool)>) -> axum::Router {
         transactions: Arc::new(fuse_server::transaction::TransactionStore::new()),
         max_result_bytes: 0,
         datasource_limiter: Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
-        adaptive_parallelism: Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()),
+        adaptive_parallelism: Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
         otel_store: None,
         query_recorder: Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
         webhook_registry: Arc::new(fuse_server::webhook::WebhookRegistry::new()),
-        compilation_cache: Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)),
+        compilation_cache: Arc::new(fuse_server::query_compilation::CompilationCache::new(
+            300, 5000,
+        )),
         cdc_tracker: Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
-        adaptive_cache: Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)),
+        adaptive_cache: Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
         column_rbac: None,
         key_rotation: Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
         schema_cache: Arc::new(fuse_server::api::SchemaCache::new(300)),
@@ -95,7 +138,9 @@ async fn get_json(app: axum::Router, path: &str) -> (StatusCode, serde_json::Val
     let req = Request::builder().uri(path).body(Body::empty()).unwrap();
     let resp = app.oneshot(req).await.unwrap();
     let status = resp.status();
-    let bytes = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), 1_000_000)
+        .await
+        .unwrap();
     let json = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
     (status, json)
 }
@@ -104,7 +149,9 @@ async fn get_html(app: axum::Router, path: &str) -> (StatusCode, String) {
     let req = Request::builder().uri(path).body(Body::empty()).unwrap();
     let resp = app.oneshot(req).await.unwrap();
     let status = resp.status();
-    let bytes = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), 1_000_000)
+        .await
+        .unwrap();
     (status, String::from_utf8_lossy(&bytes).to_string())
 }
 
@@ -112,20 +159,26 @@ async fn get_html(app: axum::Router, path: &str) -> (StatusCode, String) {
 
 #[tokio::test]
 async fn test_health_mixed_connectors() {
-    let app = build_app_with(vec![
-        ("good".into(), true),
-        ("bad".into(), false),
-    ]);
+    let app = build_app_with(vec![("good".into(), true), ("bad".into(), false)]);
     let (_, json) = get_json(app, "/api/fuse/health").await;
-    assert_eq!(json["connectors"]["good"]["status"].as_str().unwrap(), "healthy");
-    assert_eq!(json["connectors"]["bad"]["status"].as_str().unwrap(), "unhealthy");
+    assert_eq!(
+        json["connectors"]["good"]["status"].as_str().unwrap(),
+        "healthy"
+    );
+    assert_eq!(
+        json["connectors"]["bad"]["status"].as_str().unwrap(),
+        "unhealthy"
+    );
 }
 
 #[tokio::test]
 async fn test_health_unhealthy_has_message() {
     let app = build_app_with(vec![("bad".into(), false)]);
     let (_, json) = get_json(app, "/api/fuse/health").await;
-    assert!(json["connectors"]["bad"]["message"].as_str().unwrap().contains("down"));
+    assert!(json["connectors"]["bad"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("down"));
 }
 
 #[tokio::test]
@@ -209,18 +262,38 @@ async fn test_all_ops_pages_have_charset() {
 #[tokio::test]
 async fn test_health_content_type_is_json() {
     let app = build_app_with(vec![("x".into(), true)]);
-    let req = Request::builder().uri("/api/fuse/health").body(Body::empty()).unwrap();
+    let req = Request::builder()
+        .uri("/api/fuse/health")
+        .body(Body::empty())
+        .unwrap();
     let resp = app.oneshot(req).await.unwrap();
-    let ct = resp.headers().get("content-type").unwrap().to_str().unwrap();
-    assert!(ct.contains("json"), "expected json content-type, got: {}", ct);
+    let ct = resp
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(
+        ct.contains("json"),
+        "expected json content-type, got: {}",
+        ct
+    );
 }
 
 #[tokio::test]
 async fn test_datasources_content_type_is_json() {
     let app = build_app_with(vec![("x".into(), true)]);
-    let req = Request::builder().uri("/api/fuse/datasources").body(Body::empty()).unwrap();
+    let req = Request::builder()
+        .uri("/api/fuse/datasources")
+        .body(Body::empty())
+        .unwrap();
     let resp = app.oneshot(req).await.unwrap();
-    let ct = resp.headers().get("content-type").unwrap().to_str().unwrap();
+    let ct = resp
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap();
     assert!(ct.contains("json"));
 }
 
@@ -235,12 +308,24 @@ async fn test_health_and_datasources_consistent() {
     let (_, health) = get_json(app1, "/api/fuse/health").await;
     let (_, ds) = get_json(app2, "/api/fuse/datasources").await;
 
-    let health_ids: Vec<&str> = health["connectors"].as_object().unwrap().keys().map(|k| k.as_str()).collect();
-    let ds_ids: Vec<&str> = ds.as_array().unwrap().iter()
+    let health_ids: Vec<&str> = health["connectors"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(|k| k.as_str())
+        .collect();
+    let ds_ids: Vec<&str> = ds
+        .as_array()
+        .unwrap()
+        .iter()
         .filter_map(|d| d["id"].as_str().or(d["name"].as_str()))
         .collect();
 
     for id in &health_ids {
-        assert!(ds_ids.contains(id), "health connector {} not in datasources", id);
+        assert!(
+            ds_ids.contains(id),
+            "health connector {} not in datasources",
+            id
+        );
     }
 }

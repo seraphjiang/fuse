@@ -43,7 +43,8 @@ pub fn partition_matches(filter: &FilterExpr, partitions: &HashMap<String, Strin
                     op: ComparisonOp::Eq,
                     value,
                 } => partitions
-                    .get(field).is_none_or(|pv| scalar_to_str(value).is_none_or(|fv| pv != &fv)),
+                    .get(field)
+                    .is_none_or(|pv| scalar_to_str(value).is_none_or(|fv| pv != &fv)),
                 _ => true,
             }
         }

@@ -23,14 +23,28 @@ struct OpsTestConnector(String);
 
 #[async_trait]
 impl FederatedConnector for OpsTestConnector {
-    fn id(&self) -> &str { &self.0 }
-    fn connector_type(&self) -> &str { "mock" }
-    fn capabilities(&self) -> ConnectorCapabilities { ConnectorCapabilities::full() }
+    fn id(&self) -> &str {
+        &self.0
+    }
+    fn connector_type(&self) -> &str {
+        "mock"
+    }
+    fn capabilities(&self) -> ConnectorCapabilities {
+        ConnectorCapabilities::full()
+    }
     async fn health_check(&self) -> ConnectorHealth {
-        ConnectorHealth { status: HealthStatus::Healthy, latency_ms: Some(5), message: None }
+        ConnectorHealth {
+            status: HealthStatus::Healthy,
+            latency_ms: Some(5),
+            message: None,
+        }
     }
     async fn discover_schemas(&self) -> Result<Vec<SchemaInfo>, ConnectorError> {
-        Ok(vec![SchemaInfo { name: "logs".into(), schema_type: SchemaType::Table, estimated_row_count: Some(100) }])
+        Ok(vec![SchemaInfo {
+            name: "logs".into(),
+            schema_type: SchemaType::Table,
+            estimated_row_count: Some(100),
+        }])
     }
     async fn get_schema(&self, _: &str) -> Result<Schema, ConnectorError> {
         Ok(Schema::new(vec![
@@ -40,20 +54,34 @@ impl FederatedConnector for OpsTestConnector {
     }
     async fn execute(&self, _: &SubQuery) -> Result<Vec<RecordBatch>, ConnectorError> {
         let schema = Arc::new(self.get_schema("").await?);
-        Ok(vec![RecordBatch::try_new(schema, vec![
-            Arc::new(StringArray::from(vec!["h1"])),
-            Arc::new(Int64Array::from(vec![200])),
-        ]).unwrap()])
+        Ok(vec![RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(vec!["h1"])),
+                Arc::new(Int64Array::from(vec![200])),
+            ],
+        )
+        .unwrap()])
     }
-    async fn execute_streaming(&self, q: &SubQuery, tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>) -> Result<(), ConnectorError> {
-        for b in self.execute(q).await? { tx.send(Ok(b)).await.map_err(|_| ConnectorError::ChannelClosed)?; }
+    async fn execute_streaming(
+        &self,
+        q: &SubQuery,
+        tx: mpsc::Sender<Result<RecordBatch, ConnectorError>>,
+    ) -> Result<(), ConnectorError> {
+        for b in self.execute(q).await? {
+            tx.send(Ok(b))
+                .await
+                .map_err(|_| ConnectorError::ChannelClosed)?;
+        }
         Ok(())
     }
 }
 
 fn build_ops_app() -> axum::Router {
     let registry = ConnectorRegistry::new();
-    registry.register(Arc::new(OpsTestConnector("ops_ds".into()))).unwrap();
+    registry
+        .register(Arc::new(OpsTestConnector("ops_ds".into())))
+        .unwrap();
     let state = Arc::new(AppState {
         registry: Arc::new(registry),
         alert_rules: vec![],
@@ -73,13 +101,19 @@ fn build_ops_app() -> axum::Router {
         transactions: Arc::new(fuse_server::transaction::TransactionStore::new()),
         max_result_bytes: 0,
         datasource_limiter: Arc::new(fuse_server::rate_limit::DatasourceLimiter::new()),
-        adaptive_parallelism: Arc::new(fuse_server::adaptive_parallelism::AdaptiveParallelism::new()),
+        adaptive_parallelism: Arc::new(
+            fuse_server::adaptive_parallelism::AdaptiveParallelism::new(),
+        ),
         otel_store: None,
         query_recorder: Arc::new(fuse_server::query_replay::QueryRecorder::new(100)),
         webhook_registry: Arc::new(fuse_server::webhook::WebhookRegistry::new()),
-        compilation_cache: Arc::new(fuse_server::query_compilation::CompilationCache::new(300, 5000)),
+        compilation_cache: Arc::new(fuse_server::query_compilation::CompilationCache::new(
+            300, 5000,
+        )),
         cdc_tracker: Arc::new(fuse_server::cdc::CdcTracker::new(1000)),
-        adaptive_cache: Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(60, 3, 10000)),
+        adaptive_cache: Arc::new(fuse_server::adaptive_cache::AdaptiveCache::new(
+            60, 3, 10000,
+        )),
         column_rbac: None,
         key_rotation: Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
         schema_cache: Arc::new(fuse_server::api::SchemaCache::new(300)),
@@ -94,7 +128,9 @@ async fn get(app: axum::Router, path: &str) -> (StatusCode, String) {
     let req = Request::builder().uri(path).body(Body::empty()).unwrap();
     let resp = app.oneshot(req).await.unwrap();
     let status = resp.status();
-    let bytes = axum::body::to_bytes(resp.into_body(), 1_000_000).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), 1_000_000)
+        .await
+        .unwrap();
     (status, String::from_utf8_lossy(&bytes).to_string())
 }
 
@@ -146,7 +182,10 @@ async fn test_datasources_returns_list() {
 async fn test_datasources_entry_has_id() {
     let (_, json) = get_json(build_ops_app(), "/api/fuse/datasources").await;
     let ds = &json[0];
-    assert!(ds["id"].as_str().unwrap_or("") == "ops_ds" || ds["name"].as_str().unwrap_or("") == "ops_ds");
+    assert!(
+        ds["id"].as_str().unwrap_or("") == "ops_ds"
+            || ds["name"].as_str().unwrap_or("") == "ops_ds"
+    );
 }
 
 // ── /api/fuse/stats ──
@@ -164,8 +203,14 @@ async fn test_running_queries_empty() {
     let (status, json) = get_json(build_ops_app(), "/api/fuse/queries/running").await;
     assert_eq!(status, StatusCode::OK);
     let is_empty = json.as_array().map(|a| a.is_empty()).unwrap_or(false)
-        || json["running"].as_array().map(|a| a.is_empty()).unwrap_or(false)
-        || json["queries"].as_array().map(|a| a.is_empty()).unwrap_or(false);
+        || json["running"]
+            .as_array()
+            .map(|a| a.is_empty())
+            .unwrap_or(false)
+        || json["queries"]
+            .as_array()
+            .map(|a| a.is_empty())
+            .unwrap_or(false);
     assert!(is_empty, "expected empty running queries: {:?}", json);
 }
 
