@@ -44,7 +44,7 @@ opentelemetry-otlp = { workspace = true }
 tracing-opentelemetry = { workspace = true }
 tower-http = { version = "0.6", features = ["trace", "cors", "compression-full"] }
 tower = { version = "0.5", features = ["util", "limit"] }
-governor = { version = "0.6", features = ["std", "dashmap"] }
+governor = { version = "0.10", features = ["std", "dashmap"] }
 async-graphql = "7"
 async-graphql-axum = "7"
 anyhow = { workspace = true }
