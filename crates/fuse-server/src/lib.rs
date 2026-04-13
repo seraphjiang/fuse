@@ -67,6 +67,7 @@ pub mod offset_pagination;
 pub mod otel_ingest;
 pub mod pagination;
 pub mod perf_regression;
+pub mod feedback;
 pub mod pipeline;
 pub mod pivot;
 pub mod plan_cache;
@@ -141,7 +142,7 @@ use axum::extract::DefaultBodyLimit;
 use axum::http::header;
 use axum::middleware;
 use axum::response::{Html, IntoResponse};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::Router;
 use tower_http::compression::CompressionLayer;
 use tower_http::trace::TraceLayer;
@@ -306,6 +307,11 @@ pub fn build_router_with_limits(state: Arc<AppState>, rl: rate_limit::RateLimitS
         .route("/admin", get(admin))
         .route("/changelog", get(changelog))
         .route("/feedback-widget", get(feedback_widget))
+        .route("/api/fuse/feedback", post(api::submit_feedback_handler).get(api::list_feedback_handler))
+        .route("/api/fuse/feedback/:id", get(api::get_feedback_handler))
+        .route("/api/fuse/admin/feedback", get(api::admin_list_feedback_handler))
+        .route("/api/fuse/admin/feedback/:id/reply", post(api::admin_reply_feedback_handler))
+        .route("/api/fuse/admin/feedback/:id/status", put(api::admin_status_feedback_handler))
         .route("/views", get(views_page))
         .route("/plugins", get(plugins_page))
         .route("/alerts", get(alerts_page))

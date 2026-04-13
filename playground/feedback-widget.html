@@ -284,26 +284,49 @@ document.getElementById('fb-submit').addEventListener('click',function(){
     pageContext:document.getElementById('fb-ctx').textContent
   };
 
-  try{fetch('/api/fuse/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(entry)}).catch(function(){})}catch(e){}
-
-  var local=JSON.parse(JSON.stringify(entry));delete local.screenshot;
-  var all=JSON.parse(localStorage.getItem(FK)||'[]');
-  all.unshift(local);
-  localStorage.setItem(FK,JSON.stringify(all.slice(0,100)));
-
-  ss=null;
-  document.getElementById('fb-bd').innerHTML='<div class="fb-ok">✅ Feedback submitted!<br><span style="font-size:12px;color:#8b949e">Thank you for helping improve Fuse.</span></div>';
-  setTimeout(function(){fbClose();location.reload()},2000);
+  // Submit to backend
+  fetch('/api/fuse/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(entry)})
+    .then(function(r){return r.json()})
+    .then(function(data){
+      ss=null;
+      document.getElementById('fb-bd').innerHTML='<div class="fb-ok">✅ Feedback submitted!<br><span style="font-size:12px;color:#8b949e">ID: '+(data.id||'saved')+'</span></div>';
+      setTimeout(function(){fbClose();location.reload()},2000);
+    })
+    .catch(function(){
+      // Fallback: save locally
+      var local=JSON.parse(JSON.stringify(entry));delete local.screenshot;
+      var all=JSON.parse(localStorage.getItem(FK)||'[]');
+      all.unshift(local);
+      localStorage.setItem(FK,JSON.stringify(all.slice(0,100)));
+      ss=null;
+      document.getElementById('fb-bd').innerHTML='<div class="fb-ok">✅ Saved locally<br><span style="font-size:12px;color:#8b949e">Will sync when server is available.</span></div>';
+      setTimeout(function(){fbClose();location.reload()},2000);
+    });
 });
 
 // --- History ---
 function renderHist(){
   var el=document.getElementById('fb-hist');if(!el)return;
-  var all=JSON.parse(localStorage.getItem(FK)||'[]').slice(0,5);
-  if(!all.length){el.innerHTML='';return}
-  el.innerHTML='<h4>Recent Feedback</h4>'+all.map(function(e){
-    return '<div class="fb-ent"><span class="fb-tag fb-tag-'+esc(e.type)+'">'+esc(e.type)+'</span><strong>'+esc(e.title)+'</strong><br><span style="font-size:10px;color:#484f58">'+new Date(e.timestamp).toLocaleString()+' · '+esc(e.page)+'</span></div>';
-  }).join('');
+  // Fetch user's own feedback from backend
+  fetch('/api/fuse/feedback').then(function(r){return r.json()}).then(function(all){
+    if(!all||!all.length){el.innerHTML='';return}
+    el.innerHTML='<h4>Your Feedback</h4>'+all.slice(0,10).map(function(e){
+      var statusColors={pending:'#d29922',reviewed:'#58a6ff',replied:'#3fb950',closed:'#8b949e'};
+      var sc=statusColors[e.status]||'#8b949e';
+      var replies=e.replies&&e.replies.length?' · '+e.replies.length+' reply'+(e.replies.length>1?'ies':''):'';
+      var replyHtml=e.replies&&e.replies.length?e.replies.map(function(r){
+        return '<div style="margin:4px 0 0 12px;padding:4px 8px;border-left:2px solid #30363d;font-size:10px"><strong style="color:#58a6ff">'+esc(r.author)+'</strong>: '+esc(r.message)+'</div>';
+      }).join(''):'';
+      return '<div class="fb-ent"><span class="fb-tag fb-tag-'+esc(e.feedback_type)+'">'+esc(e.feedback_type)+'</span><strong>'+esc(e.title)+'</strong> <span style="color:'+sc+';font-size:10px">●&nbsp;'+esc(e.status)+'</span>'+replies+'<br><span style="font-size:10px;color:#484f58">'+new Date(e.created_at).toLocaleString()+' · '+esc(e.page)+'</span>'+replyHtml+'</div>';
+    }).join('');
+  }).catch(function(){
+    // Fallback to localStorage
+    var all=JSON.parse(localStorage.getItem(FK)||'[]').slice(0,5);
+    if(!all.length){el.innerHTML='';return}
+    el.innerHTML='<h4>Recent Feedback (local)</h4>'+all.map(function(e){
+      return '<div class="fb-ent"><span class="fb-tag fb-tag-'+esc(e.type)+'">'+esc(e.type)+'</span><strong>'+esc(e.title)+'</strong><br><span style="font-size:10px;color:#484f58">'+new Date(e.timestamp).toLocaleString()+'</span></div>';
+    }).join('');
+  });
 }
 })();
 </script>

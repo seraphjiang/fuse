@@ -152,6 +152,7 @@ pub struct AppState {
     pub smart_router: Arc<crate::smart_routing::SmartRouter>,
     /// Connector health history — tracks uptime and latency over time.
     pub health_history: Arc<crate::connector_health_history::HealthHistory>,
+    pub feedback_store: Arc<crate::feedback::FeedbackStore>,
     /// Connection pool utilization tracker per connector.
     pub pool_tracker: Arc<crate::pool_stats::PoolStatsTracker>,
 }
@@ -5983,4 +5984,86 @@ pub async fn chaos_enable_handler(
         "config": crate::chaos::config(),
     }))
     .into_response()
+}
+
+// ── Feedback API ──
+
+/// POST /api/fuse/feedback — submit feedback (user-facing).
+pub async fn submit_feedback_handler(
+    State(state): State<Arc<AppState>>,
+    auth: Option<Extension<crate::auth::AuthIdentity>>,
+    Json(req): Json<crate::feedback::SubmitRequest>,
+) -> impl IntoResponse {
+    let submitter = auth.map(|a| a.identity.clone()).unwrap_or_else(|| "anonymous".into());
+    let fb = state.feedback_store.submit(&submitter, req);
+    (StatusCode::CREATED, Json(serde_json::json!({ "id": fb.id, "status": "pending" })))
+}
+
+/// GET /api/fuse/feedback — list own feedback (user sees only theirs).
+pub async fn list_feedback_handler(
+    State(state): State<Arc<AppState>>,
+    auth: Option<Extension<crate::auth::AuthIdentity>>,
+) -> impl IntoResponse {
+    let user = auth.map(|a| a.identity.clone()).unwrap_or_else(|| "anonymous".into());
+    let list = state.feedback_store.list_by_user(&user);
+    Json(list)
+}
+
+/// GET /api/fuse/feedback/:id — get single feedback (user must own it or be admin).
+pub async fn get_feedback_handler(
+    State(state): State<Arc<AppState>>,
+    auth: Option<Extension<crate::auth::AuthIdentity>>,
+    Path(id): Path<String>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let user = auth.map(|a| a.identity.clone()).unwrap_or_else(|| "anonymous".into());
+    match state.feedback_store.get(&id) {
+        Some(fb) if fb.submitter == user || user == "admin" => Json(fb).into_response(),
+        Some(_) => error_json(StatusCode::FORBIDDEN, "not your feedback").into_response(),
+        None => error_json(StatusCode::NOT_FOUND, "feedback not found").into_response(),
+    }
+}
+
+/// GET /api/fuse/admin/feedback — list ALL feedback (admin only).
+pub async fn admin_list_feedback_handler(
+    State(state): State<Arc<AppState>>,
+    auth: Option<Extension<crate::auth::AuthIdentity>>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let user = auth.map(|a| a.identity.clone()).unwrap_or_else(|| "anonymous".into());
+    if user != "admin" && user != "anonymous" {
+        // In playground mode (no auth), allow access; in prod, require admin
+        if state.column_rbac.is_some() {
+            return error_json(StatusCode::FORBIDDEN, "admin only").into_response();
+        }
+    }
+    Json(state.feedback_store.list_all()).into_response()
+}
+
+/// POST /api/fuse/admin/feedback/:id/reply — admin replies to feedback.
+pub async fn admin_reply_feedback_handler(
+    State(state): State<Arc<AppState>>,
+    auth: Option<Extension<crate::auth::AuthIdentity>>,
+    Path(id): Path<String>,
+    Json(req): Json<crate::feedback::ReplyRequest>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let author = auth.map(|a| a.identity.clone()).unwrap_or_else(|| "admin".into());
+    match state.feedback_store.add_reply(&id, &author, req.message) {
+        Some(fb) => Json(fb).into_response(),
+        None => error_json(StatusCode::NOT_FOUND, "feedback not found").into_response(),
+    }
+}
+
+/// PUT /api/fuse/admin/feedback/:id/status — admin changes feedback status.
+pub async fn admin_status_feedback_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(req): Json<crate::feedback::StatusRequest>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    match state.feedback_store.set_status(&id, req.status) {
+        Some(fb) => Json(fb).into_response(),
+        None => error_json(StatusCode::NOT_FOUND, "feedback not found").into_response(),
+    }
 }

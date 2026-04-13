@@ -241,6 +241,7 @@ async fn main() -> anyhow::Result<()> {
         key_rotation: Arc::new(fuse_server::auth::KeyRotationManager::new(vec![])),
         smart_router: Arc::new(fuse_server::smart_routing::SmartRouter::new()),
         health_history: Arc::new(fuse_server::connector_health_history::HealthHistory::new()),
+        feedback_store: Arc::new(fuse_server::feedback::FeedbackStore::new(10000)),
         pool_tracker: Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
 
