@@ -1,12 +1,4 @@
-<!-- Fuse Feedback Widget — draggable button, auto-screenshot, console capture -->
-<script>
-(function(){
-  if(typeof html2canvas==='function') return;
-  var s=document.createElement('script');
-  s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-  document.head.appendChild(s);
-})();
-</script>
+<!-- Fuse Feedback Widget — draggable button, screenshot, console capture -->
 <style>
 #fb-btn{position:fixed;bottom:24px;right:24px;background:#238636;color:#fff;border:none;border-radius:50%;width:48px;height:48px;font-size:20px;cursor:grab;box-shadow:0 4px 12px rgba(0,0,0,.4);z-index:9000;transition:box-shadow .2s;user-select:none;touch-action:none}
 #fb-btn:hover{box-shadow:0 6px 20px rgba(0,0,0,.6)}
@@ -37,6 +29,9 @@
 .fb-tag-bug{background:#3a1a1a;color:#f85149}
 .fb-tag-feature{background:#1f3a5f;color:#58a6ff}
 .fb-tag-general{background:#1f2d1f;color:#3fb950}
+.fb-ss-btns{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.fb-ss-btn{font-size:11px;padding:4px 10px;background:#21262d;color:#e1e4e8;border:1px solid #30363d;border-radius:4px;cursor:pointer}
+.fb-ss-btn:hover{border-color:#58a6ff;color:#58a6ff}
 body.light #fb-modal{background:#fff;border-color:#d1d9e0}
 body.light .fb-r select,body.light .fb-r input,body.light .fb-r textarea{background:#fff;color:#1f2328;border-color:#d1d9e0}
 body.light .fb-info{background:#f6f8fa;border-color:#d1d9e0;color:#656d76}
@@ -50,8 +45,15 @@ body.light .fb-info{background:#f6f8fa;border-color:#d1d9e0;color:#656d76}
     <div class="fb-r"><label>Type</label><select id="fb-type"><option value="bug">🐛 Bug Report</option><option value="feature">✨ Feature Request</option><option value="general">💬 General Feedback</option></select></div>
     <div class="fb-r"><label>Title</label><input id="fb-title" placeholder="Brief summary"></div>
     <div class="fb-r"><label>Description</label><textarea id="fb-desc" placeholder="Details…"></textarea></div>
-    <div class="fb-sec">📸 Screenshot (auto-captured)</div>
-    <div id="fb-ss-box"><span style="font-size:11px;color:#8b949e">Capturing…</span></div>
+    <div class="fb-sec">📸 Screenshot</div>
+    <div id="fb-ss-box">
+      <div class="fb-ss-btns">
+        <button class="fb-ss-btn" id="fb-ss-auto" title="Capture current page">📷 Capture Page</button>
+        <button class="fb-ss-btn" id="fb-ss-upload" title="Upload from file">📁 Upload Image</button>
+      </div>
+      <input type="file" id="fb-ss-file" accept="image/*" style="display:none">
+      <div id="fb-ss-preview"></div>
+    </div>
     <div class="fb-sec">🔍 Page Context</div>
     <div class="fb-info" id="fb-ctx">Collecting…</div>
     <div class="fb-sec" id="fb-err-lbl" style="display:none">⚠️ Console Errors</div>
@@ -65,6 +67,14 @@ body.light .fb-info{background:#f6f8fa;border-color:#d1d9e0;color:#656d76}
 (function(){
 var FK='fuse-feedback',ss=null,errs=[],isDrag=false,dragOff={x:0,y:0};
 var btn=document.getElementById('fb-btn'),ov=document.getElementById('fb-overlay'),modal=document.getElementById('fb-modal');
+
+// --- Load html2canvas ---
+if(typeof html2canvas!=='function'){
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+  s.onerror=function(){console.warn('html2canvas CDN unavailable')};
+  document.head.appendChild(s);
+}
 
 // --- Draggable button ---
 btn.addEventListener('pointerdown',function(e){
@@ -101,68 +111,119 @@ console.error=function(){errs.push({msg:Array.from(arguments).map(String).join('
 window.addEventListener('error',function(e){errs.push({msg:e.message+' at '+(e.filename||'')+':'+(e.lineno||0),stack:e.error&&e.error.stack||'',ts:Date.now()})});
 window.addEventListener('unhandledrejection',function(e){errs.push({msg:'Unhandled: '+String(e.reason),stack:'',ts:Date.now()})});
 
-// --- Open: auto-screenshot + collect context ---
+// --- Open ---
 function fbOpen(){
-  // Hide UI, capture, then show modal
-  btn.style.display='none';
-  captureScreen(function(){
-    btn.style.display='block';
-    ov.style.display='block';
-    modal.style.display='block';
-    collectCtx();
-    showErrs();
-    renderHist();
-  });
+  ov.style.display='block';
+  modal.style.display='block';
+  collectCtx();
+  showErrs();
+  renderHist();
 }
 
-function captureScreen(cb){
-  try{
+// --- Screenshot: Capture Page (html2canvas) ---
+document.getElementById('fb-ss-auto').addEventListener('click',function(){
+  var preview=document.getElementById('fb-ss-preview');
+  preview.innerHTML='<span style="font-size:11px;color:#8b949e">Capturing…</span>';
+  // Hide modal during capture
+  modal.style.visibility='hidden';
+  ov.style.visibility='hidden';
+
+  setTimeout(function(){
+    captureWithHtml2canvas(function(){
+      modal.style.visibility='visible';
+      ov.style.visibility='visible';
+      showSS();
+    });
+  }, 100);
+});
+
+function captureWithHtml2canvas(cb){
+  if(typeof html2canvas==='function'){
     var w=Math.min(document.documentElement.scrollWidth,1920);
     var h=Math.min(document.documentElement.scrollHeight,4000);
-    // Wait for html2canvas to load if needed
-    function doCapture(){
-      if(typeof html2canvas==='function'){
-        html2canvas(document.body,{useCORS:true,allowTaint:true,scale:window.devicePixelRatio>1?0.5:1,width:w,height:h,logging:false}).then(function(cv){
-          ss=cv.toDataURL('image/jpeg',0.7);
-          showSS();cb();
-        }).catch(function(e){console.warn('html2canvas failed:',e);ss=null;showSS();cb()});
-      }else{
-        // No html2canvas — capture page info as text screenshot
-        var c=document.createElement('canvas');c.width=480;c.height=320;
-        var ctx=c.getContext('2d');
-        ctx.fillStyle='#0d1117';ctx.fillRect(0,0,480,320);
-        ctx.fillStyle='#58a6ff';ctx.font='bold 14px sans-serif';
-        ctx.fillText('Fuse — '+document.title,16,30);
-        ctx.fillStyle='#8b949e';ctx.font='12px monospace';
-        ctx.fillText(location.pathname,16,50);
-        ctx.fillText(new Date().toLocaleString(),16,68);
-        ctx.fillText(innerWidth+'x'+innerHeight,16,86);
-        // Capture visible text
-        var main=document.querySelector('main');
-        if(main){
-          var lines=main.innerText.substring(0,500).split('\n').filter(function(l){return l.trim()});
-          ctx.fillStyle='#e1e4e8';ctx.font='11px monospace';
-          for(var i=0;i<Math.min(lines.length,12);i++){
-            ctx.fillText(lines[i].substring(0,60),16,110+i*16);
-          }
-        }
-        ss=c.toDataURL('image/jpeg',0.8);
-        showSS();cb();
-      }
-    }
-    // Give html2canvas 500ms to load if deferred
-    if(typeof html2canvas!=='function'){setTimeout(doCapture,500)}else{doCapture()}
-  }catch(e){ss=null;showSS();cb()}
+    html2canvas(document.body,{
+      useCORS:true,allowTaint:true,
+      scale:window.devicePixelRatio>1?0.5:1,
+      width:w,height:h,logging:false
+    }).then(function(cv){
+      ss=cv.toDataURL('image/jpeg',0.7);
+      cb();
+    }).catch(function(e){
+      console.warn('html2canvas failed:',e);
+      captureCanvasFallback();
+      cb();
+    });
+  }else{
+    captureCanvasFallback();
+    cb();
+  }
 }
+
+// Canvas-based text fallback when html2canvas unavailable
+function captureCanvasFallback(){
+  var c=document.createElement('canvas');c.width=480;c.height=320;
+  var ctx=c.getContext('2d');
+  ctx.fillStyle='#0d1117';ctx.fillRect(0,0,480,320);
+  ctx.fillStyle='#58a6ff';ctx.font='bold 14px sans-serif';
+  ctx.fillText('Fuse — '+document.title,16,30);
+  ctx.fillStyle='#8b949e';ctx.font='12px monospace';
+  ctx.fillText(location.pathname,16,50);
+  ctx.fillText(new Date().toLocaleString(),16,68);
+  ctx.fillText(innerWidth+'x'+innerHeight,16,86);
+  var main=document.querySelector('main');
+  if(main){
+    var lines=main.innerText.substring(0,500).split('\n').filter(function(l){return l.trim()});
+    ctx.fillStyle='#e1e4e8';ctx.font='11px monospace';
+    for(var i=0;i<Math.min(lines.length,12);i++){
+      ctx.fillText(lines[i].substring(0,60),16,110+i*16);
+    }
+  }
+  ss=c.toDataURL('image/jpeg',0.8);
+}
+
+// --- Screenshot: Upload from file ---
+document.getElementById('fb-ss-upload').addEventListener('click',function(){
+  document.getElementById('fb-ss-file').click();
+});
+document.getElementById('fb-ss-file').addEventListener('change',function(e){
+  var file=e.target.files[0];
+  if(!file)return;
+  var reader=new FileReader();
+  reader.onload=function(ev){
+    ss=ev.target.result;
+    showSS();
+  };
+  reader.readAsDataURL(file);
+});
+
+// --- Screenshot: Paste from clipboard ---
+document.addEventListener('paste',function(e){
+  if(modal.style.display!=='block')return;
+  var items=e.clipboardData&&e.clipboardData.items;
+  if(!items)return;
+  for(var i=0;i<items.length;i++){
+    if(items[i].type.indexOf('image')!==-1){
+      var blob=items[i].getAsFile();
+      var reader=new FileReader();
+      reader.onload=function(ev){
+        ss=ev.target.result;
+        showSS();
+      };
+      reader.readAsDataURL(blob);
+      e.preventDefault();
+      break;
+    }
+  }
+});
 
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 
 function showSS(){
-  var box=document.getElementById('fb-ss-box');
+  var box=document.getElementById('fb-ss-preview');
   if(ss&&ss.startsWith('data:image')){
-    box.innerHTML='<img class="fb-img" src="'+ss+'" onclick="window.open(this.src)" title="Click to enlarge"><br><button onclick="ss=null;this.parentNode.innerHTML=\'Removed\'" style="font-size:11px;padding:2px 8px;margin-top:4px;background:#21262d;color:#e1e4e8;border:1px solid #30363d;border-radius:4px;cursor:pointer">✕ Remove</button>';
+    box.innerHTML='<img class="fb-img" src="'+ss+'" onclick="window.open(this.src)" title="Click to enlarge"><br><button class="fb-ss-btn" onclick="ss=null;document.getElementById(\'fb-ss-preview\').innerHTML=\'\'">✕ Remove</button>';
   }else{
-    box.innerHTML='<span style="font-size:11px;color:#8b949e">No screenshot (add html2canvas for full capture)</span>';
+    box.innerHTML='';
   }
 }
 
@@ -176,18 +237,15 @@ function collectCtx(){
   info.push('Screen: '+screen.width+'x'+screen.height+' @'+devicePixelRatio+'x');
   info.push('Window: '+innerWidth+'x'+innerHeight);
   info.push('Theme: '+(document.body.classList.contains('light')?'light':'dark'));
-  // Page-specific context
   var ed=document.getElementById('editor');
   if(ed&&ed.value.trim())info.push('Query: '+ed.value.trim().substring(0,200));
   var fmt=document.getElementById('format-select');
   if(fmt)info.push('Format: '+fmt.value);
-  // Visible text content summary
   var main=document.querySelector('main');
   if(main){
     var txt=main.innerText.substring(0,300).replace(/\s+/g,' ').trim();
     if(txt)info.push('Content: '+txt);
   }
-  // Active element
   if(document.activeElement&&document.activeElement.id)info.push('Focus: #'+document.activeElement.id);
   document.getElementById('fb-ctx').textContent=info.join('\n');
 }
@@ -226,10 +284,8 @@ document.getElementById('fb-submit').addEventListener('click',function(){
     pageContext:document.getElementById('fb-ctx').textContent
   };
 
-  // POST to API
   try{fetch('/api/fuse/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(entry)}).catch(function(){})}catch(e){}
 
-  // Save locally (no screenshot — too large)
   var local=JSON.parse(JSON.stringify(entry));delete local.screenshot;
   var all=JSON.parse(localStorage.getItem(FK)||'[]');
   all.unshift(local);
