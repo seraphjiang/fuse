@@ -12,4 +12,4 @@ async-trait = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
-scylla = "0.14"
+scylla = "1.5"
