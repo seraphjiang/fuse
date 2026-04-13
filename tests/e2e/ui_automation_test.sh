@@ -70,94 +70,95 @@ assert_nav() {
 # ── Page Tests ──
 
 # 1. Index (Query Playground)
-test_index() { assert_page "index.html" "Fuse Query Playground" "onboarding"; }
-test_index_nav() { assert_nav "index.html"; }
+test_index() { assert_page "playground" "Fuse" "onboarding"; }
+test_index_nav() { assert_nav "playground"; }
 
 # 2. Dashboard
-test_dashboard() { assert_page "dashboard.html" "Fuse Dashboard" "dashboard-list" "time-range" "refresh-interval"; }
-test_dashboard_nav() { assert_nav "dashboard.html"; }
+test_dashboard() { assert_page "dashboard" "Fuse Dashboard" "dashboard-list" "time-range" "refresh-interval"; }
+test_dashboard_nav() { assert_nav "dashboard"; }
 
 # 3. Explore
-test_explore() { assert_page "explore.html" "Fuse Explore" "editor" "format"; }
-test_explore_nav() { assert_nav "explore.html"; }
+test_explore() { assert_page "explore" "Fuse Explore" "editor" "format"; }
+test_explore_nav() { assert_nav "explore"; }
 
 # 4. Settings
-test_settings() { assert_page "settings.html" "Fuse Settings" "ds-list" "ds-form"; }
-test_settings_nav() { assert_nav "settings.html"; }
+test_settings() { assert_page "settings" "Fuse Settings" "ds-list" "ds-form"; }
+test_settings_nav() { assert_nav "settings"; }
 
 # 5. Help
-test_help() { assert_page "help.html" "Fuse Help" "s-sql" "s-ppl" "s-shortcuts"; }
-test_help_nav() { assert_nav "help.html"; }
+test_help() { assert_page "help" "Fuse Help" "s-sql" "s-ppl" "s-shortcuts"; }
+test_help_nav() { assert_nav "help"; }
 
 # 6. Admin
-test_admin() { assert_page "admin.html" "Fuse Admin" "s-tenants" "tenant-list"; }
-test_admin_nav() { assert_nav "admin.html"; }
+test_admin() { assert_page "admin" "Fuse Admin" "s-tenants" "tenant-list"; }
+test_admin_nav() { assert_nav "admin"; }
 
 # 7. Changelog
-test_changelog() { assert_page "changelog.html" "Fuse Changelog" "content"; }
-test_changelog_nav() { assert_nav "changelog.html"; }
+test_changelog() { assert_page "changelog" "Fuse Changelog" "content"; }
+test_changelog_nav() { assert_nav "changelog"; }
 
 # 8. Feedback Widget (embeddable, no <title>)
 test_feedback_widget() {
-    local s=$(http_status "$BASE/feedback-widget.html")
+    local s=$(http_status "$BASE/feedback-widget")
     [ "$s" = "200" ] || { echo "HTTP $s" >&2; return 1; }
-    local file="$TMPDIR/feedback-widget.html"
-    fetch_page "feedback-widget.html" > "$file"
+    local file="$TMPDIR/feedback-widget"
+    fetch_page "feedback-widget" > "$file"
     grep -q 'id="fb-btn"' "$file" || { echo "fb-btn missing" >&2; return 1; }
-    grep -q 'id="fb-panel"' "$file" || { echo "fb-panel missing" >&2; return 1; }
+    grep -q 'id="fb-modal"' "$file" || { echo "fb-modal missing" >&2; return 1; }
     grep -q 'id="fb-desc"' "$file" || { echo "fb-desc missing" >&2; return 1; }
 }
 
 # 9. Views
-test_views() { assert_page "views.html" "Materialized Views" "view-list" "create-modal" "mv-name" "mv-query"; }
-test_views_nav() { assert_nav "views.html"; }
+test_views() { assert_page "views" "Materialized Views" "view-list" "create-modal" "mv-name" "mv-query"; }
+test_views_nav() { assert_nav "views"; }
 
 # 10. Plugins
-test_plugins() { assert_page "plugins.html" "Plugins" "upload-area" "drop-zone" "plugin-list"; }
-test_plugins_nav() { assert_nav "plugins.html"; }
+test_plugins() { assert_page "plugins" "Plugins" "upload-area" "drop-zone" "plugin-list"; }
+test_plugins_nav() { assert_nav "plugins"; }
 
 # 11. Terminal
-test_terminal() { assert_page "terminal.html" "Terminal" "terminal" "cmd-input" "autocomplete"; }
-test_terminal_nav() { assert_nav "terminal.html"; }
+test_terminal() { assert_page "terminal" "Terminal" "terminal" "cmd-input" "autocomplete"; }
+test_terminal_nav() { assert_nav "terminal"; }
 
 # 12. Alerts
-test_alerts() { assert_page "alerts.html" "Alerts" "stat-rules" "stat-firing" "active-list"; }
-test_alerts_nav() { assert_nav "alerts.html"; }
+test_alerts() { assert_page "alerts" "Alerts" "stat-rules" "stat-firing" "active-list"; }
+test_alerts_nav() { assert_nav "alerts"; }
 
 # 13. Federation
-test_federation() { assert_page "federation.html" "Federation" "stat-instances" "stat-datasources" "topo-canvas" "instance-list"; }
-test_federation_nav() { assert_nav "federation.html"; }
+test_federation() { assert_page "federation" "Federation" "stat-instances" "stat-datasources" "topo-canvas" "instance-list"; }
+test_federation_nav() { assert_nav "federation"; }
 
 # 14. Schedules
-test_schedules() { assert_page "schedules.html" "Scheduled Queries" "sched-body" "modal"; }
-test_schedules_nav() { assert_nav "schedules.html"; }
+test_schedules() { assert_page "schedules" "Scheduled Queries" "sched-body" "modal"; }
+test_schedules_nav() { assert_nav "schedules"; }
 
 # 15. Quality
-test_quality() { assert_page "quality.html" "Data Quality" "summary" "rules-body"; }
-test_quality_nav() { assert_nav "quality.html"; }
+test_quality() { assert_page "quality" "Data Quality" "summary" "rules-body"; }
+test_quality_nav() { assert_nav "quality"; }
 
 # 16. Lineage
-test_lineage() { assert_page "lineage.html" "Query Lineage" "lineage-graph" "format"; }
-test_lineage_nav() { assert_nav "lineage.html"; }
+test_lineage() { assert_page "lineage" "Query Lineage" "lineage-graph" "format"; }
+test_lineage_nav() { assert_nav "lineage"; }
 
 # 17. Replay
-test_replay() { assert_page "replay.html" "Query Replay" "summary" "s-total"; }
-test_replay_nav() { assert_nav "replay.html"; }
+test_replay() { assert_page "replay" "Query Replay" "summary" "s-total"; }
+test_replay_nav() { assert_nav "replay"; }
 
 # 18. Status
-test_status() { assert_page "status.html" "Fuse Status" "last-update" "summary-grid" "sys-status" "sys-version"; }
-test_status_nav() { assert_nav "status.html"; }
+test_status() { assert_page "status" "Fuse Status" "last-update" "summary-grid" "sys-status" "sys-version"; }
+test_status_nav() { assert_nav "status"; }
 
 # ── Cross-page: nav link consistency ──
 
 test_nav_links() {
-    # Every page with nav-tabs should link to at least index.html and explore.html
+    # Every page with nav-tabs should link to at least index
     local fail=0
-    for page in index dashboard explore settings help admin changelog views plugins terminal alerts federation schedules quality lineage replay status; do
-        local file="$TMPDIR/${page}.html"
-        fetch_page "${page}.html" > "$file"
+    for page in "" dashboard explore settings help admin changelog views plugins terminal alerts federation schedules quality lineage replay status; do
+        local file="$TMPDIR/$(echo "$page" | tr '/' '_')"
+        [ -z "$page" ] && file="$TMPDIR/_index"
+        fetch_page "$page" > "$file"
         if grep -q 'nav-tab' "$file"; then
-            grep -q 'index.html\|href="/"' "$file" || { echo "${page}.html missing link to index" >&2; fail=1; }
+            grep -q 'href="/"' "$file" || grep -q 'href="/playground"' "$file" || { echo "$page missing link to index" >&2; fail=1; }
         fi
     done
     [ "$fail" -eq 0 ]
@@ -167,10 +168,10 @@ test_nav_links() {
 
 test_no_500_pages() {
     local fail=0
-    for page in index dashboard explore settings help admin changelog feedback-widget views plugins terminal alerts federation schedules quality lineage replay status; do
-        local s=$(http_status "$BASE/${page}.html")
+    for page in "" dashboard explore settings help admin changelog feedback-widget views plugins terminal alerts federation schedules quality lineage replay status; do
+        local s=$(http_status "$BASE/$page")
         if [ "${s:0:1}" = "5" ]; then
-            echo "${page}.html returned $s" >&2
+            echo "$page returned $s" >&2
             fail=1
         fi
     done
@@ -180,7 +181,7 @@ test_no_500_pages() {
 # ── 404 for non-existent page ──
 
 test_404_missing_page() {
-    local s=$(http_status "$BASE/nonexistent-page-xyz.html")
+    local s=$(http_status "$BASE/nonexistent-page-xyz")
     [ "$s" = "404" ] || [ "$s" = "200" ]  # Some servers serve index for unknown routes
 }
 
