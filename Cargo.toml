@@ -63,7 +63,7 @@ toml = "0.8"
 # HTTP & gRPC
 axum = { version = "0.8", features = ["json"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
-tonic = "0.12"
+tonic = "0.14"
 prost = "0.14"
 
 # OpenSearch
