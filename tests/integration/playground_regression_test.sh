@@ -183,6 +183,25 @@ grep -q 'null.rate\|freshness\|row.count\|cardinality' "$DIR/quality.html" && ch
 grep -q 'evaluate\|runAll' "$DIR/quality.html" && check "Quality: evaluate all" "ok" || check "Quality: evaluate all" "missing"
 grep -q 'source.*transform\|node_type\|normalizeNodes' "$DIR/lineage.html" && check "Lineage: node types" "ok" || check "Lineage: node types" "missing"
 grep -q 'replay\|replayAll\|diff' "$DIR/replay.html" && check "Replay: diff detection" "ok" || check "Replay: diff detection" "missing"
+grep -q 'side.*by.*side\|diffMode\|side' "$DIR/replay.html" && check "Replay: side-by-side diff" "ok" || check "Replay: side-by-side diff" "missing"
+
+# UX: GraphQL page
+echo "── GraphQL UX ──"
+grep -q 'graphql\|GraphQL' "$DIR/graphql.html" && check "GraphQL: page exists" "ok" || check "GraphQL: page exists" "missing"
+grep -q 'SNIPPETS\|snippet' "$DIR/graphql.html" && check "GraphQL: snippets" "ok" || check "GraphQL: snippets" "missing"
+grep -q 'prettify' "$DIR/graphql.html" && check "GraphQL: prettify" "ok" || check "GraphQL: prettify" "missing"
+grep -q 'variables\|vars' "$DIR/graphql.html" && check "GraphQL: variables pane" "ok" || check "GraphQL: variables pane" "missing"
+
+# UX: Webhooks page
+echo "── Webhooks UX ──"
+grep -q 'webhook\|Webhook' "$DIR/webhooks.html" && check "Webhooks: page exists" "ok" || check "Webhooks: page exists" "missing"
+grep -q 'dlq\|dead.*letter\|Dead Letter' "$DIR/webhooks.html" && check "Webhooks: DLQ viewer" "ok" || check "Webhooks: DLQ viewer" "missing"
+grep -q 'testWH\|test.*webhook' "$DIR/webhooks.html" && check "Webhooks: test delivery" "ok" || check "Webhooks: test delivery" "missing"
+
+# UX: Cost page
+echo "── Cost Explorer UX ──"
+grep -q 'breakdown\|connector' "$DIR/cost.html" && check "Cost: connector breakdown" "ok" || check "Cost: connector breakdown" "missing"
+grep -q 'plan-output\|Query Plan' "$DIR/cost.html" && check "Cost: plan viewer" "ok" || check "Cost: plan viewer" "missing"
 
 # UX: Status page widgets
 echo "── Status page UX ──"
