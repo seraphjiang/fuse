@@ -59,7 +59,7 @@ regex = "1"
 
 [dev-dependencies]
 fuse-connector-kafka = { path = "../fuse-connectors/kafka" }
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 
 [[bench]]
 name = "server_bench"
