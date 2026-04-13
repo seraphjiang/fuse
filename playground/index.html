@@ -1661,7 +1661,7 @@ async function loadSchema() {
         for (const s of schemas) {
           try {
             const fields = await api(`/api/fuse/datasources/${encodeURIComponent(d.id)}/schemas/${encodeURIComponent(s.name)}/fields`);
-            acSchema[d.id][s.name] = fields.map(f => f.name);
+            if (Array.isArray(fields)) { acSchema[d.id][s.name] = fields.map(f => f.name); }
           } catch {}
         }
       } catch {}
