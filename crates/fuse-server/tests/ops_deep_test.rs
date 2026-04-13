@@ -130,6 +130,7 @@ fn build_app_with(connectors: Vec<(String, bool)>) -> axum::Router {
         smart_router: Arc::new(fuse_server::smart_routing::SmartRouter::new()),
         health_history: Arc::new(fuse_server::connector_health_history::HealthHistory::new()),
         pool_tracker: Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
+        feedback_store: Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
     });
     fuse_server::build_router(state)
 }

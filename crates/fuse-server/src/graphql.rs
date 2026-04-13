@@ -531,6 +531,7 @@ mod tests {
             smart_router: Arc::new(crate::smart_routing::SmartRouter::new()),
             health_history: Arc::new(crate::connector_health_history::HealthHistory::new()),
             pool_tracker: Arc::new(crate::pool_stats::PoolStatsTracker::new()),
+            feedback_store: Arc::new(crate::feedback::FeedbackStore::new(100)),
         })
     }
 
@@ -724,6 +725,7 @@ mod subscription_tests {
             smart_router: Arc::new(crate::smart_routing::SmartRouter::new()),
             health_history: Arc::new(crate::connector_health_history::HealthHistory::new()),
             pool_tracker: Arc::new(crate::pool_stats::PoolStatsTracker::new()),
+            feedback_store: Arc::new(crate::feedback::FeedbackStore::new(100)),
         })
     }
 
