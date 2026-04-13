@@ -64,7 +64,7 @@ toml = "0.8"
 axum = { version = "0.8", features = ["json"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 tonic = "0.12"
-prost = "0.13"
+prost = "0.14"
 
 # OpenSearch
 opensearch = { version = "2", features = ["aws-auth"] }
