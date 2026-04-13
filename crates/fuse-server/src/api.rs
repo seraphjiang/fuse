@@ -2383,8 +2383,8 @@ pub async fn get_fields(
             }
         }
         Err(e) => {
-            let msg = e.to_string();
-            error_json(connector_error_status(&msg), msg).into_response()
+            tracing::warn!("get_fields failed for {}/{}: {}", id, table, e);
+            Json(serde_json::json!([])).into_response()
         }
     }
 }
