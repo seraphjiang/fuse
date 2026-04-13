@@ -209,6 +209,49 @@ helm upgrade fuse deploy/helm/fuse -f my-values.yaml --set image.tag=1.5.0
 
 Rolling updates are zero-downtime thanks to the PDB and readiness probes.
 
+## Monitoring
+
+Fuse exposes Prometheus metrics at `GET /metrics` in exposition format.
+
+### Prometheus Operator (ServiceMonitor)
+
+Enable the ServiceMonitor in your Helm values:
+
+```yaml
+metrics:
+  serviceMonitor:
+    enabled: true
+    interval: "30s"
+    labels:
+      release: prometheus  # match your Prometheus operator selector
+```
+
+The ServiceMonitor supports `relabelings`, `metricRelabelings`, `namespaceSelector`, `targetLabels`, `podTargetLabels`, and `sampleLimit` for advanced auto-discovery.
+
+### Annotation-based discovery
+
+For clusters without the Prometheus Operator, enable pod annotations:
+
+```yaml
+metrics:
+  podAnnotations: true
+```
+
+This adds `prometheus.io/scrape`, `prometheus.io/port`, and `prometheus.io/path` annotations to pods.
+
+### Key metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `fuse_queries_total` | Counter | Queries by format (sql/ppl) and status (ok/error) |
+| `fuse_query_duration_ms` | Histogram | Query latency distribution |
+| `fuse_active_queries` | Gauge | Currently executing queries |
+| `fuse_connector_healthy` | Gauge | Per-connector health (1=healthy, 0=unhealthy) |
+| `fuse_plan_cache_hits` | Gauge | Plan cache hit count |
+| `fuse_result_cache_entries` | Gauge | Result cache size |
+| `fuse_connectors_total` | Gauge | Number of registered connectors |
+| `fuse_query_cost_usd` | Histogram | Estimated query cost by datasource |
+
 ## Troubleshooting
 
 ```bash
