@@ -148,3 +148,7 @@ Before committing, MUST run `cargo check` and `cargo test` on affected crates. D
 
 ## Rule 19: Fix All Instances
 When fixing a bug, grep the entire codebase for the same pattern. If the same bug exists in another code path, fix ALL instances in the same commit. The scroll API bug (UNION ALL fixed but JOIN had the identical issue) must not repeat.
+
+## Rule 20: Push After Commit — No Asking
+
+After committing changes, agents MUST `git push origin main` immediately. Do NOT ask for permission to push. Every commit should be deployed as soon as it's made. This keeps the playground up to date and prevents large push backlogs.
