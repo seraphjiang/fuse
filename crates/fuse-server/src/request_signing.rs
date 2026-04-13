@@ -6,7 +6,7 @@
 //! using a shared secret. Signature sent in `X-Fuse-Signature: sha256=<hex>`.
 //! Optional `X-Fuse-Timestamp: <unix secs>` for replay protection.
 
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, Mac, digest::KeyInit};
 use sha2::Sha256;
 use std::sync::Arc;
 
