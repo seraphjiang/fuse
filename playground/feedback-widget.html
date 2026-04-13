@@ -102,24 +102,34 @@ function takeScreenshot(cb){
   modal.style.display='none';ov.style.display='none';btn.style.display='none';
 
   ensureH2C(function(ok){
-    if(ok){
-      html2canvas(document.body,{
-        useCORS:true,allowTaint:true,logging:false,
-        scale:Math.min(window.devicePixelRatio,2),
-        width:document.documentElement.scrollWidth,
-        height:Math.min(document.documentElement.scrollHeight,8000),
-        backgroundColor:getComputedStyle(document.body).backgroundColor,
-        ignoreElements:function(el){return el.id==='fb-btn'||el.id==='fb-modal'||el.id==='fb-overlay'}
-      }).then(function(canvas){
-        ss=canvas.toDataURL('image/jpeg',0.7);
-        btn.style.display='block';
-        cb(true);
-      }).catch(function(e){
-        console.warn('Screenshot failed:',e);
+    if(ok&&typeof html2canvas==='function'){
+      try{
+        html2canvas(document.body,{
+          useCORS:true,allowTaint:true,logging:false,
+          scale:Math.min(window.devicePixelRatio||1,2),
+          width:document.documentElement.clientWidth,
+          height:document.documentElement.clientHeight,
+          scrollX:-window.scrollX,scrollY:-window.scrollY,
+          windowWidth:document.documentElement.clientWidth,
+          windowHeight:document.documentElement.clientHeight,
+          backgroundColor:getComputedStyle(document.body).backgroundColor,
+          ignoreElements:function(el){return el.id==='fb-btn'||el.id==='fb-modal'||el.id==='fb-overlay'}
+        }).then(function(canvas){
+          try{ss=canvas.toDataURL('image/jpeg',0.7)}catch(e){ss=null}
+          btn.style.display='block';
+          cb(true);
+        }).catch(function(e){
+          console.warn('html2canvas render failed:',e);
+          btn.style.display='block';
+          fallbackScreenshot();
+          cb(true);
+        });
+      }catch(e){
+        console.warn('html2canvas call failed:',e);
         btn.style.display='block';
         fallbackScreenshot();
         cb(true);
-      });
+      }
     }else{
       btn.style.display='block';
       fallbackScreenshot();
@@ -166,7 +176,8 @@ function openFeedback(){
 function showScreenshot(){
   var box=document.getElementById('fb-ss-box');
   if(ss){
-    box.innerHTML='<img class="fb-img" src="'+ss+'" onclick="window.open(this.src)" title="Click to enlarge"><br><span style="font-size:10px;color:#3fb950">✓ Screenshot captured</span> <button onclick="document.getElementById(\'fb-ss-box\').innerHTML=\'Removed\';ss=null" style="font-size:10px;padding:1px 6px;margin-left:4px;background:#21262d;color:#8b949e;border:1px solid #30363d;border-radius:3px;cursor:pointer">✕</button>';
+    box.innerHTML='<img class="fb-img" src="'+ss+'" onclick="window.open(this.src)" title="Click to enlarge"><br><span style="font-size:10px;color:#3fb950">✓ Screenshot captured</span> <button id="fb-ss-rm" style="font-size:10px;padding:1px 6px;margin-left:4px;background:#21262d;color:#8b949e;border:1px solid #30363d;border-radius:3px;cursor:pointer">✕</button>';
+    document.getElementById('fb-ss-rm').onclick=function(){ss=null;box.innerHTML='Removed'};
   }else{
     box.innerHTML='<span style="font-size:12px;color:#f85149">Screenshot capture failed</span>';
   }
