@@ -24,7 +24,7 @@ aws-config = { workspace = true }
 aws-sdk-secretsmanager = { workspace = true }
 rustls = { version = "0.23", optional = true }
 rustls-pemfile = { version = "2", optional = true }
-webpki-roots = { version = "0.26", optional = true }
+webpki-roots = { version = "1.0", optional = true }
 
 [features]
 rustls-tls = ["rustls", "rustls-pemfile", "webpki-roots"]
