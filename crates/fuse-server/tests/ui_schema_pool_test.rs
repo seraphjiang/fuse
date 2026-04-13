@@ -165,6 +165,7 @@ fn build_schema_test_app() -> (axum::Router, Arc<fuse_server::pool_stats::PoolSt
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: pool_tracker.clone(),
     });
     (fuse_server::build_router(state), pool_tracker)

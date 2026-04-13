@@ -246,6 +246,7 @@ fn build_test_app() -> axum::Router {
         health_history: std::sync::Arc::new(
             fuse_server::connector_health_history::HealthHistory::new(),
         ),
+        feedback_store: std::sync::Arc::new(fuse_server::feedback::FeedbackStore::new(100)),
         pool_tracker: std::sync::Arc::new(fuse_server::pool_stats::PoolStatsTracker::new()),
     });
     fuse_server::build_router(state)
