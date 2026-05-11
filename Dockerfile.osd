@@ -1,5 +1,5 @@
 # Build the fuse-query OSD plugin
-FROM node:25-slim AS plugin-builder
+FROM node:26-slim AS plugin-builder
 
 WORKDIR /plugin-src
 
